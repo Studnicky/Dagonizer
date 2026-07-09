@@ -154,10 +154,12 @@ class GatherHarness {
     accessor.set(cloneState, 'enriched', enriched);
     accessor.set(cloneState, 'capturedErrors', []);
     return {
+      'source':          'insights-fold',
       'index':           0,
       'item':            null,
       'output':          'default',
       'terminalOutcome': 'completed',
+      'result':          undefined,
       'cloneState':      cloneState,
     };
   }

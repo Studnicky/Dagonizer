@@ -22,6 +22,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region decompress-node
 export class DecompressNode extends MonadicNode<CartographerState, 'route-format' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:decompress';
   readonly 'name' = 'decompress';
   readonly 'outputs' = ['route-format', 'invalid'] as const;
 

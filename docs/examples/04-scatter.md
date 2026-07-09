@@ -1,6 +1,6 @@
 ---
 title: 'Example 04: Scatter Scout'
-description: 'Four-source scatter scout in The Archivist: OpenLibrary, Google Books, Subject search, and Wikipedia run concurrently via ScatterNode, each clone gathers candidates, then feed rank and merge.'
+description: 'The Archivist scatters JSON-serializable tool worksets through dynamic tool DAG references, then routes clone outputs into a first-class gather before ranking and merge.'
 seeAlso:
   - text: 'Running domain: The Archivist'
     link: './the-archivist'
@@ -22,31 +22,31 @@ import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 
 ## What It Is
 
-Scatter Scout is The Archivist's "send four librarians into the stacks at once" pattern. One visitor question becomes four concurrent source probes: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment.
+Scatter Scout is The Archivist's "send several librarians into the stacks at once" pattern. One visitor question becomes a set of JSON-serializable tool worksets: OpenLibrary keyword search, Google Books, OpenLibrary subject search, Wikipedia enrichment, or whichever registered tool DAGs the plan selects.
 
 The point is not raw parallelism for its own sake. The parent DAG asks for one ranked answer, while the scatter branch lets each source work independently, report its own outcome, and return candidates in a deterministic shape that downstream ranking can trust.
 
 ## How It Works
 
-All four scouts run as one `ScatterNode` over a descriptor source (`state.scoutProviders = ['openlibrary', 'googlebooks', 'subject', 'wikipedia']`). Each clone reads its `currentItem` descriptor, the `scoutDispatch` body node routes to the matching scout logic, and a `collect` gather strategy accumulates per-clone candidates before routing forward to rank and merge.
+The scout cluster runs as one `ScatterNode` over `state.bookWorksets`. Each clone reads its item-scoped `dagIri` value as a DAG IRI, resolves that value through a dynamic `DagReference` with explicit tool DAG candidates, and executes the selected tool DAG as the clone body.
 
-`gather` is required on every scatter. This cluster uses `{ strategy: 'collect', target: 'scoutResults' }` so the engine writes each clone's `candidates` output into `state.scoutResults` in source-index order. The `any-success` outcome reducer routes `'success'` as soon as at least one scout finds candidates; mixed or all-empty results route accordingly.
+Clone output does not disappear into scatter-local magic. The scatter routes `success` and `error` to the first-class `book-search-gather` placement, whose `tool-candidate-merge` strategy folds each clone's tool output into parent `state.candidates`. The `any-success` reducer decides whether the scatter leaves through `success`, `error`, or `empty`; the gather placement owns the parent-state merge.
 
 ## Diagrams, Examples, and Outputs
 
 ### DAG registration and diagram
 
-[The Archivist](./the-archivist) queries four book sources at once: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment. The `BookSearchScatterDAG` packages the full scout cluster as a reusable sub-DAG body that the parent embeds from multiple branches.
+[The Archivist](./the-archivist) queries registered book tools from one scatter shape. The `BookSearchScatterDAG` packages the full scout cluster as a reusable sub-DAG body that the parent embeds from multiple branches.
 
 <DagJsonMermaid :dag="BookSearchScatterDAG" title="book-search-scatter" aria-label="book-search-scatter JSON-LD DAG beside Mermaid generated from it." />
 
-The JSON-LD and Mermaid are generated from the same `BookSearchScatterDAG` export. If the source shows a scatter, a retry loop, a salvage node, or a terminal edge, the diagram shows the same structure rather than a hand-drawn approximation.
+The JSON-LD and Mermaid are generated from the same `BookSearchScatterDAG` export. The static graph view shows the scatter, the dynamic DAG reference body, the `book-search-gather` fan-in barrier, retry/salvage edges, and terminal exits rather than a hand-drawn approximation.
 
 ### Running in a container
 
 A scatter placement whose body is a DAG (rather than a single node) can run each clone's sub-DAG in an isolate. Add `container: "cpu"` to the scatter placement and bind a `DagContainerInterface` backend at dispatcher construction:
 
-The scatter inbox, gather strategies, and outcome reducer are identical in both paths. See [Example 12: Worker Containers](./12-workers) for a complete runnable example of the container binding, including the `WorkerThreadContainer` instantiation and registry module.
+The scatter inbox, first-class gather placement, and outcome reducer are identical in both paths. See [Example 12: Worker Containers](./12-workers) for a complete runnable example of the container binding, including the worker container role and registry module.
 
 ## What It Lets You Do
 
@@ -62,11 +62,11 @@ The complete `BookSearchScatterDAG`, the sub-DAG the Archivist places three time
 
 ## Details for Nerds
 
-- **`ScatterNode` with a descriptor source.** The source is a static provider list (`['openlibrary', 'googlebooks', 'subject', 'wikipedia']`). One clone runs per descriptor; `execution: { mode: 'item', concurrency: 2 }` caps how many clones run at once.
-- **Heterogeneous fan-out via a dispatching body.** `scoutDispatch` reads `state.metadata.currentItem` (the provider name) and routes to the matching scout implementation. The engine runs four clones and is indifferent to whether the bodies are identical; the dispatcher is the body.
-- **Required gather.** Every scatter declares `gather`. This one uses `{ strategy: 'collect', target: 'scoutResults' }` — each clone's output lands at `state.scoutResults[index]` in source order.
+- **`ScatterNode` with workset source.** The source is `state.bookWorksets`, written by `build-book-worksets` from the selected tool plan. One clone runs per workset; `execution: { mode: 'item', concurrency: 4 }` caps how many clones run at once.
+- **Heterogeneous fan-out via `DagReference`.** Each workset carries `dagIri` as a DAG IRI, and the scatter body resolves `{ dag: { from: 'item', path: 'dagIri', candidates: [...] } }` against explicit tool DAG candidates.
+- **First-class gather.** `book-search-gather` is a `GatherNode` placement after the scatter. It uses `tool-candidate-merge` to fold clone tool outputs into parent `state.candidates`.
 - **`any-success` outcome reducer.** Routes `'success'` when at least one clone succeeded; routes `'error'` when every clone errored; routes `'empty'` when there were no source items.
-- **Scout gating via `state.toolPlan`.** Each scout checks `state.toolPlan` before making a network call. `decideTools` (an LLM call) populates the plan; scouts that find no matching plan entry return `'empty'` immediately. `wikipediaScout` is the exception; it runs on terms alone, always.
+- **Scout gating via `state.toolPlan`.** `decideTools` populates the plan; `build-book-worksets` turns only selected calls into scatter items. Wikipedia enrichment still enters when useful terms exist, so the deep-one context can surface even when the model under-plans.
 - **`scoutRetry` pass-through.** Every scout calls `scoutRetry.run(() => tool.execute(..., context.signal), context.signal)`. The signal propagates from the dispatcher through the retry policy: if the parent flow is cancelled, retries abort mid-backoff.
 - **`bookSearchScatterDAG`.** The sub-DAG module exports the canonical JSON-LD DAG. The caller registers `{ nodes: nodes.bookSearchScatterNodes, dags: [bookSearchScatterDAG] }` before the parent DAG so every embedded reference resolves.
 

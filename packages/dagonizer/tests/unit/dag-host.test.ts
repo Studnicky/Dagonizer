@@ -46,6 +46,9 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 const REGISTRY_VERSION = '1.0.0';
+const BODY_LAW1_DAG = 'urn:conformance:dag:conformance-body-law1';
+const BODY_LAW2_DAG = 'urn:conformance:dag:conformance-body-law2';
+const BODY_LAW5_DAG = 'urn:conformance:dag:conformance-body-law5';
 
 // A module URL that exists but is not a registry module (no instantiate export).
 const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
@@ -167,7 +170,7 @@ void describe('DagHost — execute returns result', () => {
     parentSide.send({
       'variant': 'execute',
       'request': {
-        'dagName': 'conformance-body-law2',   // mutator: sets value=99
+        'dagName': BODY_LAW2_DAG,   // mutator: sets value=99
         'placementPath': ['parent'],
         'items': [{ 'id': 'req-exec-1', 'snapshot': initialState.snapshot() }],
         'timeoutMs': 5000,
@@ -208,7 +211,7 @@ void describe('DagHost — execute returns result', () => {
     parentSide.send({
       'variant': 'execute',
       'request': {
-        'dagName': 'conformance-body-law1',   // recorder node → done
+        'dagName': BODY_LAW1_DAG,   // recorder node → done
         'placementPath': ['host'],
         'items': [{ 'id': 'req-exec-2', 'snapshot': initialState.snapshot() }],
         'timeoutMs': 5000,
@@ -240,7 +243,7 @@ void describe('DagHost — execute returns result', () => {
       });
     });
 
-    // Request a non-existent DAG name — should fail gracefully.
+    // Request a non-existent DAG IRI — should fail gracefully.
     const initialState = new NodeStateBase();
     parentSide.send({
       'variant': 'execute',
@@ -286,7 +289,7 @@ void describe('DagHost — abort', () => {
     parentSide.send({
       'variant': 'execute',
       'request': {
-        'dagName': 'conformance-body-law5',   // abort-sleeper: waits until aborted
+        'dagName': BODY_LAW5_DAG,   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
         'items': [{ 'id': 'req-abort', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,
@@ -347,7 +350,7 @@ void describe('DagHost — execute before init (G8)', () => {
     parentSide.send({
       'variant': 'execute',
       'request': {
-        'dagName': 'conformance-body-law1',
+        'dagName': BODY_LAW1_DAG,
         'placementPath': [],
         'items': [{ 'id': 'req-no-init', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,
@@ -374,7 +377,7 @@ void describe('DagHost — execute before init (G8)', () => {
     parentSide.send({
       'variant': 'execute',
       'request': {
-        'dagName': 'conformance-body-law1',
+        'dagName': BODY_LAW1_DAG,
         'placementPath': [],
         'items': [{ 'id': 'req-pre-init-probe', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,

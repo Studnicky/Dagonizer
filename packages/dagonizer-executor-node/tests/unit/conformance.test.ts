@@ -47,7 +47,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, describe, it } from 'node:test';
 
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
+import { DAGIdentity, Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface, StoredScatterProgressType } from '@studnicky/dagonizer';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import {
@@ -402,7 +402,8 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     // The killed item must remain un-acked; the checkpoint must survive.
     const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
     const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
-    const fan = progress['fan'];
+    const fanIri = DAGIdentity.placementId(CONFORMANCE_DAG.law8, 'fan');
+    const fan = progress[fanIri];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
     // The map gather is compactable, so its checkpoint is bounded mode: the
     // acked count is watermark + ahead-acked window. Non-compactable gathers
@@ -429,7 +430,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     const freshDispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
-    const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');
+    const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, fanIri);
 
     assert.ok(result.state instanceof ConformanceState, 'result.state must be a ConformanceState');
     const finalItems = result.state.gatheredItems;

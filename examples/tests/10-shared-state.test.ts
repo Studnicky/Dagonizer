@@ -22,7 +22,7 @@ describe('10-shared-state: MemoryStore shared across nodes via constructor injec
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('main-flow', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:main-flow', state);
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -52,7 +52,7 @@ describe('10-shared-state: MemoryStore shared across nodes via constructor injec
     dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
 
-    await dispatcher.execute('main-flow', new NodeStateBase());
+    await dispatcher.execute('urn:noocodec:dag:main-flow', new NodeStateBase());
 
     const rawEntries2 = await logStore.get('entries');
     const entries = typeof rawEntries2 === 'string' ? rawEntries2 : '';

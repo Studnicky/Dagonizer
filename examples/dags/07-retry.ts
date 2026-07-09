@@ -51,6 +51,7 @@ export class FetchState extends NodeStateBase {
 // #region retry-node
 export class FetchNode extends MonadicNode<FetchState, 'success' | 'error'> {
   readonly name = 'fetch';
+  readonly '@id' = 'urn:noocodec:node:fetch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -147,27 +148,30 @@ export class FibonacciRetry extends RetryPolicy {
 
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:retry-dag',
+  '@id': 'urn:noocodec:dag:retry-dag',
   '@type':      'DAG',
   "name":       'retry-dag',
   "version":    '1',
-  "entrypoint": 'fetch',
+  "entrypoints": { "main": 'urn:noocodec:dag:retry-dag/node/fetch' },
   "nodes": [
     {
-      '@id':     'urn:noocodex:dag:retry-dag/node/fetch',
+      '@id': 'urn:noocodec:dag:retry-dag/node/fetch',
       '@type':   'SingleNode',
       "name":    'fetch',
-      "node":    'fetch',
-      "outputs": { "success": 'end', "error": 'end-error' },
+      "node":    'urn:noocodec:node:fetch',
+      "outputs": {
+        "success": 'urn:noocodec:dag:retry-dag/node/end',
+        "error": 'urn:noocodec:dag:retry-dag/node/end-error',
+      },
     },
     {
-      '@id':     'urn:noocodex:dag:retry-dag/node/end',
+      '@id': 'urn:noocodec:dag:retry-dag/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
     },
     {
-      '@id':     'urn:noocodex:dag:retry-dag/node/end-error',
+      '@id': 'urn:noocodec:dag:retry-dag/node/end-error',
       '@type':   'TerminalNode',
       "name":    'end-error',
       "outcome": 'failed',

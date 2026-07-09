@@ -20,7 +20,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { dag, ChatState, ClassifyNode, RespondNode } from './dags/02-builder.topology.js';
+import { chatDAGIri as dagIri, dag, ChatState, ClassifyNode, RespondNode } from './dags/02-builder.topology.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -34,7 +34,7 @@ dispatcher.registerDAG(dag);  // same API as with a literal; build() returns a v
 
 const state = new ChatState();
 state.input = 'What is a generic type parameter?';
-await dispatcher.execute('chat', state);
+await dispatcher.execute(dagIri, state);
 
 process.stdout.write('\nBuilder DAG: same shape as 01-linear, constructed via DAGBuilder (02-builder)\n');
 process.stdout.write(`  input:  "${state.input}"\n`);

@@ -16,6 +16,9 @@ import type { LlmAdapterInterface, ToolCallType, ToolDefinitionType } from '@stu
 import { ChatRequest, ToolCallCodec } from '@studnicky/dagonizer/adapter';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 
+export const TOOL_USE_DAG_IRI = 'urn:noocodec:dag:tool-use-demo';
+const placement = (placementIdentifier: string): string => `${TOOL_USE_DAG_IRI}/node/${encodeURIComponent(placementIdentifier)}`;
+
 // ---------------------------------------------------------------------------
 // ToolInterface: calculator — adds two numbers
 // ---------------------------------------------------------------------------
@@ -99,6 +102,7 @@ export class ToolUseState extends NodeStateBase {
 /** Call the adapter; inspect the response for tool calls. */
 export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'> {
   readonly name = 'callLlm';
+  readonly '@id' = 'urn:noocodec:node:callLlm';
   readonly outputs = ['tool_call', 'text'] as const;
   override get outputSchema(): Record<'tool_call' | 'text', SchemaObjectType> {
     return { 'tool_call': { 'type': 'object' }, 'text': { 'type': 'object' } };
@@ -133,7 +137,7 @@ export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'>
       }
 
       if (response.message.variant === 'text') {
-        // Text-channel fallback: adapter returned prose with embedded tool JSON.
+        // Text-channel decoder: adapter returned prose with embedded tool JSON.
         // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
         state.toolCallRaw = response.message.content;
         const calls: ToolCallType[] = ToolCallCodec.decode(response.message.content, 'demo');
@@ -155,6 +159,7 @@ export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'>
 /** Dispatch the tool call to the registered ToolInterface and collect the result. */
 export class DispatchToolNode extends MonadicNode<ToolUseState, 'done' | 'error'> {
   readonly name = 'dispatchTool';
+  readonly '@id' = 'urn:noocodec:node:dispatchTool';
   readonly outputs = ['done', 'error'] as const;
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
     return { 'done': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -190,6 +195,7 @@ export class DispatchToolNode extends MonadicNode<ToolUseState, 'done' | 'error'
 
 export class OnTextNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onText';
+  readonly '@id' = 'urn:noocodec:node:onText';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -204,6 +210,7 @@ export class OnTextNode extends MonadicNode<ToolUseState, 'done'> {
 
 export class OnToolDoneNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onToolDone';
+  readonly '@id' = 'urn:noocodec:node:onToolDone';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -219,6 +226,7 @@ export class OnToolDoneNode extends MonadicNode<ToolUseState, 'done'> {
 
 export class OnToolErrorNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onToolError';
+  readonly '@id' = 'urn:noocodec:node:onToolError';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -237,49 +245,49 @@ export class OnToolErrorNode extends MonadicNode<ToolUseState, 'done'> {
 
 export const dag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:tool-use-demo',
+  '@id': TOOL_USE_DAG_IRI,
   '@type':    'DAG',
   'name':       'tool-use-demo',
   'version':    '1',
-  'entrypoint': 'callLlm',
+  'entrypoints': { 'main': placement('callLlm') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:tool-use-demo/node/callLlm',
+      '@id': placement('callLlm'),
       '@type': 'SingleNode',
       'name':    'callLlm',
-      'node':    'callLlm',
-      'outputs': { 'tool_call': 'dispatchTool', 'text': 'onText' },
+      'node':    'urn:noocodec:node:callLlm',
+      'outputs': { 'tool_call': placement('dispatchTool'), 'text': placement('onText') },
     },
     {
-      '@id':   'urn:noocodex:dag:tool-use-demo/node/dispatchTool',
+      '@id': placement('dispatchTool'),
       '@type': 'SingleNode',
       'name':    'dispatchTool',
-      'node':    'dispatchTool',
-      'outputs': { 'done': 'onToolDone', 'error': 'onToolError' },
+      'node':    'urn:noocodec:node:dispatchTool',
+      'outputs': { 'done': placement('onToolDone'), 'error': placement('onToolError') },
     },
     {
-      '@id':   'urn:noocodex:dag:tool-use-demo/node/onText',
+      '@id': placement('onText'),
       '@type': 'SingleNode',
       'name':    'onText',
-      'node':    'onText',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:onText',
+      'outputs': { 'done': placement('end') },
     },
     {
-      '@id':   'urn:noocodex:dag:tool-use-demo/node/onToolDone',
+      '@id': placement('onToolDone'),
       '@type': 'SingleNode',
       'name':    'onToolDone',
-      'node':    'onToolDone',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:onToolDone',
+      'outputs': { 'done': placement('end') },
     },
     {
-      '@id':   'urn:noocodex:dag:tool-use-demo/node/onToolError',
+      '@id': placement('onToolError'),
       '@type': 'SingleNode',
       'name':    'onToolError',
-      'node':    'onToolError',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:onToolError',
+      'outputs': { 'done': placement('end') },
     },
     {
-      '@id':    'urn:noocodex:dag:tool-use-demo/node/end',
+      '@id': placement('end'),
       '@type':  'TerminalNode',
       'name':     'end',
       'outcome':  'completed',

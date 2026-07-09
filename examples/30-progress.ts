@@ -36,7 +36,7 @@ import {
 import type {
   BusEventEnvelopeType,
 } from '@studnicky/dagonizer/progress';
-import { ProgressState, FetchNode, EnrichNode, dag } from './dags/30-progress.js';
+import { ProgressState, FetchNode, EnrichNode, dag, dagIri } from './dags/30-progress.js';
 
 // ---------------------------------------------------------------------------
 // Part 1: EventBus — subscribe, publish, unsubscribe
@@ -249,7 +249,7 @@ dispatcher.registerNode(new EnrichNode());
 dispatcher.registerDAG(dag);
 
 const state = new ProgressState();
-const result = await dispatcher.execute('progress-demo', state);
+const result = await dispatcher.execute(dagIri, state);
 
 // Lifecycle hooks are synchronous overrides, so each publish() call is
 // fire-and-forget (`void this.#bus.publish(...)`) rather than awaited.

@@ -15,7 +15,7 @@
  *   - `TripleStoreInterface`: minimal RDF quad-store service contract.
  *
  * ToolInterface-shaped patterns (e.g. `ScoutNode`) reference the canonical `ToolInterface`
- * type from `@studnicky/dagonizer/tool` directly — there is no aliased
+ * type from `@studnicky/dagonizer/tool` directly — there is no duplicate
  * re-export.
  *
  * Plugin packages (`@studnicky/dagonizer-patterns-rag`,

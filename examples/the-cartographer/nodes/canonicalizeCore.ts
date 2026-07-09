@@ -30,6 +30,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region canonicalize-core-node
 export class CanonicalizeCoreNode extends MonadicNode<CartographerState, 'normalized' | 'rejected'> {
+  readonly '@id' = 'urn:noocodec:node:canonicalize-core';
   readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 

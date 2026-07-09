@@ -141,11 +141,11 @@ channel: StreamChannel<RoutedChatStreamChunkType>       ← shared sink AND shar
 
 Lifecycle, in order:
 
-1. `routingDispatcher.execute('react-agent-routing', routingState)` starts
+1. `routingDispatcher.execute('urn:noocodec:dag:react-agent-routing', routingState)` starts
    (not awaited) — the routing scatter begins pulling from `channel`
    immediately.
-2. `Promise.all([agentDispatcher.execute('react-agent', c1State),
-   agentDispatcher.execute('react-agent', c2State)])` runs both
+2. `Promise.all([agentDispatcher.execute('urn:noocodec:dag:react-agent', c1State),
+   agentDispatcher.execute('urn:noocodec:dag:react-agent', c2State)])` runs both
    conversations concurrently against the one shared node and channel.
 3. `channel.close()` — only after both conversations finish pushing.
 4. `await routingDone` — the routing drain completes once the channel is

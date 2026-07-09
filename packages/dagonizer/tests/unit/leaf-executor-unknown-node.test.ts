@@ -12,7 +12,7 @@ import { TestNode } from '../_support/TestNode.js';
 
 class PlainState extends NodeStateBase {}
 
-/** Builds a fake `LeafExecutorSourceInterface` whose `nodes` map holds exactly `names.length` registered nodes. */
+/** Builds a fake `LeafExecutorSourceInterface` whose `nodes` map holds exactly `names.length` registered node IRIs. */
 function sourceOf(names: readonly string[]): LeafExecutorSourceInterface {
   const nodes = new Map<string, NodeInterface<NodeStateBase, string>>();
   for (const name of names) {
@@ -37,16 +37,16 @@ function placementFor(nodeRef: string): SingleNodePlacementType {
 }
 
 void describe('LeafExecutor unknown-node message enrichment', () => {
-  void it('lists every registered node name when 5 or fewer are registered', async () => {
+  void it('lists every registered node IRI when 5 or fewer are registered', async () => {
     const source = sourceOf(['alpha', 'beta', 'gamma']);
     const leafExecutor = new LeafExecutor(source);
 
     await assert.rejects(
-      () => leafExecutor.executeSingleNode(placementFor('missing'), new PlainState(), 'dag', new AbortController().signal),
+      () => leafExecutor.executeSingleNode(placementFor('urn:noocodec:node:missing'), new PlainState(), 'dag', new AbortController().signal),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
-        assert.match(err.message, /^Unknown node: 'missing'\./);
-        assert.match(err.message, /Registered nodes: alpha, beta, gamma\./);
+        assert.match(err.message, /^Unknown node: 'urn:noocodec:node:missing'\./);
+        assert.match(err.message, /Registered node IRIs: urn:test:node:alpha, urn:test:node:beta, urn:test:node:gamma\./);
         assert.match(err.message, /Did you forget dispatcher\.registerNode\(\.\.\.\)\?$/);
         assert.doesNotMatch(err.message, /…/u);
         return true;
@@ -59,10 +59,10 @@ void describe('LeafExecutor unknown-node message enrichment', () => {
     const leafExecutor = new LeafExecutor(source);
 
     await assert.rejects(
-      () => leafExecutor.executeSingleNode(placementFor('missing'), new PlainState(), 'dag', new AbortController().signal),
+      () => leafExecutor.executeSingleNode(placementFor('urn:noocodec:node:missing'), new PlainState(), 'dag', new AbortController().signal),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
-        assert.match(err.message, /Registered nodes: n1, n2, n3, n4, n5, …\./);
+        assert.match(err.message, /Registered node IRIs: urn:test:node:n1, urn:test:node:n2, urn:test:node:n3, urn:test:node:n4, urn:test:node:n5, …\./);
         return true;
       },
     );
@@ -73,7 +73,7 @@ void describe('LeafExecutor unknown-node message enrichment', () => {
     const leafExecutor = new LeafExecutor(source);
 
     await assert.rejects(
-      () => leafExecutor.executeSingleNode(placementFor('missing'), new PlainState(), 'dag', new AbortController().signal),
+      () => leafExecutor.executeSingleNode(placementFor('urn:noocodec:node:missing'), new PlainState(), 'dag', new AbortController().signal),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
         assert.match(err.message, /No nodes are registered\./);

@@ -16,6 +16,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region cold-chain-check-node
 export class ColdChainCheckNode extends MonadicNode<CartographerState, 'checked'> {
+  readonly '@id' = 'urn:noocodec:node:cold-chain-check';
   readonly 'name' = 'cold-chain-check';
   readonly 'outputs' = ['checked'] as const;
 

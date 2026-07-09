@@ -15,7 +15,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const DAGLifecycleStateSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DAGLifecycleStateType',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/DAGLifecycleStateType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['variant', 'startedAt', 'finishedAt', 'error', 'reason', 'correlationKey'],

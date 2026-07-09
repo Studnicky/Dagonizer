@@ -39,10 +39,14 @@ import { ScatterOutputSchema } from '../entities/constants/ScatterOutput.js';
 import type { ScatterOutputType } from '../entities/constants/ScatterOutput.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
+import { DagReferenceSchema } from '../entities/dag/DagReference.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import { GatherConfigSchema } from '../entities/dag/GatherConfig.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import { GatherNodeSchema } from '../entities/dag/GatherNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
@@ -65,6 +69,14 @@ import { ExecutorIntermediateSchema } from '../entities/executor/ExecutorInterme
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
 import { RecommendedWorkerCountConfigSchema } from '../entities/executor/RecommendedWorkerCountConfig.js';
 import type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import type {
+  GatherProgressType,
+  GatherRecordProgressType,
+} from '../entities/gather/GatherProgress.js';
+import {
+  GatherProgressSchema,
+  GatherRecordProgressSchema,
+} from '../entities/gather/GatherProgress.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 import { DAGHandoffSchema } from '../entities/handoff/DAGHandoff.js';
 import { NodeSchema } from '../entities/node/Node.js';
@@ -214,6 +226,7 @@ export class Validator {
   static readonly singleNode:      EntityValidatorInterface<SingleNodeType>      = Validator.compileNamed('SingleNode',      SingleNodeSchema);
   static readonly scatterNode:     EntityValidatorInterface<ScatterNodeType>     = Validator.compileNamed('ScatterNode',     ScatterNodeSchema);
   static readonly embeddedDAGNode: EntityValidatorInterface<EmbeddedDAGNodeType> = Validator.compileNamed('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
+  static readonly gatherNode:      EntityValidatorInterface<GatherNodeType>      = Validator.compileNamed('GatherNode',      GatherNodeSchema);
   static readonly terminalNode: EntityValidatorInterface<TerminalNodeType>  = Validator.compileNamed('TerminalNode', TerminalNodeSchema);
   static readonly phaseNode:    EntityValidatorInterface<PhaseNodeType>     = Validator.compileNamed('PhaseNode',    PhaseNodeSchema);
 
@@ -247,6 +260,7 @@ export class Validator {
 
   // DAG sub-entities
   static readonly gatherConfig: EntityValidatorInterface<GatherConfigType> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
+  static readonly dagReference: EntityValidatorInterface<DagReferenceType> = Validator.compileNamed('DagReference', DagReferenceSchema);
 
   // Adapter wire shapes
   static readonly llmModel: EntityValidatorInterface<LlmModelType> = Validator.compileNamed('LlmModel', LlmModelSchema);
@@ -273,4 +287,8 @@ export class Validator {
   static readonly workSetItem:     EntityValidatorInterface<WorkSetItemType>     = Validator.compileNamed('WorkSetItem',     WorkSetItemSchema);
   static readonly workSetEntry:    EntityValidatorInterface<WorkSetEntryType>    = Validator.compileNamed('WorkSetEntry',    WorkSetEntrySchema);
   static readonly workSetProgress: EntityValidatorInterface<WorkSetProgressType> = Validator.compileNamed('WorkSetProgress', WorkSetProgressSchema);
+
+  // Gather progress checkpoint wire shapes
+  static readonly gatherRecordProgress: EntityValidatorInterface<GatherRecordProgressType> = Validator.compileNamed('GatherRecordProgress', GatherRecordProgressSchema);
+  static readonly gatherProgress:       EntityValidatorInterface<GatherProgressType>       = Validator.compileNamed('GatherProgress',       GatherProgressSchema);
 }

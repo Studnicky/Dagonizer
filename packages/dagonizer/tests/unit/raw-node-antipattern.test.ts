@@ -38,6 +38,7 @@ const ctx: NodeContextType = NodeContext.create('antipattern-dag', 'tag', new Ab
 /** The supported way: a `MonadicNode` with local item routing. Tags positives, skips the rest. */
 class TagMonadicNode extends MonadicNode<TagState, 'tagged' | 'skip'> {
   readonly name = 'tag';
+  readonly '@id' = 'urn:noocodec:node:tag';
   readonly outputs = ['tagged', 'skip'] as const;
   override get outputSchema(): Record<'tagged' | 'skip', SchemaObjectType> {
     return { 'tagged': { 'type': 'object' }, 'skip': { 'type': 'object' } };
@@ -61,9 +62,11 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
     // ANTIPATTERN: a node hand-written against the bare contract. Equivalent to
     // TagMonadicNode above — extend MonadicNode instead.
     const rawAntipatternNode: NodeInterface<TagState, 'tagged' | 'skip'> = {
+      '@id': 'urn:noocodec:node:tag-raw',
       'name': 'tag-raw',
       'outputs': ['tagged', 'skip'] as const,
       'timeout': Timeout.none(),
+      'inputSchema': { 'type': 'object' },
       'outputSchema': {
         'tagged': { 'type': 'object' },
         'skip':   { 'type': 'object' },

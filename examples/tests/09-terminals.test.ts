@@ -10,7 +10,7 @@ describe('09-terminals: completed and failed terminal outcomes', () => {
     dispatcher.registerDAG(dag1);
 
     const state = new GateState();
-    const result = await dispatcher.execute('demo-explicit-completed', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:demo-explicit-completed', state);
 
     assert.equal(result.terminalOutcome, 'completed');
   });
@@ -22,7 +22,7 @@ describe('09-terminals: completed and failed terminal outcomes', () => {
 
     const state = new GateState();
     state.shouldPass = true;
-    const result = await dispatcher.execute('demo-explicit-terminals', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:demo-explicit-terminals', state);
 
     assert.equal(result.terminalOutcome, 'completed');
   });
@@ -34,7 +34,7 @@ describe('09-terminals: completed and failed terminal outcomes', () => {
 
     const state = new GateState();
     state.shouldPass = false;
-    const result = await dispatcher.execute('demo-explicit-terminals', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:demo-explicit-terminals', state);
 
     assert.equal(result.terminalOutcome, 'failed');
   });
@@ -46,7 +46,7 @@ describe('09-terminals: completed and failed terminal outcomes', () => {
 
     const state = new GateState();
     state.shouldPass = false;
-    const result = await dispatcher.execute('demo-explicit-failed', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:demo-explicit-failed', state);
 
     assert.equal(result.terminalOutcome, 'failed');
   });
@@ -58,7 +58,7 @@ describe('09-terminals: completed and failed terminal outcomes', () => {
 
     const state = new GateState();
     state.shouldPass = true;
-    const result = await dispatcher.execute('demo-explicit-failed', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:demo-explicit-failed', state);
 
     assert.equal(result.terminalOutcome, 'completed');
   });

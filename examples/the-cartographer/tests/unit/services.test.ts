@@ -92,7 +92,7 @@ describe('TimeZoneResolver', () => {
     assert.equal(tz, 'Asia/Tokyo');
   });
 
-  it('falls back to UTC for out-of-range coords', () => {
+  it('uses UTC for out-of-range coords', () => {
     // tz-lookup throws for coords outside WGS-84; the service catches and returns UTC.
     const tz = TimeZoneResolver.zoneFor(95, 200);
     assert.equal(tz, 'UTC');
@@ -246,7 +246,7 @@ describe('CarrierRegistry', () => {
     assert.equal(result.carrierId, 'usps');
   });
 
-  it('falls back to unknown for unrecognised carrier', () => {
+  it('uses unknown for unrecognised carrier', () => {
     const result = CarrierRegistry.canonical('AcmeCourier');
     assert.equal(result.carrierId, 'unknown');
     assert.equal(result.carrierName, 'AcmeCourier');
@@ -377,7 +377,7 @@ describe('FxRates', () => {
     assert.equal(FxRates.rate('USD'), 1.0);
   });
 
-  it('returns 1.0 for unknown currency (fallback)', () => {
+  it('returns 1.0 for unknown currency (default rate)', () => {
     assert.equal(FxRates.rate('ZZZ'), 1.0);
   });
 
@@ -477,7 +477,7 @@ describe('ShippingCalculator', () => {
     assert.ok(express.costUsdMinor >= economy.costUsdMinor);
   });
 
-  it('quote falls back to a default rate for unknown carrier', () => {
+  it('quote uses a default rate for unknown carrier', () => {
     // Unknown carriers should still return a quote (not throw)
     const q = ShippingCalculator.quote(100, 500, 'standard', 'non-existent-carrier');
     assert.ok(q.costUsdMinor > 0);
@@ -612,7 +612,7 @@ describe('Disruptions', () => {
     assert.equal(Disruptions.hoursFor(''), 0);
   });
 
-  it('unknown reason falls back to 0', () => {
+  it('unknown reason uses 0', () => {
     assert.equal(Disruptions.hoursFor('solar flare'), 0);
   });
 });

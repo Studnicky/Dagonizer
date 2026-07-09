@@ -32,36 +32,46 @@ import type { DAGType } from '@studnicky/dagonizer';
 
 // ── DAG: scatter over items, gather with 'top-n', reduce with 'threshold-75' ─
 
+const TOP_N_RANKING_DAG_IRI = 'urn:noocodec:dag:top-n-ranking';
+const placement = (placementIdentifier: string): string => `${TOP_N_RANKING_DAG_IRI}/node/${encodeURIComponent(placementIdentifier)}`;
+
 const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:top-n-ranking',
+  '@id': TOP_N_RANKING_DAG_IRI,
   '@type':     'DAG',
   name:        'top-n-ranking',
   version:     '1',
-  entrypoint:  'rank-all',
+  entrypoints: { main: placement('rank-all') },
   nodes: [
     {
-      '@id':        'urn:noocodex:dag:top-n-ranking/node/rank-all',
+      '@id': placement('rank-all'),
       '@type':      'ScatterNode',
       name:         'rank-all',
-      body:         { node: 'score' },
+      body:         { node: 'urn:noocodec:node:score' },
       source:       'items',
       itemKey:      'item',
       execution: { mode: 'item', concurrency: 5 },
       reducer:      'threshold-75',    // custom OutcomeReducer: >= 75% success
-      gather: {
-        strategy: 'top-n',            // custom GatherStrategy: top-3 by score
-        target:   'topCandidates',
-      },
       outputs: {
-        'all-success': 'end',
-        partial:       'end',
-        'all-error':   'end',
-        empty:         'end',
+        'all-success': placement('collect-top'),
+        partial: placement('collect-top'),
+        'all-error': placement('collect-top'),
+        empty: placement('end'),
       },
     },
     {
-      '@id':     'urn:noocodex:dag:top-n-ranking/node/end',
+      '@id': placement('collect-top'),
+      '@type': 'GatherNode',
+      name: 'collect-top',
+      sources: { [placement('rank-all')]: {} },
+      gather: {
+        strategy: 'top-n',
+        target:   'topCandidates',
+      },
+      outputs: { success: placement('end'), error: placement('end'), empty: placement('end') },
+    },
+    {
+      '@id': placement('end'),
       '@type':   'TerminalNode',
       name:      'end',
       outcome:   'completed',
@@ -92,7 +102,7 @@ state.items = [
   'x',
 ];
 
-await dispatcher.execute('top-n-ranking', state);
+await dispatcher.execute(TOP_N_RANKING_DAG_IRI, state);
 
 process.stdout.write(`topCandidates (top-3 by score):\n`);
 for (const c of state.topCandidates) {
@@ -100,4 +110,4 @@ for (const c of state.topCandidates) {
 }
 
 process.stdout.write('\nLesson: GatherStrategies.register + OutcomeReducers.register install\n');
-process.stdout.write('        plugins globally; scatter placements reference them by name.\n');
+process.stdout.write('        extension keys globally; DAG topology still routes by placement IRI.\n');

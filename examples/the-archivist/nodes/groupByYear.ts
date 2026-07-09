@@ -20,6 +20,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 
 export class GroupByYearNode extends MonadicNode<ArchivistState, 'ordered'> {
   readonly name = 'group-by-year';
+  readonly '@id' = 'urn:noocodec:node:group-by-year';
   readonly outputs = ['ordered'] as const;
   override get outputSchema(): Record<'ordered', SchemaObjectType> {
     return {

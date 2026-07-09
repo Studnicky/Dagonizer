@@ -13,11 +13,8 @@
  * `extends OpenAiCompatibleAdapter` and pass the provider-specific
  * fields via the constructor options.
  *
- * ToolInterface-fallback behavior is controlled by overriding
- * `shouldFallbackWithoutTools(error)` on a concrete subclass (returns
- * false by default). Providers whose models don't uniformly support
- * `tools` (e.g. Cerebras) override to return true on their specific
- * error signal, causing the adapter to retry the request without tools.
+ * Tool support is declared through adapter capabilities. A request that carries
+ * tools is sent with tools; provider rejection is surfaced to the caller.
  */
 
 import { Signal } from '@studnicky/signal';
@@ -158,14 +155,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
-    try {
-      return await this.#doRequest(request);
-    } catch (err) {
-      if (this.shouldFallbackWithoutTools(err) && request.tools.length > 0) {
-        return this.#doRequestWithoutTools(request);
-      }
-      throw err;
-    }
+    return this.#doRequest(request);
   }
 
   /**
@@ -175,7 +165,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
    * `delta.content`. Single-attempt (no retry), matching `chatStream`'s
    * contract.
    *
-   * Tool-turns fall back to the buffered default (`super.performChatStream`):
+   * Tool-turns use the buffered stream contract (`super.performChatStream`):
    * partial-JSON `tool_calls` deltas are unsafe to parse mid-stream, so any
    * request carrying tools is never sent with `stream: true`.
    */
@@ -185,20 +175,6 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   ): Promise<ChatResponseType> {
     if (request.tools.length > 0) return super.performChatStream(request, sink);
     return this.#sendStreamRequest(request, sink);
-  }
-
-  /**
-   * Override in a concrete subclass to enable the tools-fallback path.
-   * Return `true` when the given error signals that the provider refused
-   * the request because of tool definitions (e.g. Cerebras' 400 on
-   * models that don't support function calling). The base implementation
-   * always returns `false` — no fallback by default.
-   *
-   * Called only when `request.tools` is non-empty; callers don't need to
-   * re-check that guard in their override.
-   */
-  protected shouldFallbackWithoutTools(_error: unknown): boolean {
-    return false;
   }
 
   /**
@@ -215,11 +191,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   async #doRequest(request: ChatRequestType): Promise<ChatResponseType> {
-    return this.#sendRequest(request, this.#composeBody(request, true));
-  }
-
-  async #doRequestWithoutTools(request: ChatRequestType): Promise<ChatResponseType> {
-    return this.#sendRequest(request, this.#composeBody(request, false));
+    return this.#sendRequest(request, this.#composeBody(request));
   }
 
   async #sendRequest(request: ChatRequestType, body: Record<string, unknown>): Promise<ChatResponseType> {
@@ -275,7 +247,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
     sink: StreamSinkInterface<ChatStreamChunkType>,
   ): Promise<ChatResponseType> {
     const body = {
-      ...this.#composeBody(request, true),
+      ...this.#composeBody(request),
       'stream': true,
       'stream_options': { 'include_usage': true },
     };
@@ -359,7 +331,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
     return parsed;
   }
 
-  #composeBody(request: ChatRequestType, includeTools: boolean): Record<string, unknown> {
+  #composeBody(request: ChatRequestType): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
@@ -367,7 +339,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       [this.#config.tokenField]: request.maxTokens,
     };
 
-    if (includeTools && request.tools.length > 0) {
+    if (request.tools.length > 0) {
       body['tools'] = request.tools.map((t) => this.#toTool(t));
       body['tool_choice'] = this.#toToolChoice(request.toolChoice);
     } else if (request.outputSchema.variant === 'schema') {

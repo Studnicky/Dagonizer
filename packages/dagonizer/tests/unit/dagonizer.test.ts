@@ -9,40 +9,44 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 void describe('Dagonizer single-node routing', () => {
   void it('routes per output and terminates at explicit TerminalNode', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('classify', ['ok', 'no'], (s) => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:classify', ['ok', 'no'], (s) => {
       s.setMetadata('classified', true);
       return 'ok';
     }));
-    dispatcher.registerNode(TestNode.make('plan', ['success'], () => 'success'));
-    dispatcher.registerNode(TestNode.make('reject', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:plan', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:reject', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:classify-route',
+      '@id':      'urn:noocodec:dag:classify-route',
       '@type':    'DAG',
       'name': 'classify-route',
       'version': '1',
-      'entrypoint': 'classify',
+      'entrypoints': { 'main': 'urn:noocodec:dag:classify-route/node/classify' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:classify-route/node/classify', '@type': 'SingleNode',
-          'name': 'classify', 'node': 'classify', 'outputs': { 'ok': 'plan', 'no': 'reject' } },
-        { '@id': 'urn:noocodex:dag:classify-route/node/plan', '@type': 'SingleNode',
-          'name': 'plan', 'node': 'plan', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:classify-route/node/reject', '@type': 'SingleNode',
-          'name': 'reject', 'node': 'reject', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:classify-route/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:classify-route/node/classify', '@type': 'SingleNode',
+          'name': 'classify', 'node': 'urn:noocodec:node:classify', 'outputs': {
+            'ok': 'urn:noocodec:dag:classify-route/node/plan',
+            'no': 'urn:noocodec:dag:classify-route/node/reject',
+          } },
+        { '@id': 'urn:noocodec:dag:classify-route/node/plan', '@type': 'SingleNode',
+          'name': 'plan', 'node': 'urn:noocodec:node:plan', 'outputs': { 'success': 'urn:noocodec:dag:classify-route/node/end' } },
+        { '@id': 'urn:noocodec:dag:classify-route/node/reject', '@type': 'SingleNode',
+          'name': 'reject', 'node': 'urn:noocodec:node:reject', 'outputs': { 'success': 'urn:noocodec:dag:classify-route/node/end' } },
+        { '@id': 'urn:noocodec:dag:classify-route/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('classify-route', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:classify-route', state);
 
     assert.deepEqual(result.executedNodes, ['classify', 'plan', 'end']);
     assert.equal(result.skippedNodes.length, 0);
@@ -55,27 +59,27 @@ void describe('Dagonizer single-node routing', () => {
     // Node declares only 'success'; at runtime it returns 'phantom' (not in
     // the placement routing map) — exercises the unwired-output error path
     // without requiring a second registration.
-    dispatcher.registerNode(TestNode.make('rogue', ['success'], () => 'phantom'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:rogue', ['success'], () => 'phantom'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:rogue',
+      '@id':      'urn:noocodec:dag:rogue',
       '@type':    'DAG',
       'name': 'rogue',
       'version': '1',
-      'entrypoint': 'rogue',
+      'entrypoints': { 'main': 'urn:noocodec:dag:rogue/node/rogue' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:rogue/node/rogue', '@type': 'SingleNode',
-          'name': 'rogue', 'node': 'rogue', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:rogue/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:rogue/node/rogue', '@type': 'SingleNode',
+          'name': 'rogue', 'node': 'urn:noocodec:node:rogue', 'outputs': { 'success': 'urn:noocodec:dag:rogue/node/end' } },
+        { '@id': 'urn:noocodec:dag:rogue/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
-    const result = await dispatcher.execute('rogue', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:rogue', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'failed');
-    assert.equal(result.cursor, 'rogue');
+    assert.equal(result.cursor, 'urn:noocodec:dag:rogue/node/rogue');
     if (result.state.lifecycle.variant === 'failed') {
       assert.ok(result.state.lifecycle.error instanceof DAGError);
     }
@@ -90,7 +94,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: number[] = [];
-    dispatcher.registerNode(TestNode.make('double', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:double', ['success'], (state) => {
       const item = state.getter.number('item');
       seen.push(item);
       return 'success';
@@ -98,55 +102,70 @@ void describe('Dagonizer scatter (source-based fork)', () => {
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:fan',
+      '@id':      'urn:noocodec:dag:fan',
       '@type':    'DAG',
       'name': 'fan',
       'version': '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': 'urn:noocodec:dag:fan/node/scatter' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:fan/node/scatter', '@type': 'ScatterNode',
-          'name': 'scatter', 'body': { 'node': 'double' },
+        { '@id': 'urn:noocodec:dag:fan/node/scatter', '@type': 'ScatterNode',
+          'name': 'scatter', 'body': { 'node': 'urn:noocodec:node:double' },
           'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 2 },
-          'gather': { 'strategy': 'append', 'target': 'doubled' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
-        { '@id': 'urn:noocodex:dag:fan/node/end', '@type': 'TerminalNode',
+          'outputs': {
+            'all-success': 'urn:noocodec:dag:fan/node/join',
+            'partial': 'urn:noocodec:dag:fan/node/join',
+            'all-error': 'urn:noocodec:dag:fan/node/join',
+            'empty': 'urn:noocodec:dag:fan/node/end',
+          } },
+        { '@id': 'urn:noocodec:dag:fan/node/join', '@type': 'GatherNode',
+          'name': 'join', 'sources': { 'urn:noocodec:dag:fan/node/scatter': {} }, 'gather': { 'strategy': 'append', 'target': 'doubled' },
+          'outputs': {
+            'success': 'urn:noocodec:dag:fan/node/end',
+            'error': 'urn:noocodec:dag:fan/node/end',
+            'empty': 'urn:noocodec:dag:fan/node/end',
+          } },
+        { '@id': 'urn:noocodec:dag:fan/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
     const state = new FanState();
     state.items = [1, 2, 3, 4];
     state.doubled = [];
-    await dispatcher.execute('fan', state);
+    await dispatcher.execute('urn:noocodec:dag:fan', state);
     assert.equal(seen.length, 4);
     assert.deepEqual(state.doubled.sort(), [1, 2, 3, 4]);
   });
 
   void it('skips with empty output when source array is empty', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('noop', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:noop', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:empty',
+      '@id':      'urn:noocodec:dag:empty',
       '@type':    'DAG',
       'name': 'empty',
       'version': '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': 'urn:noocodec:dag:empty/node/scatter' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:empty/node/scatter', '@type': 'ScatterNode',
-          'name': 'scatter', 'body': { 'node': 'noop' },
+        { '@id': 'urn:noocodec:dag:empty/node/scatter', '@type': 'ScatterNode',
+          'name': 'scatter', 'body': { 'node': 'urn:noocodec:node:noop' },
           'source': 'missing.items',
-          'gather': { 'strategy': 'append', 'target': 'out' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
-        { '@id': 'urn:noocodex:dag:empty/node/end', '@type': 'TerminalNode',
+          'outputs': {
+            'all-success': 'urn:noocodec:dag:empty/node/end',
+            'partial': 'urn:noocodec:dag:empty/node/end',
+            'all-error': 'urn:noocodec:dag:empty/node/end',
+            'empty': 'urn:noocodec:dag:empty/node/end',
+          } },
+        { '@id': 'urn:noocodec:dag:empty/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
-    const result = await dispatcher.execute('empty', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:empty', new NodeStateBase());
     assert.deepEqual(result.skippedNodes, ['scatter']);
   });
 });
@@ -159,76 +178,82 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       result: number = 0;
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make<NestState>('inc', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<NestState>('urn:noocodec:node:inc', ['success'], (state) => {
       state.result = (state.childValue ?? 0) + 1;
       return 'success';
     }));
-    dispatcher.registerNode(TestNode.make('done', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:done', ['success'], () => 'success'));
 
     const child: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:child',
+      '@id':      'urn:noocodec:dag:child',
       '@type':    'DAG',
       'name': 'child',
       'version': '1',
-      'entrypoint': 'inc',
+      'entrypoints': { 'main': 'urn:noocodec:dag:child/node/inc' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:child/node/inc', '@type': 'SingleNode',
-          'name': 'inc', 'node': 'inc', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:child/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:child/node/inc', '@type': 'SingleNode',
+          'name': 'inc', 'node': 'urn:noocodec:node:inc', 'outputs': { 'success': 'urn:noocodec:dag:child/node/end' } },
+        { '@id': 'urn:noocodec:dag:child/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
     // Parent DAG: embedded-DAG invocation routes to a parent-owned terminal node.
     const parent: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:parent',
+      '@id':      'urn:noocodec:dag:parent',
       '@type':    'DAG',
       'name': 'parent',
       'version': '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'urn:noocodec:dag:parent/node/invoke' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'EmbeddedDAGNode',
-          'name': 'invoke', 'dag': 'child',
+        { '@id': 'urn:noocodec:dag:parent/node/invoke', '@type': 'EmbeddedDAGNode',
+          'name': 'invoke', 'dag': 'urn:noocodec:dag:child',
           'stateMapping': {
             'input':  { 'childValue': 'parentValue' },
             'output': { 'parentValue': 'result' },
           },
-          'outputs': { 'success': 'done', 'error': 'done' } },
-        { '@id': 'urn:noocodex:dag:parent/node/done', '@type': 'SingleNode',
-          'name': 'done', 'node': 'done', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:parent/node/end', '@type': 'TerminalNode',
+          'outputs': {
+            'success': 'urn:noocodec:dag:parent/node/done',
+            'error': 'urn:noocodec:dag:parent/node/done',
+          } },
+        { '@id': 'urn:noocodec:dag:parent/node/done', '@type': 'SingleNode',
+          'name': 'done', 'node': 'urn:noocodec:node:done', 'outputs': { 'success': 'urn:noocodec:dag:parent/node/end' } },
+        { '@id': 'urn:noocodec:dag:parent/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(child);
-    dispatcher.registerDAG(parent);
+    dispatcher.registerDAG(TestDag.from(child));
+    dispatcher.registerDAG(TestDag.from(parent));
 
     const state = new NestState();
     state.parentValue = 41;
-    await dispatcher.execute('parent', state);
+    await dispatcher.execute('urn:noocodec:dag:parent', state);
     assert.equal(state.parentValue, 42);
   });
 
   void it('rejects scatter placement referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('done', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:done', ['success'], () => 'success'));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:orphan',
+      '@id':      'urn:noocodec:dag:orphan',
       '@type':    'DAG',
       'name': 'orphan',
       'version': '1',
-      'entrypoint': 's',
+      'entrypoints': { 'main': 'urn:noocodec:dag:orphan/node/s' },
       'nodes': [
         // EmbeddedDAGNode outputs route to a parent placement so the
         // output invariant passes; registration still fails because
         // 'ghost' is not a registered DAG.
-        { '@id': 'urn:noocodex:dag:orphan/node/s', '@type': 'EmbeddedDAGNode',
-          'name': 's', 'dag': 'ghost', 'outputs': { 'success': 'done', 'error': 'done' } },
-        { '@id': 'urn:noocodex:dag:orphan/node/done', '@type': 'SingleNode',
-          'name': 'done', 'node': 'done', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:orphan/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:orphan/node/s', '@type': 'EmbeddedDAGNode',
+          'name': 's', 'dag': 'urn:noocodec:dag:ghost', 'outputs': {
+            'success': 'urn:noocodec:dag:orphan/node/done',
+            'error': 'urn:noocodec:dag:orphan/node/done',
+          } },
+        { '@id': 'urn:noocodec:dag:orphan/node/done', '@type': 'SingleNode',
+          'name': 'done', 'node': 'urn:noocodec:node:done', 'outputs': { 'success': 'urn:noocodec:dag:orphan/node/end' } },
+        { '@id': 'urn:noocodec:dag:orphan/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
@@ -239,21 +264,21 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
 void describe('Dagonizer validation', () => {
   void it('rejects duplicate node names', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:dup',
+      '@id':      'urn:noocodec:dag:dup',
       '@type':    'DAG',
       'name': 'dup',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodec:dag:dup/node/a' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:dup/node/a',  '@type': 'SingleNode',
-          'name': 'a', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:dup/node/a2', '@type': 'SingleNode',
-          'name': 'a', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:dup/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:dup/node/a',  '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:dup/node/end' } },
+        { '@id': 'urn:noocodec:dag:dup/node/a2', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:dup/node/end' } },
+        { '@id': 'urn:noocodec:dag:dup/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
@@ -262,19 +287,19 @@ void describe('Dagonizer validation', () => {
 
   void it('rejects missing entrypoint', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:noentry',
+      '@id':      'urn:noocodec:dag:noentry',
       '@type':    'DAG',
       'name': 'noentry',
       'version': '1',
-      'entrypoint': 'ghost',
+      'entrypoints': { 'main': 'urn:noocodec:dag:noentry/node/ghost' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:noentry/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:noentry/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:noentry/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:noentry/node/end' } },
+        { '@id': 'urn:noocodec:dag:noentry/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
@@ -285,6 +310,7 @@ void describe('Dagonizer validation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     class BadNode extends MonadicNode<NodeStateBase, string> {
       readonly name = 'bad';
+      readonly '@id' = 'urn:noocodec:node:bad';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<NodeStateBase>): Promise<Map<string, Batch<NodeStateBase>>> { return new Map([['success', batch]]); }
@@ -296,63 +322,64 @@ void describe('Dagonizer validation', () => {
   void it('single node registration succeeds', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     assert.doesNotThrow(() => {
-      dispatcher.registerNode(TestNode.make('once', ['success'], () => 'success'));
+      dispatcher.registerNode(TestNode.make('urn:noocodec:node:once', ['success'], () => 'success'));
     });
   });
 
   void it('registering two nodes with the same name throws DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('dup', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:dup', ['success'], () => 'success'));
     assert.throws(
-      () => dispatcher.registerNode(TestNode.make('dup', ['success'], () => 'success')),
+      () => dispatcher.registerNode(TestNode.make('urn:noocodec:node:dup', ['success'], () => 'success')),
       DAGError,
     );
   });
 
   void it('single DAG registration succeeds', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:once',
+      '@id':      'urn:noocodec:dag:once',
       '@type':    'DAG',
       'name': 'once',
       'version': '1',
-      'entrypoint': 'op',
+      'entrypoints': { 'main': 'urn:noocodec:dag:once/node/op' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:once/node/op', '@type': 'SingleNode',
-          'name': 'op', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:once/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:once/node/op', '@type': 'SingleNode',
+          'name': 'op', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:once/node/end' } },
+        { '@id': 'urn:noocodec:dag:once/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    assert.doesNotThrow(() => { dispatcher.registerDAG(dag); });
+    assert.doesNotThrow(() => { dispatcher.registerDAG(TestDag.from(dag)); });
   });
 
   void it('registering two DAGs with the same name throws DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op2', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op2', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:dup-dag',
+      '@id':      'urn:noocodec:dag:dup-dag',
       '@type':    'DAG',
       'name': 'dup-dag',
       'version': '1',
-      'entrypoint': 'op2',
+      'entrypoints': { 'main': 'urn:noocodec:dag:dup-dag/node/op2' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:dup-dag/node/op2', '@type': 'SingleNode',
-          'name': 'op2', 'node': 'op2', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:dup-dag/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:dup-dag/node/op2', '@type': 'SingleNode',
+          'name': 'op2', 'node': 'urn:noocodec:node:op2', 'outputs': { 'success': 'urn:noocodec:dag:dup-dag/node/end' } },
+        { '@id': 'urn:noocodec:dag:dup-dag/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    const canonicalDag = TestDag.from(dag);
+    dispatcher.registerDAG(canonicalDag);
     // Idempotent by identity: re-registering the SAME object is a no-op.
-    assert.doesNotThrow(() => dispatcher.registerDAG(dag));
+    assert.doesNotThrow(() => dispatcher.registerDAG(canonicalDag));
     // A DIFFERENT object under the same name is a real collision → throws.
-    const other: DAGType = { ...dag };
+    const other: DAGType = { ...canonicalDag };
     assert.throws(() => dispatcher.registerDAG(other), DAGError);
   });
 });
@@ -360,29 +387,29 @@ void describe('Dagonizer validation', () => {
 void describe('Dagonizer iterative execution', () => {
   void it('yields each node result in order', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('a', ['success'], () => 'success'));
-    dispatcher.registerNode(TestNode.make('b', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:b', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:iter',
+      '@id':      'urn:noocodec:dag:iter',
       '@type':    'DAG',
       'name': 'iter',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodec:dag:iter/node/a' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:iter/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:iter/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:iter/node/end', '@type': 'TerminalNode',
+        { '@id': 'urn:noocodec:dag:iter/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': { 'success': 'urn:noocodec:dag:iter/node/b' } },
+        { '@id': 'urn:noocodec:dag:iter/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'success': 'urn:noocodec:dag:iter/node/end' } },
+        { '@id': 'urn:noocodec:dag:iter/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
     const seen: string[] = [];
-    for await (const node of dispatcher.execute('iter', new NodeStateBase())) {
+    for await (const node of dispatcher.execute('urn:noocodec:dag:iter', new NodeStateBase())) {
       seen.push(node.nodeName);
     }
     assert.deepEqual(seen, ['a', 'b', 'end']);

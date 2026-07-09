@@ -23,6 +23,8 @@ import { JsonObject } from '@studnicky/dagonizer/entities';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 
 export const REGISTRY_VERSION = '1.0.0';
+export const SETTLE_DAG_IRI = 'urn:noocodec:dag:settle';
+const settlePlacement = (placementIdentifier: string): string => `${SETTLE_DAG_IRI}/node/${encodeURIComponent(placementIdentifier)}`;
 
 // ---------------------------------------------------------------------------
 // State carried across the hand-off boundary.
@@ -50,6 +52,7 @@ export class OrderState extends NodeStateBase {
 
 export class SettleNode extends MonadicNode<OrderState, 'done'> {
   readonly name = 'settle';
+  readonly '@id' = 'urn:noocodec:node:settle';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -62,23 +65,23 @@ export class SettleNode extends MonadicNode<OrderState, 'done'> {
 
 export const settleDag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:settle',
+  '@id': SETTLE_DAG_IRI,
   '@type': 'DAG',
   name: 'settle',
   version: '1',
-  entrypoint: 'settle',
+  entrypoints: { main: settlePlacement('settle') },
   nodes: [
     {
-      '@id': 'urn:noocodex:dag:settle/node/settle',
+      '@id': settlePlacement('settle'),
       '@type': 'SingleNode',
       name: 'settle',
-      node: 'settle',
-      outputs: { done: 'done' },
+      node: 'urn:noocodec:node:settle',
+      outputs: { done: settlePlacement('done') },
     },
     // Terminal "done" is bound to an egress channel; reaching it publishes the
     // next envelope.
     {
-      '@id': 'urn:noocodex:dag:settle/node/done',
+      '@id': settlePlacement('done'),
       '@type': 'TerminalNode',
       name: 'done',
       outcome: 'completed',
@@ -138,7 +141,7 @@ export class ServerlessHandler {
     dispatcher.registerDAG(settleDag);
 
     // 4. Execute. The dispatcher is constructed, used, and discarded per call.
-    const result = await dispatcher.execute('settle', state);
+    const result = await dispatcher.execute(SETTLE_DAG_IRI, state);
     return result.state;
   }
 }

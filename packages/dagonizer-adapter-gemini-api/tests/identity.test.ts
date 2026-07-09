@@ -74,7 +74,7 @@ void test('GeminiModelsResponseSchema rejects a model entry missing name', () =>
 void test('GeminiModelsResponseSchema carries the expected $id', () => {
   assert.equal(
     GeminiModelsResponseSchema['$id'],
-    'https://noocodex.dev/schemas/dagonizer/gemini/GeminiModelsResponse',
+    'https://noocodec.dev/schemas/dagonizer/gemini/GeminiModelsResponse',
   );
 });
 

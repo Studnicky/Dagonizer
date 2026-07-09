@@ -60,7 +60,7 @@ const info = new NodeSystemInfo();
 const count = info.recommendedWorkerCount({
   maximumWorkers: 8,
   mainThreadReservation: 1,
-  fallbackWorkerCount: 1,
+  minimumWorkerCount: 1,
   memoryPerWorkerBytes: 256 * 1024 * 1024,
 });
 ```

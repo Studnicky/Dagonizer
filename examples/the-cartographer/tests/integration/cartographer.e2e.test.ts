@@ -23,7 +23,8 @@ import assert from 'node:assert/strict';
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
-import { cartographerBundle } from '../../dag.ts';
+import { CARTOGRAPHER_IRIS } from '../../cartographerIds.ts';
+import { cartographerBundle, cartographerDAG } from '../../dag.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
 import { GeoSourceResolveDAG } from '../../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
@@ -70,7 +71,7 @@ class Harness {
     const state = new CartographerState();
     state.eventConfig = config ?? Harness.minimalEventConfig();
 
-    const execution = dispatcher.execute('cartographer', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:cartographer', state);
     for await (const _stage of execution) { /* drain stages */ }
     await execution;
     return state;
@@ -88,6 +89,38 @@ describe('Cartographer DAG end-to-end', () => {
 
   it('reaches lifecycle "completed"', () => {
     assert.equal(state.lifecycle.variant, 'completed');
+  });
+
+  it('declares data-type entrypoints that feed the intake gather directly', () => {
+    const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
+    const sourceIris = CARTOGRAPHER_IRIS.intakeEventTypes.map((source) => CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source));
+
+    assert.deepEqual(cartographerDAG.entrypoints, {
+      'position-ping':         intakeGatherIri,
+      'facility-scan':         intakeGatherIri,
+      'sensor-reading':        intakeGatherIri,
+      'customs-event':         intakeGatherIri,
+      'delivery-confirmation': intakeGatherIri,
+    });
+    assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'cartographer must not use a pre-phase intake node');
+    assert.ok(!cartographerDAG.nodes.some((node) => node.name.endsWith('-intake')), 'cartographer must not use pre-gather intake placements');
+
+    const gather = cartographerDAG.nodes.find((node) => node['@id'] === intakeGatherIri);
+    assert.ok(gather, 'intake-gather placement must exist');
+    assert.equal(gather['@type'], 'GatherNode');
+    if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
+    assert.deepEqual(Object.keys(gather.sources), sourceIris);
+    assert.equal(gather.gather.strategy, 'source-intake');
+
+    const gatherIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === intakeGatherIri);
+    const scatterIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
+    assert.ok(gatherIndex >= 0, 'intake-gather placement must be present');
+    assert.ok(scatterIndex > gatherIndex, 'process-stream scatter must come after intake-gather');
+
+    for (const [source, placementName] of Object.entries(cartographerDAG.entrypoints)) {
+      assert.ok(Object.hasOwn(gather.sources, CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source)), `entrypoint '${source}' must be declared as a gather source`);
+      assert.equal(placementName, intakeGatherIri);
+    }
   });
 
   it('populates state.insights with at least one continent', () => {
@@ -317,8 +350,14 @@ describe('Cartographer DAG — RegionInsights accumulation', () => {
 // ── DAG bundle registration ────────────────────────────────────────────────────
 
 describe('Cartographer DAG bundle registration', () => {
-  it('registers all bundles without throwing', () => {
-    assert.doesNotThrow(() => { Harness.dispatcher(); });
+  it('registers the top-level DAG, embedded DAGs, and processing nodes', () => {
+    const dispatcher = Harness.dispatcher();
+
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.cartographer) !== undefined, 'top-level Cartographer DAG must be registered');
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.streamEvent) !== undefined, 'stream-event embedded DAG must be registered');
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.geoSourceResolve) !== undefined, 'geo source resolver DAG must be registered');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:decode-payload') !== undefined, 'stream decoder node must be registered');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:summarize') !== undefined, 'summary node must be registered');
   });
 
   it('the dispatcher can be constructed with recorded services', () => {

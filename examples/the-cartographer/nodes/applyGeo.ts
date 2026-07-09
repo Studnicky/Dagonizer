@@ -17,6 +17,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region apply-geo-node
 export class ApplyGeoNode extends MonadicNode<CartographerState, 'normalize'> {
+  readonly '@id' = 'urn:noocodec:node:apply-geo';
   readonly 'name' = 'apply-geo';
   readonly 'outputs' = ['normalize'] as const;
 
@@ -32,7 +33,7 @@ export class ApplyGeoNode extends MonadicNode<CartographerState, 'normalize'> {
   ): Promise<RoutedBatchType<'normalize', CartographerState>> {
     for (const item of batch) {
       const geo = item.state.canonical.geo;
-      // route-geo guarantees geo is present on this branch; fall back defensively.
+      // route-geo guarantees geo is present on this branch; use a defensive default.
       const country   = geo?.country ?? item.state.raw.recipientCountry;
       const continent = geo?.continent ?? 'Unmapped';
       const region    = geo?.region ?? 'Unmapped';

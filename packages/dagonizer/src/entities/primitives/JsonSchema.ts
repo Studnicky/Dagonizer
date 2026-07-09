@@ -47,7 +47,7 @@ export type JsonSchemaObjectType = {
   $schema?: string;
   $id?: string;
   $ref?: string;
-  $defs?: { [name: string]: JsonSchemaType };
+  $defs?: { readonly [name: string]: JsonSchemaType };
   $anchor?: string;
   $dynamicAnchor?: string;
   $dynamicRef?: string;
@@ -55,9 +55,9 @@ export type JsonSchemaObjectType = {
   $comment?: string;
 
   // ── Applicators: composition ────────────────────────────────────
-  allOf?: JsonSchemaType[];
-  anyOf?: JsonSchemaType[];
-  oneOf?: JsonSchemaType[];
+  allOf?: readonly JsonSchemaType[];
+  anyOf?: readonly JsonSchemaType[];
+  oneOf?: readonly JsonSchemaType[];
   not?: JsonSchemaType;
 
   // ── Applicators: conditional ────────────────────────────────────
@@ -66,22 +66,22 @@ export type JsonSchemaObjectType = {
   else?: JsonSchemaType;
 
   // ── Applicators: objects ────────────────────────────────────────
-  properties?: { [name: string]: JsonSchemaType };
-  patternProperties?: { [regex: string]: JsonSchemaType };
+  properties?: { readonly [name: string]: JsonSchemaType };
+  patternProperties?: { readonly [regex: string]: JsonSchemaType };
   additionalProperties?: JsonSchemaType;
   propertyNames?: JsonSchemaType;
   unevaluatedProperties?: JsonSchemaType;
-  dependentSchemas?: { [name: string]: JsonSchemaType };
+  dependentSchemas?: { readonly [name: string]: JsonSchemaType };
 
   // ── Applicators: arrays ─────────────────────────────────────────
-  prefixItems?: JsonSchemaType[];
+  prefixItems?: readonly JsonSchemaType[];
   items?: JsonSchemaType;
   contains?: JsonSchemaType;
   unevaluatedItems?: JsonSchemaType;
 
   // ── Validation: any instance ────────────────────────────────────
-  type?: JsonSchemaTypeNameType | JsonSchemaTypeNameType[];
-  enum?: unknown[];
+  type?: JsonSchemaTypeNameType | readonly JsonSchemaTypeNameType[];
+  enum?: readonly unknown[];
   const?: unknown;
 
   // ── Validation: numbers ─────────────────────────────────────────
@@ -106,8 +106,8 @@ export type JsonSchemaObjectType = {
   // ── Validation: objects ─────────────────────────────────────────
   maxProperties?: number;
   minProperties?: number;
-  required?: string[];
-  dependentRequired?: { [name: string]: string[] };
+  required?: readonly string[];
+  dependentRequired?: { readonly [name: string]: readonly string[] };
 
   // ── Format (annotation by default in 2020-12) ───────────────────
   format?: string;
@@ -124,7 +124,7 @@ export type JsonSchemaObjectType = {
   deprecated?: boolean;
   readOnly?: boolean;
   writeOnly?: boolean;
-  examples?: unknown[];
+  examples?: readonly unknown[];
 }
 
 /**

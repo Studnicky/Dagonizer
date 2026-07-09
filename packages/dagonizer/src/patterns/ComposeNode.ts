@@ -4,7 +4,7 @@
  *
  * Leaves narrow intent but share the dispatch loop:
  *   - ComposeResponseNode: general reply
- *   - ComposeEmptyResponseNode: no-data fallback
+ *   - ComposeEmptyResponseNode: no-data response path
  *   - ComposeMemoryResponseNode: memory-recall variant
  *   - DeclineNode: polite refusal slant
  */

@@ -40,12 +40,12 @@ export type WebNavigatorProbesType = {
 
 /**
  * Injectable environment probes for WebSystemInfo.
- * All fields are optional; each has a documented safe fallback.
+ * All fields are optional; each has a documented default.
  */
 export type WebSystemInfoProbesType = {
   /**
    * Number of logical processors available to the browser context.
-   * Defaults to 1 when absent or zero (safe fallback for restricted contexts).
+   * Defaults to 1 when absent or zero (minimum for restricted contexts).
    * Maps to `navigator.hardwareConcurrency`.
    */
   readonly hardwareConcurrency?: number;
@@ -84,7 +84,7 @@ export class WebSystemInfo implements SystemInfoInterface {
   readonly #hardwareConcurrency: number;
 
   constructor(probes: WebSystemInfoProbesType = {}) {
-    // Safe fallback: 1 when probe is absent, zero, or negative.
+    // Default to 1 when probe is absent, zero, or negative.
     this.#hardwareConcurrency = (probes.hardwareConcurrency !== undefined && probes.hardwareConcurrency > 0)
       ? probes.hardwareConcurrency
       : 1;

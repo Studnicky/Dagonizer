@@ -117,7 +117,7 @@ class Harness {
     Harness.tryGC();
     let peakBytes = process.memoryUsage().heapUsed;
 
-    const execution = dispatcher.execute('cartographer', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:cartographer', state);
 
     // Sample peak heap on every stage iteration — O(1) per sample, no array accumulation.
     for await (const _stage of execution) {

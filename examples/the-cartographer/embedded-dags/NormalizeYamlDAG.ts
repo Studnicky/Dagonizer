@@ -12,19 +12,22 @@
 
 // #region normalize-yaml-dag
 import { normalizeYaml } from '../nodes/ingest/normalizeYaml.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 
 import type { CartographerState }    from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const normalizeYamlDAG: DAGType = new DAGBuilder('normalize-yaml', '1.0')
+const NORMALIZE_YAML_DAG_IRI = CARTOGRAPHER_IRIS.dag.normalizeYaml;
 
-  .node('normalize-yaml-map', normalizeYaml, {
-    'normalized': 'normalized',
+export const normalizeYamlDAG: DAGType = new DAGBuilder(NORMALIZE_YAML_DAG_IRI, '1.0')
+
+  .node(CARTOGRAPHER_IRIS.placementIri(NORMALIZE_YAML_DAG_IRI, 'normalize-yaml-map'), normalizeYaml, {
+    'normalized': CARTOGRAPHER_IRIS.placementIri(NORMALIZE_YAML_DAG_IRI, 'normalized'),
   })
 
-  .terminal('normalized', { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(NORMALIZE_YAML_DAG_IRI, 'normalized'), { outcome: 'completed' })
 
   .build();
 

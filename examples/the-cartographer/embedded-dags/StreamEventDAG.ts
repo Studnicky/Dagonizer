@@ -26,35 +26,38 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { decodePayload } from '../nodes/decodePayload.ts';
 import { routeEventType } from '../nodes/routeEventType.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 // #region stream-event-dag
-export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
+const STREAM_EVENT_DAG_IRI = CARTOGRAPHER_IRIS.dag.streamEvent;
+
+export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0')
 
   // 1. decode-payload: reads 'source-payload' metadata, decodes wire format
   //    (json/csv/ndjson/yaml, optionally gzip), builds CanonicalEventVariant,
   //    and sets state.canonicalVariant. Routes 'decoded' or 'invalid'.
-  .node('decode-payload', decodePayload, {
-    'decoded': 'route-event-type-variant',
-    'invalid': 'rejected',
+  .node(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'decode-payload'), decodePayload, {
+    'decoded': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'route-event-type-variant'),
+    'invalid': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   })
 
   // 2. route-event-type-variant: reads state.canonicalVariant.eventType and
   //    dispatches to the corresponding per-type sub-DAG. Sets state.routing.
-  .node('route-event-type-variant', routeEventType, {
-    'position-ping':         'pipeline-position-ping',
-    'sensor-reading':        'pipeline-sensor-reading',
-    'customs-event':         'pipeline-customs-event',
-    'facility-scan':         'pipeline-facility-scan',
-    'delivery-confirmation': 'pipeline-delivery-confirmation',
+  .node(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'route-event-type-variant'), routeEventType, {
+    'position-ping':         CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-position-ping'),
+    'sensor-reading':        CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-sensor-reading'),
+    'customs-event':         CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-customs-event'),
+    'facility-scan':         CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-facility-scan'),
+    'delivery-confirmation': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-delivery-confirmation'),
   })
 
   // 3a. pipeline-position-ping: geo + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-position-ping', 'pipeline-position-ping', {
-    'success': 'done',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-position-ping'), CARTOGRAPHER_IRIS.dag.pipelinePositionPing, {
+    'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
     'outputs': {
       'canonicalVariant': 'canonicalVariant',
@@ -71,9 +74,9 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
   })
 
   // 3b. pipeline-sensor-reading: geo + cold-chain + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-sensor-reading', 'pipeline-sensor-reading', {
-    'success': 'done',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-sensor-reading'), CARTOGRAPHER_IRIS.dag.pipelineSensorReading, {
+    'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
     'outputs': {
       'canonicalVariant': 'canonicalVariant',
@@ -91,9 +94,9 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
   })
 
   // 3c. pipeline-customs-event: geo + customs-dwell + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-customs-event', 'pipeline-customs-event', {
-    'success': 'done',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-customs-event'), CARTOGRAPHER_IRIS.dag.pipelineCustomsEvent, {
+    'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
     'outputs': {
       'canonicalVariant':  'canonicalVariant',
@@ -112,9 +115,9 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
 
   // 3d. pipeline-facility-scan: geo + facility canonicalization + order enrichment
   //     + GDPR-gated redaction.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-facility-scan', 'pipeline-facility-scan', {
-    'success': 'done',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-facility-scan'), CARTOGRAPHER_IRIS.dag.pipelineFacilityScan, {
+    'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
     'outputs': {
       'canonicalVariant':  'canonicalVariant',
@@ -136,9 +139,9 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
 
   // 3e. pipeline-delivery-confirmation: geo + recipient canonicalization +
   //     delivery confirmation + GDPR-gated redaction.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-delivery-confirmation', 'pipeline-delivery-confirmation', {
-    'success': 'done',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'pipeline-delivery-confirmation'), CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, {
+    'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
     'outputs': {
       'canonicalVariant': 'canonicalVariant',
@@ -155,8 +158,8 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
     },
   })
 
-  .terminal('done',     { outcome: 'completed' })
-  .terminal('rejected', { outcome: 'failed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),     { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'), { outcome: 'failed' })
 
   .build();
 

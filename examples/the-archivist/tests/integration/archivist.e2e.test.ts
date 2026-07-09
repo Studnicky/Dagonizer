@@ -186,7 +186,7 @@ class ArchivistHarness {
     const dispatcher = new Dagonizer<ArchivistState>();
 
     // Tool registry: register four empty-result scouts so the scatter body
-    // DAGs (tool:web_search_books, tool:google_books_search, etc.) exist in
+    // DAGs (urn:noocodec:tool:web_search_books, etc.) exist in
     // the dispatcher. Without this the DAG validator would reject the
     // embedded-DAG references in BookSearchScatterDAG.
     const toolRegistry = new ToolRegistry();
@@ -218,7 +218,7 @@ class ArchivistHarness {
     const state = new ArchivistState();
     state.query = query;
 
-    const execution = dispatcher.execute('the-archivist', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:the-archivist', state);
     for await (const _stage of execution) { /* drain */ }
     await execution;
     return state;
@@ -301,8 +301,14 @@ describe('Archivist DAG — on-topic query with empty scouts', () => {
 // ── Bundle registration smoke ─────────────────────────────────────────────────
 
 describe('Archivist DAG bundle registration', () => {
-  it('registers all bundles without throwing', () => {
-    assert.doesNotThrow(() => ArchivistHarness.dispatcher(new StubLlmOffTopic()));
+  it('registers the parent DAG, embedded DAGs, and tool DAGs', () => {
+    const dispatcher = ArchivistHarness.dispatcher(new StubLlmOffTopic());
+
+    assert.ok(dispatcher.getDAG('urn:noocodec:dag:the-archivist') !== undefined, 'parent Archivist DAG must be registered');
+    assert.ok(dispatcher.getDAG('urn:noocodec:dag:book-search-scatter') !== undefined, 'book-search embedded DAG must be registered');
+    assert.ok(dispatcher.getDAG('urn:noocodec:tool:web_search_books') !== undefined, 'tool DAGs must be registered through ToolRegistry.bundle()');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:classify-intent') !== undefined, 'parent classifier node must be registered');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:extract-query') !== undefined, 'query extraction node must be registered');
   });
 
   it('dispatcher is constructed with a valid MemoryStore', () => {

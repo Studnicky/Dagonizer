@@ -72,6 +72,7 @@ interface ReasoningCandidate {
 export class RecallContextNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-context';
+  readonly '@id' = 'urn:noocodec:node:recall-context';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
     return {

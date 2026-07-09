@@ -17,7 +17,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ExecutionRequestSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionRequest',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionRequest',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['dagName', 'placementPath', 'items', 'timeoutMs', 'correlationId'],

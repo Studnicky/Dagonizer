@@ -15,7 +15,7 @@
  *   level; the result is a broad `string` union rather than diverging.
  */
 export type PathType<T, Depth extends ReadonlyArray<unknown> = []> =
-  Depth['length'] extends 8       // depth cap; deep nesting falls back to string
+  Depth['length'] extends 8       // depth cap; deep nesting resolves to string
     ? string
     : T extends ReadonlyArray<infer U>
       ? `${number}` | `${number}.${PathType<U, [...Depth, 0]>}`

@@ -7,6 +7,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -35,6 +36,7 @@ export class PhaseState extends NodeStateBase {
 // #region pre-phase-node
 export class PreSetupNode extends MonadicNode<PhaseState, 'ready'> {
   readonly name = 'pre-setup';
+  readonly '@id' = 'urn:noocodec:node:pre-setup';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
     return { 'ready': { 'type': 'object' } };
@@ -56,6 +58,7 @@ export class PreSetupNode extends MonadicNode<PhaseState, 'ready'> {
 
 export class ComputeNode extends MonadicNode<PhaseState, 'done'> {
   readonly name = 'compute';
+  readonly '@id' = 'urn:noocodec:node:compute';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -79,6 +82,7 @@ export class ComputeNode extends MonadicNode<PhaseState, 'done'> {
 // #region post-phase-node
 export class PostAuditNode extends MonadicNode<PhaseState, 'audited'> {
   readonly name = 'post-audit';
+  readonly '@id' = 'urn:noocodec:node:post-audit';
   readonly outputs = ['audited'] as const;
   override get outputSchema(): Record<'audited', SchemaObjectType> {
     return { 'audited': { 'type': 'object' } };
@@ -100,17 +104,20 @@ export class PostAuditNode extends MonadicNode<PhaseState, 'audited'> {
 // ---------------------------------------------------------------------------
 
 // #region phase-dag
+export const dagIri = 'urn:noocodec:dag:phase-demo' as const;
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 const preSetupNode = new PreSetupNode();
 const computeNode = new ComputeNode();
 const postAuditNode = new PostAuditNode();
 
-export const dag = new DAGBuilder('phase-demo', '1')
+export const dag = new DAGBuilder(dagIri, '1')
   // 'pre' phase: runs before the entrypoint in declaration order.
-  .phase('setup', 'pre', preSetupNode)
+  .phase(placement('setup'), 'pre', preSetupNode)
   // Main loop: compute is the entrypoint (first .node() call).
-  .node('compute', computeNode, { 'done': 'end' })
-  .terminal('end')
+  .node(placement('compute'), computeNode, { 'done': placement('end') })
+  .terminal(placement('end'))
   // 'post' phase: runs after the main loop drains on every exit path.
-  .phase('audit', 'post', postAuditNode)
+  .phase(placement('audit'), 'post', postAuditNode)
   .build();
 // #endregion phase-dag

@@ -11,7 +11,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const DeliveryEstimateSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/DeliveryEstimate',
+  '$id': 'https://noocodec.dev/schemas/cartographer/DeliveryEstimate',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['transitHours', 'etaEpochMs', 'etaIso', 'promisedEpochMs', 'onTime', 'delayHours'],

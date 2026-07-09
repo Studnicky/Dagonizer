@@ -43,7 +43,7 @@ fanInState.source = StreamChannel.fanIn([
   RangeProducer.range(10, 15),
 ]);
 
-const fanInResult = await dispatcher1.execute('stream-fanin', fanInState);
+const fanInResult = await dispatcher1.execute('urn:noocodec:dag:stream-fanin', fanInState);
 
 const fanInSorted = [...fanInState.results].sort((a, b) => a - b);
 process.stdout.write(`fanIn results (sorted): ${JSON.stringify(fanInSorted)}\n`);
@@ -99,7 +99,7 @@ firstState.source = StreamChannel.resumable(
   { 'capacity': 1, 'signal': controller.signal },
 );
 
-const partial = await dispatcher2.execute('resume-stream', firstState, { 'signal': controller.signal });
+const partial = await dispatcher2.execute('urn:noocodec:dag:resume-stream', firstState, { 'signal': controller.signal });
 
 process.stdout.write(`First run cursor: ${String(partial.cursor)} (expected 'resume-stream' — interrupted)\n`);
 process.stdout.write(`First run results gathered so far: ${partial.state.results.length} items\n`);
@@ -138,7 +138,7 @@ resumeState.source = StreamChannel.resumable(
   cursor,
 );
 
-const resumeResult = await resumeDispatcher.resume('resume-stream', resumeState, 'resume-stream');
+const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:resume-stream', resumeState, 'resume-stream');
 
 process.stdout.write(`Resume cursor: ${String(resumeResult.cursor)} (expected null — completed)\n`);
 process.stdout.write(`Final results count: ${resumeResult.state.results.length}\n`);

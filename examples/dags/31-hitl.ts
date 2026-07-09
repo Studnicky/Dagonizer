@@ -56,6 +56,7 @@ export class HitlState extends NodeStateBase {
  */
 export class PrepareNode extends MonadicNode<HitlState, 'ready'> {
   readonly name = 'prepare';
+  readonly '@id' = 'urn:noocodec:node:prepare';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
     return { 'ready': { 'type': 'object' } };
@@ -79,6 +80,7 @@ export class PrepareNode extends MonadicNode<HitlState, 'ready'> {
  */
 export class ApproveNode extends MonadicNode<HitlState, 'parked' | 'approved' | 'rejected'> {
   readonly name = 'approve';
+  readonly '@id' = 'urn:noocodec:node:approve';
   readonly outputs = ['parked', 'approved', 'rejected'] as const;
   override get outputSchema(): Record<'parked' | 'approved' | 'rejected', SchemaObjectType> {
     return {
@@ -119,6 +121,7 @@ export class ApproveNode extends MonadicNode<HitlState, 'parked' | 'approved' | 
  */
 export class ProcessNode extends MonadicNode<HitlState, 'done'> {
   readonly name = 'process';
+  readonly '@id' = 'urn:noocodec:node:process';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -136,42 +139,42 @@ export class ProcessNode extends MonadicNode<HitlState, 'done'> {
 
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:hitl',
+  '@id': 'urn:noocodec:dag:hitl',
   '@type':     'DAG',
   'name':      'hitl',
   'version':   '1',
-  'entrypoint': 'prepare',
+  'entrypoints': { 'main': 'urn:noocodec:dag:hitl/node/prepare' },
   'nodes': [
     {
-      '@id':     'urn:noocodex:dag:hitl/node/prepare',
+      '@id': 'urn:noocodec:dag:hitl/node/prepare',
       '@type':   'SingleNode',
       'name':    'prepare',
-      'node':    'prepare',
-      'outputs': { 'ready': 'approve' },
+      'node':    'urn:noocodec:node:prepare',
+      'outputs': { 'ready': 'urn:noocodec:dag:hitl/node/approve' },
     },
     {
-      '@id':     'urn:noocodex:dag:hitl/node/approve',
+      '@id': 'urn:noocodec:dag:hitl/node/approve',
       '@type':   'SingleNode',
       'name':    'approve',
-      'node':    'approve',
+      'node':    'urn:noocodec:node:approve',
       // 'parked' output is NOT listed here — the engine intercepts it.
-      'outputs': { 'approved': 'process', 'rejected': 'rejected-end' },
+      'outputs': { 'approved': 'urn:noocodec:dag:hitl/node/process', 'rejected': 'urn:noocodec:dag:hitl/node/rejected-end' },
     },
     {
-      '@id':     'urn:noocodex:dag:hitl/node/process',
+      '@id': 'urn:noocodec:dag:hitl/node/process',
       '@type':   'SingleNode',
       'name':    'process',
-      'node':    'process',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:process',
+      'outputs': { 'done': 'urn:noocodec:dag:hitl/node/end' },
     },
     {
-      '@id':      'urn:noocodex:dag:hitl/node/end',
+      '@id': 'urn:noocodec:dag:hitl/node/end',
       '@type':    'TerminalNode',
       'name':     'end',
       'outcome':  'completed',
     },
     {
-      '@id':      'urn:noocodex:dag:hitl/node/rejected-end',
+      '@id': 'urn:noocodec:dag:hitl/node/rejected-end',
       '@type':    'TerminalNode',
       'name':     'rejected-end',
       'outcome':  'failed',

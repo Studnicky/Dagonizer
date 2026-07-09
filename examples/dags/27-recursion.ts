@@ -3,14 +3,14 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/27-recursion.ts (the executable entry point).
  *
- * Pattern: a countdown DAG embeds ITSELF via `dagFrom` runtime resolution.
+ * Pattern: a countdown DAG embeds ITSELF via a dynamic `DagReference`.
  * Each invocation adds `remaining` to `total`, then either:
  *   - routes to `recurse` (EmbeddedDAGNode that re-runs the same DAG) when
  *     remaining > 0, OR
  *   - routes to `base` (TerminalNode) when remaining === 0.
  *
- * The engine reads the DAG name from `state.dagName` at execution time
- * (`dagFrom: 'dagName'`), spawns a FRESH isolated child state for each
+ * The engine reads the DAG IRI from `state.dagIri` at execution time,
+ * constrains it to the declared countdown candidate, spawns a FRESH isolated child state for each
  * recursive invocation, and copies fields across the boundary via
  * `stateMapping.input` / `stateMapping.output` — so each frame is safe and
  * independent of its parent's internal shape.
@@ -34,8 +34,8 @@ import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region state
 export class CountdownState extends NodeStateBase {
-  /** The registered name of this DAG — read by the engine for `dagFrom` lookup. */
-  dagName     = 'countdown';
+  /** The registered IRI of this DAG, read by the dynamic DagReference. */
+  dagIri      = 'urn:noocodec:dag:countdown';
   /** How many steps remain before the base case. */
   remaining   = 0;
   /** Accumulated sum across all recursive frames. */
@@ -60,6 +60,7 @@ export class CountdownState extends NodeStateBase {
  */
 export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'base'> {
   readonly name = 'accumulate';
+  readonly '@id' = 'urn:noocodec:node:accumulate';
   readonly outputs = ['recurse', 'base'] as const;
 
   override get outputSchema(): Record<'recurse' | 'base', SchemaObjectType> {
@@ -89,7 +90,7 @@ export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'bas
 
 // #region dag
 /**
- * The countdown DAG — registers itself under the name `'countdown'`.
+ * The countdown DAG registers itself under its canonical DAG IRI.
  *
  * Placement topology:
  *
@@ -98,35 +99,35 @@ export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'bas
  *                                └── success ──► end  (TerminalNode, completed)
  *                                └── error   ──► end-error  (TerminalNode, failed)
  *
- * The `embed` placement uses `dagFrom: 'dagName'` so the engine resolves which
- * DAG to run from `state.dagName` at runtime.  Seeding the child with
+ * The `embed` placement uses a dynamic DagReference so the engine resolves
+ * which DAG to run from `state.dagIri` at runtime. Seeding the child with
  * `remaining ← nextRemaining` and `total ← total`, then writing `total` back
  * after the child finishes, threads the accumulator through each frame.
  */
 export const countdownDAG: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:countdown',
+  '@id': 'urn:noocodec:dag:countdown',
   '@type':     'DAG',
   "name":        'countdown',
   "version":     '1',
-  "entrypoint":  'accumulate',
+  "entrypoints": { "main": 'urn:noocodec:dag:countdown/node/accumulate' },
   "nodes": [
     // #region accumulate-placement
     {
-      '@id':   'urn:noocodex:dag:countdown/node/accumulate',
+      '@id': 'urn:noocodec:dag:countdown/node/accumulate',
       '@type': 'SingleNode',
       "name":    'accumulate',
-      "node":    'accumulate',           // registered AccumulateNode
+      "node":    'urn:noocodec:node:accumulate', // registered AccumulateNode IRI
       "outputs": {
-        "base":    'base-end',           // remaining === 0 → terminal
-        "recurse": 'embed',              // remaining > 0  → recursive embed
+        "base":    'urn:noocodec:dag:countdown/node/base-end',
+        "recurse": 'urn:noocodec:dag:countdown/node/embed',
       },
     },
     // #endregion accumulate-placement
 
     // #region base-terminal
     {
-      '@id':     'urn:noocodex:dag:countdown/node/base-end',
+      '@id': 'urn:noocodec:dag:countdown/node/base-end',
       '@type':   'TerminalNode',
       "name":    'base-end',
       "outcome": 'completed',
@@ -135,17 +136,22 @@ export const countdownDAG: DAGType = {
 
     // #region embed-placement
     {
-      '@id':   'urn:noocodex:dag:countdown/node/embed',
+      '@id': 'urn:noocodec:dag:countdown/node/embed',
       '@type': 'EmbeddedDAGNode',
       "name":    'embed',
-      // dagFrom: the engine reads state.dagName at runtime to resolve which DAG
-      // to run.  Because state.dagName === 'countdown', this DAG embeds ITSELF.
-      "dagFrom":  'dagName',
+      // The engine reads state.dagIri at runtime. The value is the canonical
+      // DAG IRI, so this DAG embeds itself without name lookup.
+      "dag": {
+        '@type': 'DagReference',
+        "from": 'state',
+        "path": 'dagIri',
+        "candidates": ['urn:noocodec:dag:countdown'],
+      },
       "stateMapping": {
         // inputs: seed the child frame's fields from the current (parent) frame
         // { childKey: parentPath }
         "input": {
-          "dagName":   'dagName',         // propagate the DAG name down the call stack
+          "dagIri":    'dagIri',          // propagate the DAG IRI down the call stack
           "remaining": 'nextRemaining',   // child.remaining ← parent.nextRemaining
           "total":     'total',           // child.total     ← parent.total (carry accumulator)
         },
@@ -156,20 +162,20 @@ export const countdownDAG: DAGType = {
         },
       },
       "outputs": {
-        "success": 'end',
-        "error":   'end-error',
+        "success": 'urn:noocodec:dag:countdown/node/end',
+        "error":   'urn:noocodec:dag:countdown/node/end-error',
       },
     },
     // #endregion embed-placement
 
     {
-      '@id':     'urn:noocodex:dag:countdown/node/end',
+      '@id': 'urn:noocodec:dag:countdown/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
     },
     {
-      '@id':     'urn:noocodex:dag:countdown/node/end-error',
+      '@id': 'urn:noocodec:dag:countdown/node/end-error',
       '@type':   'TerminalNode',
       "name":    'end-error',
       "outcome": 'failed',

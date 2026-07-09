@@ -29,7 +29,7 @@ Use this page when worker threads, forked processes, browser workers, service wo
 
 ## How It Works
 
-`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent.
+`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent while preserving the child DAG boundary, placement path, and terminal state snapshot.
 
 Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
 
@@ -144,7 +144,7 @@ import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer/cont
 declare function runDag(task: DagTaskInterface): Promise<DagOutcomeType>;
 ```
 
-Acquired a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
+Acquires a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
 
 #### `destroy()`
 
@@ -187,7 +187,7 @@ host.start();
 | Message | Action |
 |---------|--------|
 | `init` | Dynamic-import the registry module; call `instantiate`; reply `ready`. |
-| `execute` | Restore state; run the whole DAG; stream intermediates; reply `result`. |
+| `execute` | Restore state; run the whole DAG by IRI; stream intermediates with placement path context; reply `result`. |
 | `abort` | Fire the `AbortController` for that `correlationId`. |
 | `shutdown` | Destroy registered nodes; close the channel. |
 
@@ -208,14 +208,14 @@ const _check: typeof DagTask = DagTask;
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `dagName` | `string` | Registered DAG name. |
-| `placementPath` | `string[]` | Nesting path from the parent dispatcher. |
+| `dagName` | `string` | Registered DAG IRI. |
+| `placementPath` | `string[]` | Nesting path from the parent dispatcher, preserved across worker and remote dispatch. |
 | `correlationId` | `string` | Dispatcher-monotonic id (no randomness). |
 | `timeout` | `Timeout` | Execution budget (`Timeout.none()` when none applies). |
 | `state` | `NodeStateInterface` | Live seeded clone for in-process paths (typed at the base contract; the concrete class may differ from the parent dispatcher's `TState`). |
 | `context` | `NodeContextType` | Context from the parent execution. |
 
-`toRequest()` snapshots the clone into a wire-safe `ExecutionRequest` for cross-boundary transports.
+`toRequest()` snapshots the clone into a wire-safe `ExecutionRequest` for cross-boundary transports. The request keeps the DAG IRI and placement path separate from state payload so a worker can resume graph execution without flattening topology.
 
 ---
 
@@ -286,7 +286,7 @@ const isOther: boolean = TransportErrorCode.isInfrastructureFailure('domain.some
 
 ## Details for Nerds
 
-Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and surface transport failures as container errors. Do not let worker internals leak into the parent DAG document.
+Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and surface transport failures as container errors. Do not let worker internals leak into the parent DAG document or collapse child DAG topology into a node-level callback.
 
 Role names are deployment configuration. A DAG can declare `container: 'cpu'` or `container: 'io'`; the host decides whether those roles map to worker threads, child processes, browser workers, or remote services.
 

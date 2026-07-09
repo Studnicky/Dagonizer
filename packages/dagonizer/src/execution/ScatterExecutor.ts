@@ -1,7 +1,6 @@
 import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
-import { GatherStrategies } from '../core/GatherStrategies.js';
 import { OutcomeReducers } from '../core/OutcomeReducers.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
@@ -9,10 +8,10 @@ import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
-import type { Gather } from './Gather.js';
 import { ReservoirBuffer } from './ReservoirBuffer.js';
 import { ScatterDispatchAdapter, ScatterPoolDriver } from './ScatterDispatch.js';
 import type {
+  GatherRecordSinkType,
   RunNodeResultType,
   ScatterDispatchAdapterInterface,
   ScatterDispatchSourceInterface,
@@ -26,23 +25,20 @@ import { ScatterWorkerPool } from './ScatterWorkerPool.js';
  *
  * Extracts `executeScatter` from `Dagonizer` into a focused domain module.
  * Depends on `ScatterDispatchSourceInterface` (the same port the scatter
- * adapter already uses), the shared `BodyExecutor`, and the `Gather` module
- * (for `composeGatherExecution` calls in the finalize pass). Behavior is
- * byte-identical to the original inline method.
+ * adapter already uses) and the shared `BodyExecutor`. Scatter is pure
+ * fan-out/execution; fan-in is handled by explicit downstream `GatherNode`
+ * placements in the scheduler.
  */
 export class ScatterExecutor {
   readonly #scatterSource: ScatterDispatchSourceInterface;
   readonly #bodyExecutor: BodyExecutor;
-  readonly #gather: Gather;
 
   constructor(
     scatterSource: ScatterDispatchSourceInterface,
     bodyExecutor: BodyExecutor,
-    gather: Gather,
   ) {
     this.#scatterSource = scatterSource;
     this.#bodyExecutor = bodyExecutor;
-    this.#gather = gather;
   }
 
   async executeScatter(
@@ -51,6 +47,7 @@ export class ScatterExecutor {
     dagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
+    gatherRecordSink: GatherRecordSinkType | null = null,
   ): Promise<RunNodeResultType> {
     // ── 1. Resolve source and scatter defaults ───────────────────────────────
     // Resolve once here; used at the early-exit, in the worker pool, and at
@@ -86,43 +83,21 @@ export class ScatterExecutor {
     // so corrupt or migrated checkpoints throw a DAGError (code
     // VALIDATION_ERROR) here rather than causing silent type mismatches
     // deep in the scatter loop.
-    const storedProgress = ScatterCheckpoint.read(state, scatter.name);
-
-    // Determine gather strategy (needed before compactable check).
-    const gatherStrategy = scatter.gather !== undefined
-      ? GatherStrategies.resolve(scatter.gather.strategy)
-      : null;
-
-    // Compactable: all built-in strategies except custom (retainsRecordsForFinalize=true).
-    const compactable = gatherStrategy === null || !gatherStrategy.retainsRecordsForFinalize;
+    const storedProgress = ScatterCheckpoint.read(state, scatter['@id']);
 
     // Materialise the scatter run accumulators from the stored checkpoint. The
     // inbox seeds from the checkpoint; the mode-specific accumulators, seen-index
     // set, and next-index cursor are reconstructed so resume reprocesses inbox
     // gaps and continues sequential index assignment. `nextIndex` advances as
     // fresh items are pulled, so it is read off the mutable bundle.
-    const runState = ScatterCheckpoint.restoreRunState(storedProgress, compactable);
-    const { inbox, ackedResults, ackedByIndex, itemOutputs, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
+    const runState = ScatterCheckpoint.restoreRunState(storedProgress, true);
+    const { inbox, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
     let nextIndex = runState.nextIndex;
 
-    // ── 3a. Gather strategy: initialise accumulator on fresh entry only ──────
-    // On resume, the accumulator is already in state from the prior run (folded
-    // via per-clone reduce calls). Calling initial() on resume would wipe it.
-    // storedProgress === undefined is the exact signal for fresh entry (no prior
-    // checkpoint exists for this placement).
-    if (storedProgress === undefined && gatherStrategy !== null && scatter.gather !== undefined) {
-      gatherStrategy.initial(scatter.gather, state, this.#scatterSource.accessor);
-    }
-
-    // ── 3. Gather strategy: prepare accumulators ────────────────────────────
-    // Accumulate fresh records for the finalize pass and outcome-reducer.
-    const allFreshRecords: GatherRecordType<NodeStateInterface>[] = [];
+    // ── 3. Prepare exported producer records ────────────────────────────────
+    // Accumulate fresh records for downstream first-class gather placements.
+    const allFreshRecords: GatherRecordType[] = [];
     const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
-
-    // NOTE: Gather contributions from acked items in a prior run are already
-    // present in the state snapshot (they were folded per-ack via reduce).
-    // No replay is needed here; the finalize pass at step 7 handles any
-    // end-of-gather work that needs the full record set.
 
     // ── 4. Build the source async iterator ──────────────────────────────────
     // Fresh source: new items from the actual source value.
@@ -184,16 +159,12 @@ export class ScatterExecutor {
       placementPath,
       itemKey,
       inbox,
-      ackedResults,
-      ackedByIndex,
-      itemOutputs,
       allFreshRecords,
       intermediateResults,
-      gatherStrategy,
-      compactable,
       watermarkRef,
       aheadAcked,
       outcomeTally,
+      gatherRecordSink,
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
@@ -231,68 +202,14 @@ export class ScatterExecutor {
       await pool.drain();
     }
 
-    // ── 7. Finalize ──────────────────────────────────────────────────────────
-    // `reduce` already folded every clone into state per-ack. `finalize` runs
-    // once for EVERY gather (compactable and non-compactable) for end-of-gather
-    // work such as building derived state or invoking a registered node.
-    if (gatherStrategy !== null && scatter.gather !== undefined) {
-      if (compactable) {
-        // Compactable: the gather's result is fully in state via per-clone
-        // `reduce`. Compactable finalize (e.g. InsightsFoldGather) builds derived
-        // state from its own private accumulators and does NOT read the records
-        // arg — so `allFreshRecords` is intentionally empty here (ackItem and
-        // ackBatch skip the push in compactable mode to allow per-clone GC).
-        // Pass an empty list; `finalize` must not depend on it.
-        const gatherExecution = this.#gather.composeGatherExecution(state, [], dagName, signal);
-        await gatherStrategy.finalize(scatter.gather, gatherExecution);
-      } else {
-        // Non-compactable finalize: synthesise records for prior acked items too,
-        // reconstructing each prior-run clone from its persisted gather values so
-        // the strategy sees the full record set.
-        const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
-        const syntheticRecords: GatherRecordType[] = [];
-        for (const acked of ackedResults) {
-          if (freshIndices.has(acked.index)) continue;
-          const syntheticClone = state.clone();
-          if (acked.variant === 'map') {
-            for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
-              this.#scatterSource.accessor.set(syntheticClone, clonePath, val);
-            }
-          } else if (acked.variant === 'field' && scatter.gather.field !== undefined) {
-            this.#scatterSource.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
-          }
-          syntheticRecords.push({
-            'index': acked.index,
-            'item': acked.item,
-            'output': acked.output,
-            'terminalOutcome': null,
-            'cloneState': syntheticClone,
-          });
-        }
-        const merged = [...syntheticRecords, ...allFreshRecords]
-          .sort((a, b) => a.index - b.index);
-        if (merged.length > 0) {
-          const gatherExecution = this.#gather.composeGatherExecution(state, merged, dagName, signal);
-          await gatherStrategy.finalize(scatter.gather, gatherExecution);
-        }
-      }
-    }
+    // ── 7. Clear checkpoint after clean completion ───────────────────────────
+    ScatterCheckpoint.clear(state, scatter['@id']);
 
-    // ── 8. Clear checkpoint after clean completion ───────────────────────────
-    ScatterCheckpoint.clear(state, scatter.name);
-
-    // ── 9. Reduce to route ───────────────────────────────────────────────────
+    // ── 8. Reduce to route ───────────────────────────────────────────────────
     const outcomeRecords: OutcomeRecordType[] = [];
-    if (compactable) {
-      // Expand outcomeTally to OutcomeRecordType array (count per output string).
-      for (const [output, count] of outcomeTally) {
-        for (let c = 0; c < count; c++) {
-          outcomeRecords.push({ 'index': -1, output, 'terminalOutcome': null });
-        }
-      }
-    } else {
-      for (const [index, output] of itemOutputs) {
-        outcomeRecords.push({ index, output, 'terminalOutcome': null });
+    for (const [output, count] of outcomeTally) {
+      for (let c = 0; c < count; c++) {
+        outcomeRecords.push({ 'index': -1, output, 'terminalOutcome': null });
       }
     }
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
@@ -306,6 +223,6 @@ export class ScatterExecutor {
       intermediateResults,
     };
 
-    return { nextStage, result };
+    return { nextStage, result, 'gatherRecords': allFreshRecords };
   }
 }

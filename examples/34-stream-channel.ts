@@ -26,7 +26,7 @@ dispatcher.registerDAG(dag);
 const state   = new ChannelState();
 state.source  = StreamChannel.driven(NumberProducer.of(10), { capacity: 4 });
 
-const result = await dispatcher.execute('stream-channel', state);
+const result = await dispatcher.execute('urn:noocodec:dag:stream-channel', state);
 
 process.stdout.write(`Results: ${JSON.stringify([...state.results].sort((a, b) => a - b))}\n`);
 process.stdout.write(`Terminal outcome: ${result.terminalOutcome}\n`);

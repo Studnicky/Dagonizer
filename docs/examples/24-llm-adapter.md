@@ -26,11 +26,11 @@ import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
 
 LLM Adapter is the provider boundary for model-backed DAG nodes. The Archivist can run against local Ollama, browser models, or cloud APIs because nodes depend on an `LlmAdapterInterface`, not on a provider SDK.
 
-The application builds an adapter or cascade before execution, injects it through services, and lets DAG routes handle the response variant. Provider probing, fallback, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
+The application builds an adapter or cascade before execution, injects it through services, and lets DAG routes handle the response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
 
 ## How It Works
 
-Nodes depend on an `LlmAdapterInterface` supplied through services. The host builds an adapter or cascade before execution, injects it into node constructors, and lets DAG routes handle the model response variant. Provider probing, fallback, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
+Nodes depend on an `LlmAdapterInterface` supplied through services. The host builds an adapter or cascade before execution, injects it into node constructors, and lets DAG routes handle the model response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
 
 This keeps provider choice outside the graph. The DAG still says "classify," "extract," "rank," and "compose"; the service layer decides whether those calls go to a local model, a browser runtime, or a cloud backend.
 
@@ -38,7 +38,7 @@ This keeps provider choice outside the graph. The DAG still says "classify," "ex
 
 ### DAG registration and diagram
 
-The adapter is injected service state; the DAG shows where model-backed nodes sit in the flow. [The Archivist](./the-archivist) is the in-browser owner for adapter selection and fallback.
+The adapter is injected service state; the DAG shows where model-backed nodes sit in the flow. [The Archivist](./the-archivist) is the in-browser owner for adapter selection.
 
 <DagJsonMermaid :dag="archivistDAG" title="Archivist LLM adapter DAG" aria-label="Archivist JSON-LD DAG beside Mermaid generated from it." />
 

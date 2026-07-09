@@ -31,6 +31,7 @@ export class ScrapeState extends NodeStateBase {
 // #region worker-node
 export class ProbeNode extends MonadicNode<ScrapeState, 'ok' | 'fail'> {
   readonly name = 'probe';
+  readonly '@id' = 'urn:noocodec:node:probe';
   readonly outputs = ['ok', 'fail'] as const;
   override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
     return { 'ok': { 'type': 'object' }, 'fail': { 'type': 'object' } };
@@ -84,7 +85,7 @@ export const gatherDiscard = { strategy: 'discard' } as const;
 // strategy 'custom': the dispatcher stages per-clone records under
 // state.metadata.gatherResults and dispatches the named registered node.
 // The named node drives the merge logic (deduplicate, rank, aggregate).
-export const gatherCustom = { strategy: 'custom', customNode: 'mergeCandidates' } as const;
+export const gatherCustom = { strategy: 'custom', customNode: 'urn:noocodec:node:mergeCandidates' } as const;
 // #endregion gather-custom
 
 // #region gather-partition
@@ -103,6 +104,7 @@ export const gatherPartition = { strategy: 'partition', partitions: { success: '
 // 'finalize' does any end-of-gather work (sort, trim, dispatch a custom node).
 class TopNGather extends GatherStrategy {
   readonly name = 'top-n';
+  readonly '@id' = 'urn:noocodec:node:top-n';
   override initial(_config: GatherConfigType, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* seed */ }
   override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
   override async finalize(_config: GatherConfigType, _execution: GatherExecutionType<NodeStateInterface>): Promise<void> { /* trim to top-N */ }
@@ -113,33 +115,49 @@ GatherStrategies.register(new TopNGather());
 // #region scatter-placement
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:scrape',
+  '@id': 'urn:noocodec:dag:scrape',
   '@type':      'DAG',
   "name":         'scrape',
   "version":      '1',
-  "entrypoint":   'probe-all',
+  "entrypoints": { "main": 'urn:noocodec:dag:scrape/node/probe-all' },
   "nodes": [
     {
-      '@id':        'urn:noocodex:dag:scrape/node/probe-all',
+      '@id': 'urn:noocodec:dag:scrape/node/probe-all',
       '@type':      'ScatterNode',                   // iterate source, run node per clone
       "name":         'probe-all',
-      "body":         { "node": 'probe' },             // which registered node to invoke per clone
+      "body":         { "node": 'urn:noocodec:node:probe' },             // registered node IRI invoked per clone
       "source":       'urls',                          // state field to read the items array from
       "itemKey":      'url',                           // metadata key each item is written under
       "execution": { "mode": "item", "concurrency": 2 },                               // max clones in-flight simultaneously
-      "gather": {
-        "strategy":   GatherStrategyNames.PARTITION,      // route clones by their output key
-        "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
-      },
       // Aggregate outputs: reflect final distribution, not per-clone results.
       // all-success: every clone returned 'ok'
       // partial:     mix of ok and fail
       // all-error:   every clone returned 'fail'
       // empty:       source array was empty
-      "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },
+      "outputs": {
+        'all-success': 'urn:noocodec:dag:scrape/node/gather-probes',
+        "partial": 'urn:noocodec:dag:scrape/node/gather-probes',
+        'all-error': 'urn:noocodec:dag:scrape/node/gather-probes',
+        "empty": 'urn:noocodec:dag:scrape/node/end',
+      },
     },
     {
-      '@id':     'urn:noocodex:dag:scrape/node/end',
+      '@id': 'urn:noocodec:dag:scrape/node/gather-probes',
+      '@type': 'GatherNode',
+      "name": 'gather-probes',
+      sources: { "urn:noocodec:dag:scrape/node/probe-all": {} },
+      "gather": {
+        "strategy": GatherStrategyNames.PARTITION,      // route clones by their output key
+        "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
+      },
+      "outputs": {
+        "success": 'urn:noocodec:dag:scrape/node/end',
+        "error": 'urn:noocodec:dag:scrape/node/end',
+        "empty": 'urn:noocodec:dag:scrape/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scrape/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

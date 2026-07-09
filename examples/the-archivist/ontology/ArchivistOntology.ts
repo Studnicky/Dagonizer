@@ -2,7 +2,7 @@
  * ArchivistOntology: TBox (schema) for the Archivist's RDF memory.
  *
  * Defines the class and property vocabulary under the `dag:` namespace
- * (`https://noocodex.dev/ontology/dagonizer/`).  Every ABox write in
+ * (`https://noocodec.dev/ontology/dagonizer/`).  Every ABox write in
  * `recordFindings.ts` and `StateProjection.ts` uses these same IRIs so
  * SPARQL queries span the TBox (`urn:dagonizer:ontology`) and ABox
  * (`urn:dagonizer:memory`, `urn:dagonizer:state:<runId>`) uniformly.
@@ -32,7 +32,7 @@
  */
 
 /** @internal Namespace abbreviation. */
-const DAG = 'https://noocodex.dev/ontology/dagonizer/';
+const DAG = 'https://noocodec.dev/ontology/dagonizer/';
 const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL  = 'http://www.w3.org/2002/07/owl#';
 const XSD  = 'http://www.w3.org/2001/XMLSchema#';

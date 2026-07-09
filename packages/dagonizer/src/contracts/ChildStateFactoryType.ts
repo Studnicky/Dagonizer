@@ -4,10 +4,10 @@
  *
  * The factory receives the parent `NodeStateInterface` and returns a new child
  * state. The default factory (`ChildStateFactory.cloneParent`) clones the
- * parent, reproducing historical clone-parent semantics. An isolation factory
- * ignores `parent` and constructs a fresh child-specific state class instead.
+ * parent. An isolation factory ignores `parent` and constructs a fresh
+ * child-specific state class instead.
  *
- * The engine ALWAYS calls a factory; there is no conditional fallback. Every
+ * The engine ALWAYS calls a factory; there is no conditional branch. Every
  * registered DAG has an entry in the dispatcher's `stateFactories` map because
  * `registerDAG` materialises the default at registration time when the caller
  * omits an override.

@@ -8,7 +8,7 @@
  *   `navigator.hardwareConcurrency`.
  *
  * The formula follows the quadrascope pattern:
- *   clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)
+ *   clamp(parallelism − mainThreadReservation, minimumWorkerCount, maximumWorkers)
  *
  * Memory-based clamping: when `memoryPerWorkerBytes` is non-null and the
  * implementation can probe available memory, the recommended count is

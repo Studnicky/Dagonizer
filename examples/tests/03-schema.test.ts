@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 import { EchoNode, dag } from '../dags/03-schema.ts';
 
-describe('03-schema: DAGDocument.load from JSON string', () => {
+describe('03-schema: DAGDocument load from JSON string', () => {
   it('executes to completion and sets metadata', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(new EchoNode());
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('from-json', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:from-json', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.cursor, null);
@@ -22,7 +22,7 @@ describe('03-schema: DAGDocument.load from JSON string', () => {
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase();
-    await dispatcher.execute('from-json', state);
+    await dispatcher.execute('urn:noocodec:dag:from-json', state);
 
     assert.equal(state.getter.boolean('seen'), true);
   });
@@ -33,7 +33,7 @@ describe('03-schema: DAGDocument.load from JSON string', () => {
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('from-json', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:from-json', state);
 
     assert.ok(result.executedNodes.includes('echo'));
   });

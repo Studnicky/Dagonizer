@@ -40,62 +40,70 @@ import { normalizeYamlDAG }  from './NormalizeYamlDAG.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
 
-export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
+const ingestSourceDagIri = 'urn:noocodec:dag:ingest-source' as const;
+const normalizeCsvDagIri = 'urn:noocodec:dag:normalize-csv' as const;
+const normalizeJsonDagIri = 'urn:noocodec:dag:normalize-json' as const;
+const normalizeNdjsonDagIri = 'urn:noocodec:dag:normalize-ndjson' as const;
+const normalizeYamlDagIri = 'urn:noocodec:dag:normalize-yaml' as const;
+const placement = (placementIdentifier: string): string =>
+  DAGIdentity.placementId(ingestSourceDagIri, placementIdentifier);
+
+export const ingestSourceDAG: DAGType = new DAGBuilder(ingestSourceDagIri, '1.0')
 
   // 1. select-source: read source from scatter metadata; route by compression.
-  .node('select-source', selectSource, {
-    'compressed': 'decompress',
-    'plain':      'route-format',
-    'invalid':    'rejected',
+  .node(placement('select-source'), selectSource, {
+    'compressed': placement('decompress'),
+    'plain':      placement('route-format'),
+    'invalid':    placement('rejected'),
   })
 
   // 2. decompress: base64-decode + gunzip → plain text in state.decodedText.
   //    Format-agnostic: any gzipped format passes through here to route-format.
-  .node('decompress', decompress, {
-    'route-format': 'route-format',
-    'invalid':      'rejected',
+  .node(placement('decompress'), decompress, {
+    'route-format': placement('route-format'),
+    'invalid':      placement('rejected'),
   })
 
   // 3. route-format: dispatch to the format-specific parser.
-  .node('route-format', routeFormat, {
-    'csv':    'parse-csv',
-    'json':   'parse-json',
-    'ndjson': 'parse-ndjson',
-    'yaml':   'parse-yaml',
-    'invalid': 'rejected',
+  .node(placement('route-format'), routeFormat, {
+    'csv':     placement('parse-csv'),
+    'json':    placement('parse-json'),
+    'ndjson':  placement('parse-ndjson'),
+    'yaml':    placement('parse-yaml'),
+    'invalid': placement('rejected'),
   })
 
   // 4a. parse-csv: CSV text → state.parsedRecords.
-  .node('parse-csv', parseCsv, {
-    'normalized': 'normalize-csv',
-    'invalid':    'rejected',
+  .node(placement('parse-csv'), parseCsv, {
+    'normalized': placement('normalize-csv'),
+    'invalid':    placement('rejected'),
   })
 
   // 4b. parse-json: JSON array → state.parsedRecords.
-  .node('parse-json', parseJson, {
-    'normalized': 'normalize-json',
-    'invalid':    'rejected',
+  .node(placement('parse-json'), parseJson, {
+    'normalized': placement('normalize-json'),
+    'invalid':    placement('rejected'),
   })
 
   // 4c. parse-ndjson: NDJSON text → state.parsedRecords.
-  .node('parse-ndjson', parseNdjson, {
-    'normalized': 'normalize-ndjson',
-    'invalid':    'rejected',
+  .node(placement('parse-ndjson'), parseNdjson, {
+    'normalized': placement('normalize-ndjson'),
+    'invalid':    placement('rejected'),
   })
 
   // 4d. parse-yaml: YAML sequence → state.parsedRecords.
-  .node('parse-yaml', parseYaml, {
-    'normalized': 'normalize-yaml',
-    'invalid':    'rejected',
+  .node(placement('parse-yaml'), parseYaml, {
+    'normalized': placement('normalize-yaml'),
+    'invalid':    placement('rejected'),
   })
 
   // 5a. normalize-csv: embedded sub-DAG — apply FieldMap by header name.
   //     The FieldMap is name-keyed, so shuffled CSV column order aligns correctly.
-  .embeddedDAG<CartographerState, CartographerState>('normalize-csv', 'normalize-csv', {
-    'success': 'coerce-types',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('normalize-csv'), normalizeCsvDagIri, {
+    'success': placement('coerce-types'),
+    'error':   placement('rejected'),
   }, {
     // Embedded DAGs run in an isolated state clone: thread the parsed records
     // and the current source (for its mappingKey) IN, and the aligned records
@@ -105,9 +113,9 @@ export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
   })
 
   // 5b. normalize-json: embedded sub-DAG — apply FieldMap by key name.
-  .embeddedDAG<CartographerState, CartographerState>('normalize-json', 'normalize-json', {
-    'success': 'coerce-types',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('normalize-json'), normalizeJsonDagIri, {
+    'success': placement('coerce-types'),
+    'error':   placement('rejected'),
   }, {
     // Embedded DAGs run in an isolated state clone: thread the parsed records
     // and the current source (for its mappingKey) IN, and the aligned records
@@ -117,9 +125,9 @@ export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
   })
 
   // 5c. normalize-ndjson: embedded sub-DAG — apply FieldMap by key name.
-  .embeddedDAG<CartographerState, CartographerState>('normalize-ndjson', 'normalize-ndjson', {
-    'success': 'coerce-types',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('normalize-ndjson'), normalizeNdjsonDagIri, {
+    'success': placement('coerce-types'),
+    'error':   placement('rejected'),
   }, {
     // Embedded DAGs run in an isolated state clone: thread the parsed records
     // and the current source (for its mappingKey) IN, and the aligned records
@@ -129,9 +137,9 @@ export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
   })
 
   // 5d. normalize-yaml: embedded sub-DAG — apply FieldMap by key name.
-  .embeddedDAG<CartographerState, CartographerState>('normalize-yaml', 'normalize-yaml', {
-    'success': 'coerce-types',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('normalize-yaml'), normalizeYamlDagIri, {
+    'success': placement('coerce-types'),
+    'error':   placement('rejected'),
   }, {
     // Embedded DAGs run in an isolated state clone: thread the parsed records
     // and the current source (for its mappingKey) IN, and the aligned records
@@ -141,23 +149,23 @@ export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
   })
 
   // 6. coerce-types: string cells → number / bool / epoch. Shared tail.
-  .node('coerce-types', coerceTypes, {
-    'validate-event': 'validate-event',
+  .node(placement('coerce-types'), coerceTypes, {
+    'validate-event': placement('validate-event'),
   })
 
   // 7. validate-event: build CanonicalEvents → state.ingestedEvents. Shared tail.
-  .node('validate-event', validateEvent, {
-    'validated': 'ingested',
+  .node(placement('validate-event'), validateEvent, {
+    'validated': placement('ingested'),
   })
 
   // Terminals
-  .terminal('ingested', { outcome: 'completed' })
-  .terminal('rejected', { outcome: 'failed' })
+  .terminal(placement('ingested'), { outcome: 'completed' })
+  .terminal(placement('rejected'), { outcome: 'failed' })
 
   .build();
 
 export const ingestSourceBundle: DispatcherBundleType<CartographerState> = {
-  // Normalize DAGs registered FIRST so the embeddedDAG placements above resolve.
+  // Normalize DAGs registered FIRST so the embedded-DAG placements above resolve.
   'nodes': [
     selectSource, decompress, routeFormat,
     parseCsv, parseJson, parseNdjson, parseYaml,

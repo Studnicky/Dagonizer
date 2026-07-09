@@ -14,6 +14,7 @@ import {
 
 // #region resolve-address-node
 export class ResolveAddressNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-address';
   private readonly addressGeocoder: AddressGeocoder;
 
   readonly 'name' = 'resolve-address';

@@ -93,7 +93,7 @@ class ReactRunHarness {
 
     // `execute` returns the Execution (AsyncIterable<NodeResultType>) — handed
     // directly to the trace producer, never drained here.
-    const execution = agentDispatcher.execute('react-agent', agentState);
+    const execution = agentDispatcher.execute('urn:noocodec:dag:react-agent', agentState);
 
     const traceState = new TraceState();
     traceState.source = StreamChannel.driven(new ReActTraceProducer(execution));
@@ -105,7 +105,7 @@ class ReactRunHarness {
     // The outer scatter drains the reasoning trace and records each step.
     // (`StreamChannel.driven` runs the inner agent loop eagerly within the
     // channel's bounded buffer; at ~4 trace items it never back-pressures.)
-    await outerDispatcher.execute('react-agent-memory-trace', traceState);
+    await outerDispatcher.execute('urn:noocodec:dag:react-agent-memory-trace', traceState);
 
     return { 'finalAnswer': agentState.assistantText, 'deltas': sink.deltas };
   }

@@ -10,6 +10,11 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Changed
 
+- **DAG and placement identity are IRI-first across authoring, execution, validation, examples, and docs.** `DAGBuilder` requires explicit DAG and placement IRIs, materializes routes and gather sources against registered placement/entrypoint IRIs, and treats `name` as display/observability metadata. Display names default from the compact IRI when omitted.
+- **Scatter and gather are separate graph placements. ⚠ BREAKING.** `ScatterNode` emits per-item outcome records and routes by aggregate reducer; `GatherNode` owns fan-in, strategy configuration, source declarations, policy, and downstream routing. Inline scatter gather configuration is no longer part of the authoring surface.
+- **Embedded DAGs, plugins, tools-as-DAGs, and dynamic DAG references share one graph-addressable reference model.** Literal DAG references are DAG IRIs; runtime references declare their source path and candidate DAG IRI set. The same composition path covers single-node tools, reusable plugin DAGs, and nested application DAGs.
+- **Runnable examples use the registry/builder/IRI topology consistently.** The numbered examples and the Archivist, Cartographer, and Dispatcher demos author canonical JSON-LD through the builder/registry path and use placement IRIs for routes, gather sources, resume targets, and checkpoint progress.
+- **Cartographer intake is a multi-entry gather flow.** Source streams feed a gather placement directly, without a pre-seed node or scatter-owned fan-in, demonstrating open intake from multiple source types into one canonical graph entrypoint.
 - **`ObservedDag<TState>` replaces `ObservedDagonizer` and `ObservedArchivist`.** A single generic base class (`ObservedDag<TState extends NodeStateInterface>`) that takes an injected `ConsoleLogger` and wires all lifecycle hooks to leveled log lines. Class extension is the one observation mechanism — callback injection (`ObservedDagonizer`) is removed. Both the Archivist and Cartographer browser runners subclass `ObservedDag<TState>` directly. The Archivist browser observer adds a `ARCHIVIST_NODE_TRACE` dispatch map that emits `INFO` lines for extracted search terms, each tool's search query, candidate counts from tool scouts, and the final shortlist count — now visible in the trace panel. `ConsoleLogger.maxBuffer` default raised from 500 to 1000.
 - **`extract-query` validates non-empty terms before routing `success`.** Previously, if the LLM returned an empty array (malformed output), the node silently routed `success` with `state.terms = []` — `buildBookWorksets` then built no tool arguments, tools returned `[]`, and `merge-candidates` went empty with no diagnostic. Now an empty-terms result enters the retry/salvage budget, the same path taken on an LLM error.
 - **All 23 switch statements converted to dispatch maps** across the engine, adapters, and both example apps. `ChannelDispatch`, `DagHost`, `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `PlacementDispatch`, `GeminiApiAdapter`, `CanonicalId`, and all Archivist/Cartographer nodes now use `Record<key, handler>` maps.
@@ -18,6 +23,11 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Added
 
+- **First-class `GatherNode` JSON-LD shape.** Gather placements declare source placement/entrypoint IRIs, per-source projection config, gather strategy config, downstream outputs, and policy modes (`all`, `any`, `quorum`, with explicit error inclusion semantics).
+- **Graph-native DAG topology projection and querying.** `DagGraphProjector`, `DagGraphQueries`, `DagReferenceGraph`, and the in-memory topology store project DAG identity, entrypoints, placements, routes, gather sources, candidate DAG references, schema ports, and selected runtime DAGs into a queryable graph substrate.
+- **Schema registry and route compatibility checks.** Registered node/tool schemas are projected into graph metadata and validated across route edges, gather boundaries, and embedded-DAG input/output mappings. Schema identity uses the browser-safe `@studnicky/substrate` structural hash path.
+- **Gather checkpoint/progress persistence keyed by canonical placement IRI.** Gather buffers and resume records are keyed by gather placement IRI plus execution scope, while records retain source placement IRI and source index/scalar ordinal.
+- **Mermaid visualization hardening and style controls.** Mermaid rendering escapes reserved IDs and labels, sanitizes edge labels and class names, supports caller-provided style parameters, and sizes node labels so full node text remains visible across themes.
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
 - **Mandatory per-port `outputSchema` node contract.** Every `NodeInterface` declares `readonly outputSchema: Record<TOutput, SchemaObjectType>` — a JSON Schema 2020-12 partial for each output port describing the state delta the node writes. `MonadicNode.outputSchema` is `abstract`: there is no passthrough default, so a concrete node that omits its return shapes does not compile. The compiler is the enforcement — the contract is declared everywhere, for every node in the engine, the pattern packages, and the examples. `ToolDefinitionType` gains a required `outputSchema` field mirroring `inputSchema`. `SchemaObjectType` is exported from the root barrel and `./contracts`.
@@ -33,12 +43,15 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Removed
 
+- **Duplicate DAG document ingest boundary removed. ⚠ BREAKING.** `DAGDocument.load(json)` is the only DAG document ingest boundary. Consumers that receive parsed objects serialize them at the boundary before loading so every DAG document crosses the same parser and schema gate.
+- **Duplicate builder and registry entry points removed. ⚠ BREAKING.** `DAGBuilder.embed(...)` is the only builder method for `EmbeddedDAGNode` placements; `embeddedDAG(...)` is removed. `DAGBuilder.entrypoints({ main: placementIri })` is the only explicit entrypoint override; `entrypoint(placementIri)` is removed. Registry key snapshots are IRI-first via `dagIris()` and `nodeIris()`; `dagNames()` and `nodeNames()` are removed.
+- **Plugin loading has one public ingest path. ⚠ BREAKING.** `PluginLoader.load(specifier)` is the only public plugin-module validation path. `PluginLoader.validate(...)` and `PluginLoader.isPlugin(...)` are internalized so consumers do not choose between already-imported validation and dynamic-import validation.
 - **`Instrumentation` plugin contract removed. ⚠ BREAKING.** `Instrumentation<TState>`, `InstrumentationSink`, `NoopInstrumentation`, and `ForwardingInstrumentation` are removed from all subpaths. The `instrumentation` field on `DagonizerOptionsInterface` and `DagContainerOptions` is removed. Observability is now exclusively via the protected `on*` hooks on `Dagonizer` subclasses (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`, `onContractWarning`). For contained (worker/process) DAGs, `WorkerObserver` bridges events from the isolate through `ObserverRelay` to the parent dispatcher's protected hooks — no consumer change required for containment observability. **Migration:** delete any `instrumentation: new MyInstrumentation()` constructor argument; fold the hook logic into `protected override on*` methods on your `Dagonizer` subclass.
 - **`HttpTransport.validate` callback option removed. ⚠ BREAKING.** The `validate` field on `HttpRequestOptions` is gone — callback-based extension is forbidden. `getJson`/`postJson`/`request` return the parsed JSON typed as the caller's `TResponse`; narrow it in your own domain layer (a type-guard or schema validator). **Migration:** drop `validate: …` from request options and validate the returned value at the call site.
-- **Adapter option-type aliases removed. ⚠ BREAKING.** `CerebrasApiAdapterOptions`, `GroqApiAdapterOptions`, and `MistralApiAdapterOptions` (re-aliases of `OpenAiCompatibleAdapterOptions`) are removed. **Migration:** import `OpenAiCompatibleAdapterOptions` from `@studnicky/dagonizer/adapter` directly.
+- **Duplicate adapter option types removed. ⚠ BREAKING.** `CerebrasApiAdapterOptions`, `GroqApiAdapterOptions`, and `MistralApiAdapterOptions` (renames of `OpenAiCompatibleAdapterOptions`) are removed. **Migration:** import `OpenAiCompatibleAdapterOptions` from `@studnicky/dagonizer/adapter` directly.
 - **Tool packages no longer re-export `@studnicky/dagonizer-book-entities` symbols. ⚠ BREAKING.** `Book`, `Candidate`, `Money`, and `CanonicalId` are no longer re-exported from the `dagonizer-tool-*` barrels. **Migration:** import them from `@studnicky/dagonizer-book-entities` (now a direct dependency of each tool).
 - **`WebSystemInfo.crossOriginIsolated` removed.** The unused reserved field/getter is dropped from `@studnicky/dagonizer-executor-web`.
-- **`Dagonizer.load` / `fromValue` / `serialize` / `serializeCompact` static methods removed. ⚠ BREAKING.** DAG-document (de)serialization moved to the dedicated `DAGDocument` static class (root barrel + `@studnicky/dagonizer/entities`). **Migration:** replace `Dagonizer.serialize(dag)` / `Dagonizer.load(json)` with `DAGDocument.serialize(dag)` / `DAGDocument.load(json)`. (The instance `dispatcher.load` for registering a DAG into a running dispatcher is unchanged.)
+- **DAG-document static methods live on `DAGDocument`. ⚠ BREAKING.** DAG-document (de)serialization is owned by the dedicated `DAGDocument` static class. **Migration:** use `DAGDocument.serialize(dag)` and `DAGDocument.load(json)`. (The instance `dispatcher.load` for registering a DAG into a running dispatcher is unchanged.)
 - **`TypedStore` no longer re-exposes the store lifecycle. ⚠ BREAKING.** `snapshot`/`restore`/`connect`/`disconnect` are removed from `TypedStore`; access them via `typedStore.inner`. `TypedStore` keeps only its typed `set`/get surface.
 
 ### Added
@@ -62,6 +75,8 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Fixed
 
+- **Worker/remote dispatch preserves the same DAG contract.** Contained execution, checkpoint/resume, scatter dispatch, and executor conformance tests route and resume by placement IRI while preserving embedded-DAG boundaries, including DAGs of one placement.
+- **JSON-LD, Mermaid, and docs examples stay correlated.** Guide/example pages render JSON-LD beside Mermaid generated from the same DAG source, while runnable demo pages keep Cytoscape for interactive graph inspection.
 - **O(1) peak heap for reservoir + container streaming scatter.** Three sources of unbounded heap growth in the scatter/container path are eliminated:
   1. `DagHost` batch path accumulated all N × M inner-node `ExecutorIntermediate` objects in `ExecutionResponse.intermediates` before shipping the result. The array now stays empty for multi-item batches; live observability is unaffected (intermediate messages are still forwarded over the channel in real time).
   2. `ackBatch` removed scatter inbox items via per-item `findIndex + splice` (O(inbox × batch)); replaced with a single O(inbox) in-place filter pass using a pre-built `Set<number>`.
@@ -86,7 +101,7 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 - **`MonadicNode.validate` / `destroy`** are now concrete no-op defaults on the base class (every node has them) rather than optional methods; subclasses override as needed. The `NodeInterface` contract keeps them optional at the external boundary.
 - **`InMemoryChannel`** collects errors thrown from `onPublished` into a `publishErrors` accessor instead of silently swallowing them.
 - **`RetryPolicy` is constructed via `RetryPolicy.from(options)`. ⚠ BREAKING.** The public constructor is now `protected`, making `from` the single creation path. `retryOn`/`abortOn` are required fields defaulting to `[]` ("no filter"); the previous `null` sentinel is gone. **Migration:** replace `new RetryPolicy(opts)` with `RetryPolicy.from(opts)`.
-- **`BaseStore.update` is now abstract. ⚠ BREAKING.** The non-atomic default read-modify-write was removed; the RMW fallback is available as `protected performUpdateRmw(key, fn)`. **Migration:** a store subclass implements `update` natively (transactional) or delegates to `performUpdateRmw`.
+- **`BaseStore.update` is now abstract. ⚠ BREAKING.** The non-atomic default read-modify-write was removed; the RMW helper is available as `protected performUpdateRmw(key, fn)`. **Migration:** a store subclass implements `update` natively (transactional) or delegates to `performUpdateRmw`.
 - **`ChatMessage` is a role-discriminated union. ⚠ BREAKING.** `ChatMessageSchema` is now a `oneOf` keyed by `role`: only `role:'tool'` messages carry `toolCallId`/`toolName`; `system`/`user`/`assistant` messages must not. **Migration:** stop setting empty-string `toolCallId`/`toolName` on non-tool messages — omit the fields.
 - **`BackoffStrategyValue` type renamed to `BackoffStrategy`** (canonical single name shared with the constant). **Migration:** update `import type { BackoffStrategyValue }` to `BackoffStrategy`.
 - **`DAGErrorJSONSchema` requires `context`.** `DAGError.toJSON()` always emits `context`, so the schema and derived type now reflect that (no longer optional).
@@ -97,6 +112,7 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Documentation
 
+- **GitHub Pages documentation aligns to real runnable examples.** The guide and numbered example pages point at Archivist, Cartographer, Dispatcher, and the checked numbered DAG modules instead of contrived duplicate examples. Numbered examples include code references and generated diagrams.
 - **TSDoc backfill on the `contracts/` adapter-contract tier (comments only).** `contracts/index.ts` gains a file-level barrel doc block and section comments grouping the re-exports by subsystem. Adapter contracts whose members lacked doc comments are documented one line per member: `CheckpointRestoreAdapterInterface.restore`, `DispatcherBundleType.nodes`/`dags`, `LlmAdapterInterface.chat`, `LlmClientInterface.chat`, `NodeInvokerInterface.invokeNode`, `NodeInterface.name`, the five `ObserverRelayInterface` hooks, `ReservoirDriverInterface.executeBatch`/`ackBatch`, and `StoreInterface.get`/`set`/`has`/`delete`. No code, signature, or schema-shape changes.
 
 ## [0.18.0] - 2026-06-09
@@ -110,7 +126,7 @@ migrate using the guide below.
 
 - **`Store.get` / `StateAccessor.get` return `T | null`** (was `T | undefined`) for an absent key/path. Replace `=== undefined` absent-checks on these results with `=== null`.
 - **Adapter infrastructure ships only via `@studnicky/dagonizer/adapter`.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` are no longer on the root barrel — import them from `@studnicky/dagonizer/adapter`.
-- **`OpenAiCompatibleConfig.toolsFallback` removed.** Override `protected shouldFallbackWithoutTools(error)` on your adapter subclass instead.
+- **OpenAI-compatible tool retry callback removed.** Tool requests remain tool requests; provider rejection is surfaced to the caller.
 - **`Embedder.embed`/`embedBatch` take a trailing `signal?: AbortSignal`** (not `{ signal }`); `performEmbed(text, signal)` gains a required signal; `probe`/`connect`/`disconnect` take an optional trailing `signal?`.
 - **`ErrorClassification` is a discriminated union** on `retryable`; retryable variants carry `retryAfterMs: number | null`. Replace `retryAfterMs !== undefined` with `retryable && retryAfterMs !== null`.
 - **`Checkpoint.restoreState(adapter)`** takes a `CheckpointRestoreAdapter<TState>`. Wrap an inline function with `CheckpointRestoreAdapterFn.fromFn(fn)`.
@@ -124,12 +140,12 @@ migrate using the guide below.
 
 ### Changed
 
-- **ADP-1: `toolsFallback` callback removed from `OpenAiCompatibleConfig`. ⚠ BREAKING.** The `toolsFallback?: (error: unknown) => boolean` property is removed. Concrete subclasses that need the retry-without-tools path override the new `protected shouldFallbackWithoutTools(error: unknown): boolean` method (default returns `false`). **Migration:** delete `toolsFallback` from any config object literal; add `protected override shouldFallbackWithoutTools(error: unknown): boolean { return <your predicate>; }` to your `extends OpenAiCompatibleAdapter` subclass.
+- **ADP-1: OpenAI-compatible tool retry callback removed. ⚠ BREAKING.** Concrete subclasses do not retry a tool request as a toolless request. **Migration:** delete the tool retry callback from any config object literal.
 - **ADP-2b: `LlmAdapter` interface source migrated to `src/contracts/LlmAdapter.ts`.** The interface declaration has moved to `contracts/`; `adapter/LlmAdapter.ts` re-exports it from there for `./adapter` consumers. `BaseAdapter`, `LlmAdapterRegistry`, and `LlmAdapterCascade` import from `contracts/` directly. No consumer-facing import path changes — both `@studnicky/dagonizer/adapter` and `@studnicky/dagonizer/contracts` export `LlmAdapter` as before.
 - **ADP-3: `performEmbed` receives `AbortSignal`.** The abstract `performEmbed(text, signal)` signature gains a required `AbortSignal` parameter. `BaseEmbedder.embed()` always materialises a signal (never-aborting when the caller omits one) so `performEmbed` is always called with a valid signal. **Migration:** update `protected override performEmbed(text: string): Promise<readonly number[]>` to `protected override performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]>` in every concrete embedder.
 - **ADP-6: `ErrorClassification` is now a discriminated union.** `retryable: true` variants carry `retryAfterMs: number | null` (null = no provider hint); `retryable: false` variants omit `retryAfterMs`. Retryable `Classifications` constants now carry `retryAfterMs: null`. Retry-site checks updated from `!== undefined` to `!== null`. **Migration:** code that checks `classification.retryAfterMs !== undefined` must change to `classification.retryable && classification.retryAfterMs !== null`.
 - **ADP-7: `embed` / `embedBatch` signatures flattened. ⚠ BREAKING.** `embed(text, options?: { signal?: AbortSignal })` is now `embed(text, signal?: AbortSignal)`. `embedBatch(texts, options?: { signal?: AbortSignal })` is now `embedBatch(texts, signal?: AbortSignal)`. `Embedder` contract updated identically. **Migration:** replace `.embed(text, { signal })` with `.embed(text, signal)` and `.embedBatch(texts, { signal })` with `.embedBatch(texts, signal)`.
-- **ADP-8: JSON Schema 2020-12 added for adapter wire shapes.** `ChatMessageSchema`, `ToolDefinitionSchema`, `ToolCallSchema`, `TokenUsageSchema`, `ChatResponseMessageSchema`, and `ChatResponseSchema` are exported from `@studnicky/dagonizer/adapter`. Each carries a `$id` under `https://noocodex.dev/schemas/dagonizer/adapter/`. Enables Ajv-based validation of provider responses at the JSON-ingest boundary.
+- **ADP-8: JSON Schema 2020-12 added for adapter wire shapes.** `ChatMessageSchema`, `ToolDefinitionSchema`, `ToolCallSchema`, `TokenUsageSchema`, `ChatResponseMessageSchema`, and `ChatResponseSchema` are exported from `@studnicky/dagonizer/adapter`. Each carries a `$id` under `https://noocodec.dev/schemas/dagonizer/adapter/`. Enables Ajv-based validation of provider responses at the JSON-ingest boundary.
 - **ADP-9: Adapter infrastructure removed from root barrel. ⚠ BREAKING.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` (and their associated types) are no longer exported from `@studnicky/dagonizer`. They ship exclusively via `@studnicky/dagonizer/adapter`. **Migration:** change `from '@studnicky/dagonizer'` to `from '@studnicky/dagonizer/adapter'` for any of these symbols.
 - **ADP-10: `BaseAdapter.defaultOptions()` static added.** Returns a fully-resolved `BaseAdapterOptionsResolved` (both `maxAttempts` and `baseDelayMs` always present). Subclasses can spread this as a base before forwarding a partial options object to `super()`.
 - **CTR-15: `probe`, `connect`, and `disconnect` on `Embedder` contract accept an optional `signal?: AbortSignal`.** `BaseEmbedder` default implementations accept and ignore the parameter; concrete subclasses may thread it into real lifecycle calls.
@@ -181,16 +197,16 @@ migrate using the guide below.
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
 - **`Placement` static class** in `src/entities/dag/Placement.ts`. Provides five type-guard static methods — `isEmbeddedDAG`, `isScatter`, `isSingle`, `isTerminal`, `isPhase` — that narrow `DAGNodeType` via `@type` discriminant. Replaces five freestanding `export function is*` guards that previously lived in `Dagonizer.ts`. Exported from `./types`, `./entities`, and the root barrel.
-- **`DAGNodeType` canonical union** exported from `src/entities/dag/Placement.ts`. Previously a local alias in `Dagonizer.ts` and independently re-declared in `DAGBuilder.ts` and `DAGValidator.ts`. Both local declarations replaced with an import from the canonical source.
+- **`DAGNodeType` canonical union** exported from `src/entities/dag/Placement.ts`. `Dagonizer.ts`, `DAGBuilder.ts`, and `DAGValidator.ts` import it from the canonical source.
 - **`NodeOutputBuilder` static class** in `src/entities/node/NodeOutput.ts`. Provides `NodeOutputBuilder.of(output, options?)` (constructs a `NodeOutputInterface` with `errors: []` by default) and `NodeOutputBuilder.errorsOf(result)` (normalises the optional `errors` field to `[]` at the engine boundary). Replaces three `result.errors ?? []` null-check guards at `executeSingleNode`, `executeScatter`, and `executePhasePlacement` call sites. Named `NodeOutputBuilder` to avoid the identifier collision with the schema-derived `NodeOutput` type. Exported from `./types`, `./entities`, and the root barrel.
 - **`ScatterCheckpoint.read(state, placementName)` static method.** Reads the stored scatter progress map and validates it with `Validator.storedScatterProgress` at the metadata ingest boundary. A corrupt or migrated checkpoint now throws `ValidationError` close to the read site rather than propagating type mismatches silently into the scatter loop. `Dagonizer.executeScatter` uses `ScatterCheckpoint.read` in place of the direct `getMetadata` call.
-- **Canonical scatter progress types** (`ScatterInboxItem`, `ScatterAckedResult`, `ScatterProgress`, `StoredScatterProgress`) from `src/entities/scatter/ScatterProgress.ts` replace the hand-written interfaces that previously lived in `Dagonizer.ts`. `Dagonizer.ts` and `ScatterCheckpoint.ts` import from the entity module; `Dagonizer.ts` re-exports the types for backward-compatible public consumers.
+- **Canonical scatter progress types** (`ScatterInboxItem`, `ScatterAckedResult`, `ScatterProgress`, `StoredScatterProgress`) from `src/entities/scatter/ScatterProgress.ts` replace duplicate local interfaces. `Dagonizer.ts` and `ScatterCheckpoint.ts` import from the entity module; `Dagonizer.ts` re-exports the types for public consumers.
 
 ### Changed
 
 - **`Dagonizer` inbox iterator** typed as `AsyncIterator<ScatterInboxItem, undefined>`. The second type parameter declares the done-branch value as `undefined`, eliminating the `undefined as unknown as ScatterInboxItem` double cast at both done-branch return sites.
 - **`NodeStateBase.setMetadata`** implementation comment clarifies that the `value as JsonValue` cast is the single permitted ingest point at this boundary; the parameter remains `unknown` because schema-derived scatter progress types carry `item: unknown` payload fields.
-- **`_InternalNodeResult<TState>` and `_RunOptions`** converted from `interface` declarations to `type` aliases in `Dagonizer.ts`. Both are engine-private; using leading-underscore `type` aliases removes them from the fourth-pattern taxonomy drift identified in CORE-7.
+- **`_InternalNodeResult<TState>` and `_RunOptions`** are engine-private type declarations in `Dagonizer.ts`, matching the internal type taxonomy.
 
 ### Fixed
 
@@ -214,7 +230,7 @@ migrate using the guide below.
 
 ### Changed
 
-- **`OpenAiCompatibleAdapter.#doRequest`** split into `#doRequest(request)` (tools path) and `#doRequestWithoutTools(request)` (toolless fallback path) with shared `#sendRequest(request, body)` wire implementation. Eliminates the `withTools: boolean` flag argument.
+- **`OpenAiCompatibleAdapter.#doRequest`** sends the canonical request body through shared `#sendRequest(request, body)` wire implementation. Tool requests are not retried as toolless requests.
 
 ### Removed
 
@@ -232,7 +248,7 @@ migrate using the guide below.
 - **Incremental gather.** `GatherStrategy` gains an optional `applyIncremental(config, record, state, accessor)` method. `Map`, `Append`, and `Partition` implement it: each completed record is folded into parent state as it arrives. `Custom` does not implement it; it continues to accumulate records and call `apply` once at the end.
 - **Source-normalization statics on `Dagonizer`.** `toAsyncIterator(v)` normalizes any array, sync iterable, or async iterable to an `AsyncIterator<unknown>`.
 - **`ScatterInboxItem`, `ScatterAckedResult`, `ScatterProgress`, `StoredScatterProgress` types** exported from `Dagonizer.ts` for checkpoint inspection and testing.
-- **7 acceptance tests** under `packages/dagonizer/tests/unit/scatter-streaming.test.ts`: backward-compat array source, bounded concurrency, `AsyncIterable` source, true backpressure, resume mid-stream (array), resume mid-stream (async-iterable), and incremental gather (`map`/`append`/`partition` progressive + `custom` batch fallback).
+- **7 acceptance tests** under `packages/dagonizer/tests/unit/scatter-streaming.test.ts`: array source, bounded concurrency, `AsyncIterable` source, true backpressure, resume mid-stream (array), resume mid-stream (async-iterable), and incremental gather (`map`/`append`/`partition` progressive + `custom` batch apply).
 
 ### Changed
 
@@ -254,7 +270,7 @@ migrate using the guide below.
 
 ### Fixed
 
-- **DAG nodes carrying a self-loop edge no longer render invisible.** A node targeted by its own `retry` route (e.g. `classify-intent`, the `*-extract` / `*-decide-tools` nodes, `compose-empty`) was culled from the canvas because the stylesheet used the deprecated `width: 'label'` / `height: 'label'` auto-sizing, which leaves a degenerate size cache on self-loop nodes. The canonical stylesheet now uses explicit numeric node dimensions and a real monospace font stack (cytoscape cannot resolve a CSS custom property on the canvas), and a post-layout visibility sweep guards against any residual cache staleness.
+- **DAG nodes carrying a self-loop edge no longer render invisible.** A node targeted by its own `retry` route (e.g. `classify-intent`, the `*-extract` / `*-decide-tools` nodes, `compose-empty`) needs numeric dimensions because `width: 'label'` / `height: 'label'` auto-sizing leaves a degenerate size cache on self-loop nodes. The canonical stylesheet uses explicit numeric node dimensions and a real monospace font stack (cytoscape cannot resolve a CSS custom property on the canvas), and a post-layout visibility sweep guards against any residual cache staleness.
 - **`@dagrejs/dagre` is a declared dependency of the viz layout path.** It was a `devDependency` while `dist/viz/CompositeLayout` imported it at runtime, so an external consumer calling the cytoscape renderer crashed with `Cannot find module '@dagrejs/dagre'`. It is now a declared (optional) peer, lazy-loaded.
 
 ## [0.13.1] - 2026-05-26
@@ -291,7 +307,7 @@ migrate using the guide below.
 ### Fixed
 
 - **Inner DAG placements light up during execution.** The runner uses the new `placementPath` argument (introduced in 0.12.0) to build the full cytoscape id (`[...placementPath, nodeName].join('/')`) for every `setActive` / `setCompleted` / `setErrored` / `markEdgeTraversed` call. Only the placement currently executing highlights; no more three-placement bleed from same-named inner nodes across `on-topic-search` / `author-search` / `similar-search`.
-- The `decideTools` safety-net paths (sparse plan / empty plan / catch) no longer thread the raw visitor sentence as the scout's `query` arg; they now omit `query`/`subject` entirely so each scout falls back to `state.terms.join(' ')` (the extracted keywords). OpenLibrary, Google Books, and Subject Search receive catalog-searchable keywords instead of prose questions.
+- The `decideTools` safety-net paths (sparse plan / empty plan / catch) no longer thread the raw visitor sentence as the scout's `query` arg; they now omit `query`/`subject` entirely so each scout uses `state.terms.join(' ')` (the extracted keywords). OpenLibrary, Google Books, and Subject Search receive catalog-searchable keywords instead of prose questions.
 
 ## [0.12.0] - 2026-05-25
 
@@ -302,14 +318,14 @@ migrate using the guide below.
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
 - `Instrumentation` contract gains a `placementPath: readonly string[]` argument on `nodeStart`, `nodeEnd`, and `error` hooks. `Dagonizer.onNodeStart`, `onNodeEnd`, and `onError` subclass hooks accept the same argument (defaulted to `[]` for back-compat). The path holds the ordered embedded-DAG placement names that led to the current node: empty for top-level dispatches, `['on-topic-search']` for one-deep, longer for nested. Enables consumers (like the in-browser Archivist demo) to disambiguate same-named inner nodes across multiple embedded-DAG instances and highlight only the placement currently executing.
-- `ArchivistServices.embedder`: `Embedder | null` exposed as a service. Wired in the CLI runtime (`runArchivist.ts`) from the existing `EmbedderCascade` and set to `null` in the browser runtimes (`main.ts`, `ArchivistRunner.vue`) where no native embedder is available. Every consumer handles `null` gracefully via deterministic fallback.
+- `ArchivistServices.embedder`: `Embedder | null` exposed as a service. Wired in the CLI runtime (`runArchivist.ts`) from the existing `EmbedderCascade` and set to `null` in the browser runtimes (`main.ts`, `ArchivistRunner.vue`) where no native embedder is available. Every consumer handles `null` through deterministic local scoring.
 - `recordFindings` writes a `dag:embedding` literal per shortlisted candidate (computed from title + description) and a `dag:queryEmbedding` per run, computed via the embedder when reachable. Skipped gracefully on any embedder failure; the absence of these triples is invisible to nodes that don't explicitly use embeddings.
-- `recallCandidates` uses cosine similarity (threshold 0.70) against prior `dag:queryEmbedding` triples when the embedder is reachable; falls back to Jaccard (threshold 0.35) otherwise. Each recalled candidate carries `notes.cosineSimilarity` so downstream nodes can see the match strength. Captures semantic equivalents like "morality in post-scarcity" ↔ "ethics under abundance".
+- `recallCandidates` uses cosine similarity (threshold 0.70) against prior `dag:queryEmbedding` triples when the embedder is reachable; otherwise it uses Jaccard (threshold 0.35). Each recalled candidate carries `notes.cosineSimilarity` so downstream nodes can see the match strength. Captures semantic equivalents like "morality in post-scarcity" ↔ "ethics under abundance".
 - Anti-hallucination validator runs deterministically before the LLM validator in `compose-retry-loop`. Tokenises capitalised multi-word entity spans and italicised titles in the draft, cross-references against `state.shortlist` + `state.priorCandidates`, and forces a retry when the draft names books not in either pool. Also bias-checks: when the shortlist is non-empty but the draft cites no shortlist title, the retry loop fires. Eliminates the "Utopia / Iron Heel" class of hallucination at zero LLM cost.
 
 ### Changed
 
-- `decideTools` deterministic shortcuts now route ISBN queries (ISBN-10 / ISBN-13) to a direct OpenLibrary lookup via `?q=<isbn>`, author lookups via `?author=<name>`, and subject/topic queries via `?subject=<term>`. The OpenLibrary scout reads typed `author`/`subject`/`isbn` args alongside the existing `query` arg, so the four-scout cascade exploits OpenLibrary's actual search axes instead of always falling back to a keyword query. Pattern-matches five common query shapes (isbn-lookup, author lookup, single-quoted title, "books about X", catalog browsing) and bypasses the LLM for unambiguous tool selection. Saves one LLM call per turn on Nano. Existing safety-nets still apply when no pattern matches.
+- `decideTools` deterministic shortcuts route ISBN queries (ISBN-10 / ISBN-13) to a direct OpenLibrary lookup via `?q=<isbn>`, author lookups via `?author=<name>`, and subject/topic queries via `?subject=<term>`. The OpenLibrary scout reads typed `author`/`subject`/`isbn` args alongside the existing `query` arg, so the four-scout cascade exploits OpenLibrary's actual search axes instead of always using keyword query. Pattern-matches five common query shapes (isbn-lookup, author lookup, single-quoted title, "books about X", catalog browsing) and bypasses the LLM for unambiguous tool selection. Saves one LLM call per turn on Nano. Existing safety-nets still apply when no pattern matches.
 - `rankCandidates` hybrid pipeline: deterministic composite score (cosine 50%, token overlap 25%, source priority 15%, recency 10%, prior-memory bonus 5%) sorts all candidates; LLM tiebreaks ONLY the top-3 when their scores are within 0.10. Reduces LLM calls per turn from N to at most 1, with better-grounded ordering. Title embeddings cached on `notes.titleEmbedding` for reuse across nodes.
 
 ## [0.11.5] - 2026-05-25
@@ -327,7 +343,7 @@ migrate using the guide below.
 
 ### Fixed
 
-- Scouts now run their searches against the keywords produced by `extract-query` instead of the raw visitor sentence. `defaultToolArguments` no longer threads `state.query` through as the `query`/`subject` arg; that override was bypassing each scout's `state.terms.join(' ')` fallback. OpenLibrary, Google Books, and Subject Search receive proper catalog-searchable keywords; Wikipedia continues to use `state.terms` directly.
+- Scouts run their searches against the keywords produced by `extract-query`. `defaultToolArguments` does not thread `state.query` through as the `query`/`subject` arg, so OpenLibrary, Google Books, and Subject Search receive proper catalog-searchable keywords; Wikipedia continues to use `state.terms` directly.
 - `extract-query` prompt rewritten with concrete examples teaching the LLM to distill prose into 2-4 catalog-searchable domain keywords (strip fillers, normalize abbreviations, keep proper nouns). Eliminates the prior failure mode where "sci-fi novels existential questions" got 0 OpenLibrary hits because "novels" and "questions" are noise tokens.
 - Per-scout query shaping: `subject_search` picks the most-specific term from `state.terms` (Library of Congress subject indexes prefer single subjects); `wikipedia_summary` prefers the first capitalised term when one is present (proper-noun title heuristic).
 - Scout logs now include the raw upstream hit count and the first-result title, so debugging 0-hit responses doesn't require devtools.
@@ -455,10 +471,10 @@ changes.
 ### Added: LLM adapter cascade and Embedder pipeline
 
 - `LlmAdapter.probe()` on the adapter contract: returns a liveness signal; `BaseAdapter` default returns `true`.
-- `LlmAdapterCascade`: tries adapters in priority order, falling back on `probe()` failure or error. Ships in `@studnicky/dagonizer/adapter`.
-- `EmbedderAdapter` contract + `EmbedderRegistry` + `EmbedderCascade`: plugin-supplied embedding backends with cosine-similarity cascade fallback.
+- `LlmAdapterCascade`: tries adapters in priority order and advances on `probe()` failure or error. Ships in `@studnicky/dagonizer/adapter`.
+- `EmbedderAdapter` contract + `EmbedderRegistry` + `EmbedderCascade`: plugin-supplied embedding backends with ordered cosine-similarity cascade routing.
 - Three embedder plugin packages: `@studnicky/dagonizer-embedder-ollama`, `@studnicky/dagonizer-embedder-gemini-rest`, `@studnicky/dagonizer-embedder-mistral`.
-- `IntentClassifier`: cosine-similarity intent classification with LLM fallback when similarity scores are below threshold.
+- `IntentClassifier`: cosine-similarity intent classification with LLM recovery when similarity scores are below threshold.
 
 ### Added: User-language threading
 
@@ -476,7 +492,7 @@ changes.
 
 ### Changed: Canonical naming and signatures
 
-- `ChatRequestBuilder` (static class) replaces the previous `ChatRequest` const export; `ChatResponseMessageBuilder` replaces `ChatResponseMessage`. All import sites de-aliased; no re-aliasing at any import boundary.
+- `ChatRequestBuilder` (static class) replaces the previous `ChatRequest` const export; `ChatResponseMessageBuilder` replaces `ChatResponseMessage`. Import sites use canonical names at every boundary.
 - Adapter constructors lift `apiKey`, `id`, `displayName`, and `capabilities` to required positional parameters; options interfaces are fully optional. `PartialBaseAdapterOptions` removed.
 - `gemini-nano` adapter `displayName` rephrased to "Browser built-in LanguageModel"; package name and `id` unchanged, non-breaking (#24).
 
@@ -557,9 +573,9 @@ changes.
 ### Notes: known limitations
 
 - Live-API smoke (real provider keys) deferred; checklist in `docs/rfc/0003-v0.10-release-checklist.md`.
-- Cerebras `gpt-oss-120b` tool-call adherence is partial; adapter has fallback.
+- Cerebras `gpt-oss-120b` tool-call adherence is partial; tool rejection is surfaced to the caller.
 - OpenRouter `:free` tier can downgrade tool support per-route; capability declared `'partial'`.
-- Gemini Nano uses `responseConstraint` JSON shim (no native function calling).
+- Gemini Nano uses `responseConstraint` JSON output constraints (no native function calling).
 - Pattern packages ship the canonical taxonomy; Archivist nodes are not yet refactored to extend them (incremental adoption path).
 
 ## [0.9.2] - 2026-05-20
@@ -584,14 +600,14 @@ changes.
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
 ⦿ `GroqApiAdapter`: OpenAI-compatible REST adapter for Groq (`https://api.groq.com/openai/v1/chat/completions`). Default model `llama-3.3-70b-versatile`. Supports tool-use via `tools` + `tool_choice`, structured output via `response_format: json_object`, 60-second per-request timeout via AbortController.
-⦿ `CerebrasApiAdapter`: OpenAI-compatible REST adapter for Cerebras (`https://api.cerebras.ai/v1/chat/completions`). Default model `llama-3.3-70b`. Tool-use gated with try/catch fallback to plain chat when the model signals tools are unsupported.
+⦿ `CerebrasApiAdapter`: OpenAI-compatible REST adapter for Cerebras (`https://api.cerebras.ai/v1/chat/completions`). Default model `llama-3.3-70b`. Tool-use rejection is surfaced to the caller.
 ⦿ `MistralApiAdapter`: OpenAI-compatible REST adapter for Mistral AI (`https://api.mistral.ai/v1/chat/completions`). Default model `mistral-small-latest`. Full tool-use and structured-output support.
 ⦿ `OpenRouterApiAdapter`: OpenAI-compatible REST adapter for OpenRouter (`https://openrouter.ai/api/v1/chat/completions`). Default model `meta-llama/llama-3.3-70b-instruct:free` (free tier). Includes required `HTTP-Referer` and `X-Title` headers.
 ⦿ `MobileDetection`: static class that triangulates mobile device status from three signals (touch points, coarse pointer media query, viewport width). Supports `localStorage`-backed `setOverride`/`readOverride` for user-controlled desktop/mobile mode.
-⦿ Per-provider API key storage in `localStorage` under `dagonizer-api-keys` (JSON blob keyed by `ProviderId`). `loadApiKeys()` and `saveApiKeys()` helpers with automatic migration of the legacy `dagonizer-gemini-key` entry.
+⦿ Per-provider API key storage in `localStorage` under `dagonizer-api-keys` (JSON blob keyed by `ProviderId`). `loadApiKeys()` and `saveApiKeys()` helpers read and write only the current storage key.
 ⦿ Mobile banner in `ArchivistRunner`: shown when `MobileDetection.isLikelyMobile()` returns true. Links to Groq key page, explains on-device backend unavailability, and provides a "Treat as desktop" override link.
 ⦿ `BackendPicker` per-backend key inputs: each cloud backend gets its own collapsible `<details>` with a password input, reveal toggle, link to the key page, and a set/not-set status chip. Desktop-only chip on `gemini-nano` and `web-llm` rows when `isMobile` is true.
-⦿ Stub adapter is now surfaced on mobile as the zero-setup fallback; the mobile banner makes the canned-vs-real LLM distinction explicit so visitors know what they're seeing until a key is entered.
+⦿ Stub adapter is surfaced on mobile as the zero-setup sample path; the mobile banner makes the canned-vs-real LLM distinction explicit so visitors know what they're seeing until a key is entered.
 ⦿ 18-book sci-fi / philosophy seed library (`SeedLibrary`) auto-loaded into `urn:dagonizer:memory` on mount. The Memory tab has content from first paint; stub responses cite real titles from the seed graph; `reset()` restores the seed alongside the ontology TBox.
 
 ### Changed
@@ -611,7 +627,7 @@ changes.
 
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
-⦿ `OperationContractFragment`: new adapter contract (`src/contracts/OperationContractFragment.ts`) carrying only the deriver-facing fields (`hardRequired`, `produces`). `OperationContract` extends the fragment with `name` and `outputs` for backward compatibility.
+⦿ `OperationContractFragment`: adapter contract (`src/contracts/OperationContractFragment.ts`) carrying only the deriver-facing fields (`hardRequired`, `produces`). `OperationContract` extends the fragment with `name` and `outputs`.
 ⦿ `NodeInterface.contract?: OperationContractFragment`: optional co-located data-flow declaration on every node. When present, `DAGDeriver.derive({ nodes })` projects the node into a full `OperationContract` using the node's own `name` and `outputs` fields. The node is the single source of truth for its contract.
 ⦿ `DAGDeriverOptions.nodes?: readonly NodeInterface[]`: alternative to `contracts`; mutually exclusive. Nodes without a `contract` field are silently skipped in topology derivation.
 ⦿ `DAGDeriver.extractContracts(nodes)`: static helper that projects contract-bearing nodes into `OperationContract[]`, skipping contract-less nodes. Exported from `@studnicky/dagonizer/derive`.
@@ -624,7 +640,7 @@ changes.
 
 ### Changed
 
-⦿ `DAGDeriverOptions.contracts` is now optional (was required). The standalone `contracts` path is unchanged and fully backward-compatible.
+⦿ `DAGDeriverOptions.contracts` is optional. The standalone `contracts` path remains available.
 ⦿ `DAGDeriverOptions`: `contracts` and `nodes` are mutually exclusive; supplying both throws `DAGError`. Supplying neither throws `DAGError`.
 ⦿ `Dagonizer.registerDAG` runs a third validation pass (contract validation) after the existing schema and semantic passes, for DAGs whose nodes carry co-located contracts.
 ⦿ Docs updated: `docs/reference/contracts.md` introduces `OperationContractFragment` and the co-located pattern; `docs/guide/derive.md` adds "Co-located contracts" and "Catching contract drift" sections; `docs/reference/dagonizer.md` documents the third validation pass and `onContractWarning` hook.
@@ -643,11 +659,11 @@ changes.
 ⦿ Archivist demo: `PanesTabs` exposes a `#tab-suffix` named slot rendered at the right edge of the tab row with `margin-left: auto`. The right-column `PanesTabs` uses it to host a compact persistence toggle button (replaces the "Memory store" section in the Config tab).
 ⦿ Archivist demo: D-pad pan on `MemoryGraph`. The four directional buttons shift all point positions by 250 world-units via `getPointPositions`/`setPointPositions(next, true)` and call `render(0)`, providing manual pan without a native cosmos.gl API.
 ⦿ Archivist demo: drag-and-throw physics on `MemoryGraph` via `enableDrag: true` in the cosmos.gl config.
-⦿ Archivist demo: `humanLabel` helper in `MemoryGraph`. Run IRIs render as "Run <6-char prefix>"; book IRIs look up `dag:title` and fall back to "Book <last 4 of isbn>"; `xsd:dateTime` literals render as `HH:MM:SS` only; `dag:` vocabulary terms show only the local name.
+⦿ Archivist demo: `humanLabel` helper in `MemoryGraph`. Run IRIs render as "Run <6-char prefix>"; book IRIs look up `dag:title` and otherwise use "Book <last 4 of isbn>"; `xsd:dateTime` literals render as `HH:MM:SS` only; `dag:` vocabulary terms show only the local name.
 
 ### Changed
 
-⦿ Archivist demo: starter-query, greeting, and visitor-reply LLM prompts bias toward science fiction and philosophy (Liu Cixin, Gibson, Le Guin, Lem, Ted Chiang, Borges, Camus, Foucault, Deleuze, Wittgenstein) instead of generic world literature. Static fallback pool updated to match.
+⦿ Archivist demo: starter-query, greeting, and visitor-reply LLM prompts bias toward science fiction and philosophy (Liu Cixin, Gibson, Le Guin, Lem, Ted Chiang, Borges, Camus, Foucault, Deleuze, Wittgenstein) instead of generic world literature. Static sample pool matches the same tone.
 ⦿ Archivist demo: `MemoryGraph` emits a structured `MemorySelection` union on node click (`{ kind: 'iri'; iri } | { kind: 'literal'; value }`) instead of a raw IRI string. `ArchivistRunner` tracks `selectedSelection: Ref<MemorySelection | null>` and passes it to `TripleInspector`.
 ⦿ `package.json` keywords gain LLM / agent-orchestration and semantic-web terms (`agent-framework`, `llm-orchestration`, `ai-agent`, `tool-use`, `function-calling`, `rag`, `sparql`, `n3`, `ontology`, `owl`, `named-graphs`, `provenance`, `prov-o`, `task-graph`) for npm discoverability. GitHub repository topics seeded with a matching 20-topic subset.
 
@@ -729,7 +745,7 @@ changes.
 
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
-⦿ `Dagonizer.serialize(dag)` / `Dagonizer.serializeCompact(dag)` / `Dagonizer.fromValue(value)`: explicit JSON-LD round-trip surface alongside `Dagonizer.load(json)`. `serialize` produces pretty 2-space-indented JSON; `serializeCompact` produces single-line. `fromValue` skips `JSON.parse` for callers with an already-decoded payload (DB jsonb columns, message envelopes).
+⦿ `DAGDocument.serialize(dag)` / `DAGDocument.load(json)`: explicit JSON-LD round-trip surface. `serialize` produces pretty 2-space-indented JSON.
 ⦿ `docs/guide/json-ld.md`: comprehensive JSON-LD export/import guide. Covers the canonical `@context`/`@id`/`@type` shape, all four placement discriminators (`SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`), round-trip pattern, persistence patterns (file/DB/HTTP with `application/ld+json`), RDF interop showing the equivalent triple form.
 ⦿ FlowDeriver multi-port routing: every port declared in `contract.outputs` auto-wires to the next derived stage. `FlowDeriver vs DAGBuilder` comparison section in `guide/derive.md` documents the break-even point (3+ ports with mostly-uniform routing → FlowDeriver; mostly-divergent → DAGBuilder).
 
@@ -748,7 +764,7 @@ changes.
 
 ### Fixed
 
-⦿ `the-archivist.md` referenced non-existent `toJsonLd` / `fromJsonLd` exports; replaced with the real `Dagonizer.serialize` / `Dagonizer.load` API.
+⦿ `the-archivist.md` documents the real `DAGDocument.serialize` / `DAGDocument.load` API.
 ⦿ `getting-started.md` minimal example now constructs a canonical JSON-LD DAG with `@context`, `@id`, `@type: 'DAG'`, and `'@type': 'SingleNode'` on the placement, matching `DAGSchema`. The prior `type: 'single'` shape was schema-invalid.
 ⦿ `concepts.md` referenced non-existent `registerFlow`; corrected to `registerDAG`.
 ⦿ `guide/cancellation.md` + `guide/observability.md` used the non-existent `context.flowName` field; corrected to `context.dagName`.
@@ -796,7 +812,7 @@ changes.
 ⦿ Archivist demo: per-phase timeout defaults raised to 60s (compose, web-search) and 30s (rank); agents are slow, especially web-bound scouts. `TimeoutPane` + `ArchivistRunner` reflect the new defaults.
 ⦿ Docs: phase example pages (`01-linear` through `08-checkpoint`) now import their snippets from `examples/the-archivist/` via VitePress `<<<` code imports (`#region` markers for partial files). Single source; the runtime example IS the documented example. Eight pages, six source files with region markers added.
 
-⦿ Archivist demo: starter-query LLM suggestion + clear-on-send. On fresh sessions the input pre-fills with a random visitor-style question about a popular author/series (via new `LlmClient.suggestStarterQuery()`); falls back to a 12-entry static pool if the model errors. After every send, the input clears immediately.
+⦿ Archivist demo: starter-query LLM suggestion + clear-on-send. On fresh sessions the input pre-fills with a random visitor-style question about a popular author/series (via new `LlmClient.suggestStarterQuery()`); uses a 12-entry static pool if the model errors. After every send, the input clears immediately.
 
 ### Fixed
 
@@ -832,7 +848,7 @@ changes.
 ⦿ Class-shape interfaces colocated with their class. `DagonizerInterface` lives in `Dagonizer.ts`; `NodeStateInterface` lives in `NodeStateBase.ts`; `DAGErrorInterface` lives in `errors/DAGError.ts`. Subpath imports unchanged for consumers of the root barrel.
 ⦿ `SingleNodeInterface` renamed to `SingleNodePlacementInterface`. Disambiguates the DAG-config narrowing from `NodeInterface` (the adapter contract).
 ⦿ Adapter contracts have a single source of truth in `src/contracts/`. `runtime/` re-exports them through its barrel for ergonomic co-import; the source files no longer carry duplicate `export type` declarations.
-⦿ Constant exports unified: `FanInStrategyName`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType` each ship value+type under one identifier. The `…Type` aliases are removed.
+⦿ Constant exports unified: `FanInStrategyName`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType` each ship value+type under one identifier. Duplicate `…Type` names are removed.
 ⦿ Wire-shape constant `FanInStrategy` renamed to `FanInStrategyName` (JSON enum unchanged: `'append' | 'custom' | 'partition'`). The `FanInStrategy` identifier is the abstract class consumers extend in `core/`.
 ⦿ `Dagonizer` constructor takes `DagonizerOptionsInterface` (currently `{ accessor?: StateAccessor }`). Calls without arguments continue to work.
 
@@ -870,7 +886,7 @@ changes.
 - **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
 - **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
 ⦿ **Flow → DAG terminology shift.** The static graph definition is a DAG; all public identifiers reflect this.
-  ⦿ `FlowConfig` → `DAG` (entity and TypeScript type); `FlowConfigSchema` → `DAGSchema`; `$id` updated to `https://noocodex.dev/schemas/dagonizer/DAG`.
+  ⦿ `FlowConfig` → `DAG` (entity and TypeScript type); `FlowConfigSchema` → `DAGSchema`; `$id` updated to `https://noocodec.dev/schemas/dagonizer/DAG`.
   ⦿ `FlowBuilder` class → `DAGBuilder`; builder method `subFlow` → `subDAG`; option type `SubFlowOptionsInterface` → `SubDAGOptionsInterface`.
   ⦿ `SubFlowNode` entity/schema/type → `SubDAGNode`/`SubDAGNodeSchema`; discriminator `type: 'sub-flow'` → `type: 'sub-dag'`; JSON field `flow` → `dag`.
   ⦿ `Dagonizer.registerFlow(flow)` → `Dagonizer.registerDAG(dag)`; internal private `flows` Map → `dags`.
@@ -882,9 +898,8 @@ changes.
   ⦿ `@studnicky/dagonizer/entities/flow` subpath export → `entities/dag`.
 ⦿ **Static codec methods on `Dagonizer`.** `FlowLoader` and `FlowSerializer` deleted; equivalent surface moved onto `Dagonizer` as static methods.
   ⦿ `Dagonizer.load(json: string): DAG`: parses JSON and validates against `DAGSchema`. Throws `ValidationError` for malformed JSON or schema violations.
-  ⦿ `Dagonizer.fromValue(value: unknown): DAG`: validates an already-decoded value.
-  ⦿ `Dagonizer.serialize(dag: DAG): string`: pretty JSON (2-space indent).
-  ⦿ `Dagonizer.serializeCompact(dag: DAG): string`: compact JSON.
+  ⦿ `DAGDocument.load(json: string): DAGType`: parses and validates JSON-LD through the single ingest boundary.
+  ⦿ `DAGDocument.serialize(dag: DAGType): string`: pretty JSON (2-space indent).
 ⦿ **Entity-ization pass.** Every data shape and every constant is now backed by a JSON Schema draft-2020-12 entity (`entities/<domain>/<Name>.ts`) with a `*Schema` const and a `FromSchema`-derived type. New domains: `node/`, `execution/`, `validation/`, `errors/`, `constants/`, `runtime/`.
   ⦿ Node domain: `Node`, `NodeContext`, `NodeError`, `NodeWarning`, `NodeOutput`, `NodeResult`, `NodeStateData`
   ⦿ Execution domain: `ExecutionResult`
@@ -897,11 +912,11 @@ changes.
   ⦿ `NodeInterface<TState, TOutput>` extends `Omit<Node, 'outputs'>` and narrows `outputs`
   ⦿ `NodeContextInterface` extends `NodeContext` and adds `signal: AbortSignal`
   ⦿ `NodeErrorInterface` extends `Omit<NodeError, 'context'>` and narrows `context`
-  ⦿ `NodeWarningInterface` = `NodeWarning` (type alias)
-  ⦿ `ValidationResultInterface` = `ValidationResult` (type alias)
+  ⦿ `NodeWarningInterface` = `NodeWarning` (type rename)
+  ⦿ `ValidationResultInterface` = `ValidationResult` (type rename)
   ⦿ `ExecutionResultInterface<TState>` extends `Omit<ExecutionResult, 'state'>` and narrows `state`
   ⦿ `NodeResultInterface<TState>` extends `Omit<NodeResult, 'state'>` and narrows `state`
-  ⦿ `DAGErrorJSONInterface` = `DAGErrorJSON` (type alias)
+  ⦿ `DAGErrorJSONInterface` = `DAGErrorJSON` (type rename)
   ⦿ `FlowConfigInterface` = `FlowConfig`, `FanInConfigInterface` = `FanInConfig`, `FanOutNodeInterface` = `FanOutNode`, `ParallelNodeInterface` = `ParallelNode`, `SubFlowNodeInterface` = `SubFlowNode`, `SingleNodeInterface<TOutput>` extends `Omit<SingleNode, 'outputs'>` and narrows `outputs`
   ⦿ `NodeStateData` entity documents the persistence wire shape for `NodeStateBase.snapshot()` without `NodeStateInterface` extending it (the `lifecycle.error` field carries an in-memory `Error`, not JSON-expressible)
 ⦿ `entities/index.ts` barrel updated: all new schema constants and derived types are exported, grouped by domain.
@@ -909,8 +924,8 @@ changes.
 
 ### Removed
 
-⦿ `FlowLoader` class (`src/validation/FlowLoader.ts`): superseded by `Dagonizer.load` / `Dagonizer.fromValue`.
-⦿ `FlowSerializer` class (`src/validation/FlowSerializer.ts`): superseded by `Dagonizer.serialize` / `Dagonizer.serializeCompact`.
+⦿ `FlowLoader` class (`src/validation/FlowLoader.ts`): superseded by `DAGDocument.load`.
+⦿ `FlowSerializer` class (`src/validation/FlowSerializer.ts`): superseded by `DAGDocument.serialize`.
 ⦿ `src/constants.ts`: all constants migrated to `entities/constants/` with JSON Schema backing.
 
 ⦿ **Single execution path.** `Dagonizer.execute()` and `Dagonizer.resume()` now both return an `Execution<TState>` that is both async-iterable (yields each node as it completes) and `PromiseLike<ExecutionResultInterface>` (awaits the final summary). One generator body; sync-style is just iteration that consumes every node before resolving. Iteration and `await` on the same execution share the same underlying generator; the flow body runs exactly once.
@@ -949,9 +964,9 @@ changes.
 ⦿ Entities folder (`src/entities/`) with a per-shape file pattern: `<Name>Schema` constant + `FromSchema<typeof Schema>` derived type. Layout:
   ⦿ `entities/flow/`: `FlowConfig`, `SingleNode`, `ParallelNode`, `FanOutNode`, `SubFlowNode`, `FanInConfig`
   ⦿ `entities/state-machines/`: `DAGLifecycleState` (wire shape; in-memory `Error` type still lives at `lifecycle/`)
-⦿ `FlowConfigSchema`: JSON Schema draft-2020-12 with `$id` `https://noocodex.dev/schemas/dagonizer/FlowConfig`. Inlines node-entry sub-shapes via `oneOf`; standalone sub-shape schemas remain exported for per-shape validation.
+⦿ `FlowConfigSchema`: JSON Schema draft-2020-12 with `$id` `https://noocodec.dev/schemas/dagonizer/FlowConfig`. Inlines node-entry sub-shapes via `oneOf`; standalone sub-shape schemas remain exported for per-shape validation.
 ⦿ `FlowConfigValidator`: pre-compiled Ajv validator (`Ajv2020`, `allErrors: true`). `is(value)` predicate, `validate(value)` throwing `ValidationError`, `errors(value)` returning a formatted list.
-⦿ `FlowLoader.fromJson(text)` / `fromValue(value)`: single permitted ingest boundary where `unknown` enters the package. JSON.parse → Ajv-narrow → `FlowConfig`.
+⦿ `DAGDocument.load(json)`: single permitted ingest boundary where DAG document JSON enters the package. JSON.parse → Ajv-narrow → `DAGType`.
 ⦿ `FlowSerializer.toJson(flow)` / `toCompactJson(flow)`: symmetric counterpart for the round-trip.
 ⦿ `Dagonizer.registerFlow()` now runs the schema validator as a structural pre-pass before semantic validation. Schema errors surface as `ValidationError`; semantic errors (unknown nodes, missing outputs, sub-flow cycles) continue to surface as `DAGError`.
 ⦿ New subpath exports: `@studnicky/dagonizer/schema`, `@studnicky/dagonizer/entities`.

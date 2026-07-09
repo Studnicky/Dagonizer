@@ -1,9 +1,9 @@
 /**
  * ToolRegistry: the candidate set for tool dispatch.
  *
- * Each registered tool synthesizes a one-node `tool:<name>` embeddable DAG.
- * Consumers embed that DAG by name; the registry IS the candidate set —
- * resolution is a simple name lookup, not a scanning loop.
+ * Each registered tool synthesizes a one-node `urn:noocodec:tool:<name>`
+ * embeddable DAG. Consumers embed that DAG by IRI; the registry IS the
+ * candidate set — resolution is a simple IRI lookup, not a scanning loop.
  *
  * Duplicate registration throws `DAGError` (matching the engine's own
  * duplicate-name semantics). `resolve` returns `null` on a miss so the
@@ -17,7 +17,6 @@
 import { DAGBuilder } from '../builder/DAGBuilder.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
-import { ContextResolver } from '../dag/ContextResolver.js';
 import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGError } from '../errors/DAGError.js';
@@ -33,16 +32,17 @@ import { ToolInvokeNode } from './ToolInvokeNode.js';
 export type ResolvedToolType = {
   /** The tool's JSON-Schema declaration. */
   readonly 'definition': ToolDefinitionType;
-  /** The synthesized embeddable DAG name (`tool:<name>`). */
-  readonly 'dagName': string;
+  /** The synthesized embeddable DAG IRI. */
+  readonly 'dagIri': string;
 };
 
 type RegistryEntry = {
   readonly 'definition': ToolDefinitionType;
   readonly 'tool': ToolInterface<Record<string, unknown>, unknown>;
+  readonly 'nodeIri': string;
   readonly 'nodeName': string;
   readonly 'dag': DAGType;
-  readonly 'dagName': string;
+  readonly 'dagIri': string;
   readonly 'inputValidator': EntityValidatorInterface<unknown>;
   readonly 'outputValidator': EntityValidatorInterface<unknown>;
   readonly 'execution': BatchExecutionOptionsType;
@@ -58,7 +58,7 @@ export class ToolRegistry {
   }
 
   /**
-   * Register a tool. Synthesizes a `tool:<name>` DAG (one `ToolInvokeNode`
+   * Register a tool. Synthesizes a `urn:noocodec:tool:<name>` DAG (one `ToolInvokeNode`
    * placement; two terminals: `end` / `end-fail`). The entry is keyed by
    * `tool.definition.name`; duplicate registration throws `DAGError`.
    */
@@ -72,34 +72,41 @@ export class ToolRegistry {
       );
     }
 
-    const nodeName = `tool-invoke:${toolName}`;
-    const dagName  = `tool:${toolName}`;
+    const encodedToolName = encodeURIComponent(toolName);
+    const nodeIri = `urn:noocodec:tool-node:${encodedToolName}`;
+    const nodeName = `tool invoke ${toolName}`;
+    const dagIri  = `urn:noocodec:tool:${encodedToolName}`;
+    const invokeIri = `${dagIri}/node/invoke`;
+    const endIri = `${dagIri}/node/end`;
+    const failIri = `${dagIri}/node/end-fail`;
 
     // Compile validators once at registration time; `Validator.compile` routes
     // through the shared Ajv instance and caches by `$id` — no new Ajv instances.
     const inputValidator  = Validator.compile<unknown>(tool.definition.inputSchema);
     const outputValidator = Validator.compile<unknown>(tool.definition.outputSchema);
 
-    // Build the synthesized DAG from a default-typed node (the builder reads its
-    // `name`). The registered node instances are constructed per `bundle()` call
-    // so the synthesized DAG node is discarded after the DAG is built.
+    // Build the synthesized DAG from a default-typed node. The registered node
+    // instances are constructed per `bundle()` call so this builder node is
+    // discarded after the DAG is built.
     const execution = options.execution ?? this.#execution;
-    const dag = new DAGBuilder(dagName, '1')
+    const dag = new DAGBuilder(dagIri, '1', { 'name': dagIri })
       .node(
-        'invoke',
-        new ToolInvokeNode(nodeName, tool, inputValidator, outputValidator, { execution }),
-        { 'done': 'end', 'error': 'end-fail' },
+        invokeIri,
+        new ToolInvokeNode(nodeIri, nodeName, tool, inputValidator, outputValidator, { execution }),
+        { 'done': endIri, 'error': failIri },
+        { 'name': 'invoke' },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(endIri, { 'name': 'end' })
+      .terminal(failIri, { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     this.#entries.set(toolName, {
       'definition':      tool.definition,
       'tool':            tool,
+      nodeIri,
       'nodeName':        nodeName,
       dag,
-      dagName,
+      dagIri,
       inputValidator,
       outputValidator,
       execution,
@@ -107,13 +114,13 @@ export class ToolRegistry {
   }
 
   /**
-   * Resolve a tool name to its definition and synthesized DAG name.
+   * Resolve a tool name to its definition and synthesized DAG IRI.
    * Returns `null` when the tool is not registered.
    */
   resolve(name: string): ResolvedToolType | null {
     const entry = this.#entries.get(name);
     if (entry === undefined) return null;
-    return { 'definition': entry['definition'], 'dagName': entry['dagName'] };
+    return { 'definition': entry['definition'], 'dagIri': entry['dagIri'] };
   }
 
   /**
@@ -135,7 +142,7 @@ export class ToolRegistry {
    * `DispatcherBundleType`. Pass to `dispatcher.registerBundle(registry.bundle())`
    * to wire the full tool surface into the dispatcher in one call.
    *
-   * Each `tool:<name>` DAG registers an isolation factory `() => new
+   * Each `urn:noocodec:tool:<name>` DAG registers an isolation factory `() => new
    * ToolInvocationState()`, so a tool runs on its OWN fresh state — args are
    * seeded into the embed's `input`, the result read from `output`, and the
    * parent's state is never mutated by the tool. A tool is a pure function.
@@ -148,10 +155,9 @@ export class ToolRegistry {
     for (const entry of this.#entries.values()) {
       // Construct each node. The node gets its tool via the constructor.
       // Validators compiled once at `register()` time are passed through here; no recompilation.
-      nodes.push(new ToolInvokeNode(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator'], { 'execution': entry['execution'] }));
+      nodes.push(new ToolInvokeNode(entry['nodeIri'], entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator'], { 'execution': entry['execution'] }));
       dags.push(entry['dag']);
-      const context = ContextResolver.contextOf(entry['dag']['@context']);
-      stateFactories[ContextResolver.expand(entry['dagName'], context)] = () => new ToolInvocationState();
+      stateFactories[entry['dagIri']] = () => new ToolInvocationState();
     }
 
     return { 'nodes': nodes, 'dags': dags, 'stateFactories': stateFactories };

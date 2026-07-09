@@ -11,6 +11,7 @@ import {
 
 // #region resolve-none-node
 export class ResolveNoneNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-none';
   readonly 'name' = 'resolve-none';
   readonly 'outputs' = ['resolved'] as const;
 

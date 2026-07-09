@@ -39,7 +39,7 @@ export type GeminiNanoAvailabilityType =
   | 'unavailable';
 
 export const LanguageModelStaticSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-gemini-nano/LanguageModelStatic',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-gemini-nano/LanguageModelStatic',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['availability', 'create'],
@@ -51,7 +51,7 @@ export const LanguageModelStaticSchema = {
 } as const;
 
 export const LanguageModelSessionSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-gemini-nano/LanguageModelSession',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-gemini-nano/LanguageModelSession',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['prompt', 'destroy'],

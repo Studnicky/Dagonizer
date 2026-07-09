@@ -20,6 +20,7 @@ import type { DispatcherState } from '../DispatcherState.ts';
 
 export class ParkForOperatorNode extends MonadicNode<DispatcherState, 'parked' | 'ready'> {
   readonly name = 'park-for-operator';
+  readonly '@id' = 'urn:noocodec:node:park-for-operator';
   readonly outputs = ['parked', 'ready'] as const;
 
   override get outputSchema(): Record<'parked' | 'ready', SchemaObjectType> {

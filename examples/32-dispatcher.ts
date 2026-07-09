@@ -1,11 +1,11 @@
 /**
  * 32-dispatcher: HITL park-and-correlate with a trolley switch + real LLM.
  *
- * Demonstrates the Noocodex Support dispatcher — a customer support
+ * Demonstrates the Nocodec Support dispatcher — a customer support
  * warm-handoff demo that shows the HITL park-and-correlate primitive
  * with a trolley switch.
  *
- * Domain: Noocodex — fictional bookstore.
+ * Domain: Nocodec — fictional bookstore.
  *   Routine queries (order status, store hours, book availability) → AI.
  *   Escalation triggers (refund, billing, etc.) → auto-escalate to operator.
  *   Trolley switch: humanMode = true → ALL messages go to operator.
@@ -64,7 +64,7 @@ class Env {
 const OLLAMA_BASE_URL = Env.get('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
 
 // ---------------------------------------------------------------------------
-// Adapter cascade: local-first, falls back to keyed providers.
+// Adapter cascade: local-first, then keyed providers.
 // ---------------------------------------------------------------------------
 
 const catalogue: CatalogueEntryType[] = [];
@@ -127,14 +127,14 @@ dispatcher.registerBundle({
 // Scenario 1: Routine query — AI handles end-to-end
 // ---------------------------------------------------------------------------
 
-process.stdout.write('\n=== The Dispatcher: Noocodex Support ===\n\n');
+process.stdout.write('\n=== The Dispatcher: Nocodec Support ===\n\n');
 process.stdout.write('--- Scenario 1: Routine query (AI handles) ---\n');
 
 const routineState = new DispatcherState();
 routineState.message = 'What are your store hours?';
 routineState.language = dispatcherLanguage;
 
-const routineResult = await dispatcher.execute('support-dispatcher', routineState);
+const routineResult = await dispatcher.execute('urn:noocodec:dag:support-dispatcher', routineState);
 
 process.stdout.write(`  lifecycle:   ${routineResult.state.lifecycle.variant}\n`);
 process.stdout.write(`  parked:      ${routineResult.parked}\n`);
@@ -154,7 +154,7 @@ escalatedState.message = 'I need a refund for my last order';
 escalatedState.language = dispatcherLanguage;
 
 // Step 2a: Initial execute — should park (escalation triggered)
-const parkedResult = await dispatcher.execute('support-dispatcher', escalatedState);
+const parkedResult = await dispatcher.execute('urn:noocodec:dag:support-dispatcher', escalatedState);
 
 process.stdout.write(`  Step 2a — Initial run:\n`);
 process.stdout.write(`    lifecycle:            ${parkedResult.state.lifecycle.variant}\n`);
@@ -170,7 +170,7 @@ if (parkedResult.state.lifecycle.variant !== 'awaiting-input') {
 }
 
 // Step 2b: Capture checkpoint
-const ckpt = await Checkpoint.capture('support-dispatcher', parkedResult);
+const ckpt = await Checkpoint.capture('urn:noocodec:dag:support-dispatcher', parkedResult);
 const persisted = ckpt.toJson();
 
 process.stdout.write(`\n  Step 2b — Checkpoint captured:\n`);
@@ -211,7 +211,7 @@ trolleyState.message = 'What are your store hours?';
 trolleyState.humanMode = true;
 trolleyState.language = dispatcherLanguage;
 
-const trolleyParked = await dispatcher.execute('support-dispatcher', trolleyState);
+const trolleyParked = await dispatcher.execute('urn:noocodec:dag:support-dispatcher', trolleyState);
 
 process.stdout.write(`  Initial run (humanMode=true):\n`);
 process.stdout.write(`    lifecycle:            ${trolleyParked.state.lifecycle.variant}\n`);
@@ -223,7 +223,7 @@ if (trolleyParked.parked === null) {
 }
 
 // Resume with operator response
-const trolleyCkpt = await Checkpoint.capture('support-dispatcher', trolleyParked);
+const trolleyCkpt = await Checkpoint.capture('urn:noocodec:dag:support-dispatcher', trolleyParked);
 const trolleyRecalled = Checkpoint.load(JSON.parse(trolleyCkpt.toJson()));
 const { state: trolleyResumedState, dagName: trolleyDagName, cursor: trolleyCursor } =
   trolleyRecalled.restoreState(

@@ -66,13 +66,13 @@ Or via npm scripts: `npm run example:12` and `npm run example:13`.
 
 ## LLM / Agent
 
-These examples run against a real local model. Install [Ollama](https://ollama.com), then `ollama pull llama3.2` (chat) and `ollama pull nomic-embed-text` (embeddings) before running.
+These examples run against a real local model. Install [Ollama](https://ollama.com), start the daemon, and install at least one chat model for adapter/tool examples plus one embedding model for the embedder example. Each example discovers the installed model through the adapter API before it runs.
 
 | File | Purpose | Run |
 |------|---------|-----|
 | `24-llm-adapter.ts` | `BaseAdapter`, `LlmAdapterRegistry`, `LlmAdapterCascade`, `.chat()` in a DAG node | `npx tsx examples/24-llm-adapter.ts` |
 | `25-embedder.ts` | `BaseEmbedder`, `EmbedderRegistry`, `EmbedderCascade`, cosine similarity | `npx tsx examples/25-embedder.ts` |
-| `26-tool-use.ts` | `Tool`, `ToolDefinition`, `ToolCallCodec` text-fallback, adapter dispatch | `npx tsx examples/26-tool-use.ts` |
+| `26-tool-use.ts` | `Tool`, `ToolDefinition`, `ToolCallCodec` text extraction, adapter dispatch | `npx tsx examples/26-tool-use.ts` |
 | `29-agent-dag.ts` | Agent DAG - canonical 8-node loop from canonical JSON-LD | `npx tsx examples/29-agent-dag.ts` |
 
 ---
@@ -81,7 +81,7 @@ These examples run against a real local model. Install [Ollama](https://ollama.c
 
 | File | Purpose | Run |
 |------|---------|-----|
-| `derive.ts` | `DAGDeriver`: contract-derived DAG + `embeddedDAGs` annotation | `npx tsx examples/derive.ts` |
+| `derive.ts` | `DAGDeriver`: contract-derived DAG + embedded DAG annotation | `npx tsx examples/derive.ts` |
 | `22-backoff-strategies.ts` | `RetryPolicy` with all four `BackoffStrategy` values via `VirtualScheduler` | `npx tsx examples/22-backoff-strategies.ts` |
 | `23-checkpoint-store.ts` | `MemoryCheckpointStore` persist / recall round-trip across a restart | `npx tsx examples/23-checkpoint-store.ts` |
 | `custom-checkpoint-store.ts` | `CheckpointStoreInterface` (Map-backed) + `SnapshottableInterface` (FactLog): the contracts behind persistence | `npx tsx examples/custom-checkpoint-store.ts` |
@@ -99,7 +99,7 @@ These examples run against a real local model. Install [Ollama](https://ollama.c
 
 ### The Archivist
 
-A bookstore help-bot: multi-branch DAG with hard/soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop.
+A bookstore help-bot: multi-branch DAG with hard/soft gates, parallel scouts, deterministic salvage, and a bounded compose/validate retry loop.
 
 ```bash
 # Run with Ollama (or any available LLM adapter — cascades through available providers):
@@ -109,7 +109,7 @@ npx tsx examples/the-archivist/runArchivist.ts
 #   https://studnicky.github.io/Dagonizer/examples/the-archivist
 ```
 
-**Credential needs:** `LlmAdapterCascade` tries Groq, Cerebras, Gemini API, Mistral, OpenRouter (API keys via env), then Ollama (local), then Gemini Nano / WebLLM (browser only). If none is reachable the cascade throws `NO_ADAPTER_AVAILABLE` — there is no canned fallback. The zero-setup path is a local Ollama (`ollama serve`).
+**Credential needs:** `LlmAdapterCascade` tries Groq, Cerebras, Gemini API, Mistral, OpenRouter (API keys via env), then Ollama (local), then Gemini Nano / WebLLM (browser only). If none is reachable the cascade throws `NO_ADAPTER_AVAILABLE`. The zero-setup path is a local Ollama (`ollama serve`).
 
 ### The Cartographer
 

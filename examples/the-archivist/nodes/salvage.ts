@@ -3,7 +3,7 @@
  *
  * When an LLM node exhausts its retry budget it routes to `salvage`; the DAG
  * wires that edge to one of these nodes, which performs a deterministic,
- * service-free fallback and rejoins the happy path. The recovery is a real
+ * service-free recovery and rejoins the happy path. The recovery is a real
  * node in the topology (NOT logic hidden inside the failing node's catch
  * block. That keeps execution (what a node computes) separate from flow
  * decisioning (which edge the DAG takes), and means a consumer can swap or
@@ -28,6 +28,7 @@ const MAX_NAIVE_TERMS = 6;
  */
 export class ExtractQuerySalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'extract-query-salvage';
+  readonly '@id' = 'urn:noocodec:node:extract-query-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -47,11 +48,12 @@ export class ExtractQuerySalvageNode extends MonadicNode<ArchivistState, 'done'>
 
 /**
  * decide-tools salvage: minimal tool plan so the scouts still run. No `query`
- * arg; each scout falls back to `state.terms.join(' ')`. Rejoins at
+ * arg; each scout uses `state.terms.join(' ')`. Rejoins at
  * recall-candidates.
  */
 export class DecideToolsSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'decide-tools-salvage';
+  readonly '@id' = 'urn:noocodec:node:decide-tools-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -72,6 +74,7 @@ export class DecideToolsSalvageNode extends MonadicNode<ArchivistState, 'done'> 
  */
 export class ClassifyIntentSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'classify-intent-salvage';
+  readonly '@id' = 'urn:noocodec:node:classify-intent-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -92,6 +95,7 @@ export class ClassifyIntentSalvageNode extends MonadicNode<ArchivistState, 'done
  */
 export class RankCandidatesSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'rank-candidates-salvage';
+  readonly '@id' = 'urn:noocodec:node:rank-candidates-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -113,6 +117,7 @@ const COMPOSE_SALVAGE_DRAFT =
  */
 export class ComposeResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-salvage';
+  readonly '@id' = 'urn:noocodec:node:compose-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -137,6 +142,7 @@ const EMPTY_SALVAGE_DRAFT =
  */
 export class ComposeEmptyResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-empty-salvage';
+  readonly '@id' = 'urn:noocodec:node:compose-empty-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -160,6 +166,7 @@ const MEMORY_SALVAGE_DRAFT =
  */
 export class ComposeMemoryResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-memory-salvage';
+  readonly '@id' = 'urn:noocodec:node:compose-memory-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };

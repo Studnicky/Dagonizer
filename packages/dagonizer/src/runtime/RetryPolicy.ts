@@ -88,7 +88,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, 
  * via `instanceof`, for a consumer's own error classes) and `DAGError` code
  * strings (matched via `error instanceof DAGError && error.code === ...`,
  * for Dagonizer's own error taxonomy — one class, distinguished by `.code`).
- * When no `retryOn` filter is configured, a `DAGError` falls back to its own
+ * When no `retryOn` filter is configured, a `DAGError` uses its own
  * `error.retryable` field (see `shouldRetry()`), so a `DAGError` that
  * self-reports `retryable: false` is not retried even with empty filter
  * lists.
@@ -247,7 +247,7 @@ export class RetryPolicy extends Retry {
    *  3. `retryOn` — a consumer's explicit retry list is authoritative:
    *     a non-empty list means "retry only these"; a miss stops
    *     retrying, even a `DAGError` that self-reports `retryable: true`.
-   *  4. No explicit `retryOn` filter configured: a `DAGError` falls back
+   *  4. No explicit `retryOn` filter configured: a `DAGError` uses
    *     to its own `error.retryable` classification — the error's own
    *     "don't retry me" (or "do retry me") wins over the blanket
    *     no-filter default. A non-`DAGError` error with no filters keeps
@@ -281,7 +281,7 @@ export class RetryPolicy extends Retry {
     }
 
     // No explicit retryOn filter: a DAGError's own `.retryable` classification
-    // is the fallback signal, overriding the blanket "no filter = retry
+    // is the explicit signal, overriding the blanket "no filter = retry
     // everything" default. A non-DAGError error with no filters configured
     // still retries — the original default for arbitrary error types.
     if (error instanceof DAGError) {

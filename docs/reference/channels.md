@@ -20,13 +20,13 @@ seeAlso:
 
 ## What It Is
 
-Channels move `DAGHandoff` envelopes between DAG hosts. They are the boundary where one DAG finishes at a named terminal and another host receives enough information to continue work elsewhere.
+Channels move `DAGHandoff` envelopes between DAG hosts. They are the boundary where one DAG finishes at a terminal whose display `name` is bound to a channel and another host receives enough information to continue work elsewhere.
 
 Use this page when implementing an in-memory handoff, queue-backed handoff, serverless handoff, or custom transport that publishes `DAGHandoff` payloads.
 
 ## How It Works
 
-A dispatcher publishes to a channel when a non-embedded flow reaches a terminal whose name is bound in `DagonizerOptionsType.channels`. The payload includes the terminal name, DAG name, state snapshot, and `registryVersion` for receiver-side compatibility checks.
+A dispatcher publishes to a channel when a non-embedded flow reaches a terminal whose `name` is bound in `DagonizerOptionsType.channels`. Channel binding uses that terminal label for host configuration; graph execution still follows placement IRIs. The payload includes the terminal name, DAG identity, placement path, state snapshot, and `registryVersion` for receiver-side validation.
 
 `InMemoryChannel` is the local default and testing implementation. Production channels implement the same contract over queues, event buses, HTTP, workers, or cloud orchestration services.
 
@@ -132,7 +132,7 @@ class HandoffChannel extends InMemoryChannel {
     if (!('stateSnapshot' in handoff) || handoff.stateSnapshot == null) return;
     const snapshot = handoff.stateSnapshot as import('@studnicky/dagonizer/entities').JsonObjectType;
     const state = AppState.restore(snapshot);
-    await downstreamDispatcher.execute('continuation-dag', state);
+    await downstreamDispatcher.execute('urn:noocodec:dag:continuation-dag', state);
   }
 }
 
@@ -182,9 +182,9 @@ class SqsChannel implements HandoffChannelInterface {
 
 ## Details for Nerds
 
-Channel payloads should be treated as serialized handoff envelopes. A receiving host still needs a compatible registry, registered DAG, and state restore path before it can continue execution.
+Channel payloads are serialized handoff envelopes. A receiving host still needs a registered DAG IRI and state restore path before it can continue execution.
 
-Use `registryVersion` as the handshake between publisher and receiver. If the receiver cannot serve that registry version, reject or park the handoff instead of guessing.
+Use `registryVersion` as the handshake between publisher and receiver. If the receiver cannot serve that registry version, reject or park the handoff.
 
 ## Related Concepts
 

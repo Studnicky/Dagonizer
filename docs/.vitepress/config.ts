@@ -120,7 +120,7 @@ const sidebar = [
       { text: 'Example 31: HITL Park-and-Correlate', link: '/examples/31-hitl' },
       { text: 'Example 32: Dispatcher CLI',            link: '/examples/32-dispatcher' },
       { text: 'Example 33: Plugin-Defined DAGs',       link: '/examples/33-plugin' },
-      { text: 'Example 34: StreamChannel Source',      link: '/examples/34-stream-channel' },
+      { text: 'Example 34: Intake Stream Source',      link: '/examples/34-stream-channel' },
       { text: 'Example 35: Stream Resume Cursor',      link: '/examples/35-stream-fanin-resume' },
       { text: 'Example 36: DAG Stream Producer',       link: '/examples/36-dag-stream-producer' },
     ],
@@ -167,6 +167,7 @@ const sidebar = [
       { text: 'Observability',             link: '/guide/observability' },
       { text: 'HITL Park-and-Correlate',   link: '/guide/hitl' },
       { text: 'Conversational Agents',     link: '/guide/conversational' },
+      { text: 'Chat Event Orchestration',  link: '/guide/chat-event-orchestration' },
       { text: 'ReAct Agent: Streaming and Provenance Recall', link: '/guide/react-agent' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and Cloud',    link: '/guide/distribution' },
@@ -178,7 +179,6 @@ const sidebar = [
     collapsed: false,
     items: [
       { text: 'Plugins', link: '/guide/plugins' },
-      { text: 'Unified Plugin Embedding Plan', link: '/guide/unified-plugin-embedding-plan' },
     ],
   },
   {

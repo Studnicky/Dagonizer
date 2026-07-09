@@ -17,6 +17,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region enrich-leg-node
 export class EnrichLegNode extends MonadicNode<CartographerState, 'leg-measured'> {
+  readonly '@id' = 'urn:noocodec:node:enrich-leg';
   readonly 'name' = 'enrich-leg';
   readonly 'outputs' = ['leg-measured'] as const;
 

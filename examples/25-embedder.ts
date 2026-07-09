@@ -13,11 +13,11 @@
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
- *   - The embedding model pulled: ollama pull nomic-embed-text
+ *   - At least one Ollama embedding model installed locally.
  *
  * Cascade shape: the primary embedder targets port 1 (unreachable) so its
- * probe() returns false and the cascade skips it. The fallback targets the
- * default loopback and is selected when Ollama is running.
+ * probe() returns false and the cascade skips it. The local embedder targets
+ * the default loopback and is selected when Ollama is running.
  *
  * DAG definition: examples/dags/25-embedder.ts
  *
@@ -50,7 +50,7 @@ const EMBED_MODEL = await discoveryEmbedder.selectEmbeddingModel(
 
 if (EMBED_MODEL === null) {
   process.stdout.write(
-    'No Ollama embedding model installed — start the daemon at 127.0.0.1:11434 and run `ollama pull nomic-embed-text`.\n',
+    'No Ollama embedding model installed — start the daemon at 127.0.0.1:11434 and install any embedding-capable model.\n',
   );
   process.exit(0);
 }
@@ -61,7 +61,7 @@ process.stdout.write(`Discovered Ollama embedding model: "${EMBED_MODEL}"\n`);
 // 2. Registry + Cascade
 //
 //    Primary: points at port 1 (unreachable). probe() returns false → skipped.
-//    Fallback: default loopback. probe() returns true when Ollama is running →
+//    Local: default loopback. probe() returns true when Ollama is running →
 //    selected. Both registry entries use the discovered model name as the key.
 // ---------------------------------------------------------------------------
 
@@ -73,7 +73,7 @@ embedderRegistry.register(
     'model':        EMBED_MODEL,
     'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
   },
-  () => new OllamaEmbedder({ 'model': EMBED_MODEL, 'baseUrl': 'http://127.0.0.1:1' }), // unreachable → probe false
+  () => new OllamaEmbedder({ 'model': EMBED_MODEL, 'baseUrl': 'http://127.0.0.1:1' }), // unreachable → skipped
 );
 
 embedderRegistry.register(
@@ -82,12 +82,12 @@ embedderRegistry.register(
     'model':        EMBED_MODEL,
     'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
   },
-  () => new OllamaEmbedder({ 'model': EMBED_MODEL }),  // default loopback → probe true when Ollama is running
+  () => new OllamaEmbedder({ 'model': EMBED_MODEL }),  // default loopback → selected when Ollama is running
 );
 
 const cascade = new EmbedderCascade(embedderRegistry, [
-  { 'provider': 'ollama-remote', 'model': EMBED_MODEL },  // probes false → skipped
-  { 'provider': 'ollama-local',  'model': EMBED_MODEL },  // probes true → selected
+  { 'provider': 'ollama-remote', 'model': EMBED_MODEL },  // skipped
+  { 'provider': 'ollama-local',  'model': EMBED_MODEL },  // selected
 ]);
 
 const embedder = await cascade.select();
@@ -121,9 +121,9 @@ stateC.textB    = 'quantum entanglement';
 stateC.embedder = embedder;
 
 process.stdout.write(`Cosine similarities (${EMBED_MODEL} via Ollama):\n`);
-await dispatcher.execute('embedder-demo', stateA);
-await dispatcher.execute('embedder-demo', stateB);
-await dispatcher.execute('embedder-demo', stateC);
+await dispatcher.execute('urn:noocodec:dag:embedder-demo', stateA);
+await dispatcher.execute('urn:noocodec:dag:embedder-demo', stateB);
+await dispatcher.execute('urn:noocodec:dag:embedder-demo', stateC);
 
 // Verify dimensions and unit-norm contract
 const vec = await embedder.embed('hello world');
@@ -131,5 +131,5 @@ const norm = Math.sqrt(vec.reduce((acc, v) => acc + v * v, 0));
 process.stdout.write(`\nVector dimensions: ${String(vec.length)}  (reported by ${EMBED_MODEL}: ${String(embedder.dimensions)}d)\n`);
 process.stdout.write(`Vector L2 norm:    ${norm.toFixed(6)}\n`);
 process.stdout.write(`Self-similarity:   ${VectorSimilarity.cosine(vec, vec).toFixed(4)}  (expected 1.0000)\n`);
-process.stdout.write(`\nLesson: EmbedderCascade selects the first embedder whose probe() is true.\n`);
+process.stdout.write(`\nLesson: EmbedderCascade selects the first available embedder.\n`);
 process.stdout.write(`        OllamaEmbedder.embed(text) returns a float[] from the discovered embedding model.\n`);

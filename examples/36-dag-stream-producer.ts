@@ -26,7 +26,7 @@ outerDispatcher.registerDAG(outerDag);
 const state   = new OuterState();
 state.source  = StreamChannel.driven(LabelStreamProducer.of([0, 1, 2, 3, 4]));
 
-const result = await outerDispatcher.execute('label-stream', state);
+const result = await outerDispatcher.execute('urn:noocodec:dag:label-stream', state);
 
 const sorted = [...state.labels].sort();
 process.stdout.write(`Labels (sorted): ${JSON.stringify(sorted)}\n`);

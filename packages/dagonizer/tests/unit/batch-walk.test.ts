@@ -23,13 +23,22 @@ import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
+const displayFromIri = (iri: string): string => {
+  const hashIndex = iri.lastIndexOf('#');
+  if (hashIndex >= 0) return iri.slice(hashIndex + 1);
+  const slashIndex = iri.lastIndexOf('/');
+  if (slashIndex >= 0) return iri.slice(slashIndex + 1);
+  const colonIndex = iri.lastIndexOf(':');
+  return colonIndex >= 0 ? iri.slice(colonIndex + 1) : iri;
+};
 
 // ===========================================================================
 // DAG builder helpers
@@ -38,9 +47,9 @@ import { TestNode } from '../_support/TestNode.js';
 class PlacementFixture {
   private constructor() {}
 
-  static singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+  static singleNode(dagIri: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dagIri, name),
       '@type': 'SingleNode',
       name,
       node,
@@ -48,9 +57,9 @@ class PlacementFixture {
     };
   }
 
-  static terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
+  static terminalNode(dagIri: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dagIri, name),
       '@type': 'TerminalNode',
       'name': name,
       outcome,
@@ -58,14 +67,14 @@ class PlacementFixture {
   }
 
   static embedNode(
-    dag: string,
+    dagIri: string,
     name: string,
     childDag: string,
     outputs: Record<string, string>,
     stateMapping: { input: Record<string, string>; output: Record<string, string> },
   ): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dagIri, name),
       '@type': 'EmbeddedDAGNode',
       name,
       'dag': childDag,
@@ -106,8 +115,8 @@ class TestWalkNode {
 
   /** Fan-out: takes a size-1 batch and emits N items on port 'out'.
    *  Clones state n times, setting count=i and pushing fan:i to log. */
-  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<WalkState, 'out'>> {
-    return TestBatchNode.of<WalkState, 'out'>(name, ['out'], (batch) => {
+  static fanOut(nodeIri: string, n: number): ReturnType<typeof TestBatchNode.of<WalkState, 'out'>> {
+    return TestBatchNode.of<WalkState, 'out'>(nodeIri, ['out'], (batch) => {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': WalkState }> = [];
       for (let i = 0; i < n; i++) {
@@ -123,8 +132,8 @@ class TestWalkNode {
   }
 
   /** Partition: splits items across two ports by even/odd count. */
-  static partition(name: string): ReturnType<typeof TestBatchNode.of<WalkState, 'even' | 'odd'>> {
-    return TestBatchNode.of<WalkState, 'even' | 'odd'>(name, ['even', 'odd'], (batch) => {
+  static partition(nodeIri: string): ReturnType<typeof TestBatchNode.of<WalkState, 'even' | 'odd'>> {
+    return TestBatchNode.of<WalkState, 'even' | 'odd'>(nodeIri, ['even', 'odd'], (batch) => {
       const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
       const result = new Map<'even' | 'odd', Batch<WalkState>>();
       for (const [key, b] of partitioned) {
@@ -135,8 +144,9 @@ class TestWalkNode {
   }
 
   /** Recording: stamps each item's log and records the batch size on each invocation. */
-  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
-    return TestBatchNode.of<WalkState, 'done'>(name, ['done'], (batch) => {
+  static recording(nodeIri: string, firings: number[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
+    const name = displayFromIri(nodeIri);
+    return TestBatchNode.of<WalkState, 'done'>(nodeIri, ['done'], (batch) => {
       firings.push(batch.size);
       const items: Array<{ 'id': string; 'state': WalkState }> = [];
       for (const item of batch) {
@@ -150,8 +160,8 @@ class TestWalkNode {
   }
 
   /** Accumulator: merges all items into an external array and routes them through to 'done'. */
-  static accumulator(name: string, collected: WalkState[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
-    return TestBatchNode.of<WalkState, 'done'>(name, ['done'], (batch) => {
+  static accumulator(nodeIri: string, collected: WalkState[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
+    return TestBatchNode.of<WalkState, 'done'>(nodeIri, ['done'], (batch) => {
       for (const item of batch) {
         collected.push(item.state);
       }
@@ -192,8 +202,8 @@ class TestCompositeWalkNode {
   private constructor() {}
 
   /** Fan-out: takes a size-1 batch and emits N CompositeState items on port 'out'. */
-  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<CompositeState, 'out'>> {
-    return TestBatchNode.of<CompositeState, 'out'>(name, ['out'], (batch) => {
+  static fanOut(nodeIri: string, n: number): ReturnType<typeof TestBatchNode.of<CompositeState, 'out'>> {
+    return TestBatchNode.of<CompositeState, 'out'>(nodeIri, ['out'], (batch) => {
       const source = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CompositeState }> = [];
       for (let i = 0; i < n; i++) {
@@ -209,8 +219,8 @@ class TestCompositeWalkNode {
   }
 
   /** Accumulator: collects all items into an external array and routes to 'done'. */
-  static accumulator(name: string, collected: CompositeState[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
-    return TestBatchNode.of<CompositeState, 'done'>(name, ['done'], (batch) => {
+  static accumulator(nodeIri: string, collected: CompositeState[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
+    return TestBatchNode.of<CompositeState, 'done'>(nodeIri, ['done'], (batch) => {
       for (const item of batch) {
         collected.push(item.state);
       }
@@ -221,8 +231,8 @@ class TestCompositeWalkNode {
   }
 
   /** Recording: stamps firings array with batch size and passes items through. */
-  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
-    return TestBatchNode.of<CompositeState, 'done'>(name, ['done'], (batch) => {
+  static recording(nodeIri: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
+    return TestBatchNode.of<CompositeState, 'done'>(nodeIri, ['done'], (batch) => {
       firings.push(batch.size);
       const result = new Map<'done', Batch<CompositeState>>();
       result.set('done', batch);
@@ -291,8 +301,8 @@ class TestCycleWalkNode {
   private constructor() {}
 
   /** Fan-out: emits N items where item i receives `exitAt = i`. */
-  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
-    return TestBatchNode.of<CycleState, 'out'>(name, ['out'], (batch) => {
+  static fanOut(nodeIri: string, n: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
+    return TestBatchNode.of<CycleState, 'out'>(nodeIri, ['out'], (batch) => {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < n; i++) {
@@ -308,8 +318,8 @@ class TestCycleWalkNode {
   }
 
   /** Homogeneous fan-out: all N items exit after the same number of attempts. */
-  static homogeneousFanOut(name: string, n: number, exitAt: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
-    return TestBatchNode.of<CycleState, 'out'>(name, ['out'], (batch) => {
+  static homogeneousFanOut(nodeIri: string, n: number, exitAt: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
+    return TestBatchNode.of<CycleState, 'out'>(nodeIri, ['out'], (batch) => {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < n; i++) {
@@ -326,8 +336,8 @@ class TestCycleWalkNode {
 
   /** Retry: increments attempts; routes items whose attempt count reached exitAt to 'done',
    *  others to 'retry'. Hard cap at 50 prevents infinite loops. */
-  static retry(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done'>> {
-    return TestBatchNode.of<CycleState, 'retry' | 'done'>(name, ['retry', 'done'], (batch) => {
+  static retry(nodeIri: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done'>> {
+    return TestBatchNode.of<CycleState, 'retry' | 'done'>(nodeIri, ['retry', 'done'], (batch) => {
       firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -354,8 +364,8 @@ class TestCycleWalkNode {
   }
 
   /** Budget-based retry: uses `withinRetryBudget`; routes to 'retry', 'done', or 'salvage'. */
-  static budgetRetry(name: string, maxAttempts: number, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>> {
-    return TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>(name, ['retry', 'done', 'salvage'], (batch) => {
+  static budgetRetry(nodeIri: string, maxAttempts: number, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>> {
+    return TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>(nodeIri, ['retry', 'done', 'salvage'], (batch) => {
       firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -384,8 +394,8 @@ class TestCycleWalkNode {
   }
 
   /** Accumulator: collects all items for post-run inspection. */
-  static accumulator(name: string, collected: CycleState[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
-    return TestBatchNode.of<CycleState, 'done'>(name, ['done'], (batch) => {
+  static accumulator(nodeIri: string, collected: CycleState[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
+    return TestBatchNode.of<CycleState, 'done'>(nodeIri, ['done'], (batch) => {
       for (const item of batch) {
         collected.push(item.state);
       }
@@ -396,8 +406,8 @@ class TestCycleWalkNode {
   }
 
   /** Recording: stamps firings array and passes items through. */
-  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
-    return TestBatchNode.of<CycleState, 'done'>(name, ['done'], (batch) => {
+  static recording(nodeIri: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
+    return TestBatchNode.of<CycleState, 'done'>(nodeIri, ['done'], (batch) => {
       firings.push(batch.size);
       const result = new Map<'done', Batch<CycleState>>();
       result.set('done', batch);
@@ -414,31 +424,23 @@ class TestCycleWalkNode {
 void describe('Batch walk — size-1 parity', () => {
   void it('size-1 linear walk matches expected executedNodes order', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('step1', ['ok'], () => 'ok'));
-    dispatcher.registerNode(TestNode.make('step2', ['ok'], () => 'ok'));
-    dispatcher.registerNode(TestNode.make('step3', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step1', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step2', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step3', ['ok'], () => 'ok'));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:parity-linear',
-      '@type': 'DAG',
-      'name': 'parity-linear',
-      'version': '1',
-      'entrypoint': 'p1',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:parity-linear/node/p1', '@type': 'SingleNode',
-          'name': 'p1', 'node': 'step1', 'outputs': { 'ok': 'p2' } },
-        { '@id': 'urn:noocodex:dag:parity-linear/node/p2', '@type': 'SingleNode',
-          'name': 'p2', 'node': 'step2', 'outputs': { 'ok': 'p3' } },
-        { '@id': 'urn:noocodex:dag:parity-linear/node/p3', '@type': 'SingleNode',
-          'name': 'p3', 'node': 'step3', 'outputs': { 'ok': 'end' } },
-        { '@id': 'urn:noocodex:dag:parity-linear/node/end', '@type': 'TerminalNode',
+    const dag = TestDag.of('urn:noocodec:dag:parity-linear', placementIri('urn:noocodec:dag:parity-linear', 'p1'), [
+        { '@id': 'urn:noocodec:dag:parity-linear/node/p1', '@type': 'SingleNode',
+          'name': 'p1', 'node': 'urn:noocodec:node:step1', 'outputs': { 'ok': placementIri('urn:noocodec:dag:parity-linear', 'p2') } },
+        { '@id': 'urn:noocodec:dag:parity-linear/node/p2', '@type': 'SingleNode',
+          'name': 'p2', 'node': 'urn:noocodec:node:step2', 'outputs': { 'ok': placementIri('urn:noocodec:dag:parity-linear', 'p3') } },
+        { '@id': 'urn:noocodec:dag:parity-linear/node/p3', '@type': 'SingleNode',
+          'name': 'p3', 'node': 'urn:noocodec:node:step3', 'outputs': { 'ok': placementIri('urn:noocodec:dag:parity-linear', 'end') } },
+        { '@id': 'urn:noocodec:dag:parity-linear/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('parity-linear', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:parity-linear', new NodeStateBase());
     assert.deepEqual(result.executedNodes, ['p1', 'p2', 'p3', 'end']);
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.cursor, null);
@@ -446,64 +448,56 @@ void describe('Batch walk — size-1 parity', () => {
 
   void it('size-1 branching walk routes correctly and tracks executedNodes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('classify', ['ok', 'skip'], () => 'ok'));
-    dispatcher.registerNode(TestNode.make('process', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:classify', ['ok', 'skip'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:process', ['done'], () => 'done'));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:parity-branch',
-      '@type': 'DAG',
-      'name': 'parity-branch',
-      'version': '1',
-      'entrypoint': 'cls',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:parity-branch/node/cls', '@type': 'SingleNode',
-          'name': 'cls', 'node': 'classify', 'outputs': { 'ok': 'proc', 'skip': 'end' } },
-        { '@id': 'urn:noocodex:dag:parity-branch/node/proc', '@type': 'SingleNode',
-          'name': 'proc', 'node': 'process', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:parity-branch/node/end', '@type': 'TerminalNode',
+    const dag = TestDag.of('urn:noocodec:dag:parity-branch', placementIri('urn:noocodec:dag:parity-branch', 'cls'), [
+        { '@id': 'urn:noocodec:dag:parity-branch/node/cls', '@type': 'SingleNode',
+          'name': 'cls', 'node': 'urn:noocodec:node:classify', 'outputs': { 'ok': placementIri('urn:noocodec:dag:parity-branch', 'proc'), 'skip': placementIri('urn:noocodec:dag:parity-branch', 'end') } },
+        { '@id': 'urn:noocodec:dag:parity-branch/node/proc', '@type': 'SingleNode',
+          'name': 'proc', 'node': 'urn:noocodec:node:process', 'outputs': { 'done': placementIri('urn:noocodec:dag:parity-branch', 'end') } },
+        { '@id': 'urn:noocodec:dag:parity-branch/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('parity-branch', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:parity-branch', new NodeStateBase());
     assert.deepEqual(result.executedNodes, ['cls', 'proc', 'end']);
     assert.equal(result.terminalOutcome, 'completed');
   });
 
   void it('EmbeddedDAGNode via size-1 batch produces same executedNodes/outcome as direct execute', async () => {
     // Simple child DAG: one transform node → terminal.
-    const childDAG = TestDag.of('parity-child', 'transform', [
-      PlacementFixture.singleNode('parity-child', 'transform', 'transform-node', { 'ok': 'child-end' }),
-      PlacementFixture.terminalNode('parity-child', 'child-end', 'completed'),
+    const childDAG = TestDag.of('urn:noocodec:dag:parity-child', placementIri('urn:noocodec:dag:parity-child', 'transform'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:parity-child', 'transform', 'urn:noocodec:node:transform-node', { 'ok': placementIri('urn:noocodec:dag:parity-child', 'child-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:parity-child', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     // Parent DAG: single entry → embed → terminal.
-    const parentDAG = TestDag.of('parity-parent', 'entry', [
-      PlacementFixture.singleNode('parity-parent', 'entry', 'entry-node', { 'ok': 'embed' }),
+    const parentDAG = TestDag.of('urn:noocodec:dag:parity-parent', placementIri('urn:noocodec:dag:parity-parent', 'entry'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:parity-parent', 'entry', 'urn:noocodec:node:entry-node', { 'ok': placementIri('urn:noocodec:dag:parity-parent', 'embed') }),
       PlacementFixture.embedNode(
-        'parity-parent',
+        'urn:noocodec:dag:parity-parent',
         'embed',
-        'parity-child',
-        { 'success': 'parity-end', 'error': 'parity-end' },
+        'urn:noocodec:dag:parity-child',
+        { 'success': placementIri('urn:noocodec:dag:parity-parent', 'parity-end'), 'error': placementIri('urn:noocodec:dag:parity-parent', 'parity-end') },
         valueMapping,
       ),
-      PlacementFixture.terminalNode('parity-parent', 'parity-end', 'completed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:parity-parent', 'parity-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
-    dispatcher.registerNode(TestNode.make('entry-node', ['ok'], () => 'ok'));
-    dispatcher.registerNode(TestNode.make('transform-node', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:entry-node', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:transform-node', ['ok'], () => 'ok'));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
     const initialState = new CompositeState();
     initialState.value = 42;
 
-    const result = await dispatcher.execute('parity-parent', initialState);
+    const result = await dispatcher.execute('urn:noocodec:dag:parity-parent', initialState);
 
     // Flow completes cleanly.
     assert.equal(result.terminalOutcome, 'completed');
@@ -527,7 +521,7 @@ void describe('Batch walk — size-1 parity', () => {
     singleParentState.gathered = [];
 
     const bodyNode = TestBatchNode.of<ScatterParentState, 'success'>(
-      'parity-body',
+      'urn:noocodec:node:parity-body',
       ['success'],
       (batch) => {
         const result = new Map<'success', Batch<ScatterParentState>>();
@@ -536,30 +530,41 @@ void describe('Batch walk — size-1 parity', () => {
       },
     );
 
-    const parity1Dag = TestDag.of('parity-scatter-1', 'parity-scatter', [
+    const parity1Dag = TestDag.of('urn:noocodec:dag:parity-scatter-1', placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter'), [
       {
-        '@id': 'urn:noocodex:dag:parity-scatter-1/node/parity-scatter',
+        '@id': 'urn:noocodec:dag:parity-scatter-1/node/parity-scatter',
         '@type': 'ScatterNode',
         'name': 'parity-scatter',
-        'body': { 'node': 'parity-body' },
+        'body': { 'node': 'urn:noocodec:node:parity-body' },
         'source': 'items',
         'itemKey': 'currentItem',
-        'gather': { 'strategy': 'append', 'target': 'gathered' },
         'outputs': {
-          'all-success': 'parity-scatter-end',
-          'partial': 'parity-scatter-end',
-          'all-error': 'parity-scatter-end',
-          'empty': 'parity-scatter-end',
+          'all-success': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-join'),
+          'partial': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-join'),
+          'all-error': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-join'),
+          'empty': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-end'),
         },
       },
-      PlacementFixture.terminalNode('parity-scatter-1', 'parity-scatter-end', 'completed'),
+      {
+        '@id': 'urn:noocodec:dag:parity-scatter-1/node/parity-scatter-join',
+        '@type': 'GatherNode',
+        'name': 'parity-scatter-join',
+        'sources': { [placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter')]: {} },
+        'gather': { 'strategy': 'append', 'target': 'gathered' },
+        'outputs': {
+          'success': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-end'),
+          'error': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-end'),
+          'empty': placementIri('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-end'),
+        },
+      },
+      PlacementFixture.terminalNode('urn:noocodec:dag:parity-scatter-1', 'parity-scatter-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ScatterParentState>();
     dispatcher.registerNode(bodyNode);
     dispatcher.registerDAG(parity1Dag);
 
-    const result = await dispatcher.execute('parity-scatter-1', singleParentState);
+    const result = await dispatcher.execute('urn:noocodec:dag:parity-scatter-1', singleParentState);
 
     assert.equal(result.terminalOutcome, 'completed');
     // Scatter gathered both items into `gathered` (append strategy appends raw number values).
@@ -577,33 +582,25 @@ void describe('Batch walk — multi-item plain placements', () => {
     const dispatcher = new Dagonizer<WalkState>();
     const bFirings: number[] = [];
 
-    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 4));
-    dispatcher.registerNode(TestWalkNode.recording('recorder', bFirings));
+    dispatcher.registerNode(TestWalkNode.fanOut('urn:noocodec:node:fanout', 4));
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:recorder', bFirings));
 
     const collected: WalkState[] = [];
-    dispatcher.registerNode(TestWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:linear-multi',
-      '@type': 'DAG',
-      'name': 'linear-multi',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:linear-multi/node/fan', '@type': 'SingleNode',
-          'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'rec' } },
-        { '@id': 'urn:noocodex:dag:linear-multi/node/rec', '@type': 'SingleNode',
-          'name': 'rec', 'node': 'recorder', 'outputs': { 'done': 'collect' } },
-        { '@id': 'urn:noocodex:dag:linear-multi/node/collect', '@type': 'SingleNode',
-          'name': 'collect', 'node': 'acc', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:linear-multi/node/end', '@type': 'TerminalNode',
+    const dag = TestDag.of('urn:noocodec:dag:linear-multi', placementIri('urn:noocodec:dag:linear-multi', 'fan'), [
+        { '@id': 'urn:noocodec:dag:linear-multi/node/fan', '@type': 'SingleNode',
+          'name': 'fan', 'node': 'urn:noocodec:node:fanout', 'outputs': { 'out': placementIri('urn:noocodec:dag:linear-multi', 'rec') } },
+        { '@id': 'urn:noocodec:dag:linear-multi/node/rec', '@type': 'SingleNode',
+          'name': 'rec', 'node': 'urn:noocodec:node:recorder', 'outputs': { 'done': placementIri('urn:noocodec:dag:linear-multi', 'collect') } },
+        { '@id': 'urn:noocodec:dag:linear-multi/node/collect', '@type': 'SingleNode',
+          'name': 'collect', 'node': 'urn:noocodec:node:acc', 'outputs': { 'done': placementIri('urn:noocodec:dag:linear-multi', 'end') } },
+        { '@id': 'urn:noocodec:dag:linear-multi/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('linear-multi', new WalkState());
+    const result = await dispatcher.execute('urn:noocodec:dag:linear-multi', new WalkState());
     assert.equal(result.terminalOutcome, 'completed');
     // recorder fired exactly once over all 4 items.
     assert.deepEqual(bFirings, [4]);
@@ -618,46 +615,38 @@ void describe('Batch walk — multi-item plain placements', () => {
   void it('partition node splits N items across two ports, each port fires once downstream', async () => {
     const dispatcher = new Dagonizer<WalkState>();
     // Items 0..5; even: 0, 2, 4 (3 items); odd: 1, 3, 5 (3 items).
-    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 6));
-    dispatcher.registerNode(TestWalkNode.partition('part'));
+    dispatcher.registerNode(TestWalkNode.fanOut('urn:noocodec:node:fanout', 6));
+    dispatcher.registerNode(TestWalkNode.partition('urn:noocodec:node:part'));
 
     const evenFirings: number[] = [];
     const oddFirings: number[] = [];
     const evenCollected: WalkState[] = [];
     const oddCollected: WalkState[] = [];
 
-    dispatcher.registerNode(TestWalkNode.recording('even-proc', evenFirings));
-    dispatcher.registerNode(TestWalkNode.recording('odd-proc', oddFirings));
-    dispatcher.registerNode(TestWalkNode.accumulator('even-acc', evenCollected));
-    dispatcher.registerNode(TestWalkNode.accumulator('odd-acc', oddCollected));
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:even-proc', evenFirings));
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:odd-proc', oddFirings));
+    dispatcher.registerNode(TestWalkNode.accumulator('urn:noocodec:node:even-acc', evenCollected));
+    dispatcher.registerNode(TestWalkNode.accumulator('urn:noocodec:node:odd-acc', oddCollected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:branch-multi',
-      '@type': 'DAG',
-      'name': 'branch-multi',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:branch-multi/node/fan', '@type': 'SingleNode',
-          'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'partition' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/partition', '@type': 'SingleNode',
-          'name': 'partition', 'node': 'part', 'outputs': { 'even': 'even-step', 'odd': 'odd-step' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/even-step', '@type': 'SingleNode',
-          'name': 'even-step', 'node': 'even-proc', 'outputs': { 'done': 'even-collect' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/odd-step', '@type': 'SingleNode',
-          'name': 'odd-step', 'node': 'odd-proc', 'outputs': { 'done': 'odd-collect' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/even-collect', '@type': 'SingleNode',
-          'name': 'even-collect', 'node': 'even-acc', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/odd-collect', '@type': 'SingleNode',
-          'name': 'odd-collect', 'node': 'odd-acc', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:branch-multi/node/end', '@type': 'TerminalNode',
+    const dag = TestDag.of('urn:noocodec:dag:branch-multi', placementIri('urn:noocodec:dag:branch-multi', 'fan'), [
+        { '@id': 'urn:noocodec:dag:branch-multi/node/fan', '@type': 'SingleNode',
+          'name': 'fan', 'node': 'urn:noocodec:node:fanout', 'outputs': { 'out': placementIri('urn:noocodec:dag:branch-multi', 'partition') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/partition', '@type': 'SingleNode',
+          'name': 'partition', 'node': 'urn:noocodec:node:part', 'outputs': { 'even': placementIri('urn:noocodec:dag:branch-multi', 'even-step'), 'odd': placementIri('urn:noocodec:dag:branch-multi', 'odd-step') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/even-step', '@type': 'SingleNode',
+          'name': 'even-step', 'node': 'urn:noocodec:node:even-proc', 'outputs': { 'done': placementIri('urn:noocodec:dag:branch-multi', 'even-collect') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/odd-step', '@type': 'SingleNode',
+          'name': 'odd-step', 'node': 'urn:noocodec:node:odd-proc', 'outputs': { 'done': placementIri('urn:noocodec:dag:branch-multi', 'odd-collect') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/even-collect', '@type': 'SingleNode',
+          'name': 'even-collect', 'node': 'urn:noocodec:node:even-acc', 'outputs': { 'done': placementIri('urn:noocodec:dag:branch-multi', 'end') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/odd-collect', '@type': 'SingleNode',
+          'name': 'odd-collect', 'node': 'urn:noocodec:node:odd-acc', 'outputs': { 'done': placementIri('urn:noocodec:dag:branch-multi', 'end') } },
+        { '@id': 'urn:noocodec:dag:branch-multi/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('branch-multi', new WalkState());
+    const result = await dispatcher.execute('urn:noocodec:dag:branch-multi', new WalkState());
     assert.equal(result.terminalOutcome, 'completed');
 
     // each branch fires exactly once over its sub-batch
@@ -682,40 +671,32 @@ void describe('Batch walk — multi-item plain placements', () => {
     const dFirings: number[] = [];
     const collected: WalkState[] = [];
 
-    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 8)); // 8 items: 0..7
-    dispatcher.registerNode(TestWalkNode.partition('part'));
-    dispatcher.registerNode(TestWalkNode.recording('b-proc', []));  // even branch
-    dispatcher.registerNode(TestWalkNode.recording('c-proc', []));  // odd branch
-    dispatcher.registerNode(TestWalkNode.recording('join', dFirings));  // THE JOIN
-    dispatcher.registerNode(TestWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestWalkNode.fanOut('urn:noocodec:node:fanout', 8)); // 8 items: 0..7
+    dispatcher.registerNode(TestWalkNode.partition('urn:noocodec:node:part'));
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:b-proc', []));  // even branch
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:c-proc', []));  // odd branch
+    dispatcher.registerNode(TestWalkNode.recording('urn:noocodec:node:join', dFirings));  // THE JOIN
+    dispatcher.registerNode(TestWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:diamond-join',
-      '@type': 'DAG',
-      'name': 'diamond-join',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:diamond-join/node/fan', '@type': 'SingleNode',
-          'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'partition' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/partition', '@type': 'SingleNode',
-          'name': 'partition', 'node': 'part', 'outputs': { 'even': 'b', 'odd': 'c' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b-proc', 'outputs': { 'done': 'join' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'c-proc', 'outputs': { 'done': 'join' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/join', '@type': 'SingleNode',
-          'name': 'join', 'node': 'join', 'outputs': { 'done': 'collect' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/collect', '@type': 'SingleNode',
-          'name': 'collect', 'node': 'acc', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:diamond-join/node/end', '@type': 'TerminalNode',
+    const dag = TestDag.of('urn:noocodec:dag:diamond-join', placementIri('urn:noocodec:dag:diamond-join', 'fan'), [
+        { '@id': 'urn:noocodec:dag:diamond-join/node/fan', '@type': 'SingleNode',
+          'name': 'fan', 'node': 'urn:noocodec:node:fanout', 'outputs': { 'out': placementIri('urn:noocodec:dag:diamond-join', 'partition') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/partition', '@type': 'SingleNode',
+          'name': 'partition', 'node': 'urn:noocodec:node:part', 'outputs': { 'even': placementIri('urn:noocodec:dag:diamond-join', 'b'), 'odd': placementIri('urn:noocodec:dag:diamond-join', 'c') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:b-proc', 'outputs': { 'done': placementIri('urn:noocodec:dag:diamond-join', 'join') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/c', '@type': 'SingleNode',
+          'name': 'c', 'node': 'urn:noocodec:node:c-proc', 'outputs': { 'done': placementIri('urn:noocodec:dag:diamond-join', 'join') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/join', '@type': 'SingleNode',
+          'name': 'join', 'node': 'urn:noocodec:node:join', 'outputs': { 'done': placementIri('urn:noocodec:dag:diamond-join', 'collect') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/collect', '@type': 'SingleNode',
+          'name': 'collect', 'node': 'urn:noocodec:node:acc', 'outputs': { 'done': placementIri('urn:noocodec:dag:diamond-join', 'end') } },
+        { '@id': 'urn:noocodec:dag:diamond-join/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('diamond-join', new WalkState());
+    const result = await dispatcher.execute('urn:noocodec:dag:diamond-join', new WalkState());
     assert.equal(result.terminalOutcome, 'completed');
 
     // The critical assertion: join fires exactly ONCE over all 8 items.
@@ -749,7 +730,7 @@ void describe('Batch walk — multi-item composites', () => {
     const childItemsSeen: number[] = [];
 
     const childIncrNode = TestBatchNode.of<CompositeState, 'done'>(
-      'child-incr',
+      'urn:noocodec:node:child-incr',
       ['done'],
       (batch) => {
         for (const item of batch) {
@@ -764,9 +745,9 @@ void describe('Batch walk — multi-item composites', () => {
     );
 
     // Child DAG: child-incr → child-end (success terminal).
-    const childDAG = TestDag.of('embed-uniform-child', 'child-incr', [
-      PlacementFixture.singleNode('embed-uniform-child', 'child-incr', 'child-incr', { 'done': 'child-end' }),
-      PlacementFixture.terminalNode('embed-uniform-child', 'child-end', 'completed'),
+    const childDAG = TestDag.of('urn:noocodec:dag:embed-uniform-child', placementIri('urn:noocodec:dag:embed-uniform-child', 'child-incr'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:embed-uniform-child', 'child-incr', 'urn:noocodec:node:child-incr', { 'done': placementIri('urn:noocodec:dag:embed-uniform-child', 'child-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:embed-uniform-child', 'child-end', 'completed'),
     ]);
 
     // Value mapping: parent `value` → child `value`; child `value` → parent `value`.
@@ -776,35 +757,35 @@ void describe('Batch walk — multi-item composites', () => {
     const downstreamCollected: CompositeState[] = [];
     const downstreamFirings: number[] = [];
 
-    const parentDAG = TestDag.of('embed-uniform-parent', 'fan', [
+    const parentDAG = TestDag.of('urn:noocodec:dag:embed-uniform-parent', placementIri('urn:noocodec:dag:embed-uniform-parent', 'fan'), [
       {
-        '@id': 'urn:noocodex:dag:embed-uniform-parent/node/fan',
+        '@id': 'urn:noocodec:dag:embed-uniform-parent/node/fan',
         '@type': 'SingleNode',
         'name': 'fan',
-        'node': 'fan4',
-        'outputs': { 'out': 'embed' },
+        'node': 'urn:noocodec:node:fan4',
+        'outputs': { 'out': placementIri('urn:noocodec:dag:embed-uniform-parent', 'embed') },
       },
       PlacementFixture.embedNode(
-        'embed-uniform-parent',
+        'urn:noocodec:dag:embed-uniform-parent',
         'embed',
-        'embed-uniform-child',
-        { 'success': 'downstream', 'error': 'parent-end' },
+        'urn:noocodec:dag:embed-uniform-child',
+        { 'success': placementIri('urn:noocodec:dag:embed-uniform-parent', 'downstream'), 'error': placementIri('urn:noocodec:dag:embed-uniform-parent', 'parent-end') },
         valueMapping,
       ),
-      PlacementFixture.singleNode('embed-uniform-parent', 'downstream', 'downstream-rec', { 'done': 'acc' }),
-      PlacementFixture.singleNode('embed-uniform-parent', 'acc', 'acc-node', { 'done': 'parent-end' }),
-      PlacementFixture.terminalNode('embed-uniform-parent', 'parent-end', 'completed'),
+      PlacementFixture.singleNode('urn:noocodec:dag:embed-uniform-parent', 'downstream', 'urn:noocodec:node:downstream-rec', { 'done': placementIri('urn:noocodec:dag:embed-uniform-parent', 'acc') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:embed-uniform-parent', 'acc', 'urn:noocodec:node:acc-node', { 'done': placementIri('urn:noocodec:dag:embed-uniform-parent', 'parent-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:embed-uniform-parent', 'parent-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
-    dispatcher.registerNode(TestCompositeWalkNode.fanOut('fan4', 4));
+    dispatcher.registerNode(TestCompositeWalkNode.fanOut('urn:noocodec:node:fan4', 4));
     dispatcher.registerNode(childIncrNode);
-    dispatcher.registerNode(TestCompositeWalkNode.recording('downstream-rec', downstreamFirings));
-    dispatcher.registerNode(TestCompositeWalkNode.accumulator('acc-node', downstreamCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.recording('urn:noocodec:node:downstream-rec', downstreamFirings));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('urn:noocodec:node:acc-node', downstreamCollected));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
-    const result = await dispatcher.execute('embed-uniform-parent', new CompositeState());
+    const result = await dispatcher.execute('urn:noocodec:dag:embed-uniform-parent', new CompositeState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -834,7 +815,7 @@ void describe('Batch walk — multi-item composites', () => {
 
     // Child routing node: even value → 'success', odd value → 'failure'.
     const childRouterNode = TestBatchNode.of<CompositeState, 'success' | 'failure'>(
-      'child-router',
+      'urn:noocodec:node:child-router',
       ['success', 'failure'],
       (batch) => {
         const even: Array<{ 'id': string; 'state': CompositeState }> = [];
@@ -856,16 +837,19 @@ void describe('Batch walk — multi-item composites', () => {
     // Child DAG: router → success-terminal or failure-terminal.
     // success terminal outcome = 'completed', failure terminal outcome = 'failed'.
     // The engine maps 'completed' → 'success' output, 'failed' → 'error' output.
-    const childDAG = TestDag.of('embed-split-child', 'child-router', [
+    const childDAG = TestDag.of('urn:noocodec:dag:embed-split-child', placementIri('urn:noocodec:dag:embed-split-child', 'child-router'), [
       {
-        '@id': 'urn:noocodex:dag:embed-split-child/node/child-router',
+        '@id': 'urn:noocodec:dag:embed-split-child/node/child-router',
         '@type': 'SingleNode',
-        'name': 'child-router',
-        'node': 'child-router',
-        'outputs': { 'success': 'child-success-end', 'failure': 'child-fail-end' },
+        'name': 'urn:noocodec:node:child-router',
+        'node': 'urn:noocodec:node:child-router',
+        'outputs': {
+          'success': placementIri('urn:noocodec:dag:embed-split-child', 'child-success-end'),
+          'failure': placementIri('urn:noocodec:dag:embed-split-child', 'child-fail-end'),
+        },
       },
-      PlacementFixture.terminalNode('embed-split-child', 'child-success-end', 'completed'),
-      PlacementFixture.terminalNode('embed-split-child', 'child-fail-end', 'failed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:embed-split-child', 'child-success-end', 'completed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:embed-split-child', 'child-fail-end', 'failed'),
     ]);
 
     // Parent DAG: fan → embed → split to even-acc (success) or odd-acc (error).
@@ -874,35 +858,35 @@ void describe('Batch walk — multi-item composites', () => {
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-    const parentDAG = TestDag.of('embed-split-parent', 'fan', [
+    const parentDAG = TestDag.of('urn:noocodec:dag:embed-split-parent', placementIri('urn:noocodec:dag:embed-split-parent', 'fan'), [
       {
-        '@id': 'urn:noocodex:dag:embed-split-parent/node/fan',
+        '@id': 'urn:noocodec:dag:embed-split-parent/node/fan',
         '@type': 'SingleNode',
         'name': 'fan',
-        'node': 'fan6',
-        'outputs': { 'out': 'embed' },
+        'node': 'urn:noocodec:node:fan6',
+        'outputs': { 'out': placementIri('urn:noocodec:dag:embed-split-parent', 'embed') },
       },
       PlacementFixture.embedNode(
-        'embed-split-parent',
+        'urn:noocodec:dag:embed-split-parent',
         'embed',
-        'embed-split-child',
-        { 'success': 'even-acc', 'error': 'odd-acc' },
+        'urn:noocodec:dag:embed-split-child',
+        { 'success': placementIri('urn:noocodec:dag:embed-split-parent', 'even-acc'), 'error': placementIri('urn:noocodec:dag:embed-split-parent', 'odd-acc') },
         valueMapping,
       ),
-      PlacementFixture.singleNode('embed-split-parent', 'even-acc', 'even-collector', { 'done': 'parent-end' }),
-      PlacementFixture.singleNode('embed-split-parent', 'odd-acc', 'odd-collector', { 'done': 'parent-end' }),
-      PlacementFixture.terminalNode('embed-split-parent', 'parent-end', 'completed'),
+      PlacementFixture.singleNode('urn:noocodec:dag:embed-split-parent', 'even-acc', 'urn:noocodec:node:even-collector', { 'done': placementIri('urn:noocodec:dag:embed-split-parent', 'parent-end') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:embed-split-parent', 'odd-acc', 'urn:noocodec:node:odd-collector', { 'done': placementIri('urn:noocodec:dag:embed-split-parent', 'parent-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:embed-split-parent', 'parent-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
-    dispatcher.registerNode(TestCompositeWalkNode.fanOut('fan6', 6));
+    dispatcher.registerNode(TestCompositeWalkNode.fanOut('urn:noocodec:node:fan6', 6));
     dispatcher.registerNode(childRouterNode);
-    dispatcher.registerNode(TestCompositeWalkNode.accumulator('even-collector', evenCollected));
-    dispatcher.registerNode(TestCompositeWalkNode.accumulator('odd-collector', oddCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('urn:noocodec:node:even-collector', evenCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('urn:noocodec:node:odd-collector', oddCollected));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
-    const result = await dispatcher.execute('embed-split-parent', new CompositeState());
+    const result = await dispatcher.execute('urn:noocodec:dag:embed-split-parent', new CompositeState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -926,7 +910,7 @@ void describe('Batch walk — multi-item composites', () => {
     // `gathered`). The gather result for each parent must reflect only that
     // parent's source, proving no cross-parent mixing.
     const fanOutNode = TestBatchNode.of<ScatterParentState, 'out'>(
-      'parent-fan',
+      'urn:noocodec:node:parent-fan',
       ['out'],
       (batch) => {
         const source = batch.row(0).state;
@@ -950,7 +934,7 @@ void describe('Batch walk — multi-item composites', () => {
     // and appends it to the parent's `gathered` array. The body node itself does
     // nothing to `gathered` — that is the gather strategy's job.
     const scatterBodyNode = TestBatchNode.of<ScatterParentState, 'success'>(
-      'scatter-body',
+      'urn:noocodec:node:scatter-body',
       ['success'],
       (batch) => {
         const result = new Map<'success', Batch<ScatterParentState>>();
@@ -962,7 +946,7 @@ void describe('Batch walk — multi-item composites', () => {
     // Downstream accumulator collects all parent states after scatter+gather.
     const downstreamCollected: ScatterParentState[] = [];
     const downstreamNode = TestBatchNode.of<ScatterParentState, 'done'>(
-      'downstream',
+      'urn:noocodec:node:downstream',
       ['done'],
       (batch) => {
         for (const item of batch) {
@@ -974,31 +958,42 @@ void describe('Batch walk — multi-item composites', () => {
       },
     );
 
-    const dag = TestDag.of('scatter-per-parent', 'fan', [
+    const dag = TestDag.of('urn:noocodec:dag:scatter-per-parent', placementIri('urn:noocodec:dag:scatter-per-parent', 'fan'), [
       {
-        '@id': 'urn:noocodex:dag:scatter-per-parent/node/fan',
+        '@id': 'urn:noocodec:dag:scatter-per-parent/node/fan',
         '@type': 'SingleNode',
         'name': 'fan',
-        'node': 'parent-fan',
-        'outputs': { 'out': 'scatter' },
+        'node': 'urn:noocodec:node:parent-fan',
+        'outputs': { 'out': placementIri('urn:noocodec:dag:scatter-per-parent', 'scatter') },
       },
       {
-        '@id': 'urn:noocodex:dag:scatter-per-parent/node/scatter',
+        '@id': 'urn:noocodec:dag:scatter-per-parent/node/scatter',
         '@type': 'ScatterNode',
         'name': 'scatter',
-        'body': { 'node': 'scatter-body' },
+        'body': { 'node': 'urn:noocodec:node:scatter-body' },
         'source': 'items',
         'itemKey': 'currentItem',
-        'gather': { 'strategy': 'append', 'target': 'gathered' },
         'outputs': {
-          'all-success': 'downstream',
-          'partial': 'downstream',
-          'all-error': 'downstream',
-          'empty': 'downstream',
+          'all-success': placementIri('urn:noocodec:dag:scatter-per-parent', 'join'),
+          'partial': placementIri('urn:noocodec:dag:scatter-per-parent', 'join'),
+          'all-error': placementIri('urn:noocodec:dag:scatter-per-parent', 'join'),
+          'empty': placementIri('urn:noocodec:dag:scatter-per-parent', 'downstream'),
         },
       },
-      PlacementFixture.singleNode('scatter-per-parent', 'downstream', 'downstream', { 'done': 'end' }),
-      PlacementFixture.terminalNode('scatter-per-parent', 'end', 'completed'),
+      {
+        '@id': 'urn:noocodec:dag:scatter-per-parent/node/join',
+        '@type': 'GatherNode',
+        'name': 'join',
+        'sources': { [placementIri('urn:noocodec:dag:scatter-per-parent', 'scatter')]: {} },
+        'gather': { 'strategy': 'append', 'target': 'gathered' },
+        'outputs': {
+          'success': placementIri('urn:noocodec:dag:scatter-per-parent', 'downstream'),
+          'error': placementIri('urn:noocodec:dag:scatter-per-parent', 'downstream'),
+          'empty': placementIri('urn:noocodec:dag:scatter-per-parent', 'downstream'),
+        },
+      },
+      PlacementFixture.singleNode('urn:noocodec:dag:scatter-per-parent', 'downstream', 'urn:noocodec:node:downstream', { 'done': placementIri('urn:noocodec:dag:scatter-per-parent', 'end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:scatter-per-parent', 'end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ScatterParentState>();
@@ -1007,7 +1002,7 @@ void describe('Batch walk — multi-item composites', () => {
     dispatcher.registerNode(downstreamNode);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('scatter-per-parent', new ScatterParentState());
+    const result = await dispatcher.execute('urn:noocodec:dag:scatter-per-parent', new ScatterParentState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -1054,46 +1049,38 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.retry('urn:noocodec:node:retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-size1',
-      '@type': 'DAG',
-      'name': 'cycle-size1',
-      'version': '1',
-      'entrypoint': 'a',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-size1', placementIri('urn:noocodec:dag:cycle-size1', 'a'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-size1/node/a',
+          '@id': 'urn:noocodec:dag:cycle-size1/node/a',
           '@type': 'SingleNode',
           'name': 'a',
-          'node': 'retrier',
-          'outputs': { 'retry': 'a', 'done': 'collect' },
+          'node': 'urn:noocodec:node:retrier',
+          'outputs': { 'retry': placementIri('urn:noocodec:dag:cycle-size1', 'a'), 'done': placementIri('urn:noocodec:dag:cycle-size1', 'collect') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-size1/node/collect',
+          '@id': 'urn:noocodec:dag:cycle-size1/node/collect',
           '@type': 'SingleNode',
           'name': 'collect',
-          'node': 'acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-size1', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-size1/node/end',
+          '@id': 'urn:noocodec:dag:cycle-size1/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
     const input = new CycleState();
     input.exitAt = 3; // exits after attempt 4 (attempts 1,2,3 loop; attempt 4 exits)
 
-    const result = await dispatcher.execute('cycle-size1', input);
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-size1', input);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.state.lifecycle.variant, 'completed');
@@ -1114,46 +1101,38 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.retry('urn:noocodec:node:retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-immediate',
-      '@type': 'DAG',
-      'name': 'cycle-immediate',
-      'version': '1',
-      'entrypoint': 'a',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-immediate', placementIri('urn:noocodec:dag:cycle-immediate', 'a'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-immediate/node/a',
+          '@id': 'urn:noocodec:dag:cycle-immediate/node/a',
           '@type': 'SingleNode',
           'name': 'a',
-          'node': 'retrier',
-          'outputs': { 'retry': 'a', 'done': 'collect' },
+          'node': 'urn:noocodec:node:retrier',
+          'outputs': { 'retry': placementIri('urn:noocodec:dag:cycle-immediate', 'a'), 'done': placementIri('urn:noocodec:dag:cycle-immediate', 'collect') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-immediate/node/collect',
+          '@id': 'urn:noocodec:dag:cycle-immediate/node/collect',
           '@type': 'SingleNode',
           'name': 'collect',
-          'node': 'acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-immediate', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-immediate/node/end',
+          '@id': 'urn:noocodec:dag:cycle-immediate/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
     const input = new CycleState();
     input.exitAt = 0; // attempts becomes 1 which is > 0 → immediate exit
 
-    const result = await dispatcher.execute('cycle-immediate', input);
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-immediate', input);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(result.executedNodes, ['a', 'collect', 'end']);
@@ -1167,51 +1146,43 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(TestCycleWalkNode.homogeneousFanOut('fan', 4, 2));
-    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.homogeneousFanOut('urn:noocodec:node:fan', 4, 2));
+    dispatcher.registerNode(TestCycleWalkNode.retry('urn:noocodec:node:retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-homogeneous',
-      '@type': 'DAG',
-      'name': 'cycle-homogeneous',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-homogeneous', placementIri('urn:noocodec:dag:cycle-homogeneous', 'fan'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-homogeneous/node/fan',
+          '@id': 'urn:noocodec:dag:cycle-homogeneous/node/fan',
           '@type': 'SingleNode',
           'name': 'fan',
-          'node': 'fan',
-          'outputs': { 'out': 'a' },
+          'node': 'urn:noocodec:node:fan',
+          'outputs': { 'out': placementIri('urn:noocodec:dag:cycle-homogeneous', 'a') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-homogeneous/node/a',
+          '@id': 'urn:noocodec:dag:cycle-homogeneous/node/a',
           '@type': 'SingleNode',
           'name': 'a',
-          'node': 'retrier',
-          'outputs': { 'retry': 'a', 'done': 'collect' },
+          'node': 'urn:noocodec:node:retrier',
+          'outputs': { 'retry': placementIri('urn:noocodec:dag:cycle-homogeneous', 'a'), 'done': placementIri('urn:noocodec:dag:cycle-homogeneous', 'collect') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-homogeneous/node/collect',
+          '@id': 'urn:noocodec:dag:cycle-homogeneous/node/collect',
           '@type': 'SingleNode',
           'name': 'collect',
-          'node': 'acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-homogeneous', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-homogeneous/node/end',
+          '@id': 'urn:noocodec:dag:cycle-homogeneous/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('cycle-homogeneous', new CycleState());
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-homogeneous', new CycleState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -1238,51 +1209,43 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(TestCycleWalkNode.fanOut('fan', 5));
-    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.fanOut('urn:noocodec:node:fan', 5));
+    dispatcher.registerNode(TestCycleWalkNode.retry('urn:noocodec:node:retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-heterogeneous',
-      '@type': 'DAG',
-      'name': 'cycle-heterogeneous',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-heterogeneous', placementIri('urn:noocodec:dag:cycle-heterogeneous', 'fan'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-heterogeneous/node/fan',
+          '@id': 'urn:noocodec:dag:cycle-heterogeneous/node/fan',
           '@type': 'SingleNode',
           'name': 'fan',
-          'node': 'fan',
-          'outputs': { 'out': 'a' },
+          'node': 'urn:noocodec:node:fan',
+          'outputs': { 'out': placementIri('urn:noocodec:dag:cycle-heterogeneous', 'a') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-heterogeneous/node/a',
+          '@id': 'urn:noocodec:dag:cycle-heterogeneous/node/a',
           '@type': 'SingleNode',
           'name': 'a',
-          'node': 'retrier',
-          'outputs': { 'retry': 'a', 'done': 'collect' },
+          'node': 'urn:noocodec:node:retrier',
+          'outputs': { 'retry': placementIri('urn:noocodec:dag:cycle-heterogeneous', 'a'), 'done': placementIri('urn:noocodec:dag:cycle-heterogeneous', 'collect') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-heterogeneous/node/collect',
+          '@id': 'urn:noocodec:dag:cycle-heterogeneous/node/collect',
           '@type': 'SingleNode',
           'name': 'collect',
-          'node': 'acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-heterogeneous', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-heterogeneous/node/end',
+          '@id': 'urn:noocodec:dag:cycle-heterogeneous/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('cycle-heterogeneous', new CycleState());
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-heterogeneous', new CycleState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -1322,7 +1285,7 @@ void describe('Batch walk — cycles and retry loops', () => {
 
     // Custom fan-out: 2 items with exitAt=0 (succeed fast), 2 items with exitAt=255 (exhaust).
     const mixedFanOut = TestBatchNode.of<CycleState, 'out'>(
-      'mix-fan',
+      'urn:noocodec:node:mix-fan',
       ['out'],
       (batch) => {
         const sourceState = batch.row(0).state;
@@ -1343,60 +1306,56 @@ void describe('Batch walk — cycles and retry loops', () => {
     );
 
     dispatcher.registerNode(mixedFanOut);
-    dispatcher.registerNode(TestCycleWalkNode.budgetRetry('budget-retrier', MAX_ATTEMPTS, firings));
+    dispatcher.registerNode(TestCycleWalkNode.budgetRetry('urn:noocodec:node:budget-retrier', MAX_ATTEMPTS, firings));
 
     const successCollected: CycleState[] = [];
     const salvageCollected: CycleState[] = [];
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('success-acc', successCollected));
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('salvage-acc', salvageCollected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:success-acc', successCollected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:salvage-acc', salvageCollected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-budget',
-      '@type': 'DAG',
-      'name': 'cycle-budget',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-budget', placementIri('urn:noocodec:dag:cycle-budget', 'fan'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-budget/node/fan',
+          '@id': 'urn:noocodec:dag:cycle-budget/node/fan',
           '@type': 'SingleNode',
           'name': 'fan',
-          'node': 'mix-fan',
-          'outputs': { 'out': 'b' },
+          'node': 'urn:noocodec:node:mix-fan',
+          'outputs': { 'out': placementIri('urn:noocodec:dag:cycle-budget', 'b') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-budget/node/b',
+          '@id': 'urn:noocodec:dag:cycle-budget/node/b',
           '@type': 'SingleNode',
           'name': 'b',
-          'node': 'budget-retrier',
-          'outputs': { 'retry': 'b', 'done': 'success-collect', 'salvage': 'salvage-collect' },
+          'node': 'urn:noocodec:node:budget-retrier',
+          'outputs': {
+            'retry': placementIri('urn:noocodec:dag:cycle-budget', 'b'),
+            'done': placementIri('urn:noocodec:dag:cycle-budget', 'success-collect'),
+            'salvage': placementIri('urn:noocodec:dag:cycle-budget', 'salvage-collect'),
+          },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-budget/node/success-collect',
+          '@id': 'urn:noocodec:dag:cycle-budget/node/success-collect',
           '@type': 'SingleNode',
           'name': 'success-collect',
-          'node': 'success-acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:success-acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-budget', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-budget/node/salvage-collect',
+          '@id': 'urn:noocodec:dag:cycle-budget/node/salvage-collect',
           '@type': 'SingleNode',
           'name': 'salvage-collect',
-          'node': 'salvage-acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:salvage-acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-budget', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-budget/node/end',
+          '@id': 'urn:noocodec:dag:cycle-budget/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('cycle-budget', new CycleState());
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-budget', new CycleState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -1431,7 +1390,7 @@ void describe('Batch walk — cycles and retry loops', () => {
 
     // Fan-out: 3 loop items (exitAt 0,1,1) + 2 straight items.
     const fanNode = TestBatchNode.of<CycleState, 'loop-out' | 'straight-out'>(
-      'cycle-join-fan',
+      'urn:noocodec:node:cycle-join-fan',
       ['loop-out', 'straight-out'],
       (batch, _ctx: NodeContextType) => {
         const sourceState = batch.row(0).state;
@@ -1460,57 +1419,49 @@ void describe('Batch walk — cycles and retry loops', () => {
     );
 
     dispatcher.registerNode(fanNode);
-    dispatcher.registerNode(TestCycleWalkNode.retry('cycle-retrier', []));
-    dispatcher.registerNode(TestCycleWalkNode.recording('j-join', jFirings));
-    dispatcher.registerNode(TestCycleWalkNode.accumulator('j-acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.retry('urn:noocodec:node:cycle-retrier', []));
+    dispatcher.registerNode(TestCycleWalkNode.recording('urn:noocodec:node:j-join', jFirings));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('urn:noocodec:node:j-acc', collected));
 
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:cycle-join',
-      '@type': 'DAG',
-      'name': 'cycle-join',
-      'version': '1',
-      'entrypoint': 'fan',
-      'nodes': [
+    const dag = TestDag.of('urn:noocodec:dag:cycle-join', placementIri('urn:noocodec:dag:cycle-join', 'fan'), [
         {
-          '@id': 'urn:noocodex:dag:cycle-join/node/fan',
+          '@id': 'urn:noocodec:dag:cycle-join/node/fan',
           '@type': 'SingleNode',
           'name': 'fan',
-          'node': 'cycle-join-fan',
-          'outputs': { 'loop-out': 'a', 'straight-out': 'j' },
+          'node': 'urn:noocodec:node:cycle-join-fan',
+          'outputs': { 'loop-out': placementIri('urn:noocodec:dag:cycle-join', 'a'), 'straight-out': placementIri('urn:noocodec:dag:cycle-join', 'j') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-join/node/a',
+          '@id': 'urn:noocodec:dag:cycle-join/node/a',
           '@type': 'SingleNode',
           'name': 'a',
-          'node': 'cycle-retrier',
-          'outputs': { 'retry': 'a', 'done': 'j' },
+          'node': 'urn:noocodec:node:cycle-retrier',
+          'outputs': { 'retry': placementIri('urn:noocodec:dag:cycle-join', 'a'), 'done': placementIri('urn:noocodec:dag:cycle-join', 'j') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-join/node/j',
+          '@id': 'urn:noocodec:dag:cycle-join/node/j',
           '@type': 'SingleNode',
           'name': 'j',
-          'node': 'j-join',
-          'outputs': { 'done': 'collect' },
+          'node': 'urn:noocodec:node:j-join',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-join', 'collect') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-join/node/collect',
+          '@id': 'urn:noocodec:dag:cycle-join/node/collect',
           '@type': 'SingleNode',
           'name': 'collect',
-          'node': 'j-acc',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:j-acc',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cycle-join', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cycle-join/node/end',
+          '@id': 'urn:noocodec:dag:cycle-join/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
-      ],
-    };
+      ]);
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('cycle-join', new CycleState());
+    const result = await dispatcher.execute('urn:noocodec:dag:cycle-join', new CycleState());
 
     assert.equal(result.terminalOutcome, 'completed');
 

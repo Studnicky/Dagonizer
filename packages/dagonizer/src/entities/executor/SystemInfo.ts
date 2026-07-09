@@ -8,14 +8,14 @@
  * clamp semantics so the formula is defined once and tested once.
  *
  * Formula:
- *   base  = max(1, min(maximumWorkers, max(fallbackWorkerCount,
+ *   base  = max(1, min(maximumWorkers, max(minimumWorkerCount,
  *             parallelism − mainThreadReservation)))
  *   final = memoryPerWorkerBytes != null && freeMemoryBytes != null
- *           ? max(1, min(base, max(fallbackWorkerCount,
+ *           ? max(1, min(base, max(minimumWorkerCount,
  *               floor(freeMemoryBytes / memoryPerWorkerBytes))))
  *           : base
  *
- * `maximumWorkers` is a hard cap that wins over `fallbackWorkerCount`.
+ * `maximumWorkers` is a hard cap that wins over `minimumWorkerCount`.
  * The floor at 1 ensures a pool never starts with zero workers.
  */
 
@@ -90,24 +90,24 @@ export class SystemInfo {
     const {
       maximumWorkers,
       mainThreadReservation,
-      fallbackWorkerCount,
+      minimumWorkerCount,
       memoryPerWorkerBytes,
     } = config;
     const { parallelism, freeMemoryBytes } = probes;
 
-    // Base clamp: reserve the main thread, apply fallback floor, apply hard cap.
+    // Base clamp: reserve the main thread, apply the worker floor, apply hard cap.
     const base = Math.max(
       1,
       Math.min(
         maximumWorkers,
-        Math.max(fallbackWorkerCount, parallelism - mainThreadReservation),
+        Math.max(minimumWorkerCount, parallelism - mainThreadReservation),
       ),
     );
 
     // Memory clamp: only when both memoryPerWorkerBytes and freeMemoryBytes are available.
     if (memoryPerWorkerBytes !== null && memoryPerWorkerBytes > 0 && freeMemoryBytes !== null) {
       const memoryBased = Math.floor(freeMemoryBytes / memoryPerWorkerBytes);
-      return Math.max(1, Math.min(base, Math.max(fallbackWorkerCount, memoryBased)));
+      return Math.max(1, Math.min(base, Math.max(minimumWorkerCount, memoryBased)));
     }
 
     return base;

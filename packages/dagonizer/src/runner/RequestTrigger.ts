@@ -8,7 +8,7 @@
  *
  * Consumers subclass `RequestTrigger` and:
  *   1. Override `toInput(request)` to extract runner input from the raw request.
- *   2. Optionally override `selectDag(request)` to choose a DAG per request.
+   *   2. Optionally override `selectDag(request)` to choose a DAG IRI per request.
  *   3. Optionally override `requestOptions(request)` to supply per-turn options
  *      (signal, deadlineMs).
  *
@@ -81,10 +81,10 @@ export abstract class RequestTrigger<
     if (runner === null) {
       throw new Error('RequestTrigger.fire called before attach — call attach(runner) first.');
     }
-    const dagName = this.selectDag(request);
+    const dagIri = this.selectDag(request);
     const input = this.toInput(request);
     const options = this.requestOptions(request);
-    return runner.run(dagName, input, options);
+    return runner.run(dagIri, input, options);
   }
 
   /**
@@ -94,11 +94,11 @@ export abstract class RequestTrigger<
   protected abstract toInput(request: TRequest): TInput;
 
   /**
-   * Select the DAG name to run for a given request.
-   * Default returns `'default'`. Override for per-request routing.
+   * Select the DAG IRI to run for a given request.
+   * Default returns `'urn:noocodec:dag:default'`. Override for per-request routing.
    */
   protected selectDag(_request: TRequest): string {
-    return 'default';
+    return 'urn:noocodec:dag:default';
   }
 
   /**

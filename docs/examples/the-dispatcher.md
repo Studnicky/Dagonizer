@@ -87,7 +87,7 @@ Classification runs on-device by default: an offline MiniLM embedder computes
 cosine similarity between the message and three intent anchors (`routine`,
 `escalate`, `off-topic`) — instant, with no LLM round-trip and no adapter-timeout
 exposure. The LLM composes the reply on the routine branch, and also serves as
-the classification fallback when the embedder is unavailable, when it isn't
+the classification path when the embedder is unavailable, when it isn't
 confident about a message, or when the Config toggle is set to `llm` mode. The
 trolley switch and escalation routing are deterministic overrides on top of
 whichever classifier decided.
@@ -181,7 +181,7 @@ A second Config-tab control swaps `state.classificationMode` between
 - `'embedder'` — the on-device MiniLM embedder computes cosine similarity
   between the message and three intent anchors. Instant, no LLM round-trip.
   When the embedder is unavailable in the session, or its top score misses the
-  confidence floor, classification transparently falls back to the LLM.
+  confidence floor, classification transparently routes to the LLM.
 - `'llm'` — every message is classified generatively via the active LLM
   adapter. Slower, since each message loads/queries the model.
 
@@ -197,7 +197,7 @@ demo. The trolley switch still wins over both: `humanMode = true` forces
 const state = new DispatcherState();
 state.message = 'I need a refund';
 
-const result = await dispatcher.execute('support-dispatcher', state);
+const result = await dispatcher.execute('urn:noocodec:dag:support-dispatcher', state);
 // result.state.lifecycle.variant === 'awaiting-input'
 // result.parked.correlationKey   === 'escalation:<ts>'
 // result.parked.cursor            === 'park-for-operator'
@@ -206,7 +206,7 @@ const result = await dispatcher.execute('support-dispatcher', state);
 **Step 2 — capture the checkpoint:**
 
 ```ts
-const ckpt = await Checkpoint.capture('support-dispatcher', result);
+const ckpt = await Checkpoint.capture('urn:noocodec:dag:support-dispatcher', result);
 const json  = ckpt.toJson();  // persist to any store (localStorage, DB, etc.)
 ```
 

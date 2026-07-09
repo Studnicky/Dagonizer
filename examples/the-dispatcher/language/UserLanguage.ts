@@ -19,7 +19,7 @@ export class UserLanguage {
   /**
    * Runtime probe for the visitor's device language. Tries
    * `navigator.language` (browser) first, then `process.env.LANG`
-   * (Node CLI), then falls back to `'en'`. The returned code is
+   * (Node CLI), then uses `'en'`. The returned code is
    * always a lower-case ISO 639-1 alpha-2 string.
    */
   static detect(): string {

@@ -82,17 +82,19 @@ The snippets below show the hook surface, subclass pattern, observer mux, EventB
 
 `onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 
+Hook argument names follow the public API (`dagName`, `nodeName`, `placementName`) because those values are optimized for logs, spans, and UI labels. They are observability labels, not routing keys. Use the DAG document `@id` and placement `@id` when you need execution identity.
+
 For scatter and embedded-DAG nodes, `onNodeStart` and `onNodeEnd` fire once for the group entry (the containing `scatter` or `embedded-dag` placement), not once per constituent clone or inner node.
 
 #### `placementPath`
 
-`placementPath` is a required `readonly string[]` argument on `onNodeStart`, `onNodeEnd`, and `onError`. It is the ordered list of parent embedded-DAG placement names that led to the current node:
+`placementPath` is a required `readonly string[]` argument on `onNodeStart`, `onNodeEnd`, and `onError`. It is the ordered list of parent embedded-DAG placement labels that led to the current node:
 
 - Top-level node: `[]`
 - Node inside an `EmbeddedDAGNode` placement named `on-topic-search`: `['on-topic-search']`
 - Doubly-nested: `['on-topic-search', 'inner-placement']`
 
-Use it to disambiguate same-named inner placements across multiple embedded-DAG instances. The full qualified id of the current node is `[...placementPath, nodeName].join('/')`.
+Use it to disambiguate same-labeled inner placements across multiple embedded-DAG instances. The full qualified observability label of the current node is `[...placementPath, nodeName].join('/')`.
 
 ## Details for Nerds
 
@@ -236,7 +238,7 @@ const stream = SseStream.of(bus, ['lifecycle'], { heartbeatMs: 15_000 });
 
 const dispatcher = new ObservingDispatcher(bus, 'lifecycle');
 // register nodes + DAG ...
-await dispatcher.execute('my-dag', state);
+await dispatcher.execute('urn:noocodec:dag:my-dag', state);
 
 bus.dispose(); // unsubscribes all subscribers
 ```
@@ -276,7 +278,7 @@ const stream = SseStream.of(bus, ['pipeline-events'], { heartbeatMs: 15_000 });
 // return new Response(stream.readable, { headers: { 'Content-Type': 'text/event-stream' } });
 
 // register nodes + DAG, then run:
-await dispatcher.execute('my-dag', new MyState());
+await dispatcher.execute('urn:noocodec:dag:my-dag', new MyState());
 bus.dispose();
 ```
 

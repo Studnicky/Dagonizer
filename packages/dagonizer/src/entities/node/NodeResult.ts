@@ -11,7 +11,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export const NodeResultSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeResult',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['output', 'skipped', 'nodeName', 'state'],

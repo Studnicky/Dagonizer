@@ -16,6 +16,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region customs-dwell-node
 export class CustomsDwellNode extends MonadicNode<CartographerState, 'dwelled'> {
+  readonly '@id' = 'urn:noocodec:node:customs-dwell';
   readonly 'name' = 'customs-dwell';
   readonly 'outputs' = ['dwelled'] as const;
 

@@ -309,7 +309,7 @@ export class ChannelDispatch {
   #route(msg: BridgeMessageType): void {
     // Dispatch map over variant: handlers are keyed by message variant.
     // Unknown variants (e.g. 'intermediate') are observability-only and
-    // require no correlation action — the fallback is a no-op.
+    // require no correlation action.
     type RouteMsg = BridgeMessageType;
     const variantDispatch: Partial<{ [K in RouteMsg['variant']]: (m: Extract<RouteMsg, { variant: K }>) => void }> = {
       'ready': (m) => {
@@ -437,4 +437,3 @@ export class ChannelDispatch {
     }
   }
 }
-

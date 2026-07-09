@@ -16,6 +16,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region normalize-yaml-node
 export class NormalizeYamlNode extends MonadicNode<CartographerState, 'normalized'> {
+  readonly '@id' = 'urn:noocodec:node:normalize-yaml-map';
   readonly 'name' = 'normalize-yaml-map';
   readonly 'outputs' = ['normalized'] as const;
 

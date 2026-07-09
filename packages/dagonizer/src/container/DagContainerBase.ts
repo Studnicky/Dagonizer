@@ -253,7 +253,7 @@ export abstract class DagContainerBase<TWorker = unknown>
    * Run a batch of items through the same DAG in a single transport round-trip.
    * Returns one `BatchRunResultType` per item in the batch, preserving item order.
    *
-   * `task` supplies the DAG name, placement path, timeout, and abort signal.
+   * `task` supplies the DAG IRI, placement path, timeout, and abort signal.
    * `batch` carries the per-item states. `task.state` is used only for the
    * abort signal and task identity; items come from `batch`.
    *
@@ -300,7 +300,7 @@ export abstract class DagContainerBase<TWorker = unknown>
   /**
    * Acquire a channel, run `fn` against it and its dispatch, and always release
    * the channel — even when `fn` throws. On error, `onError` produces the
-   * fallback value so callers never see the lease throw. This is the single
+   * caller-defined value so callers never see the lease throw. This is the single
    * acquire/try/catch/finally lease block shared by `runDag` and `runDagBatch`.
    */
   async #withChannel<T>(

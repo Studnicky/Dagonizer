@@ -35,6 +35,7 @@
  */
 
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
+import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
@@ -60,6 +61,13 @@ export type { GatherExecutionType, GatherRecordType };
 export abstract class GatherStrategy {
   /** Wire-shape identifier; matches `GatherConfig.strategy`. */
   abstract readonly name: string;
+
+  /**
+   * Optional schema for `GatherRecord.result`. Registration validation compares
+   * concrete producer result-field schemas against this contract when both
+   * sides are available.
+   */
+  readonly resultSchema: SchemaObjectType | undefined = undefined;
 
   /**
    * When true, `finalize` consumes the full per-clone record set; the engine
@@ -116,6 +124,7 @@ export abstract class GatherStrategy {
 
 class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
+  readonly '@id' = 'urn:noocodec:node:map';
 
   reduce(
     config: GatherConfigType,
@@ -137,6 +146,7 @@ class MapGatherStrategy extends GatherStrategy {
 
 class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
+  readonly '@id' = 'urn:noocodec:node:append';
 
   reduce(
     config: GatherConfigType,
@@ -160,6 +170,7 @@ class AppendGatherStrategy extends GatherStrategy {
 
 class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
+  readonly '@id' = 'urn:noocodec:node:partition';
 
   reduce(
     config: GatherConfigType,
@@ -183,6 +194,7 @@ class PartitionGatherStrategy extends GatherStrategy {
 
 class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
+  readonly '@id' = 'urn:noocodec:node:custom';
 
   // Custom finalize reads the full per-clone record set, so the engine must
   // retain every acked record across resume (retained checkpoint).
@@ -202,9 +214,12 @@ class CustomGatherStrategy extends GatherStrategy {
     execution.state.setMetadata(
       'gatherResults',
       execution.records.map((r) => ({
-        'index':  r.index,
-        'item':   r.item,
-        'output': r.output,
+        'source':          r.source,
+        'index':           r.index,
+        'item':            r.item,
+        'output':          r.output,
+        'terminalOutcome': r.terminalOutcome,
+        'result':          r.result,
       })),
     );
     await execution.invoker.invokeNode(config.customNode);
@@ -216,11 +231,12 @@ class CustomGatherStrategy extends GatherStrategy {
  * back into the parent state. Use this when a scatter body is purely
  * effectful and no clone state should flow to the parent.
  *
- * `gather` is required on every `ScatterNode`. Declare `{ strategy: 'discard' }`
- * to make the no-merge intent explicit.
+ * Attach this to a `GatherNode` when producer records should be observed for
+ * routing but not folded into parent state.
  */
 class DiscardGatherStrategy extends GatherStrategy {
   readonly name = 'discard';
+  readonly '@id' = 'urn:noocodec:node:discard';
 
   reduce(): void {
     // Intentional no-op: discard strategy folds nothing.
@@ -243,6 +259,7 @@ class DiscardGatherStrategy extends GatherStrategy {
  */
 class CollectGatherStrategy extends GatherStrategy {
   readonly name = 'collect';
+  readonly '@id' = 'urn:noocodec:node:collect';
 
   reduce(
     config: GatherConfigType,

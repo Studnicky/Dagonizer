@@ -14,7 +14,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const TextChannelToolCallEnvelopeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/TextChannelToolCallEnvelope',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/TextChannelToolCallEnvelope',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {

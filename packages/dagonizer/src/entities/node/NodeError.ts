@@ -34,7 +34,7 @@ export const NodeErrorProperties = {
 } as const;
 
 export const NodeErrorSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeError',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeError',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],

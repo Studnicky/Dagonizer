@@ -85,7 +85,7 @@ export class ShortcutMatcher {
   /**
    * Safety-net post-processor: for full-catalog intents, ensure the tool plan
    * contains all three primary sources. Missing tools are appended using the
-   * same query string the LLM chose (or the raw visitor query as fallback).
+   * same query string the LLM chose (or the raw visitor query as default).
    */
   static enforceFullCatalog(
     calls: readonly ToolCall[],
@@ -94,19 +94,19 @@ export class ShortcutMatcher {
     // Derive the preferred query from the first tool call that has one.
     const firstQueryValue = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'];
     const firstQuery: string | undefined = typeof firstQueryValue === 'string' ? firstQueryValue : undefined;
-    const fallbackQuery = firstQuery ?? query;
+    const defaultQuery = firstQuery ?? query;
 
     const names = new Set(calls.map((c) => c.name));
     const additions: ToolCall[] = [];
 
     if (!names.has('web_search_books')) {
-      additions.push({ 'name': 'web_search_books',   'arguments': { 'query': fallbackQuery, 'limit': 8 } });
+      additions.push({ 'name': 'web_search_books',   'arguments': { 'query': defaultQuery, 'limit': 8 } });
     }
     if (!names.has('google_books_search')) {
-      additions.push({ 'name': 'google_books_search', 'arguments': { 'query': fallbackQuery, 'maxResults': 8 } });
+      additions.push({ 'name': 'google_books_search', 'arguments': { 'query': defaultQuery, 'maxResults': 8 } });
     }
     if (!names.has('subject_search')) {
-      additions.push({ 'name': 'subject_search',      'arguments': { 'subject': fallbackQuery, 'limit': 8 } });
+      additions.push({ 'name': 'subject_search',      'arguments': { 'subject': defaultQuery, 'limit': 8 } });
     }
 
     return additions.length > 0 ? [...calls, ...additions] : calls;
@@ -144,7 +144,7 @@ export class ShortcutMatcher {
     // 1. Author lookup: either an explicit "by X Y" pattern OR
     //    lookup-author intent with a multi-word capitalised proper noun.
     //    Carry the captured author name as a typed arg so the scout uses
-    //    OpenLibrary's ?author= axis instead of falling back to keyword query.
+    //    OpenLibrary's ?author= axis instead of keyword query.
     const authorMatch = trimmed.match(AUTHOR_HINT_RE);
     if (authorMatch !== null ||
         (intent === 'lookup-author' && PROPER_NOUN_RE.test(trimmed))) {
@@ -220,6 +220,7 @@ const RETRY_BUDGET = 2;
 export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'decide-tools';
+  readonly '@id' = 'urn:noocodec:node:decide-tools';
   constructor(services: ArchivistServices) {
     super();
     this.services = services;
@@ -284,7 +285,7 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
         // so the LLM may under-propose tools; the scouts run in parallel so the
         // cost of running all four is bounded.
         //
-        // Arguments intentionally omit `query` / `subject`. Each scout falls back
+        // Arguments intentionally omit `query` / `subject`. Each scout uses
         // to `state.terms.join(' ')` (the keywords produced by `extract-query`)
         // when its query arg is missing. Passing `state.query` here would make
         // OpenLibrary search for the literal visitor sentence; 0 hits.
@@ -316,7 +317,7 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
         // External cancellation / run deadline propagates unchanged.
         if (context.signal.aborted) throw err;
         // Node-local timeout or LLM failure -> retry budget decides the flow. The
-        // minimal-plan fallback lives in decide-tools-salvage, not here.
+        // minimal-plan recovery lives in decide-tools-salvage, not here.
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
           const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);

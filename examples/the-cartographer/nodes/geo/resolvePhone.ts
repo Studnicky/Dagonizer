@@ -14,6 +14,7 @@ import {
 
 // #region resolve-phone-node
 export class ResolvePhoneNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-phone';
   readonly 'name' = 'resolve-phone';
   readonly 'outputs' = ['resolved'] as const;
 

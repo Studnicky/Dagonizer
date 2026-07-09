@@ -49,7 +49,7 @@ import { DispatcherLlmClient } from '../../../../examples/the-dispatcher/provide
 import { DispatcherIntentClassifier } from '../../../../examples/the-dispatcher/providers/DispatcherIntentClassifier.ts';
 import { UserLanguage } from '../../../../examples/the-dispatcher/language/UserLanguage.ts';
 
-import { ApiKeyStore, BackendMatrix, BaseLlmClient, EmbedderProvisioner, MobileDetection, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
+import { ApiKeyStore, BackendMatrix, BaseLlmClient, EmbedderProvisioner, MobileDetection, PreferredModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, EmbedderProvisionOptionsType, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
@@ -76,10 +76,13 @@ const warmState = ref<'idle' | 'warming' | 'ready' | 'unavailable'>('idle');
 const noModel  = ref(false);
 const isMobile = ref(false);
 const apiKeys  = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
-const ollamaModel = ref<string>(OllamaModels.loadModel());
+const preferredModels = ref<Partial<Record<ProviderId, string>>>(PreferredModels.load());
 
 const resolvedModel = computed<string>(() => {
-  if (activeBackend.value === 'ollama' && ollamaModel.value.length > 0) return ollamaModel.value;
+  if (activeBackend.value !== null) {
+    const preferred = preferredModels.value[activeBackend.value];
+    if (typeof preferred === 'string' && preferred.length > 0) return preferred;
+  }
   const entry = backends.value.find((b) => b.id === activeBackend.value);
   return entry?.resolvedModel ?? '';
 });
@@ -304,7 +307,16 @@ watch(
 watch(apiKeys, async () => {
   backends.value = await BackendMatrix.detect({
     'apiKeys': apiKeys.value,
-    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+    'preferredModels': preferredModels.value,
+  });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+}, { 'deep': true });
+
+watch(preferredModels, async (models) => {
+  PreferredModels.save(models);
+  backends.value = await BackendMatrix.detect({
+    'apiKeys': apiKeys.value,
+    'preferredModels': models,
   });
   noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
@@ -318,7 +330,6 @@ watch(activeBackend, (id) => {
 watch(activeBackend, () => { void warmActiveBackend(); });
 
 watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
-watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 onMounted(async () => {
@@ -347,7 +358,7 @@ onMounted(async () => {
 
   backends.value = await BackendMatrix.detect({
     'apiKeys': apiKeys.value,
-    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+    'preferredModels': preferredModels.value,
   });
 
   if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
@@ -613,11 +624,11 @@ function fillPrompt(text: string): void {
         :backends="backends"
         :active-id="activeBackend ?? ''"
         :api-keys="apiKeys"
-        :ollama-model="ollamaModel"
+        :preferred-models="preferredModels"
         :is-mobile="isMobile"
         @update:active-id="activeBackend = $event as ProviderId"
         @update:api-keys="apiKeys = $event"
-        @update:ollama-model="ollamaModel = $event"
+        @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
       />
     </section>
 
@@ -862,11 +873,11 @@ function fillPrompt(text: string): void {
                   :backends="backends"
                   :active-id="activeBackend ?? ''"
                   :api-keys="apiKeys"
-                  :ollama-model="ollamaModel"
+                  :preferred-models="preferredModels"
                   :is-mobile="isMobile"
                   @update:active-id="activeBackend = $event as ProviderId"
                   @update:api-keys="apiKeys = $event"
-                  @update:ollama-model="ollamaModel = $event"
+                  @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
                 />
               </section>
 

@@ -78,32 +78,47 @@ class ReservoirState extends NodeStateBase {
 class ReservoirDag {
   private constructor() {}
 
-  static withCapacity(dagName: string, keyField: string, capacity: number): DAGType {
+  static iri(dagIri: string, placementSlug: string): string {
+    return `${dagIri}/node/${placementSlug}`;
+  }
+
+  static withCapacity(dagName: string, dagIri: string, keyField: string, capacity: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': ReservoirDag.iri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': ReservoirDag.iri(dagIri, 'fan'),
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'currentItem',
           'execution': { 'mode': 'reservoir', 'reservoir': { keyField, 'capacity': capacity } },
           // No `field`: append strategy appends record.item (the ReservoirItem) to target.
-          'gather': { 'strategy': 'append', 'target': 'gathered' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': ReservoirDag.iri(dagIri, 'join'),
+            'partial': ReservoirDag.iri(dagIri, 'join'),
+            'all-error': ReservoirDag.iri(dagIri, 'join'),
+            'empty':       ReservoirDag.iri(dagIri, 'end'),
           },
         },
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/end`,
+          '@id': ReservoirDag.iri(dagIri, 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [ReservoirDag.iri(dagIri, 'fan')]: {} },
+          'gather': { 'strategy': 'append', 'target': 'gathered' },
+          'outputs': {
+            'success': ReservoirDag.iri(dagIri, 'end'),
+            'error': ReservoirDag.iri(dagIri, 'end'),
+            'empty': ReservoirDag.iri(dagIri, 'end'),
+          },
+        },
+        {
+          '@id': ReservoirDag.iri(dagIri, 'end'),
           '@type':  'TerminalNode',
           'name':   'end',
           'outcome': 'completed',
@@ -120,6 +135,7 @@ class ReservoirDag {
  */
 class BatchTrackingNode extends MonadicNode<ReservoirState, string> {
   override readonly name = 'worker';
+  override readonly '@id' = 'urn:noocodec:node:worker';
   override readonly outputs: readonly string[] = ['success'];
 
   override get outputSchema(): Record<string, SchemaObjectType> {
@@ -151,6 +167,7 @@ class ReservoirItemGuard {
 /** Passthrough node — routes everything to 'success'. No state mutation. */
 class PassthroughNode extends MonadicNode<ReservoirState, string> {
   override readonly name = 'worker';
+  override readonly '@id' = 'urn:noocodec:node:worker';
   override readonly outputs: readonly string[] = ['success'];
 
   override get outputSchema(): Record<string, SchemaObjectType> {
@@ -174,7 +191,7 @@ void describe('Reservoir scatter — capacity release', () => {
     const batchSizes: number[] = [];
 
     dispatcher.registerNode(new BatchTrackingNode(batchSizes));
-    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-capacity', 'key', 100));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-capacity', 'urn:noocodec:dag:reservoir-capacity', 'key', 100));
 
     const state = new ReservoirState();
     // 1000 items with a single key 'k', capacity 100 → 10 capacity releases.
@@ -182,7 +199,7 @@ void describe('Reservoir scatter — capacity release', () => {
       state.items.push({ 'key': 'k', 'value': i });
     }
 
-    const result = await dispatcher.execute('reservoir-capacity', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:reservoir-capacity', state);
     assert.equal(result.cursor, null);
     assert.equal(batchSizes.length, 10, `expected 10 batches, got ${batchSizes.length}`);
     for (const size of batchSizes) {
@@ -199,6 +216,7 @@ void describe('Reservoir scatter — capacity release', () => {
 
 class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
   override readonly name = 'worker';
+  override readonly '@id' = 'urn:noocodec:node:worker';
   override readonly outputs: readonly string[] = ['success'];
 
   override get outputSchema(): Record<string, SchemaObjectType> {
@@ -242,7 +260,7 @@ void describe('Reservoir scatter — keyed partitioning', () => {
     const node = new KeyedPartitionNode(batchesByKey);
 
     dispatcher.registerNode(node);
-    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-keyed', 'key', 100));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-keyed', 'urn:noocodec:dag:reservoir-keyed', 'key', 100));
 
     const state = new ReservoirState();
     // 300 items across 3 keys, 100 per key.
@@ -250,7 +268,7 @@ void describe('Reservoir scatter — keyed partitioning', () => {
     for (let i = 0; i < 100; i++) state.items.push({ 'key': 'b', 'value': i + 100 });
     for (let i = 0; i < 100; i++) state.items.push({ 'key': 'c', 'value': i + 200 });
 
-    const result = await dispatcher.execute('reservoir-keyed', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:reservoir-keyed', state);
     assert.equal(result.cursor, null);
     // Exactly 3 releases — one per key.
     assert.equal(batchesByKey.size, 3);
@@ -268,6 +286,7 @@ void describe('Reservoir scatter — keyed partitioning', () => {
 
 class ExecuteCounterNode extends MonadicNode<ReservoirState, string> {
   override readonly name = 'worker';
+  override readonly '@id' = 'urn:noocodec:node:worker';
   override readonly outputs: readonly string[] = ['success'];
 
   override get outputSchema(): Record<string, SchemaObjectType> {
@@ -293,7 +312,7 @@ void describe('Reservoir scatter — complete-flush', () => {
 
     dispatcher.registerNode(node);
     // capacity 100, but only 50 items per key → complete-flush fires at drain.
-    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-flush', 'key', 100));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-flush', 'urn:noocodec:dag:reservoir-flush', 'key', 100));
 
     const state = new ReservoirState();
     // 3 keys × 50 items = 150 total (all below capacity of 100).
@@ -301,7 +320,7 @@ void describe('Reservoir scatter — complete-flush', () => {
     for (let i = 0; i < 50; i++) state.items.push({ 'key': 'y', 'value': i + 50 });
     for (let i = 0; i < 50; i++) state.items.push({ 'key': 'z', 'value': i + 100 });
 
-    const result = await dispatcher.execute('reservoir-flush', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:reservoir-flush', state);
     assert.equal(result.cursor, null);
     // One execute call per key (3 partial batches at complete-flush).
     assert.equal(calls.n, 3, `expected 3 execute calls, got ${calls.n}`);
@@ -320,13 +339,13 @@ void describe('Reservoir scatter — gather exactly-once', () => {
 
     dispatcher.registerNode(new BatchTrackingNode(batchSizes));
     // capacity 5, 2 keys × 10 items → 4 capacity releases (2 per key).
-    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-exactonce', 'key', 5));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-exactonce', 'urn:noocodec:dag:reservoir-exactonce', 'key', 5));
 
     const state = new ReservoirState();
     for (let i = 0; i < 10; i++) state.items.push({ 'key': 'p', 'value': i });
     for (let i = 0; i < 10; i++) state.items.push({ 'key': 'q', 'value': i + 10 });
 
-    const result = await dispatcher.execute('reservoir-exactonce', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:reservoir-exactonce', state);
     assert.equal(result.cursor, null);
     assert.equal(result.state.gathered.length, 20, `expected 20 gathered, got ${result.state.gathered.length}`);
 
@@ -344,6 +363,7 @@ void describe('Reservoir scatter — gather exactly-once', () => {
 
 class CrashingNode extends MonadicNode<ReservoirState, string> {
   override readonly name = 'worker';
+  override readonly '@id' = 'urn:noocodec:node:worker';
   override readonly outputs: readonly string[] = ['success'];
 
   override get outputSchema(): Record<string, SchemaObjectType> {
@@ -371,16 +391,17 @@ void describe('Reservoir scatter — crash-safe resume', () => {
 
     dispatcher1.registerNode(crashingNode);
     // 3 keys × 5 items, capacity 5 → 3 capacity releases (one crashes).
-    dispatcher1.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'key', 5));
+    dispatcher1.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'urn:noocodec:dag:reservoir-crash', 'key', 5));
 
     const state1 = new ReservoirState();
     for (let i = 0; i < 5; i++) state1.items.push({ 'key': 'a', 'value': i });
     for (let i = 0; i < 5; i++) state1.items.push({ 'key': 'b', 'value': i + 5 });
     for (let i = 0; i < 5; i++) state1.items.push({ 'key': 'c', 'value': i + 10 });
 
-    const partial = await dispatcher1.execute('reservoir-crash', state1);
-    // Crashed → cursor preserved on 'fan'.
-    assert.equal(partial.cursor, 'fan');
+    const partial = await dispatcher1.execute('urn:noocodec:dag:reservoir-crash', state1);
+    const fanIri = ReservoirDag.iri('urn:noocodec:dag:reservoir-crash', 'fan');
+    // Crashed → cursor preserved on the fan placement IRI.
+    assert.equal(partial.cursor, fanIri);
     // 2 batches acked before crash → 10 items gathered.
     assert.equal(partial.state.gathered.length, 10,
       `expected 10 gathered after crash, got ${partial.state.gathered.length}`);
@@ -393,9 +414,9 @@ void describe('Reservoir scatter — crash-safe resume', () => {
     const dispatcher2 = new Dagonizer<ReservoirState>();
 
     dispatcher2.registerNode(PASSTHROUGH_NODE);
-    dispatcher2.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'key', 5));
+    dispatcher2.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'urn:noocodec:dag:reservoir-crash', 'key', 5));
 
-    const result = await dispatcher2.resume('reservoir-crash', partial.state, 'fan');
+    const result = await dispatcher2.resume('urn:noocodec:dag:reservoir-crash', partial.state, fanIri);
     assert.equal(result.cursor, null);
 
     // All 15 items gathered exactly once.
@@ -424,27 +445,38 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
     // No `reservoir` field → non-reservoir path (ScatterWorkerPool).
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:no-reservoir',
+      '@id': 'urn:noocodec:dag:no-reservoir',
       '@type':    'DAG',
-      'name': 'no-reservoir', 'version': '1', 'entrypoint': 'fan',
+      'name': 'no-reservoir', 'version': '1', 'entrypoints': { 'main': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'fan') },
       'nodes': [
         {
-          '@id':    'urn:noocodex:dag:no-reservoir/node/fan',
+          '@id': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'fan'),
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'currentItem',
-          'gather': { 'strategy': 'append', 'target': 'gathered' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'join'),
+            'partial': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'join'),
+            'all-error': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'join'),
+            'empty':       ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'end'),
           },
         },
         {
-          '@id':    'urn:noocodex:dag:no-reservoir/node/end',
+          '@id': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'fan')]: {} },
+          'gather': { 'strategy': 'append', 'target': 'gathered' },
+          'outputs': {
+            'success': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'end'),
+            'error': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'end'),
+            'empty': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'end'),
+          },
+        },
+        {
+          '@id': ReservoirDag.iri('urn:noocodec:dag:no-reservoir', 'end'),
           '@type':  'TerminalNode',
           'name':   'end',
           'outcome': 'completed',
@@ -456,7 +488,7 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
     const state = new ReservoirState();
     for (let i = 0; i < 10; i++) state.items.push({ 'key': 'k', 'value': i });
 
-    const result = await dispatcher.execute('no-reservoir', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:no-reservoir', state);
     assert.equal(result.cursor, null);
     // Non-reservoir: 10 items → 10 execute calls each with batch.size === 1.
     assert.equal(batchSizes.length, 10, `expected 10 execute calls, got ${batchSizes.length}`);
@@ -540,6 +572,7 @@ class FakeDriver {
             'output':          'success',
             'terminalOutcome': null,
             'cloneState':      new NodeStateBase(),
+            'selectedDagIri':  null,
           })),
         };
       },

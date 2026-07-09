@@ -29,13 +29,13 @@ Use it when an application needs interruption to be a controlled lifecycle state
 
 `Checkpoint.capture` serializes the interrupted result, state snapshot, cursor, optional store snapshots, and execution metadata. `Checkpoint.load` validates a saved payload before use. `restoreState` reconstructs domain state, `restoreStores` rehydrates named stores, and `dispatcher.resume` continues the registered DAG from the restored cursor.
 
-`Checkpoint` is the codec: it turns an interrupted `ExecutionResult` into a portable record and back. `dispatcher.resume(dagName, state, fromStage, options?)` picks the execution up from the restored cursor. Persistence is the application's concern (see [persistence](./persistence)).
+`Checkpoint` is the codec: it turns an interrupted `ExecutionResult` into a portable record and back. `dispatcher.resume(dagName, state, fromStage, options?)` picks the execution up from the restored cursor; despite the parameter name, pass the restored DAG IRI/CURIE and placement IRI. Persistence is the application's concern (see [persistence](./persistence)).
 
 ## Diagrams, Examples, and Outputs
 
 ### Capturing a partial run
 
-When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the name of the next node that would have run. Pass that to `Checkpoint.capture()`:
+When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the placement IRI of the next placement that would have run. Pass that to `Checkpoint.capture()`:
 
 <<< @/../examples/08-checkpoint.ts#capture
 
@@ -53,12 +53,12 @@ Use checkpoint and resume when an interrupted DAG should continue from a known c
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Checkpoint.capture(dagName, result, options?)` | `@studnicky/dagonizer/checkpoint` | Async factory: turns a paused execution into a `Checkpoint` |
+| `Checkpoint.capture(dagName, result, options?)` | `@studnicky/dagonizer/checkpoint` | Async factory: turns a paused execution into a `Checkpoint`; pass the DAG IRI/CURIE string used for execution |
 | `Checkpoint.load(raw)` | `@studnicky/dagonizer/checkpoint` | Schema-validates an unknown value into a `Checkpoint` |
 | `Checkpoint.recall(store, key)` | `@studnicky/dagonizer/checkpoint` | Reads + parses + validates from a `CheckpointStore` |
 | `ckpt.toJson()` | instance method | Serializes to a JSON string |
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
-| `ckpt.restoreState(adapter)` | instance method | Rehydrates `{ dagName, state, cursor }` |
+| `ckpt.restoreState(adapter)` | instance method | Rehydrates `{ dagName, state, cursor }`; `dagName` is the stored DAG IRI/CURIE string and `cursor` is a placement IRI |
 | `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
 | `dispatcher.resume(dagName, state, fromStage, options?)` | `@studnicky/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsType` as `execute` |
 
@@ -97,7 +97,7 @@ The Archivist is the runnable checkpoint example. Its compose / validate loop is
 
 ### Named stores ride along
 
-`Checkpoint.capture(dagName, result, { stores, execution })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map, { execution })` repopulates fresh instances on resume. The `execution` policy uses the same batch executor options as tool and node batch execution, giving remote or expensive stores explicit concurrency, throttle, and timing controls. The following shows the full abort-capture-restore-resume cycle with a `MemoryStore` riding along in the checkpoint:
+`Checkpoint.capture(dagIri, result, { stores, execution })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map, { execution })` repopulates fresh instances on resume. Pass the DAG IRI/CURIE string as the first argument. The `execution` policy uses the same batch executor options as tool and node batch execution, giving remote or expensive stores explicit concurrency, throttle, and timing controls. The following shows the full abort-capture-restore-resume cycle with a `MemoryStore` riding along in the checkpoint:
 
 <<< @/../examples/10-shared-state.ts#store-checkpoint
 

@@ -2,8 +2,8 @@
 
 > **Beta:** not yet published to npm. Ships as part of the Dagonizer
 > plugin ecosystem (GitHub release only). Live-API smoke testing
-> against the provider has not been completed; wire-format
-> compatibility is verified via intercepted-fetch smoke tests.
+> against the provider has not been completed; wire-format checks
+> use intercepted fetch.
 
 Google AI Studio REST embedder for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer).
 Targets `text-embedding-004` (768 dimensions) by default.

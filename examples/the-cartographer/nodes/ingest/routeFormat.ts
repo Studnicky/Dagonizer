@@ -30,6 +30,7 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'n
 };
 
 export class RouteFormatNode extends MonadicNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:route-format';
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
 

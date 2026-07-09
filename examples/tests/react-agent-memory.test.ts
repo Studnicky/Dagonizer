@@ -57,7 +57,7 @@ class Harness {
     agentState.prompt = prompt;
     agentState.recallHint = recallHint;
 
-    const execution = agentDispatcher.execute('react-agent', agentState);
+    const execution = agentDispatcher.execute('urn:noocodec:dag:react-agent', agentState);
 
     const traceState = new TraceState();
     traceState.source = StreamChannel.driven(new ReActTraceProducer(execution));
@@ -66,7 +66,7 @@ class Harness {
     outerDispatcher.registerNode(new RecordReasoningStepNode(store, runId));
     outerDispatcher.registerDAG(traceDag);
 
-    await outerDispatcher.execute('react-agent-memory-trace', traceState);
+    await outerDispatcher.execute('urn:noocodec:dag:react-agent-memory-trace', traceState);
 
     return { agentState, sink, traceState };
   }
@@ -165,7 +165,7 @@ describe('RecordReasoningStepNode: wasInformedBy chain is ordinal-derived, not r
     const outerDispatcher = new Dagonizer<TraceState>();
     outerDispatcher.registerNode(new RecordReasoningStepNode(store, runId));
     outerDispatcher.registerDAG(traceDag);
-    await outerDispatcher.execute('react-agent-memory-trace', traceState);
+    await outerDispatcher.execute('urn:noocodec:dag:react-agent-memory-trace', traceState);
 
     assert.equal(traceState.steps.length, 4, 'all four shuffled items must be recorded');
 

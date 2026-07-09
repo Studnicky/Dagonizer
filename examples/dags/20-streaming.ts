@@ -7,6 +7,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -28,6 +29,7 @@ export class PipelineState extends NodeStateBase {
 
 export class IngestNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'ingest';
+  readonly '@id' = 'urn:noocodec:node:ingest';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -40,6 +42,7 @@ export class IngestNode extends MonadicNode<PipelineState, 'done'> {
 
 export class EnrichNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'enrich';
+  readonly '@id' = 'urn:noocodec:node:enrich';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -52,6 +55,7 @@ export class EnrichNode extends MonadicNode<PipelineState, 'done'> {
 
 export class PersistNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'persist';
+  readonly '@id' = 'urn:noocodec:node:persist';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -66,9 +70,12 @@ export class PersistNode extends MonadicNode<PipelineState, 'done'> {
 // DAG: a linear three-step pipeline
 // ---------------------------------------------------------------------------
 
-export const dag = new DAGBuilder('streaming-demo', '1')
-  .node('ingest',  new IngestNode(),  { 'done': 'enrich' })
-  .node('enrich',  new EnrichNode(),  { 'done': 'persist' })
-  .node('persist', new PersistNode(), { 'done': 'end' })
-  .terminal('end')
+export const dagIri = 'urn:noocodec:dag:streaming-demo' as const;
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
+export const dag = new DAGBuilder(dagIri, '1')
+  .node(placement('ingest'),  new IngestNode(),  { 'done': placement('enrich') })
+  .node(placement('enrich'),  new EnrichNode(),  { 'done': placement('persist') })
+  .node(placement('persist'), new PersistNode(), { 'done': placement('end') })
+  .terminal(placement('end'))
   .build();

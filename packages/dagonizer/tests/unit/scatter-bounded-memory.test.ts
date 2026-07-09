@@ -25,7 +25,7 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
@@ -33,6 +33,8 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@ class ItemCountState extends CountState {
  */
 class CountingGather extends GatherStrategy {
   readonly name = 'counting-test';
+  readonly '@id' = 'urn:noocodec:node:counting-test';
 
   reduce(
     _config: GatherConfigType,
@@ -105,40 +108,51 @@ class CountingGather extends GatherStrategy {
 
 // ── worker node ──────────────────────────────────────────────────────────────
 
-const passThroughNode = TestNode.make<ItemCountState>('pass', ['done']);
+const passThroughNode = TestNode.make<ItemCountState>('urn:noocodec:node:pass', ['done']);
 
 // ── DAG factory ──────────────────────────────────────────────────────────────
 
 class TestScatterDag {
   private constructor() {}
 
-  static counting(name: string, concurrency: number): DAGType {
+  static counting(dagIri: string, name: string, concurrency: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'node': 'pass' },
+          'body':        { 'node': 'urn:noocodec:node:pass' },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':      { 'strategy': 'counting-test' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'join'),
+            'partial': placementIri(dagIri, 'join'),
+            'all-error': placementIri(dagIri, 'join'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
         {
-          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@id': placementIri(dagIri, 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [placementIri(dagIri, 'fan')]: {} },
+          'gather': { 'strategy': 'counting-test' },
+          'outputs': {
+            'success': placementIri(dagIri, 'end'),
+            'error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
+          },
+        },
+        {
+          '@id': placementIri(dagIri, 'end'),
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -147,33 +161,44 @@ class TestScatterDag {
     };
   }
 
-  static multiNodeBody(name: string, concurrency: number): DAGType {
+  static multiNodeBody(dagIri: string, name: string, concurrency: number): DAGType {
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'dag': MULTI_BODY_DAG_NAME },
+          'body':        { 'dag': MULTI_BODY_DAG_IRI },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':      { 'strategy': 'multi-node-body-gather' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'join'),
+            'partial': placementIri(dagIri, 'join'),
+            'all-error': placementIri(dagIri, 'join'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
         {
-          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@id': placementIri(dagIri, 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [placementIri(dagIri, 'fan')]: {} },
+          'gather': { 'strategy': 'multi-node-body-gather' },
+          'outputs': {
+            'success': placementIri(dagIri, 'end'),
+            'error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
+          },
+        },
+        {
+          '@id': placementIri(dagIri, 'end'),
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -197,12 +222,12 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
 
     const dispatcher = new Dagonizer<ItemCountState>();
     dispatcher.registerNode(passThroughNode);
-    dispatcher.registerDAG(TestScatterDag.counting('bounded-finalize-records', 4));
+    dispatcher.registerDAG(TestScatterDag.counting('urn:noocodec:dag:bounded-finalize-records', 'bounded-finalize-records', 4));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('bounded-finalize-records', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:bounded-finalize-records', state);
 
     // reduce called N times → counter equals N.
     assert.equal(
@@ -226,12 +251,12 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
 
     const dispatcher = new Dagonizer<ItemCountState>();
     dispatcher.registerNode(passThroughNode);
-    dispatcher.registerDAG(TestScatterDag.counting('bounded-large-n', 8));
+    dispatcher.registerDAG(TestScatterDag.counting('urn:noocodec:dag:bounded-large-n', 'bounded-large-n', 8));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('bounded-large-n', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:bounded-large-n', state);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly');
     assert.equal(
@@ -253,12 +278,12 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
 
     const dispatcher = new Dagonizer<ItemCountState>();
     dispatcher.registerNode(passThroughNode);
-    dispatcher.registerDAG(TestScatterDag.counting('bounded-n5000', 16));
+    dispatcher.registerDAG(TestScatterDag.counting('urn:noocodec:dag:bounded-n5000', 'bounded-n5000', 16));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('bounded-n5000', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:bounded-n5000', state);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly');
     assert.equal(
@@ -294,12 +319,13 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
       }
     }
 
-    const trackingNode = TestNode.make<TrackingState>('track-pass', ['done']);
+    const trackingNode = TestNode.make<TrackingState>('urn:noocodec:node:track-pass', ['done']);
 
     // Use a local subclass registered under a unique name to capture record count
     // We override via a local subclass registered under a unique name.
     class RecordCountingCustomGather extends GatherStrategy {
       readonly name = 'record-counting-custom';
+      readonly '@id' = 'urn:noocodec:node:record-counting-custom';
       override readonly retainsRecordsForFinalize = true;
 
       override reduce(): void { /* custom does no per-clone work */ }
@@ -320,30 +346,41 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
 
     const retainedDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:retained-record-count',
+      '@id': 'urn:noocodec:dag:retained-record-count',
       '@type':    'DAG',
       'name':     'retained-record-count',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:retained-record-count', 'fan') },
       'nodes': [
         {
-          '@id':         'urn:noocodex:dag:retained-record-count/node/fan',
+          '@id': 'urn:noocodec:dag:retained-record-count/node/fan',
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'node': 'track-pass' },
+          'body':        { 'node': 'urn:noocodec:node:track-pass' },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': 2 },
-          'gather':      { 'strategy': 'record-counting-custom' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
+            'partial': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
+            'all-error': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
+            'empty': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
           },
         },
         {
-          '@id':     'urn:noocodex:dag:retained-record-count/node/end',
+          '@id': 'urn:noocodec:dag:retained-record-count/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [placementIri('urn:noocodec:dag:retained-record-count', 'fan')]: {} },
+          'gather': { 'strategy': 'record-counting-custom' },
+          'outputs': {
+            'success': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
+            'error': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
+            'empty': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
+          },
+        },
+        {
+          '@id': 'urn:noocodec:dag:retained-record-count/node/end',
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -358,7 +395,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     const state = new TrackingState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('retained-record-count', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:retained-record-count', state);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly');
     assert.equal(
@@ -411,52 +448,53 @@ class MultiNodeBodyState extends NodeStateBase {
 // ── nodes for the sub-DAG body ────────────────────────────────────────────────
 
 /** First inner node: reads the scatter item and increments a field on the clone. */
-const innerNodeA = TestNode.make<MultiNodeBodyState>('inner-a', ['next'], (state) => {
+const innerNodeA = TestNode.make<MultiNodeBodyState>('urn:noocodec:node:inner-a', ['next'], (state) => {
   state.counter += 1;
   return 'next';
 });
 
 /** Second inner node: a pass-through that confirms the pipeline continues. */
-const innerNodeB = TestNode.make<MultiNodeBodyState>('inner-b', ['next']);
+const innerNodeB = TestNode.make<MultiNodeBodyState>('urn:noocodec:node:inner-b', ['next']);
 
 /** Third inner node: confirms three-node depth. */
-const innerNodeC = TestNode.make<MultiNodeBodyState>('inner-c', ['done']);
+const innerNodeC = TestNode.make<MultiNodeBodyState>('urn:noocodec:node:inner-c', ['done']);
 
 // ── sub-DAG body (3 inner nodes): inner-a → inner-b → inner-c → end ──────────
 
 const MULTI_BODY_DAG_NAME = 'multi-node-body';
+const MULTI_BODY_DAG_IRI = 'urn:noocodec:dag:multi-node-body';
 
 const multiNodeBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:multi-node-body',
+  '@id': MULTI_BODY_DAG_IRI,
   '@type':    'DAG',
   'name':     MULTI_BODY_DAG_NAME,
   'version':  '1',
-  'entrypoint': 'inner-a',
+  'entrypoints': { 'main': placementIri(MULTI_BODY_DAG_IRI, 'inner-a') },
   'nodes': [
     {
-      '@id':    'urn:noocodex:dag:multi-node-body/node/inner-a',
+      '@id': 'urn:noocodec:dag:multi-node-body/node/inner-a',
       '@type':  'SingleNode',
       'name':   'inner-a',
-      'node':   'inner-a',
-      'outputs': { 'next': 'inner-b' },
+      'node':   'urn:noocodec:node:inner-a',
+      'outputs': { 'next': placementIri(MULTI_BODY_DAG_IRI, 'inner-b') },
     },
     {
-      '@id':    'urn:noocodex:dag:multi-node-body/node/inner-b',
+      '@id': 'urn:noocodec:dag:multi-node-body/node/inner-b',
       '@type':  'SingleNode',
       'name':   'inner-b',
-      'node':   'inner-b',
-      'outputs': { 'next': 'inner-c' },
+      'node':   'urn:noocodec:node:inner-b',
+      'outputs': { 'next': placementIri(MULTI_BODY_DAG_IRI, 'inner-c') },
     },
     {
-      '@id':    'urn:noocodex:dag:multi-node-body/node/inner-c',
+      '@id': 'urn:noocodec:dag:multi-node-body/node/inner-c',
       '@type':  'SingleNode',
       'name':   'inner-c',
-      'node':   'inner-c',
-      'outputs': { 'done': 'body-end' },
+      'node':   'urn:noocodec:node:inner-c',
+      'outputs': { 'done': placementIri(MULTI_BODY_DAG_IRI, 'body-end') },
     },
     {
-      '@id':     'urn:noocodex:dag:multi-node-body/node/body-end',
+      '@id': 'urn:noocodec:dag:multi-node-body/node/body-end',
       '@type':   'TerminalNode',
       'name':    'body-end',
       'outcome': 'completed',
@@ -468,6 +506,7 @@ const multiNodeBodyDag: DAGType = Validator.dag.validate({
 
 class MultiNodeBodyGather extends GatherStrategy {
   readonly name = 'multi-node-body-gather';
+  readonly '@id' = 'urn:noocodec:node:multi-node-body-gather';
 
   reduce(
     _config: GatherConfigType,
@@ -509,7 +548,7 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
     dispatcher.registerNode(innerNodeB);
     dispatcher.registerNode(innerNodeC);
     dispatcher.registerDAG(multiNodeBodyDag);
-    dispatcher.registerDAG(TestScatterDag.multiNodeBody('multi-body-empty-intermediates', 4));
+    dispatcher.registerDAG(TestScatterDag.multiNodeBody('urn:noocodec:dag:multi-body-empty-intermediates', 'multi-body-empty-intermediates', 4));
 
     const state = new MultiNodeBodyState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -517,7 +556,7 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
     // Iterate the execution to capture the scatter firing's NodeResultType.
     // execute() returns an Execution<T> which is async-iterable; each yielded
     // value is a NodeResultType for a node that completed.
-    const execution = dispatcher.execute('multi-body-empty-intermediates', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:multi-body-empty-intermediates', state);
     let scatterResult: { intermediateResults: unknown[] } | null = null;
     for await (const stage of execution) {
       // The scatter node is named 'fan'; its representative result is the one
@@ -549,12 +588,12 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
     dispatcher.registerNode(innerNodeB);
     dispatcher.registerNode(innerNodeC);
     dispatcher.registerDAG(multiNodeBodyDag);
-    dispatcher.registerDAG(TestScatterDag.multiNodeBody('multi-body-n3000', 8));
+    dispatcher.registerDAG(TestScatterDag.multiNodeBody('urn:noocodec:dag:multi-body-n3000', 'multi-body-n3000', 8));
 
     const state = new MultiNodeBodyState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('multi-body-n3000', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:multi-body-n3000', state);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly with no resume cursor');
     assert.equal(

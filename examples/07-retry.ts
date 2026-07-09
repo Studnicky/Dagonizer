@@ -28,7 +28,7 @@ dispatcher.registerNode(new FetchNode());
 dispatcher.registerDAG(dag);
 
 const state = new FetchState();
-await dispatcher.execute('retry-dag', state);
+await dispatcher.execute('urn:noocodec:dag:retry-dag', state);
 
 // FlakyDownstream (inside FetchNode.execute) throws twice before succeeding.
 // The stub is per-execution so attempts are scoped to the node invocation.

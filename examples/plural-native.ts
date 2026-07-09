@@ -31,7 +31,7 @@ const echoNode = new EchoNode();
 
 // EchoNode is not registered in a DAG here; just verify construction.
 process.stdout.write(`EchoNode name: ${echoNode.name}\n`);
-process.stdout.write(`Echo dispatcher DAGs: ${echoDispatcher.dagNames().length}\n`);
+process.stdout.write(`Echo dispatcher DAGs: ${echoDispatcher.dagIris().length}\n`);
 
 // ── 2. GeoNode vs EnrichNode: same EventState, different execute granularity ─
 
@@ -54,7 +54,7 @@ const dispatcher = new Dagonizer<ScoreState>();
 dispatcher.registerNode(new ScoreNode());
 dispatcher.registerDAG(reservoirDag);
 
-const result = await dispatcher.execute('plural-native-demo', scoreState);
+const result = await dispatcher.execute('urn:noocodec:dag:plural-native-demo', scoreState);
 
 process.stdout.write(`\nReservoir scatter result:\n`);
 process.stdout.write(`  terminalOutcome: ${result.terminalOutcome}\n`);

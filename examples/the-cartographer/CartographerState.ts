@@ -2,8 +2,8 @@
  * CartographerState: the mutable clipboard threaded through every node.
  *
  * Top-level (cartographer DAG):
- *   - `events`      – the AsyncGenerator source set before dispatch; scatter reads it
- *   - `eventCount`  – how many events to generate (seed for ShipmentEvents.generate)
+ *   - `sources`     – source stream assembled by the intake gather; scatter reads it
+ *   - `eventCount`  – display/run scale hint for host tooling
  *   - `records`     – gathered from scatter clones via the 'append' gather strategy
  *   - `insights`    – fixed-size regional aggregate produced by summarizeInsights
  *
@@ -29,8 +29,9 @@
  * coldChainBreach, customsDwellHours,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
- * The `sources` AsyncIterable is not checkpointable (snapshots as empty array;
- * re-seeded by the pre-phase node on resume via eventConfig + streamCount).
+ * The `sources` AsyncIterable is not checkpointable (snapshots as empty array);
+ * resume rebuilds it through CartographerSourceIntake using eventConfig,
+ * streamCount, and the scatter cursor.
  * The scatter durable-inbox handles exactly-once delivery; un-acked items are
  * reprocessed from the inbox, not re-read from source.
  */
@@ -148,18 +149,15 @@ export class CartographerState extends NodeStateBase {
   ];
 
   /**
-   * When true, `seedEvents` sets `sources` to an `AsyncIterable<SourcePayload>`
-   * from `EventStreamSource.streamTyped(eventConfig, streamCount)` rather than
-   * awaiting a fully materialised array from `Sources.buildTypedFeed`. The
-   * engine's scatter reads the async iterable with backpressure. Defaults to
-   * false (materialised array path).
+   * When true, host tooling reports the Cartographer run as streaming. The DAG
+   * always assembles source streams through its multi-entry intake gather; this
+   * flag remains a UI/CLI display knob.
    */
   useStreamingSource: boolean = false;
 
   /**
-   * Override for the total event count when `useStreamingSource` is true.
-   * When 0 (default), `EventStreamSource` derives the count from the feed
-   * config sum or the `CARTO_EVENT_COUNT` env var.
+   * Override for the total source-payload count. When > 0, the source-intake
+   * gather scales eventConfig before opening per-type streams.
    */
   streamCount: number = 0;
 
@@ -172,15 +170,14 @@ export class CartographerState extends NodeStateBase {
   streamChannelCapacity: number = 0;
 
   /**
-   * The multi-format source feeds, seeded by the seed phase node. Each is a
+   * The multi-format source feeds, assembled by intake-gather. Each is a
    * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
    *
-   * When `useStreamingSource` is true this field holds an
-   * `AsyncIterable<SourcePayload>` from `EventStreamSource.streamTyped()` rather
-   * than a materialised array. The engine's scatter accepts either form
-   * transparently. Snapshot/restore serialises the array path only; the async
-   * iterable is re-seeded by the pre-phase node on resume.
+   * This field normally holds the merged `AsyncIterable<SourcePayload>` built
+   * from five per-type source streams. The engine's scatter accepts that stream
+   * directly. Snapshot/restore serialises the array path only; resume rebuilds
+   * the async iterable from eventConfig and the scatter cursor.
    */
   sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
@@ -624,9 +621,9 @@ export class CartographerState extends NodeStateBase {
     return {
       'eventCount': this.eventCount,
       'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
-      // AsyncIterable sources are not checkpointable. The pre-phase node
-      // re-seeds them on resume using eventConfig + streamCount. Snapshot as
-      // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
+      // AsyncIterable sources are not checkpointable. Resume rebuilds them via
+      // CartographerSourceIntake using eventConfig + streamCount + cursor.
+      // Snapshot as an empty array so restoreData leaves sources = [].
       'sources':    Array.isArray(this.sources)
         ? this.sources.map((s) => CartographerState.sourceToJson(s))
         : [],
@@ -840,16 +837,16 @@ export class CartographerState extends NodeStateBase {
     return CartographerState.isJsonObject(value) ? value : null;
   }
 
-  private static str(value: unknown, fallback: string = ''): string {
-    return typeof value === 'string' ? value : fallback;
+  private static str(value: unknown, defaultValue: string = ''): string {
+    return typeof value === 'string' ? value : defaultValue;
   }
 
-  private static num(value: unknown, fallback: number = 0): number {
-    return typeof value === 'number' ? value : fallback;
+  private static num(value: unknown, defaultValue: number = 0): number {
+    return typeof value === 'number' ? value : defaultValue;
   }
 
-  private static bool(value: unknown, fallback: boolean = false): boolean {
-    return typeof value === 'boolean' ? value : fallback;
+  private static bool(value: unknown, defaultValue: boolean = false): boolean {
+    return typeof value === 'boolean' ? value : defaultValue;
   }
 
   private static strArr(value: unknown): string[] {
@@ -1314,7 +1311,7 @@ export class CartographerState extends NodeStateBase {
       'geoConfidence':     0,
       'geoModalities':     [],
       'geoSourceModel':    '',
-      'geoFallbackUsed':   false,
+      'geoSecondaryLookupUsed': false,
       'redactionRun':      false,
       'redactionSkipped':  false,
       'pricingRun':        false,
@@ -1344,7 +1341,7 @@ export class CartographerState extends NodeStateBase {
       'geoConfidence':     r.geoConfidence,
       'geoModalities':     [...r.geoModalities],
       'geoSourceModel':    r.geoSourceModel,
-      'geoFallbackUsed':   r.geoFallbackUsed,
+      'geoSecondaryLookupUsed': r.geoSecondaryLookupUsed,
       'redactionRun':      r.redactionRun,
       'redactionSkipped':  r.redactionSkipped,
       'pricingRun':        r.pricingRun,
@@ -1373,7 +1370,7 @@ export class CartographerState extends NodeStateBase {
       'geoConfidence':     CartographerState.num(o['geoConfidence']),
       'geoModalities':     CartographerState.strArr(o['geoModalities']),
       'geoSourceModel':    CartographerState.str(o['geoSourceModel']),
-      'geoFallbackUsed':   CartographerState.bool(o['geoFallbackUsed']),
+      'geoSecondaryLookupUsed': CartographerState.bool(o['geoSecondaryLookupUsed']),
       'redactionRun':      CartographerState.bool(o['redactionRun']),
       'redactionSkipped':  CartographerState.bool(o['redactionSkipped']),
       'pricingRun':        CartographerState.bool(o['pricingRun']),

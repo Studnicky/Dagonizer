@@ -2,8 +2,10 @@
  * WellFormedValidator: unit tests for DAG well-formedness rules.
  *
  * Rules tested:
- *   1. All output targets must resolve to a placement name in dag.nodes.
- *   2. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
+ *   1. All output targets must resolve to a placement IRI in dag.nodes.
+ *   2. Entrypoints target real placements.
+ *   3. Gather sources are declared by entrypoint labels or producer placements.
+ *   4. Structural guards: duplicate placement names and TerminalNode outcome.
  *
  * WellFormedValidator receives only schema-valid DAGs (outputs values are
  * strings, never null); null routes are schema-invalid and rejected by
@@ -25,7 +27,7 @@ class TestPlacement {
   private constructor() {}
   static singleNode(name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
     return {
-      '@id':   `urn:noocodex:dag:test/node/${name}`,
+      '@id': `urn:noocodec:dag:test/node/${name}`,
       '@type': 'SingleNode',
       'name':  name,
       'node':  name,
@@ -35,7 +37,7 @@ class TestPlacement {
 
   static terminal(name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
     return {
-      '@id':     `urn:noocodex:dag:test/node/${name}`,
+      '@id': `urn:noocodec:dag:test/node/${name}`,
       '@type':   'TerminalNode',
       'name':    name,
       'outcome': outcome,
@@ -46,15 +48,28 @@ class TestPlacement {
 class TestDagFixture {
   private constructor() {}
 
-  static ofNodes(nodes: DAGType['nodes']): DAGType {
+  static placementIri(id: string): string {
+    return `urn:noocodec:dag:test/node/${id}`;
+  }
+
+  static entrypointIri(label: string): string {
+    return `urn:noocodec:dag:test/entrypoint/${label}`;
+  }
+
+  static ofNodes(
+    nodes: DAGType['nodes'],
+    entrypoints: Readonly<Record<string, string>> = {
+      'main': nodes[0] !== undefined ? nodes[0]['@id'] : TestDagFixture.placementIri('start'),
+    },
+  ): DAGType {
     return {
       '@context':   DAG_CONTEXT,
-      '@id':        'urn:noocodex:dag:test',
+      '@id': 'urn:noocodec:dag:test',
       '@type':      'DAG',
       'name':       'test',
       'version':    '1',
-      'entrypoint': nodes[0]?.name ?? 'start',
-      'nodes':      nodes,
+      'entrypoints': { ...entrypoints },
+      'nodes': nodes,
     };
   }
 }
@@ -69,7 +84,7 @@ void describe('WellFormedValidator', () => {
 
   void it('returns no violations for a well-formed DAG with TerminalNode end', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.singleNode('start', { 'ok': TestDagFixture.placementIri('end') }),
       TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -78,8 +93,8 @@ void describe('WellFormedValidator', () => {
 
   void it('returns no violations for a chained DAG with TerminalNode end', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('a', { 'done': 'b' }),
-      TestPlacement.singleNode('b', { 'done': 'end' }),
+      TestPlacement.singleNode('a', { 'done': TestDagFixture.placementIri('b') }),
+      TestPlacement.singleNode('b', { 'done': TestDagFixture.placementIri('end') }),
       TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -107,18 +122,42 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 2);
   });
 
+  void it('reports entrypoint labels and targets that are not valid DAG roots', () => {
+    const dag = TestDagFixture.ofNodes([
+        TestPlacement.singleNode('start', { 'done': TestDagFixture.placementIri('end') }),
+        TestPlacement.terminal('end', 'completed'),
+    ], { '': TestDagFixture.placementIri('start'), 'missing': 'ghost' });
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 2);
+    assert.match((violations[0] ?? ''), /Entrypoint label must be non-empty/u);
+    assert.match((violations[1] ?? ''), /Entrypoint 'missing' targets 'ghost'/u);
+  });
+
+  void it('reports duplicate placement names', () => {
+    const dag = TestDagFixture.ofNodes([
+      TestPlacement.singleNode('start', { 'done': TestDagFixture.placementIri('end') }),
+      TestPlacement.terminal('start', 'completed'),
+    ]);
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.some((violation) => violation.includes("Duplicate placement name 'start'")), true);
+  });
+
   // ── Rule 2: ScatterNode checks ────────────────────────────────────────────
 
   void it('reports no violation for a well-formed ScatterNode', () => {
     const dag = TestDagFixture.ofNodes([
       {
-        '@id':    'urn:noocodex:dag:test/node/scatter',
+        '@id': 'urn:noocodec:dag:test/node/scatter',
         '@type':  'ScatterNode',
         'name':   'scatter',
-        'body':   { 'node': 'worker' },
+        'body':   { 'node': 'urn:noocodec:node:worker' },
         'source': 'items',
-        'gather': { 'strategy': 'discard' },
-        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        'outputs': {
+          'all-success': TestDagFixture.placementIri('end'),
+          'partial': TestDagFixture.placementIri('end'),
+          'all-error': TestDagFixture.placementIri('end'),
+          'empty': TestDagFixture.placementIri('end'),
+        },
       },
       TestPlacement.terminal('end', 'completed'),
     ]);
@@ -131,11 +170,14 @@ void describe('WellFormedValidator', () => {
   void it('reports no violation for a well-formed EmbeddedDAGNode', () => {
     const dag = TestDagFixture.ofNodes([
       {
-        '@id':    'urn:noocodex:dag:test/node/embed',
+        '@id': 'urn:noocodec:dag:test/node/embed',
         '@type':  'EmbeddedDAGNode',
         'name':   'embed',
-        'dag':    'child-dag',
-        'outputs': { 'success': 'end', 'error': 'end' },
+        'dag':    'urn:noocodec:dag:child-dag',
+        'outputs': {
+          'success': TestDagFixture.placementIri('end'),
+          'error': TestDagFixture.placementIri('end'),
+        },
       },
       TestPlacement.terminal('end', 'completed'),
     ]);
@@ -143,11 +185,110 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 0);
   });
 
+  void it('accepts gather sources declared by entrypoint labels and producer placements', () => {
+    const dag = TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': TestDagFixture.placementIri('join') }),
+        TestPlacement.singleNode('right-producer', { 'success': TestDagFixture.placementIri('join') }),
+        {
+          '@id': 'urn:noocodec:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': {
+            [TestDagFixture.entrypointIri('left-label')]: {},
+            [TestDagFixture.placementIri('right-producer')]: {},
+          },
+          'gather': { 'strategy': 'discard' },
+          'outputs': {
+            'success': TestDagFixture.placementIri('end'),
+            'error': TestDagFixture.placementIri('end'),
+          },
+        },
+        TestPlacement.terminal('end', 'completed'),
+    ], {
+      'left-label': TestDagFixture.placementIri('left-node'),
+      'right-label': TestDagFixture.placementIri('right-producer'),
+    });
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 0);
+  });
+
+  void it('reports gather sources that are not declared by an entrypoint or producer placement', () => {
+    const dag = TestDagFixture.ofNodes([
+        TestPlacement.singleNode('start', { 'success': TestDagFixture.placementIri('join') }),
+        {
+          '@id': 'urn:noocodec:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [TestDagFixture.entrypointIri('main')]: {}, 'missing-source': {} },
+          'gather': { 'strategy': 'discard' },
+          'outputs': {
+            'success': TestDagFixture.placementIri('end'),
+            'error': TestDagFixture.placementIri('end'),
+          },
+        },
+        TestPlacement.terminal('end', 'completed'),
+    ]);
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /GatherNode 'join': source 'missing-source'/u);
+  });
+
+  void it('reports gather quorum policies that cannot be satisfied', () => {
+    const dag = TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': TestDagFixture.placementIri('join') }),
+        TestPlacement.singleNode('right-node', { 'success': TestDagFixture.placementIri('join') }),
+        {
+          '@id': 'urn:noocodec:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': {
+            [TestDagFixture.entrypointIri('left')]: {},
+            [TestDagFixture.entrypointIri('right')]: {},
+          },
+          'gather': { 'strategy': 'discard' },
+          'policy': { 'mode': 'quorum', 'quorum': 3 },
+          'outputs': {
+            'success': TestDagFixture.placementIri('end'),
+            'error': TestDagFixture.placementIri('end'),
+          },
+        },
+        TestPlacement.terminal('end', 'completed'),
+    ], {
+      'left': TestDagFixture.placementIri('left-node'),
+      'right': TestDagFixture.placementIri('right-node'),
+    });
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /policy\.quorum 3 exceeds source count 2/u);
+  });
+
+  void it('reports gather quorum values ignored by non-quorum policies', () => {
+    const dag = TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': TestDagFixture.placementIri('join') }),
+        {
+          '@id': 'urn:noocodec:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [TestDagFixture.entrypointIri('left')]: {} },
+          'gather': { 'strategy': 'discard' },
+          'policy': { 'mode': 'any', 'quorum': 1 },
+          'outputs': {
+            'success': TestDagFixture.placementIri('end'),
+            'error': TestDagFixture.placementIri('end'),
+          },
+        },
+        TestPlacement.terminal('end', 'completed'),
+    ], { 'left': TestDagFixture.placementIri('left-node') });
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /policy\.quorum is only valid when policy\.mode is 'quorum'/u);
+  });
+
   // ── Rule: TerminalNode with valid outcome ─────────────────────────────────
 
   void it('accepts a TerminalNode with outcome completed', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.singleNode('start', { 'ok': TestDagFixture.placementIri('end') }),
       TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -156,7 +297,7 @@ void describe('WellFormedValidator', () => {
 
   void it('accepts a TerminalNode with outcome failed', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.singleNode('start', { 'ok': TestDagFixture.placementIri('end') }),
       TestPlacement.terminal('end', 'failed'),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -167,7 +308,10 @@ void describe('WellFormedValidator', () => {
 
   void it('accepts a self-loop (retry pattern) as a valid target', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('fetch', { 'success': 'end', 'retry': 'fetch' }),  // self-loop on retry
+      TestPlacement.singleNode('fetch', {
+        'success': TestDagFixture.placementIri('end'),
+        'retry': TestDagFixture.placementIri('fetch'),
+      }),
       TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -178,9 +322,9 @@ void describe('WellFormedValidator', () => {
 
   void it('reports violations only for offending placements in a mixed DAG', () => {
     const dag = TestDagFixture.ofNodes([
-      TestPlacement.singleNode('a', { 'ok': 'b' }),                          // clean
+      TestPlacement.singleNode('a', { 'ok': TestDagFixture.placementIri('b') }),
       TestPlacement.singleNode('b', { 'ok': 'nowhere' }),                    // VIOLATION: dangling target
-      TestPlacement.singleNode('c', { 'ok': 'a' }),                          // clean
+      TestPlacement.singleNode('c', { 'ok': TestDagFixture.placementIri('a') }),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);

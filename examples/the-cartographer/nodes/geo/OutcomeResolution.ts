@@ -10,7 +10,7 @@ export class OutcomeResolution {
     const resolvedWeight = cand.resolved ? weight : 0;
     return GeoResolutionBuilder.from({
       'source':       source,
-      'fallbackUsed': false,
+      'secondaryLookupUsed': false,
       'timezone':     '',
       'country':      cand.country,
       'countryName':  cand.countryName,

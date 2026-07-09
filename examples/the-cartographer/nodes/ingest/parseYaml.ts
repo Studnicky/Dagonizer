@@ -22,6 +22,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region parse-yaml-node
 export class ParseYamlNode extends MonadicNode<CartographerState, 'normalized' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:parse-yaml';
   readonly 'name' = 'parse-yaml';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 

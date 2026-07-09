@@ -4,7 +4,7 @@
  * Demonstrates the simplest possible DAG: a two-node sequence where each node
  * routes to the next via named outputs. The `classify` node inspects state and
  * picks an output key; the placement's `outputs` map routes that key to the
- * next placement name, or to a canonical TerminalNode to end the flow.
+ * next placement IRI, or to a canonical TerminalNode to end the flow.
  *
  * Watch: both on_topic and off_topic inputs arrive at `respond`; different
  * outputs can route to the same target placement.
@@ -30,12 +30,12 @@ dispatcher.registerDAG(dag);
 // On-topic: flows classify → respond, reply is an echo
 const onTopic = new ChatState();
 onTopic.input = 'How do I declare a const in TypeScript?';
-await dispatcher.execute('chat', onTopic);
+await dispatcher.execute('urn:noocodec:dag:chat', onTopic);
 
 // Off-topic: same route (both outputs → respond), but different branch taken
 const offTopic = new ChatState();
 offTopic.input = 'What is the weather like today?';
-await dispatcher.execute('chat', offTopic);
+await dispatcher.execute('urn:noocodec:dag:chat', offTopic);
 
 process.stdout.write('\nLinear DAG: classify -> respond -> END\n');
 process.stdout.write(`  on_topic  → "${onTopic.reply}"\n`);
@@ -46,8 +46,8 @@ process.stdout.write('        a TerminalNode marks the explicit end of the flow.
 
 // #region registry-read
 // Read accessors: getDAG, getNode, listDAGs, listNodes.
-// All return fresh shallow copies; mutations do not affect the registry.
-const registeredDag  = dispatcher.getDAG('chat');       // DAG | undefined
+// getDAG/getNode use exact registry keys; list accessors return fresh shallow copies.
+const registeredDag  = dispatcher.getDAG('urn:noocodec:dag:chat'); // DAG | undefined
 const registeredNode = dispatcher.getNode('classify');  // NodeInterface<...> | undefined
 const allDags        = dispatcher.listDAGs();            // readonly DAG[]
 const allNodes       = dispatcher.listNodes();           // readonly NodeInterface<...>[]
@@ -71,7 +71,7 @@ awaitDispatcher.registerDAG(dag);
 
 const awaitState = new ChatState();
 awaitState.input = 'How do I await a Promise in TypeScript?';
-const result = await awaitDispatcher.execute('chat', awaitState);
+const result = await awaitDispatcher.execute('urn:noocodec:dag:chat', awaitState);
 void result; // result.state, result.cursor, result.executedNodes, result.skippedNodes
 // #endregion execute-await
 
@@ -85,7 +85,7 @@ iterDispatcher.registerDAG(dag);
 
 const iterState = new ChatState();
 iterState.input = 'Explain generics in TypeScript';
-const execution = iterDispatcher.execute('chat', iterState);
+const execution = iterDispatcher.execute('urn:noocodec:dag:chat', iterState);
 for await (const nodeResult of execution) {
   process.stdout.write(`  node=${nodeResult.nodeName} output=${String(nodeResult.output)}\n`);
 }

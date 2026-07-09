@@ -27,6 +27,7 @@ export class InnerState extends NodeStateBase {
 
 export class GenerateNode extends MonadicNode<InnerState, 'done'> {
   readonly name    = 'generate';
+  readonly '@id'   = 'urn:noocodec:node:generate';
   readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -53,6 +54,7 @@ export class OuterState extends NodeStateBase {
 
 export class RecordNode extends MonadicNode<OuterState, 'done'> {
   readonly name    = 'record';
+  readonly '@id'   = 'urn:noocodec:node:record';
   readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -90,7 +92,7 @@ export class LabelStreamProducer extends DagStreamProducer<string> {
     for (const v of this.#values) {
       const state = new InnerState();
       state.value = v;
-      for await (const stage of dispatcher.execute('inner-stream', state)) {
+      for await (const stage of dispatcher.execute('urn:noocodec:dag:inner-stream', state)) {
         yield stage;
       }
     }
@@ -119,21 +121,21 @@ export class LabelStreamProducer extends DagStreamProducer<string> {
 
 export const innerDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:inner-stream',
+  '@id': 'urn:noocodec:dag:inner-stream',
   '@type':      'DAG',
   'name':       'inner-stream',
   'version':    '1',
-  'entrypoint': 'generate',
+  'entrypoints': { 'main': 'urn:noocodec:dag:inner-stream/node/generate' },
   'nodes': [
     {
-      '@id':     'urn:noocodex:dag:inner-stream/node/generate',
+      '@id': 'urn:noocodec:dag:inner-stream/node/generate',
       '@type':   'SingleNode',
       'name':    'generate',
-      'node':    'generate',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:generate',
+      'outputs': { 'done': 'urn:noocodec:dag:inner-stream/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:inner-stream/node/end',
+      '@id': 'urn:noocodec:dag:inner-stream/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
@@ -147,33 +149,37 @@ export const innerDag: DAGType = {
 
 export const outerDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:label-stream',
+  '@id': 'urn:noocodec:dag:label-stream',
   '@type':      'DAG',
   'name':       'label-stream',
   'version':    '1',
-  'entrypoint': 'scatter-labels',
+  'entrypoints': { 'main': 'urn:noocodec:dag:label-stream/node/scatter-labels' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:label-stream/node/scatter-labels',
+      '@id': 'urn:noocodec:dag:label-stream/node/scatter-labels',
       '@type':       'ScatterNode',
       'name':        'scatter-labels',
-      'body':        { 'node': 'record' },
+      'body':        { 'node': 'urn:noocodec:node:record' },
       'source':      'source',
       'itemKey':     'label-item',
       'execution': { 'mode': 'item', 'concurrency': 2 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'labels',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:label-stream/node/collect-labels',
+        'partial': 'urn:noocodec:dag:label-stream/node/collect-labels',
+        'all-error': 'urn:noocodec:dag:label-stream/node/collect-labels',
+        'empty':       'urn:noocodec:dag:label-stream/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:label-stream/node/end',
+      '@id': 'urn:noocodec:dag:label-stream/node/collect-labels',
+      '@type': 'GatherNode',
+      'name': 'collect-labels',
+      sources: { 'urn:noocodec:dag:label-stream/node/scatter-labels': {} },
+      'gather': { 'strategy': 'append', 'target': 'labels' },
+      'outputs': { 'success': 'urn:noocodec:dag:label-stream/node/end', 'error': 'urn:noocodec:dag:label-stream/node/end', 'empty': 'urn:noocodec:dag:label-stream/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:label-stream/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

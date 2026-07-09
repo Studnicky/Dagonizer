@@ -78,7 +78,7 @@ The same accessor flows through every code path that resolves a state path:
 
 - `scatter.source`: reading the array to scatter over.
 - `scatter.stateMapping.input` (builder option `inputs`): copying parent fields into each clone before the body runs.
-- `embeddedDAG.stateMapping.input` / `stateMapping.output`: seeding the child-state clone and copying fields back after the sub-DAG completes.
+- `EmbeddedDAGNode.stateMapping.input` / `stateMapping.output`: seeding the child-state clone and copying fields back after the sub-DAG completes.
 - `gather.mapping` (map strategy): writing produced clone fields back to parent paths.
 - `gather.target` (append strategy): writing the gathered results.
 - `gather.partitions` (partition strategy): writing each output bucket.

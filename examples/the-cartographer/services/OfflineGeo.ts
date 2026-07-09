@@ -79,7 +79,7 @@ export class OfflineGeo {
     // Land: extract ISO-2 directly (the fast path).
     let iso2 = iso1A2Code([lng, lat]) ?? '';
     if (iso2.length === 0) {
-      // feature resolved but iso1A2Code did not — fall back to typed properties.
+      // feature resolved but iso1A2Code did not — use typed properties.
       iso2 = f.properties.iso1A2 ?? '';
     }
 

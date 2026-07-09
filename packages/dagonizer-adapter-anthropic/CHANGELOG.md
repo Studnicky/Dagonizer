@@ -42,7 +42,7 @@
 
 ### Minor Changes
 
-- 4234bc4: `AnthropicApiAdapter` overrides `performChatStream` with real token streaming: POSTs `/v1/messages` with `stream: true` and drains the SSE body through the shared `SseLineParser`, dispatching Anthropic's named events into `ChatStreamChunkType` pushes on the caller's sink as they arrive. A request carrying tools still falls back to the buffered default.
+- 4234bc4: `AnthropicApiAdapter` overrides `performChatStream` with real token streaming: POSTs `/v1/messages` with `stream: true` and drains the SSE body through the shared `SseLineParser`, dispatching Anthropic's named events into `ChatStreamChunkType` pushes on the caller's sink as they arrive. A request carrying tools uses the buffered default.
 
 ## 0.29.1
 
@@ -62,7 +62,7 @@
 
 ### Minor Changes
 
-- `AnthropicApiAdapter` overrides `performChatStream` with real token streaming: it POSTs `/v1/messages` with `stream: true` and drains the SSE body through the shared `SseLineParser`, dispatching Anthropic's named events into `ChatStreamChunkType` pushes on the caller's sink as they arrive. A request carrying tools still falls back to the buffered default (`super.performChatStream`) — partial tool-call JSON is unsafe to parse incrementally.
+- `AnthropicApiAdapter` overrides `performChatStream` with real token streaming: it POSTs `/v1/messages` with `stream: true` and drains the SSE body through the shared `SseLineParser`, dispatching Anthropic's named events into `ChatStreamChunkType` pushes on the caller's sink as they arrive. A request carrying tools uses the buffered default (`super.performChatStream`) because partial tool-call JSON is unsafe to parse incrementally.
 
 ### Patch Changes
 

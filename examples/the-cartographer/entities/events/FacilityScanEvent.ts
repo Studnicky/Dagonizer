@@ -16,7 +16,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const FacilityScanEventSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/events/FacilityScanEvent',
+  '$id': 'https://noocodec.dev/schemas/cartographer/events/FacilityScanEvent',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['shipmentId', 'eventId', 'epochMs', 'eventType', 'sourceId', 'sourceFormat', 'sourceCompression', 'body'],

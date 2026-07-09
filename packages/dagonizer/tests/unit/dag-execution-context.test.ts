@@ -9,6 +9,25 @@ import { DagExecutionContext, DagExecutionContextKeys, DEFAULT_EXECUTION_SCOPE_C
 import { TestNode } from '../_support/TestNode.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const CORRELATED_DAG_IRI = 'urn:noocodec:dag:correlated';
+const CORRELATED_FIRST_IRI = 'urn:noocodec:dag:correlated/node/first';
+const CORRELATED_SECOND_IRI = 'urn:noocodec:dag:correlated/node/second-step';
+const CORRELATED_END_IRI = 'urn:noocodec:dag:correlated/node/end';
+const TERMINATES_DAG_IRI = 'urn:noocodec:dag:terminates';
+const TERMINATES_ONLY_IRI = 'urn:noocodec:dag:terminates/node/only';
+const TERMINATES_END_IRI = 'urn:noocodec:dag:terminates/node/end';
+const SINGLE_RUN_DAG_IRI = 'urn:noocodec:dag:single-run';
+const SINGLE_RUN_ONLY_IRI = 'urn:noocodec:dag:single-run/node/only';
+const SINGLE_RUN_END_IRI = 'urn:noocodec:dag:single-run/node/end';
+const SLOW_DAG_IRI = 'urn:noocodec:dag:slow-dag';
+const SLOW_STEP_IRI = 'urn:noocodec:dag:slow-dag/node/step';
+const SLOW_END_IRI = 'urn:noocodec:dag:slow-dag/node/end';
+const FAST_DAG_IRI = 'urn:noocodec:dag:fast-dag';
+const FAST_STEP_IRI = 'urn:noocodec:dag:fast-dag/node/step';
+const FAST_END_IRI = 'urn:noocodec:dag:fast-dag/node/end';
+const CLEANUP_DAG_IRI = 'urn:noocodec:dag:cleanup-run';
+const CLEANUP_ONLY_IRI = 'urn:noocodec:dag:cleanup-run/node/only';
+const CLEANUP_END_IRI = 'urn:noocodec:dag:cleanup-run/node/end';
 
 /** A signal with no registered `DagExecutionContext` scope — used for the "no active run" assertions. */
 const UNSCOPED_SIGNAL = new AbortController().signal;
@@ -28,20 +47,20 @@ void describe('DagExecutionContext correlation propagation', () => {
       });
       return 'success';
     };
-    const firstNode = TestNode.make<SeenState>('first', ['success'], record('first'));
-    const secondNode = TestNode.make<SeenState>('second', ['success'], record('second'));
+    const firstNode = TestNode.make<SeenState>('urn:noocodec:node:first', ['success'], record('first'));
+    const secondNode = TestNode.make<SeenState>('urn:noocodec:node:second', ['success'], record('second'));
     dispatcher.registerNode(firstNode);
     dispatcher.registerNode(secondNode);
 
-    const dag = new DAGBuilder('correlated', '1')
-      .node('first', firstNode, { 'success': 'second-step' })
-      .node('second-step', secondNode, { 'success': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(CORRELATED_DAG_IRI, '1', { 'name': 'correlated' })
+      .node(CORRELATED_FIRST_IRI, firstNode, { 'success': CORRELATED_SECOND_IRI }, { 'name': 'first' })
+      .node(CORRELATED_SECOND_IRI, secondNode, { 'success': CORRELATED_END_IRI }, { 'name': 'second-step' })
+      .terminal(CORRELATED_END_IRI, { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new SeenState();
-    await dispatcher.execute('correlated', state);
+    await dispatcher.execute(CORRELATED_DAG_IRI, state);
 
     assert.equal(state.seen.length, 2);
     const [seenFirst, seenSecond] = state.seen;
@@ -54,25 +73,25 @@ void describe('DagExecutionContext correlation propagation', () => {
 
     // Both nodes see the running DAG's name without it being threaded through
     // NodeContextType or any node constructor argument.
-    assert.equal(seenFirst.dagName, 'correlated');
-    assert.equal(seenSecond.dagName, 'correlated');
+    assert.equal(seenFirst.dagName, CORRELATED_DAG_IRI);
+    assert.equal(seenSecond.dagName, CORRELATED_DAG_IRI);
   });
 
   void it('the scope is terminated once the run completes: its bindings are no longer readable', async () => {
     const dispatcher = new Dagonizer<SeenState>();
     let capturedSignal: AbortSignal | undefined;
-    const only = TestNode.make<SeenState>('only', ['success'], (_state, context) => {
+    const only = TestNode.make<SeenState>('urn:noocodec:node:only', ['success'], (_state, context) => {
       capturedSignal = context.signal;
       return 'success';
     });
     dispatcher.registerNode(only);
-    const dag = new DAGBuilder('terminates', '1')
-      .node('only', only, { 'success': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(TERMINATES_DAG_IRI, '1', { 'name': 'terminates' })
+      .node(TERMINATES_ONLY_IRI, only, { 'success': TERMINATES_END_IRI }, { 'name': 'only' })
+      .terminal(TERMINATES_END_IRI, { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('terminates', new SeenState());
+    await dispatcher.execute(TERMINATES_DAG_IRI, new SeenState());
 
     assert.ok(capturedSignal !== undefined);
     assert.equal(DagExecutionContext.tryGet(capturedSignal, DagExecutionContextKeys.CORRELATION_ID), undefined);
@@ -81,20 +100,20 @@ void describe('DagExecutionContext correlation propagation', () => {
   void it('generates a distinct correlation id per execute() call', async () => {
     const dispatcher = new Dagonizer<SeenState>();
     const seenIds: string[] = [];
-    const only = TestNode.make<SeenState>('only', ['success'], (_state, context) => {
+    const only = TestNode.make<SeenState>('urn:noocodec:node:only', ['success'], (_state, context) => {
       const id = DagExecutionContext.tryGet(context.signal, DagExecutionContextKeys.CORRELATION_ID);
       if (id !== undefined) seenIds.push(id);
       return 'success';
     });
     dispatcher.registerNode(only);
-    const dag = new DAGBuilder('single-run', '1')
-      .node('only', only, { 'success': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(SINGLE_RUN_DAG_IRI, '1', { 'name': 'single-run' })
+      .node(SINGLE_RUN_ONLY_IRI, only, { 'success': SINGLE_RUN_END_IRI }, { 'name': 'only' })
+      .terminal(SINGLE_RUN_END_IRI, { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('single-run', new SeenState());
-    await dispatcher.execute('single-run', new SeenState());
+    await dispatcher.execute(SINGLE_RUN_DAG_IRI, new SeenState());
+    await dispatcher.execute(SINGLE_RUN_DAG_IRI, new SeenState());
 
     assert.equal(seenIds.length, 2);
     assert.notEqual(seenIds[0], seenIds[1]);
@@ -132,18 +151,18 @@ void describe('DagExecutionContext correlation propagation', () => {
         return 'success';
       };
 
-    const slowNode = TestNode.make<SeenState>('slow-node', ['success'], makeDelayedReader(20));
-    const fastNode = TestNode.make<SeenState>('fast-node', ['success'], makeDelayedReader(1));
+    const slowNode = TestNode.make<SeenState>('urn:noocodec:node:slow-node', ['success'], makeDelayedReader(20));
+    const fastNode = TestNode.make<SeenState>('urn:noocodec:node:fast-node', ['success'], makeDelayedReader(1));
     dispatcher.registerNode(slowNode);
     dispatcher.registerNode(fastNode);
 
-    const slowDag = new DAGBuilder('slow-dag', '1')
-      .node('step', slowNode, { 'success': 'end' })
-      .terminal('end')
+    const slowDag = new DAGBuilder(SLOW_DAG_IRI, '1', { 'name': 'slow-dag' })
+      .node(SLOW_STEP_IRI, slowNode, { 'success': SLOW_END_IRI }, { 'name': 'step' })
+      .terminal(SLOW_END_IRI, { 'name': 'end' })
       .build();
-    const fastDag = new DAGBuilder('fast-dag', '1')
-      .node('step', fastNode, { 'success': 'end' })
-      .terminal('end')
+    const fastDag = new DAGBuilder(FAST_DAG_IRI, '1', { 'name': 'fast-dag' })
+      .node(FAST_STEP_IRI, fastNode, { 'success': FAST_END_IRI }, { 'name': 'step' })
+      .terminal(FAST_END_IRI, { 'name': 'end' })
       .build();
     dispatcher.registerDAG(slowDag);
     dispatcher.registerDAG(fastDag);
@@ -155,8 +174,8 @@ void describe('DagExecutionContext correlation propagation', () => {
     // `await`, resumes, and completes entirely while the slow run's node
     // body is still suspended in its own (longer) `await`.
     const [slowResult, fastResult] = await Promise.all([
-      dispatcher.execute('slow-dag', slowState),
-      dispatcher.execute('fast-dag', fastState),
+      dispatcher.execute(SLOW_DAG_IRI, slowState),
+      dispatcher.execute(FAST_DAG_IRI, fastState),
     ]);
 
     assert.equal(slowResult.terminalOutcome, 'completed');
@@ -182,18 +201,18 @@ void describe('DagExecutionContext correlation propagation', () => {
     // not merely that the anchor map forgot the signal.
     const dispatcher = new Dagonizer<SeenState>();
     let capturedSignal: AbortSignal | undefined;
-    const only = TestNode.make<SeenState>('only', ['success'], (_state, context) => {
+    const only = TestNode.make<SeenState>('urn:noocodec:node:only', ['success'], (_state, context) => {
       capturedSignal = context.signal;
       return 'success';
     });
     dispatcher.registerNode(only);
-    const dag = new DAGBuilder('cleanup-run', '1')
-      .node('only', only, { 'success': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(CLEANUP_DAG_IRI, '1', { 'name': 'cleanup-run' })
+      .node(CLEANUP_ONLY_IRI, only, { 'success': CLEANUP_END_IRI }, { 'name': 'only' })
+      .terminal(CLEANUP_END_IRI, { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('cleanup-run', new SeenState());
+    await dispatcher.execute(CLEANUP_DAG_IRI, new SeenState());
 
     assert.ok(capturedSignal !== undefined);
     // The signal is still referenced (held by this test), so the WeakMap

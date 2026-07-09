@@ -16,7 +16,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 const eventEnvelopeClock = SubstrateClock.create(RealTimeClockProvider.create());
 
 export const BusEventEnvelopeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/BusEventEnvelope',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/BusEventEnvelope',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['topic', 'payload', 'timestamp'],

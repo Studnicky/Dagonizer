@@ -55,7 +55,7 @@ incrState.words = ['hello', 'world', 'from', 'dagonizer'];
 process.stdout.write('\n=== incremental gather (logging-map strategy) ===\n');
 process.stdout.write('Each clone folds immediately after it completes.\n\n');
 
-await incrDispatcher.execute('incremental', incrState);
+await incrDispatcher.execute('urn:noocodec:dag:incremental', incrState);
 
 for (const entry of foldLog) {
   process.stdout.write(`  ${entry}\n`);
@@ -80,7 +80,7 @@ batchState.words = ['hello', 'world', 'from', 'dagonizer'];
 process.stdout.write('\n=== batch gather (batch-only strategy) ===\n');
 process.stdout.write('All clones complete before finalize is called once.\n\n');
 
-await batchDispatcher.execute('batch', batchState);
+await batchDispatcher.execute('urn:noocodec:dag:batch', batchState);
 
 for (const entry of foldLog) {
   process.stdout.write(`  ${entry}\n`);

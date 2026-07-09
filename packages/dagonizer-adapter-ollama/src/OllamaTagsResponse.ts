@@ -18,7 +18,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const OllamaTagsResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/OllamaTagsResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/OllamaTagsResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['models'],

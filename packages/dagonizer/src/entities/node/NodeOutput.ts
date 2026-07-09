@@ -23,7 +23,7 @@ import { NodeErrorProperties, NodeErrorSchema } from './NodeError.js';
 import type { NodeErrorType } from './NodeError.js';
 
 export const NodeOutputSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeOutput',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeOutput',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['errors', 'output'],

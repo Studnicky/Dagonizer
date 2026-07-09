@@ -58,6 +58,7 @@ export abstract class OutcomeReducer {
  */
 class AggregateOutcomeReducer extends OutcomeReducer {
   readonly name = 'aggregate';
+  readonly '@id' = 'urn:noocodec:node:aggregate';
   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'empty';
     const successCount = records.filter((r) => r.output === 'success').length;
@@ -77,6 +78,7 @@ class AggregateOutcomeReducer extends OutcomeReducer {
  */
 class TerminalOutcomeReducer extends OutcomeReducer {
   readonly name = 'terminal';
+  readonly '@id' = 'urn:noocodec:node:terminal';
   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     const rec = records[0];
@@ -94,6 +96,7 @@ class TerminalOutcomeReducer extends OutcomeReducer {
  */
 class AllSuccessOutcomeReducer extends OutcomeReducer {
   readonly name = 'all-success';
+  readonly '@id' = 'urn:noocodec:node:all-success';
   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     return records.every((r) => r.output === 'success') ? 'success' : 'error';
@@ -108,6 +111,7 @@ class AllSuccessOutcomeReducer extends OutcomeReducer {
  */
 class AnySuccessOutcomeReducer extends OutcomeReducer {
   readonly name = 'any-success';
+  readonly '@id' = 'urn:noocodec:node:any-success';
   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     return records.some((r) => r.output === 'success') ? 'success' : 'error';

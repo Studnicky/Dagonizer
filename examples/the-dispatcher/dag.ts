@@ -1,7 +1,7 @@
 /**
  * The Dispatcher: canonical DAG, built with DAGBuilder.
  *
- * Domain: Noocodex Support — customer support for a fictional bookstore.
+ * Domain: Nocodec Support — customer support for a fictional bookstore.
  * Demonstrates the HITL park-and-correlate primitive with a trolley switch.
  *
  * Flow:
@@ -26,53 +26,57 @@
  *   5. send-response appends both sides to conversation → end.
  */
 
-import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from './DispatcherState.ts';
 
 // #region dispatcher-bundle
 
-const setup           = new PlaceholderNode<DispatcherState, 'ready'>('dispatcher-setup', ['ready']);
-const classifyMessage = new PlaceholderNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'>('classify-message', ['routine', 'escalate', 'off-topic']);
-const aiCompose       = new PlaceholderNode<DispatcherState, 'drafted'>('ai-compose', ['drafted']);
-const parkForOperator = new PlaceholderNode<DispatcherState, 'parked' | 'ready'>('park-for-operator', ['parked', 'ready']);
-const sendResponse    = new PlaceholderNode<DispatcherState, 'sent'>('send-response', ['sent']);
-const decline         = new PlaceholderNode<DispatcherState, 'declined'>('decline', ['declined']);
+const setup           = new PlaceholderNode<DispatcherState, 'ready'>('urn:noocodec:node:dispatcher-setup', ['ready']);
+const classifyMessage = new PlaceholderNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'>('urn:noocodec:node:classify-message', ['routine', 'escalate', 'off-topic']);
+const aiCompose       = new PlaceholderNode<DispatcherState, 'drafted'>('urn:noocodec:node:ai-compose', ['drafted']);
+const parkForOperator = new PlaceholderNode<DispatcherState, 'parked' | 'ready'>('urn:noocodec:node:park-for-operator', ['parked', 'ready']);
+const sendResponse    = new PlaceholderNode<DispatcherState, 'sent'>('urn:noocodec:node:send-response', ['sent']);
+const decline         = new PlaceholderNode<DispatcherState, 'declined'>('urn:noocodec:node:decline', ['declined']);
 
-export const supportDispatcherDAG: DAGType = new DAGBuilder('support-dispatcher', '1')
+const supportDispatcherDagIri = 'urn:noocodec:dag:support-dispatcher' as const;
+const placement = (placementIdentifier: string): string =>
+  DAGIdentity.placementId(supportDispatcherDagIri, placementIdentifier);
+
+export const supportDispatcherDAG: DAGType = new DAGBuilder(supportDispatcherDagIri, '1')
   // Pre-phase: stamps runId before the entrypoint runs.
-  .phase('setup', 'pre', setup)
+  .phase(placement('setup'), 'pre', setup)
 
   // Entrypoint: classify the inbound message.
-  .node('classify-message', classifyMessage, {
-    'routine':   'ai-compose',
-    'escalate':  'park-for-operator',
-    'off-topic': 'decline',
+  .node(placement('classify-message'), classifyMessage, {
+    'routine':   placement('ai-compose'),
+    'escalate':  placement('park-for-operator'),
+    'off-topic': placement('decline'),
   })
 
   // Routine branch: AI composes a canned reply -> send -> done.
-  .node('ai-compose', aiCompose, {
-    'drafted': 'send-response',
+  .node(placement('ai-compose'), aiCompose, {
+    'drafted': placement('send-response'),
   })
 
   // Escalation branch: HITL suspension point.
-  .node('park-for-operator', parkForOperator, {
-    'parked': 'end',
-    'ready':  'send-response',
+  .node(placement('park-for-operator'), parkForOperator, {
+    'parked': placement('end'),
+    'ready':  placement('send-response'),
   })
 
   // Shared convergence: both routine and escalated paths flow through send-response.
-  .node('send-response', sendResponse, {
-    'sent': 'end',
+  .node(placement('send-response'), sendResponse, {
+    'sent': placement('end'),
   })
 
   // Off-topic branch: decline and close.
-  .node('decline', decline, {
-    'declined': 'end',
+  .node(placement('decline'), decline, {
+    'declined': placement('end'),
   })
 
-  .terminal('end', { 'outcome': 'completed' })
+  .terminal(placement('end'), { 'outcome': 'completed' })
 
   .build();
 // #endregion dispatcher-bundle

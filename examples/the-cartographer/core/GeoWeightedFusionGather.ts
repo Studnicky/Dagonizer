@@ -1,12 +1,13 @@
 /**
  * GeoWeightedFusionGather: stateless weighted-fusion gather strategy for the
- * geo-source-resolve scatter phase.
+ * geo-source-resolve first-class gather barrier.
  *
- * Each scatter clone resolves one geo signal and writes the result as
- * `state.candidate` (a GeoResolution). This strategy:
+ * Each upstream resolver DAG resolves one geo signal and writes the result as
+ * `state.candidate` (a GeoResolution). The embedding placement projects that
+ * value into `GatherRecord.result`. This strategy:
  *
- *   1. reduce:   Accumulates weight>0 candidates from each clone into
- *                `state.geoCandidates` (read-array, push, set-back idiom).
+ *   1. reduce:   Accumulates weight>0 candidates from gather records into
+ *                `state.geoCandidates`.
  *
  *   2. finalize: Applies the weighted-fusion rules to produce
  *                `state.resolvedGeo`, `state.geoContext`, and merges
@@ -57,7 +58,7 @@ class CandidateRecord {
       typeof Reflect.get(v, 'lat')         === 'number' &&
       typeof Reflect.get(v, 'lng')         === 'number' &&
       typeof Reflect.get(v, 'status')      === 'string' &&
-      typeof Reflect.get(v, 'fallbackUsed') === 'boolean'
+      typeof Reflect.get(v, 'secondaryLookupUsed') === 'boolean'
     );
   }
 }
@@ -74,6 +75,7 @@ class GeoResolutionArray {
 
 export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
+  readonly '@id' = 'urn:noocodec:node:geo-weighted-fusion';
 
   // ── initial: reset geoCandidates accumulator in parent state ─────────────
 
@@ -95,7 +97,9 @@ export class GeoWeightedFusionGather extends GatherStrategy {
   ): void {
     for (const item of batch) {
       const record = item.state;
-      const rawCandidate = accessor.get(record.cloneState, 'candidate');
+      const rawCandidate = CandidateRecord.is(record.result)
+        ? record.result
+        : accessor.get(record.cloneState, 'candidate');
       if (!CandidateRecord.is(rawCandidate)) continue;
       if (rawCandidate.weight <= 0) continue;
 
@@ -115,6 +119,8 @@ export class GeoWeightedFusionGather extends GatherStrategy {
     _config: GatherConfigType,
     execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
+    GeoWeightedFusionGather.mergeCapturedErrors(execution);
+
     const rawCandidates = execution.accessor.get(execution.state, 'geoCandidates');
     const candidates: GeoResolution[] = GeoResolutionArray.is(rawCandidates)
       ? rawCandidates.filter(CandidateRecord.is)
@@ -292,9 +298,28 @@ export class GeoWeightedFusionGather extends GatherStrategy {
 
     return winnerWeight;
   }
+
+  private static mergeCapturedErrors(execution: GatherExecutionType<NodeStateInterface>): void {
+    const current = execution.accessor.get(execution.state, 'capturedErrors');
+    const merged = Array.isArray(current) ? [...current] : [];
+    const seen = new Set<string>(merged.map((entry) => JSON.stringify(entry)));
+
+    for (const record of execution.records) {
+      const rawErrors = execution.accessor.get(record.cloneState, 'capturedErrors');
+      if (!Array.isArray(rawErrors)) continue;
+      for (const error of rawErrors) {
+        const key = JSON.stringify(error);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(error);
+      }
+    }
+
+    execution.accessor.set(execution.state, 'capturedErrors', merged);
+  }
 }
 
 // ── Module-load registration ──────────────────────────────────────────────────
 
 GatherStrategies.register(new GeoWeightedFusionGather());
-// GatherStrategies.resolve('geo-weighted-fusion') now works in any scatter placement.
+// GatherStrategies.resolve('geo-weighted-fusion') now works in any gather placement.

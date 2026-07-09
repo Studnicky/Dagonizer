@@ -163,7 +163,7 @@ export class CompositeLayout {
    * @param dag         The DAG body to lay out.
    * @param embeddedDAGs Registry of registered embedded-DAG bodies.
    * @param prefix      Path prefix for cytoscape node ids (empty at root).
-   * @param visited     Set of DAG names already on the recursion stack (cycle guard).
+   * @param visited     Set of DAG IRIs already on the recursion stack (cycle guard).
    * @param opts        Layout tuning options.
    */
   private static layoutFlat(
@@ -181,7 +181,7 @@ export class CompositeLayout {
 
     // ── Step 1: identify embedded-DAG sub-layouts ───────────────────────────
 
-    // Sub-layout results for embedded-DAGs (keyed by placement.name).
+    // Sub-layout results for embedded-DAGs (keyed by placement IRI).
     const subLayouts = new Map<string, Resolved>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
@@ -193,7 +193,7 @@ export class CompositeLayout {
 
       const innerVisited = new Set(visited);
       innerVisited.add(dagName);
-      const innerPrefix = PlacementUtils.idIn(prefix, placement.name);
+      const innerPrefix = PlacementUtils.idIn(prefix, placement['@id']);
 
       const sub = CompositeLayout.layoutFlat(
         dagreLib,
@@ -203,7 +203,7 @@ export class CompositeLayout {
         innerVisited,
         opts,
       );
-      subLayouts.set(placement.name, sub);
+      subLayouts.set(placement['@id'], sub);
     }
 
     // ── Step 2: build the dagre graph for THIS level ───────────────────────
@@ -228,7 +228,7 @@ export class CompositeLayout {
       let h: number;
 
       if (PlacementUtils.embeddedDagName(placement) !== null) {
-        const sub = subLayouts.get(placement.name);
+        const sub = subLayouts.get(placement['@id']);
         if (sub !== undefined) {
           // Add COMPOUND_PADDING to each side so dagre reserves space for the
           // cytoscape compound border that extends outside the sub-layout BB,
@@ -244,16 +244,16 @@ export class CompositeLayout {
         h = nodeHeight;
       }
 
-      nodeSizes.set(placement.name, { "width": w, "height": h });
-      const nodeId = PlacementUtils.idIn(prefix, placement.name);
+      nodeSizes.set(placement['@id'], { "width": w, "height": h });
+      const nodeId = PlacementUtils.idIn(prefix, placement['@id']);
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
-    // Register edges. All routes reference named placements in the DAG model.
+    // Register edges. All routes reference canonical placement IRIs in the DAG model.
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       if (!('outputs' in placement)) continue;
 
-      const fromId = PlacementUtils.idIn(prefix, placement.name);
+      const fromId = PlacementUtils.idIn(prefix, placement['@id']);
 
       for (const target of Object.values(placement.outputs)) {
         const toId = PlacementUtils.idIn(prefix, target);
@@ -269,7 +269,7 @@ export class CompositeLayout {
     const positions = new Map<string, NodePositionType>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
-      const nodeId = PlacementUtils.idIn(prefix, placement.name);
+      const nodeId = PlacementUtils.idIn(prefix, placement['@id']);
       // dagre's graphlib types `g.node()` as `Label` (no geometry properties).
       // After `dagreLib.layout(g)` the runtime value carries `{x, y}`; the
       // `hasPosition` guard narrows it cast-free (and rejects missing ids).
@@ -277,7 +277,7 @@ export class CompositeLayout {
       if (!CompositeLayout.hasPosition(dagrePos)) continue;
 
       if (PlacementUtils.embeddedDagName(placement) !== null) {
-        const sub = subLayouts.get(placement.name);
+        const sub = subLayouts.get(placement['@id']);
         if (sub !== undefined) {
           // Offset all child positions so the sub-layout's center coincides
           // with the dagre-assigned center for the macro-node.

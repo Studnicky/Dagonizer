@@ -135,7 +135,7 @@ void describe('LlmModel entity + Validator.llmModel', () => {
   });
 
   void it('LlmModelSchema has the correct $id', () => {
-    assert.equal(LlmModelSchema.$id, 'https://noocodex.dev/schemas/dagonizer/adapter/LlmModel');
+    assert.equal(LlmModelSchema.$id, 'https://noocodec.dev/schemas/dagonizer/adapter/LlmModel');
   });
 });
 
@@ -194,7 +194,7 @@ void describe('selectChatModel', () => {
     assert.equal(selected, 'cloud-chat');
   });
 
-  void it('falls back to the cheapest chat model when preferred is not found in catalogue', async () => {
+  void it('selects the cheapest chat model when preferred is not found in catalogue', async () => {
     const adapter = new TestAdapter();
     const selected = await adapter.selectChatModel({ 'preferred': 'nonexistent-model' });
     assert.equal(selected, 'local-chat');
@@ -202,7 +202,7 @@ void describe('selectChatModel', () => {
 
   void it('selects the cheapest chat model, not the first, when the default is absent', async () => {
     // The catalogue lists an expensive model first and a cheaper one second.
-    // The cheapest-by-costRank fallback must pick the cheaper second entry,
+    // The cheapest-by-costRank selector must pick the cheaper second entry,
     // proving selection is cost-driven rather than position-driven.
     class CostAdapter extends BaseAdapter {
       constructor() {
@@ -247,7 +247,7 @@ void describe('selectChatModel', () => {
     assert.equal(selected, 'llama3.2:3b');
   });
 
-  void it('falls back to a cloud chat model when no local chat model exists', async () => {
+  void it('selects a cloud chat model when no local chat model exists', async () => {
     class CloudOnlyAdapter extends BaseAdapter {
       constructor() {
         super('cloud-only', 'CloudOnlyAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false }, { 'model': 'absent-default' });
@@ -269,7 +269,7 @@ void describe('selectChatModel', () => {
 
   void it('honors an explicit in-catalogue cloud preference even when a local model exists', async () => {
     // Step 3 (explicit preferred in catalogue) wins regardless of cloud flag —
-    // the local preference only governs the cheapest-fallback at step 4.
+    // the local preference only governs the cheapest selector at step 4.
     class MixedPrefAdapter extends BaseAdapter {
       constructor() {
         super('mixed-pref', 'MixedPrefAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false });
@@ -346,7 +346,7 @@ void describe('selectChatModel', () => {
 
   void it('uses the configured default as the implicit preference when in the catalogue', async () => {
     // Configured 'cloud-chat' is in FIXED_CATALOGUE; discovery confirms it and
-    // picks it over the local-first fallback.
+    // picks it over the local-first selector.
     const adapter = new TestAdapter('cloud-chat');
     const selected = await adapter.selectChatModel();
     assert.equal(selected, 'cloud-chat');
@@ -354,7 +354,7 @@ void describe('selectChatModel', () => {
 
   void it('replaces a configured default absent from the live catalogue with the cheapest available model', async () => {
     // The original 404 bug: the configured model is no longer served. Discovery
-    // confirms it is missing and falls back to the cheapest available chat
+    // confirms it is missing and selects the cheapest available chat
     // model — 'local-chat' (costRank 5) over 'cloud-chat' (costRank 50).
     const adapter = new TestAdapter('retired-model-not-in-catalogue');
     const selected = await adapter.selectChatModel();

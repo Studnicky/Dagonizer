@@ -7,7 +7,7 @@
  * novel shapes.
  *
  * The leaves carry no runtime behaviour beyond their parent; they're
- * named class aliases that document intent and constrain TChoice /
+ * named class variants that document intent and constrain TChoice /
  * output port naming. The same class extension pattern applies.
  */
 

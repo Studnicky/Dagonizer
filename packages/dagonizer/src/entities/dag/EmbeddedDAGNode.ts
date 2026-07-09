@@ -3,16 +3,15 @@
  * in JSON-LD canonical form.
  *
  * Uses `@type: 'EmbeddedDAGNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`. Cardinality is always 1;
+ * URN: `urn:noocodec:dag:<dagName>/node/<name>`. Cardinality is always 1;
  * exactly one child execution runs. To fork (one clone per source item),
  * use `ScatterNode` with `source`.
  *
- * `dag` (build-time literal) OR `dagFrom` (dotted state path resolved at
- * runtime) selects the sub-DAG to embed — exactly one of the two must be
- * present. `dag` is validated against the registered-DAG set at `registerDAG`
- * time. `dagFrom` is resolved via the state accessor at execution time; an
- * unregistered resolved name routes the placement to its `error` output
- * without throwing.
+ * `dag` selects the sub-DAG to embed. It may be a literal DAG IRI or a
+ * `DagReference` that reads a state path and restricts runtime selection to a
+ * declared candidate set. Every candidate is validated against the
+ * registered-DAG set at `registerDAG` time. A missing or non-candidate runtime
+ * value routes the placement to its `error` output without throwing.
  *
  * `container` (optional): logical container role name. The dispatcher binds
  * role names to `DagContainerInterface` instances at construction via
@@ -25,8 +24,10 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import type { StateAccessorInterface } from '../../contracts/StateAccessorInterface.js';
 
+import { DagReferenceShapeSchema } from './DagReference.js';
+
 export const EmbeddedDAGNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/EmbeddedDAGNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'outputs'],
@@ -34,12 +35,7 @@ export const EmbeddedDAGNodeSchema = {
     '@id':   { 'type': 'string', 'minLength': 1 },
     '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
     'name':  { 'type': 'string', 'minLength': 1 },
-    // Build-time literal dag name. Validated at registerDAG time.
-    // Exactly one of `dag` | `dagFrom` must be present (enforced by DAGValidator).
-    'dag':     { 'type': 'string', 'minLength': 1 },
-    // Dotted state path whose resolved string value names the dag at runtime.
-    // Unregistered resolved names route to the placement's `error` output (no throw).
-    'dagFrom': { 'type': 'string', 'minLength': 1 },
+    'dag': DagReferenceShapeSchema,
     'outputs': {
       'type': 'object',
       'additionalProperties': { 'type': 'string' },
@@ -51,6 +47,14 @@ export const EmbeddedDAGNodeSchema = {
         'input':  { 'type': 'object', 'additionalProperties': { 'type': 'string' }, 'description': 'child-state key -> parent-state dotted path; copied into the child before it runs' },
         // output: copy back after the child completes (parent-state dotted path → child-state key).
         'output': { 'type': 'object', 'additionalProperties': { 'type': 'string' }, 'description': 'parent-state dotted path -> child-state key; copied into the parent after the child completes' },
+      },
+      'additionalProperties': false,
+    },
+    'gatherResult': {
+      'type': 'object',
+      'required': ['resultField'],
+      'properties': {
+        'resultField': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -93,26 +97,27 @@ export class EmbeddedDAGNodeDefaults {
   }
 
   /**
-   * Resolve the dag name for an `EmbeddedDAGNode` placement.
+   * Resolve the DAG IRI for an `EmbeddedDAGNode` placement.
    *
-   * - `dag` present (build-time literal): returns `node.dag` directly.
-   * - `dagFrom` present (runtime path): reads `accessor.get(state, node.dagFrom)`
-   *   and coerces to string. Returns `null` when the path resolves to a non-string
-   *   or absent value — the caller routes to `error` on `null`.
+   * - literal `dag`: returns the literal DAG IRI directly.
+   * - dynamic `DagReference`: reads `reference.path` from state and returns the
+   *   value only when it is one of `reference.candidates`. Returns `null` when
+   *   the path resolves to a non-string, absent value, or non-candidate name.
    *
    * Callers are responsible for checking the resolved name against the
-   * registered-DAG set; this method performs only path resolution.
+   * registered-DAG set; this method performs only path and candidate resolution.
    */
   static resolveDagName(
     node: EmbeddedDAGNodeType,
     state: object,
     accessor: StateAccessorInterface,
   ): string | null {
-    if (node.dag !== undefined) return node.dag;
-    if (node.dagFrom !== undefined) {
-      const resolved = accessor.get(state, node.dagFrom);
-      return typeof resolved === 'string' && resolved.length > 0 ? resolved : null;
-    }
-    return null;
+    const reference = node.dag;
+    if (reference === undefined) return null;
+    if (typeof reference === 'string') return reference;
+
+    const resolved = accessor.get(state, reference.path);
+    if (typeof resolved !== 'string' || resolved.length === 0) return null;
+    return reference.candidates.includes(resolved) ? resolved : null;
   }
 }

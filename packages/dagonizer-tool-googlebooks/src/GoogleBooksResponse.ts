@@ -63,7 +63,7 @@ export const GoogleBooksVolumeSchema = {
 } as const;
 
 export const GoogleBooksResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-tool-googlebooks/GoogleBooksResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-tool-googlebooks/GoogleBooksResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {

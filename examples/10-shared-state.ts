@@ -42,7 +42,7 @@ import {
   dispatcher.registerDAG(childDag);
   dispatcher.registerDAG(parentDag);
 
-  await dispatcher.execute('main-flow', new NodeStateBase());
+  await dispatcher.execute('urn:noocodec:dag:main-flow', new NodeStateBase());
 
   const entries = await logStore.get('entries') ?? '';
   process.stdout.write('\nPart 1: Normal run:\n');
@@ -66,7 +66,7 @@ import {
 
   // Abort mid-run: abort after step-a to produce a checkpoint-worthy cursor.
   const ctl = new AbortController();
-  const execution = dispatcher.execute('main-flow', new NodeStateBase(), { "signal": ctl.signal });
+  const execution = dispatcher.execute('urn:noocodec:dag:main-flow', new NodeStateBase(), { "signal": ctl.signal });
   let seen = 0;
   for await (const _event of execution) {
     seen++;
@@ -78,7 +78,7 @@ import {
     process.stdout.write('\nPart 2: run completed before abort; no cursor\n');
   } else {
     // Capture checkpoint: snapshot the store alongside the parent state.
-    const ckpt = await Checkpoint.capture('main-flow', partial, { "stores": { "log": logStore } });
+    const ckpt = await Checkpoint.capture('urn:noocodec:dag:main-flow', partial, { "stores": { "log": logStore } });
     const json = ckpt.toJson();
 
     process.stdout.write('\nPart 2: Checkpoint captured:\n');

@@ -7,9 +7,9 @@
  * dispatcher; it can only add nodes and DAGs through the public `registerBundle`
  * seam.
  *
- * The pattern name is the IRI of the plugin's primary DAG (its entry DAG): the
- * IRI acts as the plugin's namespace key so two plugins sharing a common node
- * name cannot collide (IRI identity keying is already in place).
+ * The plugin id is the stable package/specifier identity. The bundle context
+ * supplies the JSON-LD prefixes that scope node and DAG IRIs, so plugins can
+ * share local names without colliding in the IRI-keyed registries.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';

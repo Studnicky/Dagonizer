@@ -25,11 +25,11 @@ export type DefinedDagonizerPluginType<TExports extends Record<string, string>> 
   };
 
 function validateExports(exports: Record<string, string>, dags: readonly DAGType[]): void {
-  const dagNames = new Set(dags.map((dag) => dag.name));
-  for (const [exportName, dagName] of Object.entries(exports)) {
-    if (!dagNames.has(dagName)) {
+  const dagIris = new Set(dags.map((dag) => dag['@id']));
+  for (const [exportName, dagIri] of Object.entries(exports)) {
+    if (!dagIris.has(dagIri)) {
       throw new DAGError(
-        `Plugin export '${exportName}' references unknown DAG '${dagName}'`,
+        `Plugin export '${exportName}' references unknown DAG '${dagIri}'`,
         { 'code': 'PLUGIN_INVALID' },
       );
     }

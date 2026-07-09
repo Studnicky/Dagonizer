@@ -68,7 +68,7 @@ class HandoffChannel extends InMemoryChannel {
     const continuationState = PipelineState.restore(snapshot);
 
     // Execute DAG B on the restored state.
-    const result = await dispatcherB.execute('pipeline-b', continuationState);
+    const result = await dispatcherB.execute('urn:noocodec:dag:pipeline-b', continuationState);
     this.lastResultState = result.state;
   }
 }
@@ -98,7 +98,7 @@ dispatcherA.registerDAG(dagA);
 // ---------------------------------------------------------------------------
 
 const stateA = new PipelineState();
-await dispatcherA.execute('pipeline-a', stateA);
+await dispatcherA.execute('urn:noocodec:dag:pipeline-a', stateA);
 
 process.stdout.write('\nHandoff: DAG A → InMemoryChannel → DAG B\n');
 process.stdout.write(`\nDAG A result (items collected):\n`);

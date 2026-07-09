@@ -38,6 +38,7 @@ const MAX_TERMS = 6;
 export class RecommendSimilarNode extends MonadicNode<ArchivistState, 'seeded' | 'empty'> {
   private readonly services: ArchivistServices;
   readonly name = 'recommend-similar';
+  readonly '@id' = 'urn:noocodec:node:recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
   override get outputSchema(): Record<'seeded' | 'empty', SchemaObjectType> {
     return {

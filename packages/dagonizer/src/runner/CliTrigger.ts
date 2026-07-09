@@ -4,11 +4,11 @@
  * Abstracts the common pattern of parsing `process.argv`, validating the
  * command, and dispatching to a runner. Mirrors the `squashage` consumer
  * shape from the research study: a CLI entrypoint that selects a DAG by
- * command name and passes the remaining parsed args as input.
+ * command token and passes the remaining parsed args as input.
  *
  * Consumers subclass `CliTrigger` and override `parseArgs` to map raw
  * argv tokens to the `TInput` their runner expects. `selectDag` maps the
- * command token to a DAG name; the default implementation uses the command
+ * command token to a DAG IRI; the default implementation uses the command
  * token directly.
  *
  * @example
@@ -45,7 +45,7 @@ export abstract class CliTrigger<
 
   /**
    * @param command — The primary command token (e.g. `'build'`, `'run'`).
-   *                  `selectDag` maps this to a DAG name.
+   *                  `selectDag` maps this to a DAG IRI.
    * @param args    — Remaining parsed argv tokens after the command.
    * @param options — Optional execute options (signal, deadlineMs).
    */
@@ -67,9 +67,9 @@ export abstract class CliTrigger<
 
   async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     if (this.#detached) return;
-    const dagName = this.selectDag(this.#command);
+    const dagIri = this.selectDag(this.#command);
     const input = this.parseArgs(this.#command, [...this.#args]);
-    this.#result = await runner.run(dagName, input, this.#options);
+    this.#result = await runner.run(dagIri, input, this.#options);
   }
 
   async detach(): Promise<void> {
@@ -77,7 +77,7 @@ export abstract class CliTrigger<
   }
 
   /**
-   * Map the command token to a registered DAG name. Override to implement
+   * Map the command token to a registered DAG IRI. Override to implement
    * command-to-dag routing (e.g. a dispatch map keyed by command token).
    * Default returns the command token unchanged.
    */

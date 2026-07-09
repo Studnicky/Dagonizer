@@ -36,7 +36,16 @@ interface Snippet {
   readonly text:        string;
 }
 
+interface PolicyViolation {
+  readonly mdFile:  string;
+  readonly line:    number;
+  readonly message: string;
+}
+
 const FENCE = /^```(ts|tsx|typescript)\b([^\n]*)$/;
+const CODE_FENCE = /^```([a-zA-Z0-9_-]+)?\b([^\n]*)$/;
+const DAG_REFERENCE_LANGUAGES = new Set(['json', 'jsonc', 'ts', 'tsx', 'typescript']);
+const NUMBERED_EXAMPLE_PATH = /^docs\/examples\/\d\d[a-z0-9-]*\.md$/u;
 
 // twoslash blocks carrying `// @errors:`/`// @noErrors` declare expected
 // diagnostics and are not type-checked here; collected and reported so a
@@ -90,6 +99,99 @@ class MarkdownSnippets {
   }
 }
 
+class MarkdownPolicy {
+  private constructor() {}
+
+  static check(mdFiles: readonly string[]): PolicyViolation[] {
+    const violations: PolicyViolation[] = [];
+    for (const mdFile of mdFiles) {
+      const lines = readFileSync(mdFile, 'utf8').split('\n');
+      violations.push(...MarkdownPolicy.checkDagFromMentions(mdFile, lines));
+      violations.push(...MarkdownPolicy.checkDagReferenceSnippets(mdFile, lines));
+      violations.push(...MarkdownPolicy.checkNumberedExampleStructure(mdFile, lines));
+    }
+    return violations;
+  }
+
+  private static checkDagFromMentions(mdFile: string, lines: readonly string[]): PolicyViolation[] {
+    const violations: PolicyViolation[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? '';
+      if (line.includes('dagFrom')) {
+        violations.push({
+          mdFile,
+          'line': i + 1,
+          'message': "docs must not mention 'dagFrom'; use graph-addressable DagReference candidates",
+        });
+      }
+    }
+    return violations;
+  }
+
+  private static checkDagReferenceSnippets(mdFile: string, lines: readonly string[]): PolicyViolation[] {
+    const violations: PolicyViolation[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const open = CODE_FENCE.exec(lines[i] ?? '');
+      if (!open) { i++; continue; }
+      const language = open[1] ?? '';
+      const bodyStart = i + 1;
+      let j = bodyStart;
+      while (j < lines.length && (lines[j] ?? '').trim() !== '```') j++;
+      const body = lines.slice(bodyStart, j).join('\n');
+      i = j + 1;
+
+      if (!MarkdownPolicy.isDynamicDagReferenceSnippet(language, body)) continue;
+      if (/\bcandidates\b/u.test(body)) continue;
+      violations.push({
+        mdFile,
+        'line': bodyStart + 1,
+        'message': 'dynamic DagReference docs snippets must declare explicit candidates',
+      });
+    }
+    return violations;
+  }
+
+  private static isDynamicDagReferenceSnippet(language: string, body: string): boolean {
+    if (!DAG_REFERENCE_LANGUAGES.has(language)) return false;
+    if (!/(["']@type["']\s*:\s*["']DagReference["'])/u.test(body)) return false;
+    return /\bfrom\b/u.test(body) && /\bpath\b/u.test(body);
+  }
+
+  private static checkNumberedExampleStructure(mdFile: string, lines: readonly string[]): PolicyViolation[] {
+    const rel = relative(repoRoot, mdFile);
+    if (!NUMBERED_EXAMPLE_PATH.test(rel)) return [];
+
+    const body = lines.join('\n');
+    const violations: PolicyViolation[] = [];
+    if (!MarkdownPolicy.hasCodeSurface(body)) {
+      violations.push({
+        mdFile,
+        'line': 1,
+        'message': 'numbered example pages must show code from the runnable example or an executable snippet',
+      });
+    }
+    if (!MarkdownPolicy.hasDiagramSurface(body)) {
+      violations.push({
+        mdFile,
+        'line': 1,
+        'message': 'numbered example pages must show the DAG diagram beside the code',
+      });
+    }
+    return violations;
+  }
+
+  private static hasCodeSurface(body: string): boolean {
+    return /<<< @\/\.\.\//u.test(body)
+      || /```(?:ts|tsx|typescript|json)\b/u.test(body);
+  }
+
+  private static hasDiagramSurface(body: string): boolean {
+    return /<DagJsonMermaid\b/u.test(body)
+      || /```mermaid\b/u.test(body);
+  }
+}
+
 const compilerOptions: ts.CompilerOptions = {
   target:                    ts.ScriptTarget.ES2022,
   module:                    ts.ModuleKind.ESNext,
@@ -112,6 +214,7 @@ const mdFiles = MarkdownSnippets.list(docsRoot).filter(
   f => filters.length === 0 || filters.some(arg => relative(repoRoot, f).includes(arg)),
 );
 const snippets = mdFiles.flatMap(f => MarkdownSnippets.extract(f));
+const policyViolations = MarkdownPolicy.check(mdFiles);
 
 const byPath = new Map(snippets.map(s => [s.virtualPath, s]));
 const host = ts.createCompilerHost(compilerOptions);
@@ -151,8 +254,15 @@ if (skipped.length > 0) {
   for (const s of skipped) process.stdout.write(`  - ${s}\n`);
 }
 
-if (failed > 0) {
-  process.stdout.write(`\ncheck-doc-snippets: ${failed} of ${checked} twoslash block(s) failed type-checking.\n`);
+if (policyViolations.length > 0) {
+  process.stdout.write(`\ncheck-doc-snippets: ${policyViolations.length} docs policy violation(s):\n`);
+  for (const violation of policyViolations) {
+    process.stdout.write(`  - ${relative(repoRoot, violation.mdFile)}:${violation.line}: ${violation.message}\n`);
+  }
+}
+
+if (failed > 0 || policyViolations.length > 0) {
+  process.stdout.write(`\ncheck-doc-snippets: ${failed} of ${checked} twoslash block(s) failed type-checking; ${policyViolations.length} policy violation(s).\n`);
   process.exit(1);
 }
-process.stdout.write(`check-doc-snippets: all ${checked} twoslash block(s) type-check (${skipped.length} skipped).\n`);
+process.stdout.write(`check-doc-snippets: all ${checked} twoslash block(s) type-check (${skipped.length} skipped); docs policy clean.\n`);

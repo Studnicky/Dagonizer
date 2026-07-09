@@ -32,7 +32,7 @@ Use this page when you want TypeScript to help with graph assembly: route exhaus
 
 Each builder call appends a placement to the DAG document. The node instance supplies the output union, and the route object must cover that union. If a node can return `'retry'`, the route map needs a `'retry'` key. If it does not, TypeScript complains before the docs, tests, or browser demo get involved.
 
-`build()` freezes the assembly into a plain `DAG` value with `@context`, `@type` placements, `entrypoint`, and output targets. From that point forward, the builder disappears. Registration, serialization, visualization, plugins, and execution all see normal JSON-LD.
+`build()` freezes the assembly into a plain `DAG` value with a DAG IRI, placement IRIs, labeled `entrypoints`, and output targets. From that point forward, the builder disappears. Registration, serialization, visualization, plugins, and execution all see normal JSON-LD.
 
 ## Diagrams, Examples, and Outputs
 
@@ -68,15 +68,15 @@ The complete `archivistDAG`, the parent DAG as a single `DAGBuilder` chain. The 
 
 The builder is deliberately not a second configuration language. There is no hidden builder runtime, no decorator metadata, and no post-build projection layer. The object returned by `.build()` is the document `registerDAG` validates.
 
-That makes builder-authored DAGs easy to package as plugins: the plugin exports a normal DAG name, and a parent flow embeds that name exactly as it would embed a hand-authored DAG.
+That makes builder-authored DAGs easy to package as plugins: the plugin exports a normal DAG IRI/reference, and a parent flow embeds that reference exactly as it would embed a hand-authored DAG.
 
 ### What it demonstrates
 - **Fluent chainable authoring.** Every `.node()` and `.scatter()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
 - **Compile-time route exhaustiveness.** The `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
-- **Auto-entrypoint.** The first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
-- **Embedded-DAG placements via `.embed()`.** `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are `EmbeddedDAGNode` placements. Each references a registered sub-DAG by name and declares its `stateMapping.outputs`.
-- **Scatter placements via `.scatter()`.** `reviews-scatter` and `describe-scatter` scatter over a descriptor source (`state.scoutProviders`) with a dispatching body node. Each clone reads `state.metadata.currentItem` and executes the matching scout logic; four sources run concurrently with `execution: { mode: 'item', concurrency: 4 }`.
-- **Same output as a literal `DAG`.** `.build()` returns the identical wire shape `Dagonizer.load()` expects. The builder is a convenience layer, not a separate runtime.
+- **Auto-entrypoint.** The first `.node()` call sets the DAG entrypoint automatically. Override with `.entrypoints(...)` when multiple labels should enter the same graph, as Cartographer does for source intake.
+- **Embedded-DAG placements via `.embed()`.** `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are `EmbeddedDAGNode` placements. Each references a registered sub-DAG by IRI and declares its `stateMapping.outputs`.
+- **Scatter placements via `.scatter()`.** `reviews-scatter` and `describe-scatter` scatter over `state.bookWorksets` with a dynamic `DagReference` body. Each clone reads `item.dagIri`, validates it against explicit candidates, and executes the matching tool DAG; clone outputs then route into a first-class gather placement.
+- **Same output as a literal `DAG`.** `.build()` returns the identical wire shape `DAGDocument.load(json)` validates. The builder is a convenience layer, not a separate runtime.
 
 See this in action in the [Archivist live demo](./the-archivist).
 

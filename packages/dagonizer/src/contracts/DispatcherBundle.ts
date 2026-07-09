@@ -39,13 +39,9 @@ export type DispatcherBundleType<TState extends NodeStateInterface> = {
    */
   stateFactories?: Record<string, ChildStateFactoryType>;
   /**
-   * Optional `@context` prefix map for IRI expansion of node names in this
-   * bundle. Keys are short prefixes (e.g. `myplugin`); values are namespace
-   * IRI strings (e.g. `https://myplugin.example/nodes#`). When absent, bare
-   * node names are expanded using `ContextResolver.DEFAULT_NS`.
-   *
-   * Each DAG's own `@context` governs expansion of names inside that DAG.
-   * This bundle-level context supplements node-name expansion at registration.
+   * Optional `@context` prefix map owned by this bundle. Node objects register
+   * by their own `@id`; the bundle context records plugin prefix ownership for
+   * discovery and DAG-reference resolution.
    */
   context?: Record<string, unknown>;
 }

@@ -9,15 +9,9 @@
  *
  * After dedupe the shortlist is sorted by score and capped at five.
  *
- * Prior-memory fallback (three cases):
- *   1. Live candidates == 0 AND priorCandidates > 0:
- *      Use priorCandidates as the source pool. All carry
- *      `notes.fromPriorMemory: true`. Routes 'ranked'.
- *   2. Live candidates > 0 AND priorCandidates > 0:
- *      Merge both pools. After CanonicalId.dedupe, prefer live scout
- *      result over prior memory for duplicate ISBNs (higher score wins).
- *      Routes 'ranked'.
- *   3. Both empty → routes 'empty'.
+ * Prior memory participates in the same pool as live candidates.
+ * When both exist, the merge keeps the higher-scoring candidate for each
+ * canonical id. If both pools are empty, the node routes 'empty'.
  *
  * Demonstrates: a routing decision based on state contents, and a
  * named output union narrower than the default `'success'`.
@@ -35,6 +29,7 @@ const SHORTLIST_LIMIT = 8;
 
 export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 'empty'> {
   readonly name = 'merge-candidates';
+  readonly '@id' = 'urn:noocodec:node:merge-candidates';
   readonly outputs = ['ranked', 'empty'] as const;
   override get outputSchema(): Record<'ranked' | 'empty', SchemaObjectType> {
     return {
@@ -67,16 +62,14 @@ export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 
     let pool: readonly CandidateType[];
 
     if (state.candidates.length === 0) {
-      // Case 1: live empty, fall back to prior memory exclusively.
+      // Prior memory only.
       pool = state.priorCandidates;
     } else if (state.priorCandidates.length === 0) {
-      // Case 2a: live only (original path).
+      // Live candidates only.
       pool = state.candidates;
     } else {
-      // Case 2b: both pools have content; merge, dedupe, prefer live over prior.
-      // Build a set of ISBNs already present in live candidates.
+      // Merge both pools and keep one entry per ISBN.
       const liveIsbns = new Set(state.candidates.map((c) => c.book.identity.isbn));
-      // Only add prior candidates whose ISBN is NOT already in live results.
       const priorOnly = state.priorCandidates.filter((c) => !liveIsbns.has(c.book.identity.isbn));
       pool = [...state.candidates, ...priorOnly];
     }

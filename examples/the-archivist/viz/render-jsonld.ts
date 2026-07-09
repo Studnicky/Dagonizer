@@ -4,7 +4,7 @@
  * Calls `JsonLdRenderer.render(archivistDAG)` and logs the serialized
  * document to stdout. The document uses the stable `DAGONIZER_VOCAB`
  * URI as its `dag:` prefix, making it consumable by any RDF-aware tool
- * in the noocodex stack (cartographus, sigil, ontology projectors).
+ * in the noocodec stack (cartographus, sigil, ontology projectors).
  *
  * @example
  * ```ts

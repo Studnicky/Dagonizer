@@ -8,13 +8,13 @@
  * Bundle registration order: each `DispatcherBundleType` packages its own nodes
  * and DAG; `registerBundle` installs every node before every DAG so the
  * validator can resolve node references. Embedded-DAG bundles register before
- * the parent, which references them by name:
+ * the parent, which references them by canonical IRI:
  *   1. dispatcher.registerBundle({ nodes, dags: [bookSearchScatterDAG] }): scouts, extract,
  *      decide, rank, merge, record, gate, recall + the book-search-scatter DAG
  *   2. dispatcher.registerBundle({ nodes, dags: [composeRetryLoopDAG] }): compose, validate
  *      + the compose-retry-loop DAG
  *   3. dispatcher.registerBundle({ nodes, dags: [archivistDAG] }): parent-level nodes + the
- *      `the-archivist` DAG (references the embedded-DAGs by name)
+ *      `the-archivist` DAG (references the embedded-DAGs by canonical IRI)
  *
  * LLM resolved via `LlmAdapterCascade` over a registry of providers that
  * have credentials / local services available. Order of preference:
@@ -22,8 +22,8 @@
  *   Ollama (localhost)  →  Gemini API  →  Cerebras  →  Groq
  *                       →  Mistral     →  OpenRouter
  *
- * Recommended local setup: pull any chat model (e.g. `ollama pull llama3.2:3b`)
- * then `ollama serve`. The cascade constructs an `OllamaApiAdapter` and calls
+ * Recommended local setup: install any Ollama chat model, then `ollama serve`.
+ * The cascade constructs an `OllamaApiAdapter` and calls
  * `selectChatModel({ preferred: OLLAMA_MODEL })` to discover and set an
  * installed chat model automatically (override with `OLLAMA_MODEL` env var).
  * The cascade probe routes the run through the local daemon with no API keys
@@ -31,7 +31,7 @@
  *
  * If no adapter is reachable the cascade throws
  * `LlmError(NO_ADAPTER_AVAILABLE)`: that's the design. There is no
- * fallback in the CLI.
+ * sample response in the CLI.
  *
  * Run:  npx tsx examples/the-archivist/runArchivist.ts
  */
@@ -76,6 +76,7 @@ import type { DagRunnerOptionsType } from '@studnicky/dagonizer/runner';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 const logger = new ConsoleLogger();
+const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
 
 /**
  * Env: environment variable access utilities.
@@ -247,7 +248,7 @@ try {
   logger.note(`embedder: ${resolvedEmbedder.id} (${resolvedEmbedder.displayName})`);
 } catch (err) {
   if (err instanceof LlmError && err.classification.reason === 'NO_ADAPTER_AVAILABLE') {
-    logger.note('embedder: none reachable; intent classification via LLM only, recall falls back to Jaccard');
+    logger.note('embedder: none reachable; intent classification via LLM only, recall uses Jaccard');
   } else {
     throw err;
   }
@@ -307,10 +308,9 @@ class ArchivistRunner extends DagRunner<ArchivistInput, ArchivistState, Archivis
 const dispatcher = new ObservedDag<ArchivistState>(logger);
 
 // ── Tool registry (molecular pattern) ────────────────────────────────────
-// Register each book-search tool as an embeddable `tool:<name>` DAG.
+// Register each book-search tool as an embeddable tool DAG IRI.
 // ToolRegistry.bundle() returns the synthesized nodes + DAGs so the
-// dispatcher resolves `tool:web_search_books`, `tool:google_books_search`,
-// `tool:subject_search`, and `tool:wikipedia_summary` by name at scatter time.
+// dispatcher resolves `urn:noocodec:tool:*` IRIs at scatter time.
 // Register BEFORE bookSearchScatterDAG so the embedded-DAG references
 // from the scatter body are resolvable when the parent DAG is validated.
 const toolRegistry = new ToolRegistry();
@@ -439,7 +439,7 @@ const visitorClosedSignal = Signal.timeout(800);
 const cancelVisitor = new ArchivistState();
 cancelVisitor.query = "What's a book about a labyrinth?";
 
-const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
+const cancelResult = await dispatcher.execute(ARCHIVIST_DAG_IRI, cancelVisitor, {
   'signal':     visitorClosedSignal,
   'deadlineMs': 5000,              // hard 5s ceiling regardless of signal
 });
@@ -476,7 +476,7 @@ if (cancelResult.cursor !== null) {
 // #region resume-run
 if (cancelResult.cursor !== null) {
   const store = new MemoryCheckpointStore();
-  const ckpt = await Checkpoint.capture('the-archivist', cancelResult, { 'stores': { 'memory': services.memory } });
+  const ckpt = await Checkpoint.capture(ARCHIVIST_DAG_IRI, cancelResult, { 'stores': { 'memory': services.memory } });
   await ckpt.persist(store, `archivist:${cancelVisitor.query}`);
 
   const recalled = await Checkpoint.recall(store, `archivist:${cancelVisitor.query}`);

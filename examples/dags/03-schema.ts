@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   RoutedBatch,
 } from '@studnicky/dagonizer';
-import { DAGDocument } from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,7 @@ import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 export class EchoNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'echo';
+  readonly '@id' = 'urn:noocodec:node:echo';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -49,21 +50,21 @@ export class EchoNode extends MonadicNode<NodeStateBase, 'success'> {
 // #region dag-literal
 const dagJson = JSON.stringify({
   '@context': DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:from-json',
+  '@id': 'urn:noocodec:dag:from-json',
   '@type':      'DAG',
   'name':       'from-json',
   'version':    '1',
-  'entrypoint': 'echo',
+  'entrypoints': { 'main': 'urn:noocodec:dag:from-json/node/echo' },
   'nodes': [
     {
-      '@id':     'urn:noocodex:dag:from-json/node/echo',
+      '@id': 'urn:noocodec:dag:from-json/node/echo',
       '@type':   'SingleNode',
       'name':    'echo',
-      'node':    'echo',
-      'outputs': { 'success': 'end' },
+      'node':    'urn:noocodec:node:echo',
+      'outputs': { 'success': 'urn:noocodec:dag:from-json/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:from-json/node/end',
+      '@id': 'urn:noocodec:dag:from-json/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

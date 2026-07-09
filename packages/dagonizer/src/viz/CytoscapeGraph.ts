@@ -96,10 +96,10 @@ const CYTOSCAPE_GRAPH_DEFAULTS = {
  * Vertical gap below the laid-out graph at which the first layout-unpositioned
  * node (e.g. the renderer's synthetic `END` sink) is placed.
  */
-const FALLBACK_SINK_GAP = 160;
+const DEFAULT_SINK_GAP = 160;
 
 /** Vertical step between successive layout-unpositioned nodes stacked at the sink. */
-const FALLBACK_SINK_STEP = 80;
+const DEFAULT_SINK_STEP = 80;
 
 // ---------------------------------------------------------------------------
 // Class-shape interface (tier-1 taxonomy: same file as the class)
@@ -131,7 +131,7 @@ export interface CytoscapeGraphInterface {
  */
 export type CytoscapeGraphOptionsType = {
   /**
-   * Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and
+   * Registry of embedded-DAGs by DAG IRI, passed to `CytoscapeRenderer` and
    * `CompositeLayout` for recursive expansion. Default: empty `Map`.
    */
   embeddedDAGs?: ReadonlyMap<string, DAGType>;
@@ -304,7 +304,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     const lowestY = laidOut.length > 0
       ? Math.max(...laidOut.map((p) => p.y))
       : 0;
-    let sinkY = lowestY + FALLBACK_SINK_GAP;
+    let sinkY = lowestY + DEFAULT_SINK_GAP;
 
     return elements.map((el) => {
       if (el.group !== 'nodes') return el;
@@ -312,9 +312,9 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       if (typeof id !== 'string') return el;
       const pos = layout.positions.get(id);
       if (pos !== undefined) return { ...el, "position": { "x": pos.x, "y": pos.y } };
-      const fallback = { "x": centreX, "y": sinkY };
-      sinkY += FALLBACK_SINK_STEP;
-      return { ...el, "position": fallback };
+      const defaultPosition = { "x": centreX, "y": sinkY };
+      sinkY += DEFAULT_SINK_STEP;
+      return { ...el, "position": defaultPosition };
     });
   }
 

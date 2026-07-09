@@ -9,6 +9,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // Recording Dagonizer subclass captures every hook invocation in order so
@@ -17,6 +18,8 @@ type Call = {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
+
+const placementIri = TestDag.placementIri;
 
 class RecordingDagonizer extends Dagonizer<NodeStateBase> {
   readonly calls: Call[] = [];
@@ -61,19 +64,19 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
 
 const linearDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:linear',
+  '@id':      'urn:noocodec:dag:linear',
   '@type':    'DAG',
   'name':       'linear',
   'version':    '1',
-  'entrypoint': 'a',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:linear', 'a') },
   'nodes': [
-    { '@id': 'urn:noocodex:dag:linear/node/a', '@type': 'SingleNode',
-      'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
-    { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode',
-      'name': 'b', 'node': 'b', 'outputs': { 'success': 'c' } },
-    { '@id': 'urn:noocodex:dag:linear/node/c', '@type': 'SingleNode',
-      'name': 'c', 'node': 'c', 'outputs': { 'success': 'end' } },
-    { '@id': 'urn:noocodex:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': 'urn:noocodec:dag:linear/node/a', '@type': 'SingleNode',
+      'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': { 'success': placementIri('urn:noocodec:dag:linear', 'b') } },
+    { '@id': 'urn:noocodec:dag:linear/node/b', '@type': 'SingleNode',
+      'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'success': placementIri('urn:noocodec:dag:linear', 'c') } },
+    { '@id': 'urn:noocodec:dag:linear/node/c', '@type': 'SingleNode',
+      'name': 'c', 'node': 'urn:noocodec:node:c', 'outputs': { 'success': placementIri('urn:noocodec:dag:linear', 'end') } },
+    { '@id': 'urn:noocodec:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -85,47 +88,47 @@ const linearDAG: DAGType = {
 // Innermost DAG: used as the inner placement inside `middleDAG`.
 const leafDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':   'urn:noocodex:dag:pp-leaf',
+  '@id':   'urn:noocodec:dag:pp-leaf',
   '@type': 'DAG',
   'name': 'pp-leaf',
   'version': '1',
-  'entrypoint': 'leaf-step',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:pp-leaf', 'leaf-step') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:pp-leaf/node/leaf-step',
+      '@id':   'urn:noocodec:dag:pp-leaf/node/leaf-step',
       '@type': 'SingleNode',
       'name':  'leaf-step',
-      'node':  'leaf-step',
-      'outputs': { 'done': 'end' },
+      'node':  'urn:noocodec:node:leaf-step',
+      'outputs': { 'done': placementIri('urn:noocodec:dag:pp-leaf', 'end') },
     },
-    { '@id': 'urn:noocodex:dag:pp-leaf/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': 'urn:noocodec:dag:pp-leaf/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
 // Middle DAG: wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
 const middleDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':   'urn:noocodex:dag:pp-middle',
+  '@id':   'urn:noocodec:dag:pp-middle',
   '@type': 'DAG',
   'name': 'pp-middle',
   'version': '1',
-  'entrypoint': 'middle-step',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:pp-middle', 'middle-step') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:pp-middle/node/middle-step',
+      '@id':   'urn:noocodec:dag:pp-middle/node/middle-step',
       '@type': 'SingleNode',
       'name':  'middle-step',
-      'node':  'middle-step',
-      'outputs': { 'next': 'run-leaf' },
+      'node':  'urn:noocodec:node:middle-step',
+      'outputs': { 'next': placementIri('urn:noocodec:dag:pp-middle', 'run-leaf') },
     },
     {
-      '@id':   'urn:noocodex:dag:pp-middle/node/run-leaf',
+      '@id':   'urn:noocodec:dag:pp-middle/node/run-leaf',
       '@type': 'EmbeddedDAGNode',
       'name':  'run-leaf',
-      'dag':   'pp-leaf',
-      'outputs': { 'success': 'end', 'error': 'end' },
+      'dag':   'urn:noocodec:dag:pp-leaf',
+      'outputs': { 'success': placementIri('urn:noocodec:dag:pp-middle', 'end'), 'error': placementIri('urn:noocodec:dag:pp-middle', 'end') },
     },
-    { '@id': 'urn:noocodex:dag:pp-middle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': 'urn:noocodec:dag:pp-middle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -134,27 +137,27 @@ const middleDAG: DAGType = {
 // paths in a single execution.
 const placementParentDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':   'urn:noocodex:dag:pp-parent',
+  '@id':   'urn:noocodec:dag:pp-parent',
   '@type': 'DAG',
   'name': 'pp-parent',
   'version': '1',
-  'entrypoint': 'top-step',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:pp-parent', 'top-step') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:pp-parent/node/top-step',
+      '@id':   'urn:noocodec:dag:pp-parent/node/top-step',
       '@type': 'SingleNode',
       'name':  'top-step',
-      'node':  'top-step',
-      'outputs': { 'next': 'run-middle' },
+      'node':  'urn:noocodec:node:top-step',
+      'outputs': { 'next': placementIri('urn:noocodec:dag:pp-parent', 'run-middle') },
     },
     {
-      '@id':   'urn:noocodex:dag:pp-parent/node/run-middle',
+      '@id':   'urn:noocodec:dag:pp-parent/node/run-middle',
       '@type': 'EmbeddedDAGNode',
       'name':  'run-middle',
-      'dag':   'pp-middle',
-      'outputs': { 'success': 'end', 'error': 'end' },
+      'dag':   'urn:noocodec:dag:pp-middle',
+      'outputs': { 'success': placementIri('urn:noocodec:dag:pp-parent', 'end'), 'error': placementIri('urn:noocodec:dag:pp-parent', 'end') },
     },
-    { '@id': 'urn:noocodex:dag:pp-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': 'urn:noocodec:dag:pp-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -163,35 +166,35 @@ const placementParentDAG: DAGType = {
 void describe('Dagonizer subclass hooks contract', () => {
   void it('runs end-to-end without subclass hooks (base protected hooks are no-ops)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('only', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:only', ['success']));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:noop-default',
+      '@id':      'urn:noocodec:dag:noop-default',
       '@type':    'DAG',
       'name':       'noop-default',
       'version':    '1',
-      'entrypoint': 'only',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:noop-default', 'only') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:noop-default/node/only', '@type': 'SingleNode',
-          'name': 'only', 'node': 'only', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:noop-default/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:noop-default/node/only', '@type': 'SingleNode',
+          'name': 'only', 'node': 'urn:noocodec:node:only', 'outputs': { 'success': placementIri('urn:noocodec:dag:noop-default', 'end') } },
+        { '@id': 'urn:noocodec:dag:noop-default/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('noop-default', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:noop-default', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'completed');
   });
 
   void it('fires onNodeStart and onNodeEnd in order across a 3-node DAG', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(TestNode.make('a', ['success']));
-    dispatcher.registerNode(TestNode.make('b', ['success']));
-    dispatcher.registerNode(TestNode.make('c', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:b', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:c', ['success']));
     dispatcher.registerDAG(linearDAG);
 
-    const result = await dispatcher.execute('linear', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:linear', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'completed');
 
     const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0]).filter((x): x is string => typeof x === 'string');
@@ -206,48 +209,48 @@ void describe('Dagonizer subclass hooks contract', () => {
     // Child DAG ----------------------------------------------------------
     const childDAG: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:inst-child',
+      '@id':      'urn:noocodec:dag:inst-child',
       '@type':    'DAG',
       'name':       'inst-child',
       'version':    '1',
-      'entrypoint': 'child-only',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:inst-child', 'child-only') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:inst-child/node/child-only', '@type': 'SingleNode',
-          'name': 'child-only', 'node': 'child-only', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:inst-child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:inst-child/node/child-only', '@type': 'SingleNode',
+          'name': 'child-only', 'node': 'urn:noocodec:node:child-only', 'outputs': { 'success': placementIri('urn:noocodec:dag:inst-child', 'end') } },
+        { '@id': 'urn:noocodec:dag:inst-child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
     // Parent DAG with an embedded-DAG placement ----------------------------
     const parentDAG: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:inst-parent',
+      '@id':      'urn:noocodec:dag:inst-parent',
       '@type':    'DAG',
       'name':       'inst-parent',
       'version':    '1',
-      'entrypoint': 'parent-entry',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:inst-parent', 'parent-entry') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
-          'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
-          'name': 'run-child', 'dag': 'inst-child',
-          'outputs': { 'success': 'end', 'error': 'end' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
+          'name': 'parent-entry', 'node': 'urn:noocodec:node:parent-entry', 'outputs': { 'success': placementIri('urn:noocodec:dag:inst-parent', 'run-child') } },
+        { '@id': 'urn:noocodec:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
+          'name': 'run-child', 'dag': 'urn:noocodec:dag:inst-child',
+          'outputs': { 'success': placementIri('urn:noocodec:dag:inst-parent', 'end'), 'error': placementIri('urn:noocodec:dag:inst-parent', 'end') } },
+        { '@id': 'urn:noocodec:dag:inst-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
-    dispatcher.registerNode(TestNode.make('child-only',   ['success']));
-    dispatcher.registerNode(TestNode.make('parent-entry', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:child-only',   ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:parent-entry', ['success']));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
-    await dispatcher.execute('inst-parent', new NodeStateBase());
+    await dispatcher.execute('urn:noocodec:dag:inst-parent', new NodeStateBase());
 
     assert.equal(dispatcher.hooksOfType('flowStart').length, 1, 'onFlowStart fires exactly once');
     assert.equal(dispatcher.hooksOfType('flowEnd').length,   1, 'onFlowEnd fires exactly once');
-    // Top-level flow hook is scoped to the parent DAG name
-    assert.equal(dispatcher.hooksOfType('flowStart')[0]?.args[0], 'inst-parent');
-    assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'inst-parent');
+    // Top-level flow hook is scoped to the parent DAG IRI.
+    assert.equal(dispatcher.hooksOfType('flowStart')[0]?.args[0], 'urn:noocodec:dag:inst-parent');
+    assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'urn:noocodec:dag:inst-parent');
   });
 
   void it('onError fires when a node throws', async () => {
@@ -255,6 +258,7 @@ void describe('Dagonizer subclass hooks contract', () => {
 
     class BoomNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
+      readonly '@id' = 'urn:noocodec:node:boom';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
@@ -265,25 +269,25 @@ void describe('Dagonizer subclass hooks contract', () => {
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:inst-err',
+      '@id':      'urn:noocodec:dag:inst-err',
       '@type':    'DAG',
       'name':       'inst-err',
       'version':    '1',
-      'entrypoint': 'boom',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:inst-err', 'boom') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:inst-err/node/boom', '@type': 'SingleNode',
-          'name': 'boom', 'node': 'boom', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:inst-err/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:inst-err/node/boom', '@type': 'SingleNode',
+          'name': 'boom', 'node': 'urn:noocodec:node:boom', 'outputs': { 'success': placementIri('urn:noocodec:dag:inst-err', 'end') } },
+        { '@id': 'urn:noocodec:dag:inst-err/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('inst-err', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:inst-err', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'failed');
 
     const errors = dispatcher.hooksOfType('error');
     assert.equal(errors.length, 1, 'onError fires exactly once');
-    assert.equal(errors[0]?.args[0], 'boom');
+    assert.equal(errors[0]?.args[0], placementIri('urn:noocodec:dag:inst-err', 'boom'));
     const errorArg = errors[0]?.args[1];
     assert.ok(errorArg instanceof Error);
     assert.match(errorArg.message, /boom went off/);
@@ -302,18 +306,18 @@ void describe('Dagonizer subclass hooks contract', () => {
     }
 
     const dispatcher = new ThrowingDagonizer();
-    dispatcher.registerNode(TestNode.make('a', ['success']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['success']));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:inst-throw',
+      '@id':      'urn:noocodec:dag:inst-throw',
       '@type':    'DAG',
       'name':       'inst-throw',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:inst-throw', 'a') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:inst-throw/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:inst-throw/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:inst-throw/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': { 'success': placementIri('urn:noocodec:dag:inst-throw', 'end') } },
+        { '@id': 'urn:noocodec:dag:inst-throw/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -324,7 +328,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     // `Execution` is PromiseLike, not Promise, so wrap in an async fn
     // for assert.rejects.
     await assert.rejects(
-      async () => { await dispatcher.execute('inst-throw', new NodeStateBase()); },
+      async () => { await dispatcher.execute('urn:noocodec:dag:inst-throw', new NodeStateBase()); },
       /hook exploded on a/,
     );
   });
@@ -332,27 +336,27 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('threads placementPath: empty for top-level nodes, single-element for one-deep, full path for two-deep', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(TestNode.make('top-step',    ['next']));
-    dispatcher.registerNode(TestNode.make('middle-step', ['next']));
-    dispatcher.registerNode(TestNode.make('leaf-step',   ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:top-step',    ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:middle-step', ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:leaf-step',   ['done']));
 
     dispatcher.registerDAG(leafDAG);
     dispatcher.registerDAG(middleDAG);
     dispatcher.registerDAG(placementParentDAG);
 
-    const result = await dispatcher.execute('pp-parent', new NodeStateBase());
+    const result = await dispatcher.execute('urn:noocodec:dag:pp-parent', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'completed');
 
     // top-step ran at the root of pp-parent: path is empty
     assert.deepEqual(
       dispatcher.pathsFor('nodeStart', 'top-step'),
       [[]],
-      'top-step fires onNodeStart with empty placementPath',
+      'urn:noocodec:dag:top-step fires onNodeStart with empty placementPath',
     );
     assert.deepEqual(
       dispatcher.pathsFor('nodeEnd', 'top-step'),
       [[]],
-      'top-step fires onNodeEnd with empty placementPath',
+      'urn:noocodec:dag:top-step fires onNodeEnd with empty placementPath',
     );
 
     // run-middle is the embedded-DAG placement in pp-parent; its own
@@ -367,14 +371,14 @@ void describe('Dagonizer subclass hooks contract', () => {
     assert.deepEqual(
       dispatcher.pathsFor('nodeStart', 'middle-step'),
       [['run-middle']],
-      'middle-step carries one-deep placementPath',
+      'urn:noocodec:dag:middle-step carries one-deep placementPath',
     );
 
     // leaf-step lives inside run-leaf inside run-middle: full ancestry.
     assert.deepEqual(
       dispatcher.pathsFor('nodeStart', 'leaf-step'),
       [['run-middle', 'run-leaf']],
-      'leaf-step carries the full two-deep placementPath',
+      'urn:noocodec:dag:leaf-step carries the full two-deep placementPath',
     );
     assert.deepEqual(
       dispatcher.pathsFor('nodeEnd', 'leaf-step'),
@@ -391,56 +395,56 @@ void describe('Dagonizer subclass hooks contract', () => {
 
     const innerDAG: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':   'urn:noocodex:dag:pp-shared-inner',
+      '@id':   'urn:noocodec:dag:pp-shared-inner',
       '@type': 'DAG',
       'name': 'pp-shared-inner',
       'version': '1',
-      'entrypoint': 'inner-step',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:pp-shared-inner', 'inner-step') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:pp-shared-inner/node/inner-step',
+          '@id':   'urn:noocodec:dag:pp-shared-inner/node/inner-step',
           '@type': 'SingleNode',
           'name':  'inner-step',
-          'node':  'inner-step',
-          'outputs': { 'done': 'end' },
+          'node':  'urn:noocodec:node:inner-step',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:pp-shared-inner', 'end') },
         },
-        { '@id': 'urn:noocodex:dag:pp-shared-inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:pp-shared-inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
     const twoInstancesDAG: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':   'urn:noocodex:dag:pp-two-instances',
+      '@id':   'urn:noocodec:dag:pp-two-instances',
       '@type': 'DAG',
       'name': 'pp-two-instances',
       'version': '1',
-      'entrypoint': 'first-embed',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:pp-two-instances', 'first-embed') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:pp-two-instances/node/first-embed',
+          '@id':   'urn:noocodec:dag:pp-two-instances/node/first-embed',
           '@type': 'EmbeddedDAGNode',
           'name':  'first-embed',
-          'dag':   'pp-shared-inner',
-          'outputs': { 'success': 'second-embed', 'error': 'second-embed' },
+          'dag':   'urn:noocodec:dag:pp-shared-inner',
+          'outputs': { 'success': placementIri('urn:noocodec:dag:pp-two-instances', 'second-embed'), 'error': placementIri('urn:noocodec:dag:pp-two-instances', 'second-embed') },
         },
         {
-          '@id':   'urn:noocodex:dag:pp-two-instances/node/second-embed',
+          '@id':   'urn:noocodec:dag:pp-two-instances/node/second-embed',
           '@type': 'EmbeddedDAGNode',
           'name':  'second-embed',
-          'dag':   'pp-shared-inner',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'dag':   'urn:noocodec:dag:pp-shared-inner',
+          'outputs': { 'success': placementIri('urn:noocodec:dag:pp-two-instances', 'end'), 'error': placementIri('urn:noocodec:dag:pp-two-instances', 'end') },
         },
-        { '@id': 'urn:noocodex:dag:pp-two-instances/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:pp-two-instances/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(TestNode.make('inner-step', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:inner-step', ['done']));
     dispatcher.registerDAG(innerDAG);
     dispatcher.registerDAG(twoInstancesDAG);
 
-    await dispatcher.execute('pp-two-instances', new NodeStateBase());
+    await dispatcher.execute('urn:noocodec:dag:pp-two-instances', new NodeStateBase());
 
     // inner-step fires once under `first-embed` and once under
     // `second-embed`. The path discriminates the two instances.

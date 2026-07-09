@@ -12,7 +12,7 @@ describe('04-scatter: partition strategy routes clones by output', () => {
     const state = new ScrapeState();
     // even-length (2 chars) → 'ok'; odd-length (3 chars) → 'fail'
     state.urls = ['ab', 'abc'];
-    const result = await dispatcher.execute('scrape', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:scrape', state);
 
     assert.equal(result.terminalOutcome, 'completed');
   });
@@ -24,7 +24,7 @@ describe('04-scatter: partition strategy routes clones by output', () => {
 
     const state = new ScrapeState();
     state.urls = ['ab', 'abc'];
-    await dispatcher.execute('scrape', state);
+    await dispatcher.execute('urn:noocodec:dag:scrape', state);
 
     assert.ok(
       state.succeeded.includes('ab'),
@@ -44,7 +44,7 @@ describe('04-scatter: partition strategy routes clones by output', () => {
     const state = new ScrapeState();
     // both even length
     state.urls = ['ab', 'cd'];
-    const result = await dispatcher.execute('scrape', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:scrape', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.failed.length, 0);
@@ -59,7 +59,7 @@ describe('04-scatter: partition strategy routes clones by output', () => {
     const state = new ScrapeState();
     // both odd length
     state.urls = ['abc', 'def'];
-    const result = await dispatcher.execute('scrape', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:scrape', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.succeeded.length, 0);

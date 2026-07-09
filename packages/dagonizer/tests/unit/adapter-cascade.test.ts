@@ -3,7 +3,7 @@
  *
  * Verifies that the builder assembles a cascade from a catalogue, that
  * preference order is honoured (first entry wins when it probes true), and
- * that fallback to the next entry occurs when an earlier one fails to probe.
+ * that the cascade advances to the next entry when an earlier one fails to probe.
  */
 
 import assert from 'node:assert/strict';
@@ -93,7 +93,7 @@ void describe('LlmAdapterCascade.create', () => {
     assert.equal(adapter.id, 'provA:modelA');
   });
 
-  void it('falls back to the second entry when the first fails to probe', async () => {
+  void it('selects the second entry when the first fails to probe', async () => {
     const catalogue: readonly CatalogueEntryType[] = [
       TestCatalogue.entry('cold', 'modelA', false),
       TestCatalogue.entry('warm', 'modelB', true),

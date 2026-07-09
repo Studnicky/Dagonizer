@@ -134,6 +134,14 @@
       "types": "./dist/dag/index.d.ts",
       "default": "./dist/dag/index.js"
     },
+    "./graph": {
+      "types": "./dist/graph/index.d.ts",
+      "default": "./dist/graph/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "default": "./dist/schema/index.js"
+    },
     "./context": {
       "types": "./dist/context/index.d.ts",
       "default": "./dist/context/index.js"
@@ -205,7 +213,7 @@
     "build:src": "tsc -p tsconfig.json && cp src/viz/explorer.css dist/viz/explorer.css",
     "build:testing": "tsc -p tsconfig.testing.json",
     "build": "npm run build:src && npm run build:testing",
-    "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",
+    "pretest": "rm -rf dist dist-test dist-testing && tsc -p tsconfig.json && cp src/viz/explorer.css dist/viz/explorer.css && tsc -p tsconfig.testing.json && tsc -p tsconfig.test.json",
     "test": "node --test 'dist-test/tests/**/*.test.js'",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",

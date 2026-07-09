@@ -30,6 +30,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region route-redaction-node
 export class RouteRedactionNode extends MonadicNode<CartographerState, 'needs-redaction' | 'skip-redaction'> {
+  readonly '@id' = 'urn:noocodec:node:route-redaction';
   readonly 'name' = 'route-redaction';
   readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
 

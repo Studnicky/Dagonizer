@@ -62,11 +62,30 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
+  DynamicDAGReferenceInputType,
   EmbeddableDAGType,
+  ItemDAGReferenceInputType,
   PathType,
+  SchemaRouteTypes,
+  ScatterDAGBodyType,
   ScatterOptionsType,
+  StateDAGReferenceInputType,
   TypedEmbeddedDAGOptionsType,
 } from './builder/index.js';
+
+// =============================================================================
+// GRAPH
+// =============================================================================
+
+export { DagGraphProjector, DagGraphQueries, DagGraphTerms, DagReferenceGraph, InMemoryTopologyStore } from './graph/index.js';
+export type { DagReferenceEdgeType } from './graph/index.js';
+
+// =============================================================================
+// SCHEMA
+// =============================================================================
+
+export { JsonSchemaCompatibility, SchemaIdentity, SchemaRegistry, StableSchemaHash } from './schema/index.js';
+export type { SchemaCompatibilityResultType } from './schema/index.js';
 
 // =============================================================================
 // VALIDATION
@@ -74,6 +93,7 @@ export type {
 
 export {
   Validator,
+  WellFormedValidator,
 } from './validation/index.js';
 export type { EntityValidatorInterface } from './validation/index.js';
 
@@ -81,16 +101,13 @@ export type { EntityValidatorInterface } from './validation/index.js';
 // ENTITIES (schemas + derived types)
 // =============================================================================
 
-// `DAGDocument` is engine-coupled (it validates against the compiled
-// `Validator`), so it lives at `src/dag/` and ships through `./dag`. It is
-// re-exported on the root barrel so the existing root-barrel `DAGDocument`
-// export resolves unchanged.
-export { DAGDocument } from './dag/index.js';
-export type { DAGDocumentLoadOptionsType } from './dag/index.js';
 export {
   Placement,
   NodeError,
   NodeOutput,
+  DagReference,
+  DagReferenceSchema,
+  GatherNodeSchema,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
   GatherConfigSchema,
@@ -109,6 +126,8 @@ export {
   ExecutionResultSchema,
   ParkedSchema,
   ValidationResultSchema,
+  GatherProgressSchema,
+  GatherRecordProgressSchema,
   GatherStrategySchema,
   ScatterOutputSchema,
   MetadataKeySchema,
@@ -117,6 +136,8 @@ export {
   BackoffStrategySchema,
   BackoffStrategyNames,
   DAG_CONTEXT,
+  DAGEntrypoints,
+  DAGIdentity,
   ExecutorIntermediateSchema,
   ExecutionRequestSchema,
   ExecutionResponseSchema,
@@ -134,9 +155,15 @@ export {
 export type {
   BackoffStrategyType,
   DAGNodeType,
+  DagReferenceType,
+  DynamicDagReferenceType,
   ScatterNodeType,
   EmbeddedDAGNodeType,
+  GatherNodeType,
+  GatherPolicyType,
   GatherConfigType,
+  GatherProgressType,
+  GatherRecordProgressType,
   DAGType,
   DAGLifecycleStateDataType,
   SingleNodeType,
@@ -174,7 +201,7 @@ export {
   RecommendedWorkerCountConfigSchema,
   RecommendedWorkerCountConfigDefault,
   RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
-  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MINIMUM,
   RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
   SystemInfo,
 } from './entities/index.js';
@@ -230,7 +257,7 @@ export type { DagContainerOptionsType } from './container/DagContainerBase.js';
 // =============================================================================
 
 export { Dagonizer } from './Dagonizer.js';
-export { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
+export { GATHER_PROGRESS_KEY, SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
 export type { DagonizerOptionsType, DispatcherObserverType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
@@ -286,7 +313,7 @@ export type {
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapter, GatherCheckpoint, MemoryCheckpointStore } from './checkpoint/index.js';
 export type { CaptureOptionsType, RecalledCheckpointType, RestoreStoresOptionsType } from './checkpoint/index.js';
 
 // =============================================================================
@@ -322,6 +349,7 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
+export { PluginDiscovery } from './plugin/PluginDiscovery.js';
 export { PluginLoader } from './plugin/PluginLoader.js';
 export { defineDagonizerPlugin } from './plugin/defineDagonizerPlugin.js';
 export type {

@@ -25,6 +25,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 
 export class RankByRatingNode extends MonadicNode<ArchivistState, 'ranked'> {
   readonly name = 'rank-by-rating';
+  readonly '@id' = 'urn:noocodec:node:rank-by-rating';
   readonly outputs = ['ranked'] as const;
   override get outputSchema(): Record<'ranked', SchemaObjectType> {
     return {

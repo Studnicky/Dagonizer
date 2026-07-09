@@ -16,6 +16,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region parse-variant-node
 export class ParseVariantNode extends MonadicNode<CartographerState, 'parsed' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:parse-variant';
   readonly 'name' = 'parse-variant';
   readonly 'outputs' = ['parsed', 'invalid'] as const;
 

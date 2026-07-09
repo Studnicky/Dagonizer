@@ -21,7 +21,7 @@
  *
  * Recall is best-effort: no prior runs (or no similar ones) is a valid
  * result that routes 'recalled' with an empty `state.priorCandidates`. An
- * embedder failure degrades to Jaccard scoring (capability fallback, not
+ * embedder failure degrades to Jaccard scoring (local scoring path, not
  * salvage). A defect in the deterministic memory query has no recovery route
  * here, so it propagates; the node never fabricates a recall result.
  *
@@ -75,6 +75,7 @@ class EmbeddingParser {
 export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-candidates';
+  readonly '@id' = 'urn:noocodec:node:recall-candidates';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
     return {
@@ -92,7 +93,7 @@ export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'
     const embedder = this.services.embedder;
     for (const { state } of batch) {
 
-    // Use extracted terms when available; fall back to raw query tokens.
+    // Use extracted terms when available; otherwise raw query tokens.
     const queryText     = state.terms.length > 0 ? state.terms.join(' ') : state.query;
     const currentTokens = TextSimilarity.tokenise(queryText);
     const currentRunIri = `${RUN_NS}${state.runId}`;
@@ -109,7 +110,7 @@ export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'
         queryVec = await embedder.embed(queryText);
         useCosine = true;
       } catch {
-        // Embedder threw: fall back to Jaccard similarity for recall.
+        // Embedder threw: use Jaccard similarity for recall.
         useCosine = false;
       }
     }
@@ -150,7 +151,7 @@ export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'
         if (literal === undefined) {
           // No embedding stored for this run; skip rather than mix metrics.
           // Older runs predating the embedder rollout won't have a vector;
-          // they're only reachable via Jaccard fallback (covered below).
+          // they're only reachable via Jaccard scoring (covered below).
           continue;
         }
         const priorVec = EmbeddingParser.parse(literal);

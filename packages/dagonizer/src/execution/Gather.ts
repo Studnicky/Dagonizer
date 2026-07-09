@@ -1,13 +1,37 @@
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
-import { ContextResolver } from '../dag/ContextResolver.js';
+import { GatherStrategies } from '../core/GatherStrategies.js';
+import { Batch } from '../entities/batch/Batch.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import { NodeInvoker } from './NodeInvoker.js';
 import type { NodeInvokerSourceInterface } from './NodeInvoker.js';
+
+export type GatherRunResultType = {
+  readonly output: string;
+};
+
+export type GatherRouteRecordType = Pick<GatherRecordType, 'source' | 'output' | 'terminalOutcome'>;
+
+export type GatherRunOptionsType = {
+  readonly preReduced?: boolean;
+  readonly routeRecords?: readonly GatherRouteRecordType[];
+};
+
+class GatherOutcome {
+  private constructor() { /* static-only */ }
+
+  static route(records: readonly GatherRouteRecordType[]): string {
+    if (records.length === 0) return 'empty';
+    return records.some((record) => record.output === 'error' || record.terminalOutcome === 'failed')
+      ? 'error'
+      : 'success';
+  }
+}
 
 /**
  * Dispatcher surface `Gather` needs to compose gather executions and invoke
@@ -27,7 +51,7 @@ export interface GatherSourceInterface {
  *
  * Extracts the two gather-adjacent methods that previously lived on `Dagonizer`:
  * `composeGatherExecution` (builds the `GatherExecutionType` handed to a
- * `GatherStrategy`) and `invokeRegisteredNode` (runs a named node during a
+ * `GatherStrategy`) and `invokeRegisteredNode` (runs a registered node IRI during a
  * `custom` gather's finalize pass). Both depend only on the narrow
  * `GatherSourceInterface` port, not the full dispatcher.
  *
@@ -67,6 +91,53 @@ export class Gather
     };
   }
 
+  retainsRecordsForFinalize(placement: GatherNodeType): boolean {
+    return GatherStrategies.resolve(placement.gather.strategy).retainsRecordsForFinalize;
+  }
+
+  initialGather(placement: GatherNodeType, state: NodeStateInterface): void {
+    GatherStrategies.resolve(placement.gather.strategy).initial(
+      placement.gather,
+      state,
+      this.#source.accessor,
+    );
+  }
+
+  async reduceGather(
+    placement: GatherNodeType,
+    records: readonly GatherRecordType[],
+    state: NodeStateInterface,
+  ): Promise<void> {
+    await GatherStrategies.resolve(placement.gather.strategy).reduce(
+      placement.gather,
+      Batch.from(records.map((record) => ({
+        'id': `${record.source}:${record.index ?? 0}`,
+        'state': record,
+      }))),
+      state,
+      this.#source.accessor,
+    );
+  }
+
+  async runGather(
+    placement: GatherNodeType,
+    records: readonly GatherRecordType[],
+    state: NodeStateInterface,
+    dagName: string,
+    signal: AbortSignal,
+    options: GatherRunOptionsType = {},
+  ): Promise<GatherRunResultType> {
+    if (options.preReduced !== true) {
+      this.initialGather(placement, state);
+      await this.reduceGather(placement, records, state);
+    }
+
+    const execution = this.composeGatherExecution(state, records, dagName, signal);
+    await GatherStrategies.resolve(placement.gather.strategy).finalize(placement.gather, execution);
+
+    return { 'output': GatherOutcome.route(options.routeRecords ?? records) };
+  }
+
   /**
    * Run the named registered node over `state` as a size-1 batch during a
    * `custom` gather's finalize pass. Throws `DAGError` when the node is not
@@ -82,18 +153,17 @@ export class Gather
    * dependency on `Signal`.
    */
   async invokeRegisteredNode(
-    nodeName: string,
+    nodeIri: string,
     state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal,
   ): Promise<void> {
-    const nodeIri = ContextResolver.expand(nodeName, {});
     if (!this.#source.nodes.has(nodeIri)) {
-      throw new DAGError(`Unknown custom node: ${nodeName}`);
+      throw new DAGError(`Unknown custom node IRI: ${nodeIri}`);
     }
     const dagNode = this.#source.nodes.get(nodeIri);
     if (dagNode === undefined) return;
-    const context = this.#source.nodeContext(dagName, nodeName, signal);
+    const context = this.#source.nodeContext(dagName, nodeIri, signal);
     await this.#source.runNodeOnState(dagNode, state, context);
   }
 }

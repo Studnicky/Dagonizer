@@ -45,9 +45,9 @@ Read this page when you want one clean loop in your hands: install the package, 
 
 ## How It Works
 
-Dagonizer splits a workflow into two things that are easy to reason about separately. The **DAG document** names the placements and routes. The **registered nodes** contain the TypeScript behavior. The dispatcher joins them at runtime: it validates the graph, looks up each node by name, runs the entrypoint, and follows the output route returned by each node.
+Dagonizer splits a workflow into two things that are easy to reason about separately. The **DAG document** declares placement IRIs, entrypoints, and routes. The **registered nodes** contain the TypeScript behavior. The dispatcher joins them at runtime: it validates the graph, looks up registered nodes by their expanded IRI, runs the entrypoint placement, and follows the output route returned by each node.
 
-That separation is the whole trick. You can author with `DAGBuilder`, ship JSON-LD over the wire, inspect the shape as Mermaid, and still keep your actual work in normal TypeScript classes. The tiny example here is a classify/respond chain, but the same registration pattern is what the Archivist, Cartographer, and Dispatcher demos use for real agent and data-pipeline flows.
+That separation is the whole trick. You can author with `DAGBuilder`, ship JSON-LD over the wire, inspect the shape as Mermaid, and still keep your actual work in normal TypeScript classes. The tiny example here is a classify/respond chain, but the same registration pattern is what the Archivist, Cartographer, and Dispatcher demos use for real agent and data-pipeline flows. The builder is the spellbook; JSON-LD is the sigil the engine actually reads after `DAGDocument.load(json)` validates it.
 
 ### What `execute` returns
 
@@ -75,7 +75,7 @@ flowchart LR
   respond -->|success| done
 ```
 
-The builder version and the JSON-LD version register the same topology. That is the mental model to keep: builder code is a nicer authoring surface, JSON-LD is the canonical assembly, and Mermaid is the readable shape generated from that assembly.
+The builder version and the JSON-LD version register the same topology. That is the mental model to keep: builder code is the ergonomic authoring surface, JSON-LD is the canonical assembly, absolute placement IRIs are runtime identity, and Mermaid is the readable shape generated from that same assembly. Names stay for display and observability.
 
 ### Next Places To Open
 
@@ -88,7 +88,7 @@ Follow these pages in order if you want the quickstart to expand without changin
 
 ## What It Lets You Do
 
-This page gets you to the first useful checkpoint: a DAG you can run, inspect, and modify. After that, the rest of the system stops looking abstract. Scatter is “run this body for each item.” Embedded DAGs are “call this registered subflow.” Plugins are “ship reusable registered DAG parts.” Checkpointing is “persist the cursor and state when execution stops early.”
+This page gets you to the first useful checkpoint: a DAG you can run, inspect, and modify. After that, the rest of the system stops looking abstract. Scatter is “run this body for each item.” Gather is “join these producer IRIs at a visible barrier.” Embedded DAGs are “call this registered subflow.” Plugins are “ship reusable registered DAG parts.” Checkpointing is “persist the cursor and state when execution stops early.”
 
 It also gives you the right DevEx habit early: keep graph shape explicit. That matters for LLM agents, data science pipelines, ETL jobs, and service orchestration because reviewers can see the route map instead of reverse-engineering control flow from nested callbacks.
 
@@ -134,7 +134,7 @@ See the [DAGBuilder guide](/guide/builder) for the full API including scatter, `
 
 ### The same DAG as JSON-LD
 
-`DAGBuilder.build()` returns a plain JSON-LD document — the canonical wire format `dispatcher.registerDAG(dag)` accepts. The DAG built above is identical, field for field, to this hand-written literal (from `examples/dags/01-linear.ts`, the same two-node classify/respond chain):
+`DAGBuilder.build()` returns a plain JSON-LD document — the canonical wire format `DAGDocument.load(json)` accepts before `dispatcher.registerDAG(dag)` stores it. The DAG built above is identical, field for field, to this hand-written literal (from `examples/dags/01-linear.ts`, the same two-node classify/respond chain):
 
 <<< @/../examples/dags/01-linear.ts#dag
 
@@ -144,16 +144,16 @@ Author the wire format directly for advanced use: hand-authored fixtures, intero
 
 ## Details for Nerds
 
-The quickstart hides almost nothing. `DAGBuilder` is not a separate runtime; it produces the JSON-LD document the dispatcher already accepts. The dispatcher does not scan your module graph; it only runs nodes you register. The graph is portable data, and the behavior stays in normal TypeScript classes.
+The quickstart hides almost nothing. `DAGBuilder` is not a separate runtime; it produces the JSON-LD document the dispatcher already accepts. The dispatcher does not scan your module graph; it only runs nodes and DAGs you register. The graph is portable data, and the behavior stays in normal TypeScript classes.
 
-This is closer to a small in-process workflow engine than to a prompt-chain helper. There is no external scheduler, no mandatory queue, and no invisible global registry. When you need those things, you compose them around Dagonizer: a web handler, a worker, Temporal, a database-backed checkpoint store, or a plugin package that exports reusable DAG names.
+This is closer to a small in-process workflow engine than to a prompt-chain helper. There is no external scheduler, no mandatory queue, and no invisible global registry. When you need those things, you compose them around Dagonizer: a web handler, a worker, Temporal, a database-backed checkpoint store, or a plugin package that exports reusable DAG IRIs.
 
 ### Next destination
 
 Three in-browser demos show the same engine in different domains:
 
-- [The Archivist](/examples/the-archivist) — LLM agents. A multi-stage bibliographic-assistant DAG that exercises scatter (over source arrays and sub-DAG bodies), retry, cancellation, and checkpoint resume.
-- [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multi-format satellite tracking feeds fanned through per-format ingest sub-DAGs with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.
+- [The Archivist](/examples/the-archivist) — LLM agents. A multi-stage bibliographic-assistant DAG that exercises tool DAGs, embedded search bodies, retry, cancellation, and checkpoint resume.
+- [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multiple source entrypoints feed a first-class intake gather, then scatter through typed event pipelines with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.
 - [The Dispatcher](/examples/the-dispatcher) — HITL support workflow. Customer messages route through routine AI response, operator escalation with park/resume, or off-topic decline.
 
 ## Related Concepts

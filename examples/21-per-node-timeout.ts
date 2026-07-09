@@ -25,7 +25,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { TaskState, FastTaskNode, SlowTaskNode, fastDag, slowDag } from './dags/21-per-node-timeout.js';
+import { TaskState, FastTaskNode, SlowTaskNode, fastDag, fastDagIri, slowDag, slowDagIri } from './dags/21-per-node-timeout.js';
 
 // ---------------------------------------------------------------------------
 // Run (a): fast node — completes within budget
@@ -36,7 +36,7 @@ fastDispatcher.registerNode(new FastTaskNode());
 fastDispatcher.registerDAG(fastDag);
 
 const fastState = new TaskState();
-const fastResult = await fastDispatcher.execute('fast-dag', fastState);
+const fastResult = await fastDispatcher.execute(fastDagIri, fastState);
 
 // ---------------------------------------------------------------------------
 // Run (b): slow node — exceeds budget, DAGError (code NODE_TIMEOUT)
@@ -48,7 +48,7 @@ slowDispatcher.registerDAG(slowDag);
 
 const slowState = new TaskState();
 const start = Date.now();
-const slowResult = await slowDispatcher.execute('slow-dag', slowState);
+const slowResult = await slowDispatcher.execute(slowDagIri, slowState);
 const elapsed = Date.now() - start;
 
 // ---------------------------------------------------------------------------

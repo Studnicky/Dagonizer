@@ -20,7 +20,7 @@ seeAlso:
 
 ## What It Is
 
-Adapters put provider-specific LLM transports behind the shared `LlmAdapterInterface`. The same DAG node can call Anthropic, Gemini, Ollama, WebLLM, or an OpenAI-compatible backend without depending on a provider SDK.
+Adapters put provider-specific LLM transports behind the shared `LlmAdapterInterface`. The same DAG node can call Anthropic, Gemini, Ollama, or WebLLM without depending on a provider SDK.
 
 Use this page when choosing an adapter, implementing a provider package, streaming token chunks, routing concurrent model output, or composing a cascade across multiple backends.
 
@@ -160,7 +160,7 @@ class MyAdapter extends BaseAdapter {
 
 ### How each adapter streams
 
-Every adapter falls back to the buffered `performChatStream` default for any
+Every adapter uses the buffered `performChatStream` default for any
 tool-bearing request (`request.tools.length > 0`): partial tool-call JSON is
 unsafe to parse mid-stream, so tool turns never stream token-by-token, in any
 adapter. For tool-less requests:
@@ -225,6 +225,7 @@ import { NodeStateBase } from '@studnicky/dagonizer';
 class ChatState extends NodeStateBase {}
 
 class MyCallModelNode extends CallModelNode<ChatState> {
+  readonly '@id' = 'urn:noocodec:node:call-model';
   readonly name = 'call-model';
   constructor(llm: LlmAdapterInterface, options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> } = {}) {
     super(llm, options);
@@ -275,10 +276,11 @@ import { LlmAdapterCascade } from '@studnicky/dagonizer/adapter';
 import type { CatalogueEntryType } from '@studnicky/dagonizer/adapter';
 
 declare const myAdapterFactory: () => import('@studnicky/dagonizer/adapter').LlmAdapterInterface;
+declare const selectedModel: string;
 // ---cut---
 const catalogue: CatalogueEntryType[] = [
   {
-    descriptor: { 'provider': 'ollama', 'model': 'llama3.1:8b', 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
+    descriptor: { 'provider': 'ollama', 'model': selectedModel, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
     factory:    myAdapterFactory,
   },
 ];
@@ -314,7 +316,7 @@ All exports below ship through `@studnicky/dagonizer/adapter` unless noted.
 
 Streaming adapters still resolve to a complete `ChatResponseType`. The sink is an observation channel for incremental chunks, not an alternate return path.
 
-Tool-bearing requests fall back to buffered behavior when partial tool-call JSON would be unsafe to parse mid-stream. A sink rejection is swallowed so UI or SSE delivery failure does not fail an otherwise valid model call.
+Tool-bearing requests use buffered behavior when partial tool-call JSON would be unsafe to parse mid-stream. A sink rejection is swallowed so UI or SSE delivery failure does not fail an otherwise valid model call.
 
 ## Related Concepts
 

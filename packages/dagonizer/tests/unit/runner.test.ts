@@ -75,22 +75,22 @@ class TestDagRunner extends DagRunner<TestInput, RunnerState, RunnerOutput> {
 class RunnerTestBundle {
   private constructor() { /* static class */ }
 
-  static incBundle(dagName: string): DispatcherBundleType<RunnerState> {
-    const incNode = TestNode.make<RunnerState>('inc', ['done'], (state) => {
+  static incBundle(dagIri: string): DispatcherBundleType<RunnerState> {
+    const incNode = TestNode.make<RunnerState>('urn:noocodec:node:inc', ['done'], (state) => {
       state.value += 1;
       return 'done';
     });
 
-    const dag: DAGType = TestDag.of(dagName, 'inc', [
+    const dag: DAGType = TestDag.of(dagIri, TestDag.placementIri(dagIri, 'inc'), [
       {
-        '@id':   `urn:noocodex:dag:${dagName}/node/inc`,
+        '@id': TestDag.placementIri(dagIri, 'inc'),
         '@type': 'SingleNode',
         'name':  'inc',
-        'node':  'inc',
-        'outputs': { 'done': 'end' },
+        'node':  'urn:noocodec:node:inc',
+        'outputs': { 'done': TestDag.placementIri(dagIri, 'end') },
       },
       {
-        '@id':    `urn:noocodex:dag:${dagName}/node/end`,
+        '@id': TestDag.placementIri(dagIri, 'end'),
         '@type':  'TerminalNode',
         'name':   'end',
         'outcome': 'completed',
@@ -108,11 +108,11 @@ class RunnerTestBundle {
 class RunnerHarness {
   private constructor() { /* static class */ }
 
-  static build(dagName: string): TestDagRunner {
+  static build(dagIri: string): TestDagRunner {
     const dispatcher = new Dagonizer<RunnerState>();
     const options: DagRunnerOptionsType<RunnerState> = { 'dispatcher': dispatcher };
     const runner = new TestDagRunner(options);
-    runner.registerBundle(RunnerTestBundle.incBundle(dagName));
+    runner.registerBundle(RunnerTestBundle.incBundle(dagIri));
     return runner;
   }
 }
@@ -123,8 +123,8 @@ class RunnerHarness {
 
 void describe('DagRunner', () => {
   void it('run() seeds state, executes DAG, and projects result', async () => {
-    const runner = RunnerHarness.build('runner-once');
-    const output = await runner.run('runner-once', { 'value': 10, 'label': 'test' });
+    const runner = RunnerHarness.build('urn:noocodec:dag:runner-once');
+    const output = await runner.run('urn:noocodec:dag:runner-once', { 'value': 10, 'label': 'test' });
 
     assert.equal(output.variant, 'completed');
     assert.equal(output.value, 11); // inc node adds 1
@@ -133,17 +133,17 @@ void describe('DagRunner', () => {
   void it('run() collects node errors in state without throwing', async () => {
     const dispatcher = new Dagonizer<RunnerState>();
     // Node that routes to a phantom output (unwired) — engine marks state failed
-    const rogueNode = TestNode.make<RunnerState>('rogue', ['ok'], () => 'phantom');
-    const dag = TestDag.of('runner-rogue', 'rogue', [
+    const rogueNode = TestNode.make<RunnerState>('urn:noocodec:node:rogue', ['ok'], () => 'phantom');
+    const dag = TestDag.of('urn:noocodec:dag:runner-rogue', TestDag.placementIri('urn:noocodec:dag:runner-rogue', 'rogue'), [
       {
-        '@id':   'urn:noocodex:dag:runner-rogue/node/rogue',
+        '@id': 'urn:noocodec:dag:runner-rogue/node/rogue',
         '@type': 'SingleNode',
         'name':  'rogue',
-        'node':  'rogue',
-        'outputs': { 'ok': 'end' },
+        'node':  'urn:noocodec:node:rogue',
+        'outputs': { 'ok': TestDag.placementIri('urn:noocodec:dag:runner-rogue', 'end') },
       },
       {
-        '@id':    'urn:noocodex:dag:runner-rogue/node/end',
+        '@id': 'urn:noocodec:dag:runner-rogue/node/end',
         '@type':  'TerminalNode',
         'name':   'end',
         'outcome': 'completed',
@@ -155,19 +155,19 @@ void describe('DagRunner', () => {
     runner.registerBundle({ 'nodes': [rogueNode], 'dags': [dag] });
 
     // run() must not throw; failed lifecycle is surfaced in the projected output
-    const output = await runner.run('runner-rogue', { 'value': 0, 'label': 'rogue' });
+    const output = await runner.run('urn:noocodec:dag:runner-rogue', { 'value': 0, 'label': 'rogue' });
     assert.equal(output.variant, 'failed');
   });
 
   void it('resume() calls dispatcher.resume with rehydrated state', async () => {
-    const runner = RunnerHarness.build('runner-resume');
+    const runner = RunnerHarness.build('urn:noocodec:dag:runner-resume');
 
     // Seed a state as-if we loaded it from a checkpoint
     const rehydrated = new RunnerState();
     rehydrated.value = 42;
 
-    // Resume from the 'inc' node — it will increment value to 43
-    const output = await runner.resume('runner-resume', rehydrated, 'inc');
+    // Resume from the 'inc' placement IRI — it will increment value to 43
+    const output = await runner.resume('urn:noocodec:dag:runner-resume', rehydrated, TestDag.placementIri('urn:noocodec:dag:runner-resume', 'inc'));
     assert.equal(output.variant, 'completed');
     assert.equal(output.value, 43);
   });
@@ -179,10 +179,10 @@ void describe('DagRunner', () => {
 
 void describe('OnceTrigger', () => {
   void it('fires the runner exactly once and exposes result', async () => {
-    const runner = RunnerHarness.build('once-trigger');
+    const runner = RunnerHarness.build('urn:noocodec:dag:once-trigger');
 
     const trigger = new OnceTrigger<TestInput, RunnerState, RunnerOutput>(
-      'once-trigger',
+      'urn:noocodec:dag:once-trigger',
       { 'value': 5, 'label': 'once' },
     );
 
@@ -195,10 +195,10 @@ void describe('OnceTrigger', () => {
   });
 
   void it('detach before attach makes attach a no-op', async () => {
-    const runner = RunnerHarness.build('once-detach');
+    const runner = RunnerHarness.build('urn:noocodec:dag:once-detach');
 
     const trigger = new OnceTrigger<TestInput, RunnerState, RunnerOutput>(
-      'once-detach',
+      'urn:noocodec:dag:once-detach',
       { 'value': 99, 'label': 'detach' },
     );
 
@@ -215,7 +215,7 @@ void describe('OnceTrigger', () => {
 
 void describe('CliTrigger', () => {
   void it('parses argv args and fires the runner', async () => {
-    const runner = RunnerHarness.build('cli-trigger');
+    const runner = RunnerHarness.build('urn:noocodec:dag:cli-trigger');
 
     class TestCliTrigger extends CliTrigger<TestInput, RunnerState, RunnerOutput> {
       protected override parseArgs(_command: string, args: string[]): TestInput {
@@ -224,7 +224,7 @@ void describe('CliTrigger', () => {
       }
 
       protected override selectDag(_command: string): string {
-        return 'cli-trigger';
+        return 'urn:noocodec:dag:cli-trigger';
       }
     }
 
@@ -238,7 +238,7 @@ void describe('CliTrigger', () => {
   });
 
   void it('default selectDag returns the command token', async () => {
-    const runner = RunnerHarness.build('run');
+    const runner = RunnerHarness.build('urn:noocodec:dag:run');
 
     class PassthroughCliTrigger extends CliTrigger<TestInput, RunnerState, RunnerOutput> {
       protected override parseArgs(_command: string, _args: string[]): TestInput {
@@ -246,8 +246,7 @@ void describe('CliTrigger', () => {
       }
     }
 
-    // Uses default selectDag → dag named 'run'
-    const trigger = new PassthroughCliTrigger('run', []);
+    const trigger = new PassthroughCliTrigger('urn:noocodec:dag:run', []);
     await trigger.attach(runner);
 
     const result = trigger.result;
@@ -268,11 +267,11 @@ void describe('EventTrigger', () => {
     // Wrap runner to capture outputs
     class CapturingRunner extends TestDagRunner {
       override async run(
-        dagName: string,
+        dagIri: string,
         input: TestInput,
         options?: ExecuteOptionsType,
       ): Promise<RunnerOutput> {
-        const output = await super.run(dagName, input, options);
+        const output = await super.run(dagIri, input, options);
         results.push(output);
         return output;
       }
@@ -282,7 +281,7 @@ void describe('EventTrigger', () => {
       'dispatcher': new Dagonizer<RunnerState>(),
     };
     const capturingRunner = new CapturingRunner(capturingOptions);
-    capturingRunner.registerBundle(RunnerTestBundle.incBundle('event-trigger'));
+    capturingRunner.registerBundle(RunnerTestBundle.incBundle('urn:noocodec:dag:event-trigger'));
 
     type TestMessage = { n: number };
     const handlers: Array<(msg: TestMessage) => void> = [];
@@ -301,7 +300,7 @@ void describe('EventTrigger', () => {
       }
 
       protected override selectDag(_message: TestMessage): string {
-        return 'event-trigger';
+        return 'urn:noocodec:dag:event-trigger';
       }
     }
 
@@ -335,7 +334,7 @@ void describe('EventTrigger', () => {
 
 void describe('RequestTrigger', () => {
   void it('fire() executes the DAG with input built from the request', async () => {
-    const runner = RunnerHarness.build('request-trigger');
+    const runner = RunnerHarness.build('urn:noocodec:dag:request-trigger');
 
     type TestRequest = { n: number };
 
@@ -345,7 +344,7 @@ void describe('RequestTrigger', () => {
       }
 
       protected override selectDag(_request: TestRequest): string {
-        return 'request-trigger';
+        return 'urn:noocodec:dag:request-trigger';
       }
     }
 
@@ -378,7 +377,7 @@ void describe('RequestTrigger', () => {
   });
 
   void it('detach() clears the runner reference so fire() throws after', async () => {
-    const runner = RunnerHarness.build('request-detach');
+    const runner = RunnerHarness.build('urn:noocodec:dag:request-detach');
 
     type TestRequest = { n: number };
 
@@ -387,7 +386,7 @@ void describe('RequestTrigger', () => {
         return { 'value': request.n, 'label': 'request' };
       }
       protected override selectDag(_request: TestRequest): string {
-        return 'request-detach';
+        return 'urn:noocodec:dag:request-detach';
       }
     }
 

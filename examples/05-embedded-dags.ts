@@ -17,7 +17,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { IncrementState, IncrementNode, child, parent } from './dags/05-embedded-dags.js';
+import { IncrementState, IncrementNode, child, parent, parentDAGIri } from './dags/05-embedded-dags.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -31,7 +31,7 @@ dispatcher.registerDAG(parent);
 
 const state = new IncrementState();
 state.seed = 41;
-await dispatcher.execute('parent', state);
+await dispatcher.execute(parentDAGIri, state);
 
 process.stdout.write('\nEmbeddedDAGNode: parent -> invoke(child) -> END\n');
 process.stdout.write(`  seed=${state.seed} → child DAG incremented payload → result=${state.result}\n`);

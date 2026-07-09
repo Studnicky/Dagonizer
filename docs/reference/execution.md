@@ -75,7 +75,7 @@ class MyState extends NodeStateBase {}
 declare const dispatcher: Dagonizer<MyState>;
 declare const state: MyState;
 
-const execution = dispatcher.execute('my-flow', state);
+const execution = dispatcher.execute('urn:noocodec:dag:my-flow', state);
 for await (const node of execution) {
   console.log(node.nodeName, node.output);
 }
@@ -110,7 +110,7 @@ class MyState extends NodeStateBase {}
 declare const dispatcher: Dagonizer<MyState>;
 declare const state: MyState;
 
-const result: ExecutionResultType<MyState> = await dispatcher.execute('my-flow', state);
+const result: ExecutionResultType<MyState> = await dispatcher.execute('urn:noocodec:dag:my-flow', state);
 ```
 
 If the iterator has already been consumed, the cached result is returned; the generator is not re-run.
@@ -120,7 +120,7 @@ If the iterator has already been consumed, the cached result is returned; the ge
 | Field | Type | Description |
 |-------|------|-------------|
 | `state` | `TState` | Final state (same reference passed in) |
-| `cursor` | `string \| null` | Next node to run on resume; `null` when the flow completed |
+| `cursor` | `string \| null` | Next placement IRI to run on resume; `null` when the flow completed |
 | `executedNodes` | `string[]` | Nodes that ran (in order), including pre/post phase placements |
 | `skippedNodes` | `string[]` | Nodes skipped (empty scatter source) |
 | `terminalOutcome` | `'completed' \| 'failed' \| null` | Outcome declared by the `TerminalNode` placement the flow exited through; `null` on error or abort exits (no `TerminalNode` reached) |
@@ -155,7 +155,7 @@ class MyState extends NodeStateBase {}
 declare const dispatcher: Dagonizer<MyState>;
 declare const state: MyState;
 
-const result = await dispatcher.execute('flow', state);
+const result = await dispatcher.execute('urn:noocodec:dag:flow', state);
 if (result.cursor !== null) {
   // interrupted: checkpoint it
 }
@@ -172,13 +172,13 @@ declare const state: MyState;
 declare function isHeavyNode(name: string): boolean;
 
 const ctl = new AbortController();
-const execution = dispatcher.execute('flow', state, { signal: ctl.signal });
+const execution = dispatcher.execute('urn:noocodec:dag:flow', state, { signal: ctl.signal });
 for await (const node of execution) {
   if (isHeavyNode(node.nodeName)) {
     ctl.abort(new Error('pause here'));
   }
 }
-const result = await execution; // result.cursor holds where we stopped
+const result = await execution; // result.cursor holds the placement IRI where we stopped
 ```
 
 **Consuming both modes:**
@@ -190,7 +190,7 @@ class MyState extends NodeStateBase {}
 declare const dispatcher: Dagonizer<MyState>;
 declare const state: MyState;
 
-const execution = dispatcher.execute('flow', state);
+const execution = dispatcher.execute('urn:noocodec:dag:flow', state);
 const nodes: string[] = [];
 for await (const n of execution) nodes.push(n.nodeName);
 const result = await execution; // same run, cached

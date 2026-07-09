@@ -1,10 +1,10 @@
 /**
- * ContextResolver: in-house prefix→IRI expansion for DAG and node names.
+ * ContextResolver: in-house prefix→IRI expansion and IRI→CURIE compaction.
  *
- * Expands short names to absolute IRIs using a JSON-LD-inspired `@context`
- * prefix map. Two expansion rules apply:
+ * Expands CURIEs to absolute IRIs using a JSON-LD-inspired `@context` prefix
+ * map. Two expansion rules apply:
  *
- *  - Short name (no colon after position 0): `DEFAULT_NS + name`
+ *  - Absolute IRI (`urn:` or containing `://`): returned as-is
  *  - Prefixed name (`prefix:local`): look up `prefix` in the context map,
  *    concatenate the namespace IRI with `local`
  *
@@ -19,28 +19,19 @@ import { DAGError } from '../errors/DAGError.js';
 export class ContextResolver {
   private constructor() { /* static class */ }
 
-  /** Default namespace for un-prefixed short names. */
-  static readonly DEFAULT_NS = 'https://noocodex.dev/dag/default#';
+  private static readonly DAGONIZER_URN_NS = 'urn:noocodec:dag:';
 
   /**
-   * Expand a short name to an absolute IRI using the provided context prefix
-   * map.
+   * Expand an absolute IRI or declared CURIE to a canonical IRI.
    *
    * Rules (applied in order):
-   *  1. Short name (no colon, or colon at position 0): `DEFAULT_NS + name`.
-   *  2. Absolute IRI (`://` immediately follows the colon): return `name`
+   *  1. Absolute IRI (`://` immediately follows the colon, or `urn:`): return `name`
    *     as-is — prevents double-expansion of already-expanded IRIs.
-   *  3. Prefixed name (`prefix:local`) where `prefix` IS a key in `context`:
+   *  2. Prefixed name (`prefix:local`) where `prefix` IS a key in `context`:
    *     return `prefixNs + local`.
-   *  4. Prefixed name where `prefix` is NOT in `context`: treat the entire
-   *     name (colon included) as a default-namespace short name →
-   *     `DEFAULT_NS + name`. This
-   *     keeps existing compound names that use colons as separators (e.g.
-   *     `tool-invoke:calculator`, `tool:calculator`) unique in the registry
-   *     without requiring callers to declare them as prefixes.
    *
-   * Does NOT throw — unknown prefixes fall through to rule 4.
-   * Use `ContextResolver.validate` to detect prefix collisions in a context.
+   * Bare names and unknown prefixes throw. The engine never invents a runtime
+   * IRI from display text.
    */
   /**
    * Narrow an unknown value to a context prefix map (`Record<string, unknown>`)
@@ -62,29 +53,43 @@ export class ContextResolver {
   static expand(name: string, context: Record<string, unknown>): string {
     const colonIdx = name.indexOf(':');
     if (colonIdx <= 0) {
-      // Short name (no colon, or colon at position 0 which is invalid/unusual).
-      return ContextResolver.DEFAULT_NS + name;
+      throw new DAGError(`IRI reference '${name}' must be an absolute IRI or declared CURIE`, { 'code': 'CONFIGURATION_ERROR' });
     }
-    // If the character immediately after the colon is '/', the name is an
-    // absolute IRI (http://, https://, urn://, etc.) — return as-is with no
-    // prefix lookup. This guards against double-expanding an IRI that was
-    // already stored in a checkpoint or produced by a previous expand call.
-    if (name.charAt(colonIdx + 1) === '/') {
+    // Absolute IRIs are already canonical runtime identities. Return as-is
+    // with no prefix lookup to avoid double-expanding stored checkpoint IRIs.
+    if (name.charAt(colonIdx + 1) === '/' || name.startsWith('urn:')) {
       return name;
     }
     const prefix = name.substring(0, colonIdx);
     const local  = name.substring(colonIdx + 1);
     const ns = context[prefix];
     if (typeof ns !== 'string' || ns.length === 0) {
-      // Prefix not found in context. The name may be an existing compound
-      // name (e.g. `tool-invoke:calculator`, `tool:calculator`) that uses a
-      // colon as a separator rather than as a JSON-LD prefix separator.
-      // Fall back to default-namespace expansion: DEFAULT_NS + full name
-      // (including the colon). This keeps existing compound names unique in
-      // the registry without requiring callers to declare them as prefixes.
-      return ContextResolver.DEFAULT_NS + name;
+      throw new DAGError(`IRI reference '${name}' uses undeclared prefix '${prefix}'`, { 'code': 'CONFIGURATION_ERROR' });
     }
     return ns + local;
+  }
+
+  /**
+   * Compact an absolute IRI to a CURIE for presentation.
+   *
+   * Runtime identity stays the absolute IRI. This inverse lookup exists for
+   * labels, logs, and diagrams where a placement may not provide a display
+   * name. The longest namespace match wins so nested prefixes remain stable.
+   */
+  static compact(iri: string, context: Record<string, unknown>): string {
+    let bestPrefix: string | null = null;
+    let bestNamespace = '';
+    for (const [prefix, namespaceIri] of ContextResolver.prefixes(context)) {
+      if (!iri.startsWith(namespaceIri)) continue;
+      if (namespaceIri.length <= bestNamespace.length) continue;
+      bestPrefix = prefix;
+      bestNamespace = namespaceIri;
+    }
+    if (bestPrefix !== null) return `${bestPrefix}:${iri.substring(bestNamespace.length)}`;
+    if (iri.startsWith(ContextResolver.DAGONIZER_URN_NS)) {
+      return `dag:${iri.substring(ContextResolver.DAGONIZER_URN_NS.length)}`;
+    }
+    return iri;
   }
 
   /**

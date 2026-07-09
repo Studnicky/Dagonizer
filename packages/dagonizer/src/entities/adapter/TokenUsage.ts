@@ -7,7 +7,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const TokenUsageSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/TokenUsage',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/TokenUsage',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['promptTokens', 'completionTokens'],

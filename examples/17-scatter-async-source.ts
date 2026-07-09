@@ -82,7 +82,7 @@ state.stream = AsyncStream.from(ITEMS);
 
 process.stdout.write('\n=== Scatter over AsyncIterable (concurrency=2) ===\n\n');
 
-await dispatcher.execute('async-source', state);
+await dispatcher.execute('urn:noocodec:dag:async-source', state);
 
 process.stdout.write('Event log (pull = generator yielded, process = worker ran):\n');
 for (const entry of eventLog) {

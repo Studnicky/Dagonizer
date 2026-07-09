@@ -102,6 +102,7 @@ export const observable: {
 
 export class ProcessJobNode extends MonadicNode<ResumeState, 'done'> {
   readonly name = 'process-job';
+  readonly '@id' = 'urn:noocodec:node:process-job';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -144,33 +145,40 @@ export class ProcessJobNode extends MonadicNode<ResumeState, 'done'> {
 // #region dag
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:scatter-resume',
+  '@id': 'urn:noocodec:dag:scatter-resume',
   '@type':     'DAG',
   "name":      'scatter-resume',
   "version":   '1',
-  "entrypoint": 'process-all',
+  "entrypoints": { "main": 'urn:noocodec:dag:scatter-resume/node/process-all' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:scatter-resume/node/process-all',
+      '@id': 'urn:noocodec:dag:scatter-resume/node/process-all',
       '@type':     'ScatterNode',
       "name":      'process-all',
-      "body":      { "node": 'process-job' },
+      "body":      { "node": 'urn:noocodec:node:process-job' },
       "source":    'jobs',
       "itemKey":   'job',
       "execution": { "mode": "item", "concurrency": 1 },              // serial so abort cuts cleanly mid-source
-      "gather": {
-        "strategy": GatherStrategyNames.MAP,
-        "mapping":  { "processed": 'completed' }, // clone.processed (scalar) → parent.completed[]
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:scatter-resume/node/collect-completed',
+        "partial": 'urn:noocodec:dag:scatter-resume/node/collect-completed',
+        'all-error': 'urn:noocodec:dag:scatter-resume/node/collect-completed',
+        "empty": 'urn:noocodec:dag:scatter-resume/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:scatter-resume/node/end',
+      '@id': 'urn:noocodec:dag:scatter-resume/node/collect-completed',
+      '@type': 'GatherNode',
+      "name": 'collect-completed',
+      sources: { "urn:noocodec:dag:scatter-resume/node/process-all": {} },
+      "gather": {
+        "strategy": GatherStrategyNames.MAP,
+        "mapping": { "processed": 'completed' },
+      },
+      "outputs": { "success": 'urn:noocodec:dag:scatter-resume/node/end', "error": 'urn:noocodec:dag:scatter-resume/node/end', "empty": 'urn:noocodec:dag:scatter-resume/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-resume/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

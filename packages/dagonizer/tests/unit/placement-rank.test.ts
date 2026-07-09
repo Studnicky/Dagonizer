@@ -11,6 +11,19 @@ import { describe, it } from 'node:test';
 import { PlacementRank } from '../../src/core/PlacementRank.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
+import { TestDag } from '../_support/TestDag.js';
+
+class TestPlacementRank {
+  private constructor() { /* static class */ }
+
+  static compute(dag: DAGType): ReadonlyMap<string, number> {
+    return PlacementRank.compute(TestDag.from(dag));
+  }
+
+  static rank(ranks: ReadonlyMap<string, number>, dag: DAGType, placement: string): number | undefined {
+    return ranks.get(`${dag['@id']}/node/${placement}`);
+  }
+}
 
 void describe('PlacementRank.compute', () => {
   void it('assigns rank 0 to entry and increments linearly', () => {
@@ -21,23 +34,23 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'linear-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:linear-rank/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:linear-rank/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'ok': 'b' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': { 'ok': 'urn:noocodex:dag:linear-rank/node/b' } },
         { '@id': 'urn:noocodex:dag:linear-rank/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'ok': 'c' } },
+          'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'ok': 'urn:noocodex:dag:linear-rank/node/c' } },
         { '@id': 'urn:noocodex:dag:linear-rank/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'c', 'outputs': { 'ok': 'end' } },
+          'name': 'c', 'node': 'urn:noocodec:node:c', 'outputs': { 'ok': 'urn:noocodex:dag:linear-rank/node/end' } },
         { '@id': 'urn:noocodex:dag:linear-rank/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const ranks = PlacementRank.compute(dag);
-    assert.equal(ranks.get('a'), 0);
-    assert.equal(ranks.get('b'), 1);
-    assert.equal(ranks.get('c'), 2);
-    assert.equal(ranks.get('end'), 3);
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'a'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'b'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'c'), 2);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'end'), 3);
   });
 
   void it('handles a branching DAG (two branches from one node)', () => {
@@ -49,24 +62,68 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'branch-rank',
       'version': '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'urn:noocodex:dag:branch-rank/node/entry' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:branch-rank/node/entry', '@type': 'SingleNode',
-          'name': 'entry', 'node': 'entry', 'outputs': { 'left': 'left', 'right': 'right' } },
+          'name': 'entry', 'node': 'urn:noocodec:node:entry', 'outputs': {
+            'left': 'urn:noocodex:dag:branch-rank/node/left',
+            'right': 'urn:noocodex:dag:branch-rank/node/right',
+          } },
         { '@id': 'urn:noocodex:dag:branch-rank/node/left', '@type': 'SingleNode',
-          'name': 'left', 'node': 'left', 'outputs': { 'ok': 'end' } },
+          'name': 'left', 'node': 'urn:noocodec:node:left', 'outputs': { 'ok': 'urn:noocodex:dag:branch-rank/node/end' } },
         { '@id': 'urn:noocodex:dag:branch-rank/node/right', '@type': 'SingleNode',
-          'name': 'right', 'node': 'right', 'outputs': { 'ok': 'end' } },
+          'name': 'right', 'node': 'urn:noocodec:node:right', 'outputs': { 'ok': 'urn:noocodex:dag:branch-rank/node/end' } },
         { '@id': 'urn:noocodex:dag:branch-rank/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const ranks = PlacementRank.compute(dag);
-    assert.equal(ranks.get('entry'), 0);
-    assert.equal(ranks.get('left'), 1);
-    assert.equal(ranks.get('right'), 1);
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'entry'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'left'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'right'), 1);
     // end has two predecessors (left and right) both with rank 1 → rank 2
-    assert.equal(ranks.get('end'), 2);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'end'), 2);
+  });
+
+  void it('assigns rank 0 to every declared entrypoint in a multi-entry DAG', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:multi-entry-rank',
+      '@type': 'DAG',
+      'name': 'multi-entry-rank',
+      'version': '1',
+      'entrypoints': {
+        'left': 'urn:noocodex:dag:multi-entry-rank/node/left',
+        'right': 'urn:noocodex:dag:multi-entry-rank/node/right',
+      },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/left', '@type': 'SingleNode',
+          'name': 'left', 'node': 'urn:noocodec:node:left', 'outputs': { 'ok': 'urn:noocodex:dag:multi-entry-rank/node/join' } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/right', '@type': 'SingleNode',
+          'name': 'right', 'node': 'urn:noocodec:node:right', 'outputs': { 'ok': 'urn:noocodex:dag:multi-entry-rank/node/join' } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/join', '@type': 'GatherNode',
+          'name': 'join',
+          'sources': {
+            'urn:noocodex:dag:multi-entry-rank/entrypoint/left': {},
+            'urn:noocodex:dag:multi-entry-rank/entrypoint/right': {},
+          },
+          'gather': { 'strategy': 'discard' },
+          'outputs': {
+            'success': 'urn:noocodex:dag:multi-entry-rank/node/end',
+            'error': 'urn:noocodex:dag:multi-entry-rank/node/failed',
+          } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/failed', '@type': 'TerminalNode',
+          'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'left'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'right'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'join'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'end'), 2);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'failed'), 2);
   });
 
   void it('assigns join rank as 1 + max predecessor rank (diamond shape)', () => {
@@ -80,24 +137,27 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'diamond-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:diamond-rank/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:diamond-rank/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'x': 'b', 'y': 'c' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': {
+            'x': 'urn:noocodex:dag:diamond-rank/node/b',
+            'y': 'urn:noocodex:dag:diamond-rank/node/c',
+          } },
         { '@id': 'urn:noocodex:dag:diamond-rank/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'ok': 'd' } },
+          'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'ok': 'urn:noocodex:dag:diamond-rank/node/d' } },
         { '@id': 'urn:noocodex:dag:diamond-rank/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'c', 'outputs': { 'ok': 'd' } },
+          'name': 'c', 'node': 'urn:noocodec:node:c', 'outputs': { 'ok': 'urn:noocodex:dag:diamond-rank/node/d' } },
         { '@id': 'urn:noocodex:dag:diamond-rank/node/d', '@type': 'TerminalNode',
           'name': 'd', 'outcome': 'completed' },
       ],
     };
-    const ranks = PlacementRank.compute(dag);
-    assert.equal(ranks.get('a'), 0);
-    assert.equal(ranks.get('b'), 1);
-    assert.equal(ranks.get('c'), 1);
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'a'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'b'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'c'), 1);
     // d has predecessors b (rank 1) and c (rank 1) → d rank = 2
-    assert.equal(ranks.get('d'), 2);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'd'), 2);
   });
 
   void it('assigns join rank correctly in an asymmetric diamond', () => {
@@ -110,24 +170,27 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'asym-diamond',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:asym-diamond/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:asym-diamond/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'long': 'b', 'short': 'join' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': {
+            'long': 'urn:noocodex:dag:asym-diamond/node/b',
+            'short': 'urn:noocodex:dag:asym-diamond/node/join',
+          } },
         { '@id': 'urn:noocodex:dag:asym-diamond/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'ok': 'c' } },
+          'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'ok': 'urn:noocodex:dag:asym-diamond/node/c' } },
         { '@id': 'urn:noocodex:dag:asym-diamond/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'c', 'outputs': { 'ok': 'join' } },
+          'name': 'c', 'node': 'urn:noocodec:node:c', 'outputs': { 'ok': 'urn:noocodex:dag:asym-diamond/node/join' } },
         { '@id': 'urn:noocodex:dag:asym-diamond/node/join', '@type': 'TerminalNode',
           'name': 'join', 'outcome': 'completed' },
       ],
     };
-    const ranks = PlacementRank.compute(dag);
-    assert.equal(ranks.get('a'), 0);
-    assert.equal(ranks.get('b'), 1);
-    assert.equal(ranks.get('c'), 2);
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'a'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'b'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'c'), 2);
     // join: max(rank(a)=0, rank(c)=2) + 1 = 3
-    assert.equal(ranks.get('join'), 3);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'join'), 3);
   });
 
   void it('terminates and excludes back-edges in a cyclic DAG', () => {
@@ -139,20 +202,23 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'self-loop-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:self-loop-rank/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:self-loop-rank/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'retry': 'a', 'done': 'end' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': {
+            'retry': 'urn:noocodex:dag:self-loop-rank/node/a',
+            'done': 'urn:noocodex:dag:self-loop-rank/node/end',
+          } },
         { '@id': 'urn:noocodex:dag:self-loop-rank/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
     // Must terminate (no infinite loop).
-    const ranks = PlacementRank.compute(dag);
+    const ranks = TestPlacementRank.compute(dag);
     // a has no non-back-edge predecessors (self-loop excluded) → rank 0
-    assert.equal(ranks.get('a'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'a'), 0);
     // end has predecessor a (rank 0) → rank 1
-    assert.equal(ranks.get('end'), 1);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'end'), 1);
   });
 
   void it('terminates on a two-node cycle without hanging', () => {
@@ -164,21 +230,24 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'two-cycle',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:two-cycle/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:two-cycle/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'loop': 'b', 'done': 'end' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': {
+            'loop': 'urn:noocodex:dag:two-cycle/node/b',
+            'done': 'urn:noocodex:dag:two-cycle/node/end',
+          } },
         { '@id': 'urn:noocodex:dag:two-cycle/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'back': 'a' } },
+          'name': 'b', 'node': 'urn:noocodec:node:b', 'outputs': { 'back': 'urn:noocodex:dag:two-cycle/node/a' } },
         { '@id': 'urn:noocodex:dag:two-cycle/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
     // Must terminate.
-    const ranks = PlacementRank.compute(dag);
-    const rankA   = ranks.get('a');
-    const rankB   = ranks.get('b');
-    const rankEnd = ranks.get('end');
+    const ranks = TestPlacementRank.compute(dag);
+    const rankA   = TestPlacementRank.rank(ranks, dag, 'a');
+    const rankB   = TestPlacementRank.rank(ranks, dag, 'b');
+    const rankEnd = TestPlacementRank.rank(ranks, dag, 'end');
     assert.ok(typeof rankA   === 'number');
     assert.ok(typeof rankB   === 'number');
     assert.ok(typeof rankEnd === 'number');
@@ -196,10 +265,10 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'unreachable',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'urn:noocodex:dag:unreachable/node/a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:unreachable/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'ok': 'end' } },
+          'name': 'a', 'node': 'urn:noocodec:node:a', 'outputs': { 'ok': 'urn:noocodex:dag:unreachable/node/end' } },
         { '@id': 'urn:noocodex:dag:unreachable/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
         // Note: 'b' can't exist in a valid registered DAG but PlacementRank.compute
@@ -209,8 +278,8 @@ void describe('PlacementRank.compute', () => {
         // the unreachable case is validated via the rank structure.
       ],
     };
-    const ranks = PlacementRank.compute(dag);
-    assert.equal(ranks.get('a'), 0);
-    assert.equal(ranks.get('end'), 1);
+    const ranks = TestPlacementRank.compute(dag);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'a'), 0);
+    assert.equal(TestPlacementRank.rank(ranks, dag, 'end'), 1);
   });
 });

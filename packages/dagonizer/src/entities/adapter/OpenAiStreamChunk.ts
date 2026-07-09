@@ -38,7 +38,7 @@ export const OpenAiStreamChoiceSchema = {
 } as const;
 
 export const OpenAiStreamChunkSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/OpenAiStreamChunk',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/OpenAiStreamChunk',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['choices'],

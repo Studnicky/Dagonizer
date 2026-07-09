@@ -12,19 +12,22 @@
 
 // #region normalize-json-dag
 import { normalizeJson } from '../nodes/ingest/normalizeJson.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 
 import type { CartographerState }    from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const normalizeJsonDAG: DAGType = new DAGBuilder('normalize-json', '1.0')
+const NORMALIZE_JSON_DAG_IRI = CARTOGRAPHER_IRIS.dag.normalizeJson;
 
-  .node('normalize-json-map', normalizeJson, {
-    'normalized': 'normalized',
+export const normalizeJsonDAG: DAGType = new DAGBuilder(NORMALIZE_JSON_DAG_IRI, '1.0')
+
+  .node(CARTOGRAPHER_IRIS.placementIri(NORMALIZE_JSON_DAG_IRI, 'normalize-json-map'), normalizeJson, {
+    'normalized': CARTOGRAPHER_IRIS.placementIri(NORMALIZE_JSON_DAG_IRI, 'normalized'),
   })
 
-  .terminal('normalized', { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(NORMALIZE_JSON_DAG_IRI, 'normalized'), { outcome: 'completed' })
 
   .build();
 

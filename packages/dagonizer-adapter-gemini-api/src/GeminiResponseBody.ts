@@ -75,7 +75,7 @@ export const GeminiUsageMetadataSchema = {
 } as const;
 
 export const GeminiResponseBodySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-gemini-api/GeminiResponseBody',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-gemini-api/GeminiResponseBody',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {
@@ -122,7 +122,7 @@ export const GeminiErrorDetailSchema = {
 } as const;
 
 export const GeminiErrorFrameSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-gemini-api/GeminiErrorFrame',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-gemini-api/GeminiErrorFrame',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['error'],

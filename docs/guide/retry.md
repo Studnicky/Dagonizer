@@ -73,7 +73,7 @@ The attempt counter is built into `NodeStateBase`, the state every application e
 | `state.withinRetryBudget(key, max)` | Record an attempt and report whether more remain: `true` → route `retry`, `false` → route `salvage`. |
 | `state.clearAttempts(key)` | Reset on success, so a re-entered placement starts fresh. |
 
-`key` is typically `context.nodeName` (the placement name), so each placement keeps its own budget. A node arms its own deadline, and on failure asks the budget which way to route:
+`key` is typically `context.nodeName` (the placement observability label), so each placement keeps its own budget. A node arms its own deadline, and on failure asks the budget which way to route:
 
 <<< @/../examples/the-archivist/nodes/extractQuery.ts#retry-salvage-node
 
@@ -125,7 +125,7 @@ Precedence:
 1. If `attempt >= maxAttempts`, do not retry.
 2. If `abortOn` is set and the error matches, do not retry — an explicit abort list always wins, even against a `DAGError` that self-reports `retryable: true`.
 3. If `retryOn` is set, the error must match it to retry; a miss does not retry, even against a `DAGError` that self-reports `retryable: true`.
-4. If no `retryOn` filter is set and the error is a `DAGError`, retry only when `error.retryable` is `true` — the error's own classification is the fallback signal, replacing the blanket "no filter = retry everything" default.
+4. If no `retryOn` filter is set and the error is a `DAGError`, retry only when `error.retryable` is `true`.
 5. Otherwise (no filters, non-`DAGError` error), retry.
 
 A `DAGError` constructed with `retryable: false` (the schema default — see [Reference: Errors](../reference/errors)) is therefore not retried unless an explicit `retryOn` matcher opts it back in, or the throw site passes `retryable: true`.
@@ -176,7 +176,7 @@ const outer = RetryPolicy.from({
 const response = await outer.run(() => adapter.chat(request));
 ```
 
-This is documented guidance, not an enforced default. An application that wants an outer retry to keep probing through a half-open circuit can configure its policy differently. See [Error filtering](#error-filtering) above for how `abortOn` composes with the `DAGError.retryable` fallback.
+This is documented guidance, not an enforced default. An application that wants an outer retry to keep probing through a half-open circuit can configure its policy differently. See [Error filtering](#error-filtering) above for how `abortOn` composes with `DAGError.retryable`.
 
 ### Choosing between them
 

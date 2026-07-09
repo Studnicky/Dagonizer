@@ -12,7 +12,7 @@ import type { StoreSnapshotType } from '../../contracts/SnapshottableInterface.j
 import type { JsonObjectType } from '../json.js';
 
 export const CheckpointDataSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/CheckpointData',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/CheckpointData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],

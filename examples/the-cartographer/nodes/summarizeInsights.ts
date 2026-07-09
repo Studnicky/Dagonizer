@@ -9,7 +9,7 @@
  * of event count. When that path ran (state.insights.size > 0 OR
  * state.journeys.size > 0) this node is a pure pass-through.
  *
- * The records-based fold (iterating state.records) is retained as a fallback
+ * The records-based fold (iterating state.records) is retained as a default
  * for callers that populate state.records via the array path and do not use
  * the insights-fold gather. Routes 'success' to the done terminal in both paths.
  */
@@ -27,6 +27,7 @@ type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
 
 // #region summarize-insights-node
 export class SummarizeInsightsNode extends MonadicNode<CartographerState, 'success'> {
+  readonly '@id' = 'urn:noocodec:node:summarize';
   private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: RegionInsights) => void>> = {
     'envelope': (entry) => { entry.sizeTierEnvelope++; },
     'small':    (entry) => { entry.sizeTierSmall++; },
@@ -60,7 +61,7 @@ export class SummarizeInsightsNode extends MonadicNode<CartographerState, 'succe
       return;
     }
 
-    // Array-path fallback: fold state.records into insights and journeys for
+    // Array-path default: fold state.records into insights and journeys for
     // callers that did not use the insights-fold gather strategy.
     state.insights = new Map<string, RegionInsights>();
     state.journeys = new Map<string, JourneyInsights>();
@@ -187,7 +188,7 @@ export class SummarizeInsightsNode extends MonadicNode<CartographerState, 'succe
       // Shipment-level facts (on-time, delay, pricing) come from an ORDER-lane
       // record of the journey — one that actually ran pricing/eta. Position/
       // sensor/customs scans skip that work, so prefer an eta-bearing record;
-      // fall back to any record only if the journey has no order-lane scan.
+      // use any record only if the journey has no order-lane scan.
       const orderRecord = state.records.find(
         (r) => r.shipmentId === shipmentId && r.shipmentId.length > 0 && r.routing.etaRun,
       );

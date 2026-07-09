@@ -3,7 +3,7 @@
  * entities persisted to checkpoint metadata under `WORKSET_PROGRESS_KEY`.
  *
  * Shape summary:
- *   WorkSetItem     — one item in the work set: its id + its state snapshot.
+ *   WorkSetItem     — one item in the work set: its id, optional source label, and state snapshot.
  *   WorkSetEntry    — all items pending at a single placement.
  *   WorkSetProgress — the full in-flight work set captured at interruption.
  *
@@ -23,21 +23,22 @@ import type { FromSchema } from 'json-schema-to-ts';
 // ---------------------------------------------------------------------------
 
 export const WorkSetItemSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetItem',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['id', 'snapshot'],
   'properties': {
     'id':       { 'type': 'string' },
+    'source':   { 'type': 'string', 'minLength': 1 },
     'snapshot': { 'type': 'object' },
   },
   'additionalProperties': false,
 } as const;
 
 /**
- * One item in the work set: its stable string `id` and its state `snapshot`
- * at the point of interruption. Used by `WorkSetCheckpoint` to rehydrate
- * the pending batch on resume.
+ * One item in the work set: its stable string `id`, optional entrypoint
+ * `source` label, and state `snapshot` at the point of interruption. Used by
+ * `WorkSetCheckpoint` to rehydrate the pending batch on resume.
  */
 export type WorkSetItemType = FromSchema<typeof WorkSetItemSchema>;
 
@@ -46,7 +47,7 @@ export type WorkSetItemType = FromSchema<typeof WorkSetItemSchema>;
 // ---------------------------------------------------------------------------
 
 export const WorkSetEntrySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetEntry',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetEntry',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['placement', 'items'],
@@ -72,7 +73,7 @@ export type WorkSetEntryType = FromSchema<typeof WorkSetEntrySchema>;
 // ---------------------------------------------------------------------------
 
 export const WorkSetProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['entries'],

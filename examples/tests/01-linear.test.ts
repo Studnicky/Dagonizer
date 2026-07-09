@@ -18,7 +18,7 @@ describe('01-linear: classify → respond', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript generics';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
     assert.ok(state.reply.startsWith('Echo:'), `Expected reply to start with "Echo:" but got: "${state.reply}"`);
     assert.equal(state.topic, 'on_topic');
@@ -30,7 +30,7 @@ describe('01-linear: classify → respond', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'what is the weather today?';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
     assert.equal(state.topic, 'off_topic');
     assert.ok(
@@ -45,13 +45,13 @@ describe('01-linear: classify → respond', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
     assert.ok(result.executedNodes.includes('classify'), 'executedNodes should include "classify"');
     assert.ok(result.executedNodes.includes('respond'), 'executedNodes should include "respond"');
   });
 
-  it('dag entrypoint is classify', () => {
-    assert.equal(dag.entrypoint, 'classify');
+  it('dag main entrypoint is classify', () => {
+    assert.equal(dag.entrypoints['main'], 'urn:noocodec:dag:chat/node/classify');
   });
 });

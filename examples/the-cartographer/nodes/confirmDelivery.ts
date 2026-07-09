@@ -15,6 +15,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region confirm-delivery-node
 export class ConfirmDeliveryNode extends MonadicNode<CartographerState, 'confirmed'> {
+  readonly '@id' = 'urn:noocodec:node:confirm-delivery';
   readonly 'name' = 'confirm-delivery';
   readonly 'outputs' = ['confirmed'] as const;
 

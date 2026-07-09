@@ -20,7 +20,7 @@ describe('11-handoff: DAG A collects, DAG B summarizes', () => {
     dispatcher.registerDAG(dagA);
 
     const state = new PipelineState();
-    const result = await dispatcher.execute('pipeline-a', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:pipeline-a', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.items, ['alpha', 'beta', 'gamma']);
@@ -33,7 +33,7 @@ describe('11-handoff: DAG A collects, DAG B summarizes', () => {
 
     const state = new PipelineState();
     state.items = ['alpha', 'beta', 'gamma'];
-    const result = await dispatcher.execute('pipeline-b', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:pipeline-b', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.ok(
@@ -49,7 +49,7 @@ describe('11-handoff: DAG A collects, DAG B summarizes', () => {
 
     const state = new PipelineState();
     state.items = ['alpha', 'beta', 'gamma'];
-    await dispatcher.execute('pipeline-b', state);
+    await dispatcher.execute('urn:noocodec:dag:pipeline-b', state);
 
     assert.ok(state.summary.includes('alpha'), `summary: "${state.summary}"`);
     assert.ok(state.summary.includes('beta'), `summary: "${state.summary}"`);
@@ -63,7 +63,7 @@ describe('11-handoff: DAG A collects, DAG B summarizes', () => {
 
     const state = new PipelineState();
     state.items = [];
-    await dispatcher.execute('pipeline-b', state);
+    await dispatcher.execute('urn:noocodec:dag:pipeline-b', state);
 
     assert.ok(
       state.summary.includes('0 item(s)'),

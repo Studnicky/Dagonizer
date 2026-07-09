@@ -127,7 +127,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * as `'chat'` otherwise. The `cloud` flag is `true` when the tag ends
    * with any `CLOUD_SUFFIXES` value (`:cloud`, `-cloud`). `costRank` is the
    * pulled model's on-disk `size` in bytes — a local-cost proxy where a
-   * smaller model is cheaper to run — falling back to the name heuristic
+   * smaller model is cheaper to run — using the name heuristic
    * when the daemon omits a size.
    *
    * Never throws — returns `[]` on any failure (daemon down, non-2xx,
@@ -185,7 +185,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * Run `thunk`, catching a `MODEL_NOT_FOUND`-classified `LlmError` and
    * re-throwing it with an Ollama-specific `ollama pull <model>` hint. The
    * model name is extracted from the raw upstream error message when
-   * available, falling back to the adapter's configured `model`. Any other
+   * available, then the adapter's configured `model`. Any other
    * error is rethrown unchanged.
    */
   async #withModelNotFoundTranslation<T>(thunk: () => Promise<T>): Promise<T> {

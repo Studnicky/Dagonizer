@@ -5,6 +5,9 @@ seeAlso:
   - text: 'Conversational Agents'
     link: './conversational#agent-loop'
     description: 'the 8-node agent loop authored as JSON-LD'
+  - text: 'Chat Event Orchestration'
+    link: './chat-event-orchestration'
+    description: 'host one registered agent DAG behind EventTrigger or RequestTrigger'
   - text: 'Streaming Producers'
     link: './streaming-producers'
     description: 'StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses'
@@ -53,6 +56,7 @@ The runnable ReAct examples expose three DAGs: the inner agent loop, the reasoni
 <DagJsonMermaid :dag="reactRoutingDAG" title="ReAct routed stream sink DAG" aria-label="ReAct routed stream sink JSON-LD DAG beside Mermaid generated from it." />
 
 - [Conversational Agents](./conversational#agent-loop) - the 8-node agent loop authored as JSON-LD
+- [Chat Event Orchestration](./chat-event-orchestration) - host one registered agent DAG behind EventTrigger or RequestTrigger
 - [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses
 - [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming, live token deltas, provenance recall
 - [Example: ReAct agent routing](../examples/react-agent-routing) - working example: one shared sink demultiplexes two concurrent conversations by routeKey
@@ -88,7 +92,7 @@ nodes and edges documented in [Conversational Agents § Agent loop](./conversati
 ### Streaming the reasoning trace
 
 A running agent loop already emits one `NodeResultType` per node per turn —
-`Dagonizer.execute(dagName, state)` returns an `Execution`, which is both an
+`Dagonizer.execute(dagIri, state)` returns an `Execution`, which is both an
 `AsyncIterable<NodeResultType<NodeStateInterface>>` and a `PromiseLike`. To
 observe the ReAct trace live, organize it as a stream using the framework from
 [Streaming Producers](./streaming-producers): no new mechanism, the same
@@ -120,7 +124,7 @@ class ReActTraceProducer extends AgentTraceProducer {
 The constructor takes the running loop's `Execution` directly:
 
 ```ts
-const execution = agentDispatcher.execute('react-agent', agentState);
+const execution = agentDispatcher.execute('urn:noocodec:dag:react-agent', agentState);
 const traceState = new TraceState();
 traceState.source = StreamChannel.driven(new ReActTraceProducer(execution));
 ```
@@ -175,10 +179,10 @@ since the previous chunk. Every `LlmAdapterInterface` implements
   guarded/classified/retried path as `chat()`, then pushes one chunk carrying
   the full response text. An adapter that never overrides `performChatStream`
   still works with `{ sink }`; it just never streams more than one chunk.
-- The anthropic, gemini-api, gemini-nano, web-llm, and ollama/OpenAI-compatible
-  adapters override `performChatStream` with real provider token streaming —
+- The anthropic, gemini-api, gemini-nano, web-llm, and ollama adapters
+  override `performChatStream` with real provider token streaming —
   the sink receives one push per token/fragment as the provider emits it.
-- Tool-turn responses (`variant: 'tools' | 'mixed'`) fall back to a buffered
+- Tool-turn responses (`variant: 'tools' | 'mixed'`) use a buffered
   push in every adapter — there is no per-token text to stream when the model
   is emitting a structured tool call.
 
@@ -224,6 +228,8 @@ source}` — where `source` is `{dagName, nodeName}` read from the executing
 `NodeContextType`. One shared node instance, streaming into one shared sink,
 is therefore safe for many CONCURRENT runs: every chunk already carries
 enough information for a downstream subscriber to tell whose run it belongs to.
+The `dagName` property is provenance metadata from the execution context; the
+registered DAG identity still comes from the DAG IRI.
 
 `routeKey(state)` is the seam that supplies the demultiplexing key. The
 default returns `''` (a single unrouted stream, the case covered above).
@@ -239,7 +245,7 @@ class RoutingCallModelNode extends MyCallModelNode {
 
 Because the routing key comes from `state`, not from the node instance, ONE
 `RoutingCallModelNode` registered on ONE dispatcher correctly demultiplexes
-as many concurrent `dispatcher.execute('react-agent', state)` calls as are
+as many concurrent `dispatcher.execute('urn:noocodec:dag:react-agent', state)` calls as are
 run in parallel — each `state` carries its own `conversationId`.
 
 The sink itself does not need to be a passive buffer. Because

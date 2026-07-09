@@ -5,7 +5,7 @@
  * message using recent conversation history as context.
  *
  * Error handling:
- *   If the LLM call fails, a polite fallback message is set on state so
+ *   If the LLM call fails, a polite recovery message is set on state so
  *   the flow can continue to send-response without surfacing a raw error.
  *
  * Routes 'drafted' on every path.
@@ -20,6 +20,7 @@ import type { DispatcherServices } from '../services.ts';
 
 export class AiComposeNode extends MonadicNode<DispatcherState, 'drafted'> {
   readonly name = 'ai-compose';
+  readonly '@id' = 'urn:noocodec:node:ai-compose';
   readonly outputs = ['drafted'] as const;
   override readonly timeout = Timeout.ofMs(60_000);
 

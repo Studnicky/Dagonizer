@@ -31,6 +31,7 @@ export class ChannelState extends NodeStateBase {
 
 export class ProcessNode extends MonadicNode<ChannelState, 'done'> {
   readonly name    = 'process';
+  readonly '@id'   = 'urn:noocodec:node:process';
   readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -74,33 +75,40 @@ export class NumberProducer implements StreamProducerInterface<number> {
 
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:stream-channel',
+  '@id': 'urn:noocodec:dag:stream-channel',
   '@type':      'DAG',
   'name':       'stream-channel',
   'version':    '1',
-  'entrypoint': 'scatter-items',
+  'entrypoints': { 'main': 'urn:noocodec:dag:stream-channel/node/scatter-items' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:stream-channel/node/scatter-items',
+      '@id': 'urn:noocodec:dag:stream-channel/node/scatter-items',
       '@type':       'ScatterNode',
       'name':        'scatter-items',
-      'body':        { 'node': 'process' },
+      'body':        { 'node': 'urn:noocodec:node:process' },
       'source':      'source',
       'itemKey':     'stream-item',
       'execution': { 'mode': 'item', 'concurrency': 3 },
+      'outputs': {
+        'all-success': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',
+        'partial': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',
+        'all-error': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',
+        'empty': 'urn:noocodec:dag:stream-channel/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',
+      '@type': 'GatherNode',
+      'name': 'collect-stream-items',
+      sources: { 'urn:noocodec:dag:stream-channel/node/scatter-items': {} },
       'gather': {
         'strategy': 'map',
         'mapping':  { 'item': 'results' },
       },
-      'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
-      },
+      'outputs': { 'success': 'urn:noocodec:dag:stream-channel/node/end', 'error': 'urn:noocodec:dag:stream-channel/node/end', 'empty': 'urn:noocodec:dag:stream-channel/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:stream-channel/node/end',
+      '@id': 'urn:noocodec:dag:stream-channel/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

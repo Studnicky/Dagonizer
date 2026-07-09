@@ -24,6 +24,16 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
+const HETERO_SCATTER_DAG_IRI = 'urn:noocodec:dag:hetero-scatter';
+const HETERO_SCATTER_FAN_OUT_IRI = 'urn:noocodec:dag:hetero-scatter/node/fan-out';
+const HETERO_SCATTER_JOIN_IRI = 'urn:noocodec:dag:hetero-scatter/node/join';
+const HETERO_SCATTER_END_IRI = 'urn:noocodec:dag:hetero-scatter/node/end';
+const HETERO_ALL_EMPTY_DAG_IRI = 'urn:noocodec:dag:hetero-all-empty';
+const HETERO_ALL_EMPTY_FAN_OUT_IRI = 'urn:noocodec:dag:hetero-all-empty/node/fan-out';
+const HETERO_ALL_EMPTY_OK_IRI = 'urn:noocodec:dag:hetero-all-empty/node/ok';
+const HETERO_ALL_EMPTY_FAIL_IRI = 'urn:noocodec:dag:hetero-all-empty/node/fail';
+const HETERO_DISPATCH_NODE_IRI = 'urn:noocodec:node:dispatch';
+
 // ── state ────────────────────────────────────────────────────────────────────
 
 /**
@@ -71,7 +81,7 @@ class HeterogeneousState extends NodeStateBase {
 // result. Three providers succeed, one returns 'empty'.
 
 const dispatchNode = TestNode.make<HeterogeneousState>(
-  'dispatch',
+  HETERO_DISPATCH_NODE_IRI,
   ['success', 'empty'],
   (state) => {
     const provider = state.getter.string('currentItem', 'unknown');
@@ -91,6 +101,7 @@ const dispatchNode = TestNode.make<HeterogeneousState>(
 
 class FlatMergeGather extends GatherStrategy {
   readonly name = 'flat-merge-test';
+  readonly '@id' = 'urn:noocodec:node:flat-merge-test';
 
   override reduce(
     _config: GatherConfigType,
@@ -129,20 +140,24 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     const dispatcher = new Dagonizer<HeterogeneousState>();
     dispatcher.registerNode(dispatchNode);
 
-    const dag = new DAGBuilder('hetero-scatter', '1.0')
-      .scatter('fan-out', 'providers', dispatchNode, {
-        'success':     'end',
-        'error':       'end',
-        'empty':       'end',
-        'all-success': 'end',
-        'all-error':   'end',
-        'partial':     'end',
+    const dag = new DAGBuilder(HETERO_SCATTER_DAG_IRI, '1.0', { 'name': 'hetero-scatter' })
+      .scatter(HETERO_SCATTER_FAN_OUT_IRI, 'providers', dispatchNode, {
+        'success':     HETERO_SCATTER_JOIN_IRI,
+        'error':       HETERO_SCATTER_JOIN_IRI,
+        'empty':       HETERO_SCATTER_JOIN_IRI,
+        'all-success': HETERO_SCATTER_JOIN_IRI,
+        'all-error':   HETERO_SCATTER_JOIN_IRI,
+        'partial':     HETERO_SCATTER_JOIN_IRI,
       }, {
         'execution': { 'mode': 'item', 'concurrency': 4 },
-        'gather':  { 'strategy': 'flat-merge-test' },
         'reducer': 'any-success',
       })
-      .terminal('end', { 'outcome': 'completed' })
+      .gather(HETERO_SCATTER_JOIN_IRI, { [HETERO_SCATTER_FAN_OUT_IRI]: {} }, { 'strategy': 'flat-merge-test' }, {
+        'success': HETERO_SCATTER_END_IRI,
+        'error': HETERO_SCATTER_END_IRI,
+        'empty': HETERO_SCATTER_END_IRI,
+      }, { 'name': 'join' })
+      .terminal(HETERO_SCATTER_END_IRI, { 'name': 'end', 'outcome': 'completed' })
       .build();
 
     dispatcher.registerDAG(dag);
@@ -150,7 +165,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     const state = new HeterogeneousState();
     state.providers = ['alpha', 'beta', 'gamma', 'delta'];
 
-    const result = await dispatcher.execute('hetero-scatter', state);
+    const result = await dispatcher.execute(HETERO_SCATTER_DAG_IRI, state);
 
     // Three providers succeeded, one returned empty.
     assert.equal(result.state.results.length, 3, 'three successful provider results collected');
@@ -170,21 +185,21 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
   void it('routes error when all providers return empty', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
 
-    const emptyDispatch = TestNode.make<HeterogeneousState>('empty-dispatch', ['success', 'empty'], () => 'empty');
+    const emptyDispatch = TestNode.make<HeterogeneousState>('urn:noocodec:node:empty-dispatch', ['success', 'empty'], () => 'empty');
     dispatcher.registerNode(emptyDispatch);
 
-    const dag = new DAGBuilder('hetero-all-empty', '1.0')
-      .scatter('fan-out', 'providers', emptyDispatch, {
-        'success': 'ok',
-        'error':   'fail',
-        'empty':   'fail',
+    const dag = new DAGBuilder(HETERO_ALL_EMPTY_DAG_IRI, '1.0', { 'name': 'hetero-all-empty' })
+      .scatter(HETERO_ALL_EMPTY_FAN_OUT_IRI, 'providers', emptyDispatch, {
+        'success': HETERO_ALL_EMPTY_OK_IRI,
+        'error':   HETERO_ALL_EMPTY_FAIL_IRI,
+        'empty':   HETERO_ALL_EMPTY_FAIL_IRI,
       }, {
         'execution': { 'mode': 'item', 'concurrency': 4 },
-        'gather':  { 'strategy': 'discard' },
         'reducer': 'any-success',
+        'name': 'fan-out',
       })
-      .terminal('ok',   { 'outcome': 'completed' })
-      .terminal('fail', { 'outcome': 'failed' })
+      .terminal(HETERO_ALL_EMPTY_OK_IRI, { 'name': 'ok', 'outcome': 'completed' })
+      .terminal(HETERO_ALL_EMPTY_FAIL_IRI, { 'name': 'fail', 'outcome': 'failed' })
       .build();
 
     dispatcher.registerDAG(dag);
@@ -192,7 +207,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     const state = new HeterogeneousState();
     state.providers = ['alpha', 'beta', 'gamma', 'delta'];
 
-    const result = await dispatcher.execute('hetero-all-empty', state);
+    const result = await dispatcher.execute(HETERO_ALL_EMPTY_DAG_IRI, state);
 
     // any-success: all returned empty → 'error' route → fail terminal.
     assert.equal(result.state.lifecycle.variant, 'failed', 'flow failed when all providers return empty');

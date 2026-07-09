@@ -25,6 +25,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region decode-payload-node
 export class DecodePayloadNode extends MonadicNode<CartographerState, 'decoded' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:decode-payload';
   readonly 'name' = 'decode-payload';
   readonly 'outputs' = ['decoded', 'invalid'] as const;
 

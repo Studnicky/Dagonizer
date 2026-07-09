@@ -18,6 +18,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region parse-csv-node
 export class ParseCsvNode extends MonadicNode<CartographerState, 'normalized' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:parse-csv';
   readonly 'name' = 'parse-csv';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 

@@ -2,6 +2,9 @@
 title: 'Runner'
 description: 'Runner reference for DagRunner, TriggerInterface, OnceTrigger, CLI, event, and request triggers around registered DAG execution.'
 seeAlso:
+  - text: 'Guide: Chat Event Orchestration'
+    link: '../guide/chat-event-orchestration'
+    description: 'one registered agent DAG per inbound event or request turn'
   - text: 'Example 28: Runner and Triggers'
     link: '../examples/28-runner'
     description: 'Full working example for all trigger variants'
@@ -20,7 +23,7 @@ seeAlso:
 
 ## What It Is
 
-`DagRunner` is the reusable host loop around a registered DAG. It accepts trigger input, creates initial state, executes a DAG by name, and projects the final execution result into an application-specific output.
+`DagRunner` is the reusable host loop around a registered DAG. It accepts trigger input, creates initial state, executes a DAG reference resolved by the dispatcher, and projects the final execution result into an application-specific output.
 
 Use this page when a CLI command, queue worker, HTTP route, browser action, or scheduled job should invoke the same registered DAG without rewriting the register→seed→execute→project loop.
 
@@ -101,7 +104,7 @@ const runner = new MyRunner(options);
 
 Delegates to `dispatcher.registerBundle`. Call before `run`.
 
-#### `run(dagName, input, options?)`
+#### `run(dagIri, input, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -116,12 +119,12 @@ class MyRunner extends DagRunner<MyInput, MyState, MyOutput> {
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
 const runner = new MyRunner({ dispatcher });
-const output = await runner.run('my-dag', { value: 1 });
+const output = await runner.run('urn:noocodec:dag:my-dag', { value: 1 });
 ```
 
-Builds initial state via `seedState(input)`, calls `dispatcher.execute(dagName, state, options)`, and returns `projectResult(result)`. Never throws — unexpected errors route through `onRunError`.
+Builds initial state via `seedState(input)`, calls `dispatcher.execute(dagIri, state, options)`, and returns `projectResult(result)`. Never throws — unexpected errors route through `onRunError`.
 
-#### `resume(dagName, state, fromStage, options?)`
+#### `resume(dagIri, state, fromStage, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -137,10 +140,10 @@ class MyRunner extends DagRunner<MyInput, MyState, MyOutput> {
 declare const dispatcher: Dagonizer<MyState>;
 declare const rehydrated: MyState;
 const runner = new MyRunner({ dispatcher });
-const output = await runner.resume('my-dag', rehydrated, 'node-b');
+const output = await runner.resume('urn:noocodec:dag:my-dag', rehydrated, 'urn:noocodec:dag:my-dag/node/node-b');
 ```
 
-Resumes from `fromStage` with a pre-rehydrated state. The caller is responsible for rehydrating state before the call (typically via `Checkpoint.load(raw).restoreState(fn)`). Never throws.
+Resumes from placement IRI `fromStage` with a pre-rehydrated state. The caller is responsible for rehydrating state before the call (typically via `Checkpoint.load(raw).restoreState(fn)`). Never throws.
 
 #### `seedState(input)` — abstract
 
@@ -150,9 +153,9 @@ Override to build the initial `TState` from the trigger input. Runs inside `run(
 
 Override to project `ExecutionResultType<TState>` to the application's `TOutput` shape. Runs after each `execute`/`resume` call.
 
-#### `onRunError(dagName, error)` — protected
+#### `onRunError(dagIri, error)` — protected
 
-Called when an unexpected error escapes the engine (framework bug). Default re-throws. Override to absorb and return a fallback `TOutput` when callers need continuity.
+Called when an unexpected error escapes the engine. Default re-throws. Override to absorb the error and return a replacement `TOutput` when callers need continuity.
 
 ---
 
@@ -197,18 +200,18 @@ import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const runner: import('@studnicky/dagonizer/runner').DagRunnerInterface<{ text: string }, NodeStateInterface, { words: number }>;
 const trigger = new OnceTrigger<{ text: string }, NodeStateInterface, { words: number }>(
-  'word-count',
+  'urn:noocodec:dag:word-count',
   { text: 'hello world' },
 );
 await trigger.attach(runner);
 const result = trigger.result; // available after attach resolves
 ```
 
-Fires `runner.run(dagName, input, options)` exactly once when `attach` is called. `detach()` before `attach` makes attach a no-op.
+Fires `runner.run(dagIri, input, options)` exactly once when `attach` is called. `detach()` before `attach` makes attach a no-op.
 
 | Member | Description |
 |--------|-------------|
-| `constructor(dagName, input, options?)` | Supply the DAG name, literal input, and optional `ExecuteOptionsType`. |
+| `constructor(dagIri, input, options?)` | Supply the DAG IRI, literal input, and optional `ExecuteOptionsType`. |
 | `result` | `TOutput \| null`. Available after `attach` resolves; `null` before or if detached before attach. |
 | `attach(runner)` | Fires the run and resolves when done. |
 | `detach()` | Marks the trigger as detached; future `attach` is a no-op. |
@@ -226,7 +229,7 @@ class MyCli extends CliTrigger<{ text: string }, NodeStateInterface, { words: nu
     return { text: args.join(' ') };
   }
   protected override selectDag(_command: string): string {
-    return 'word-count';
+    return 'urn:noocodec:dag:word-count';
   }
 }
 const trigger = new MyCli('word-count', process.argv.slice(2));
@@ -239,7 +242,7 @@ Abstract base for CLI harnesses. Subclass and override `parseArgs`.
 | `constructor(command, args, options?)` | `command` is the primary command token; `args` are remaining argv tokens. |
 | `result` | `TOutput \| null`. Available after `attach` resolves. |
 | `parseArgs(command, args)` — abstract | Map raw argv tokens to `TInput`. Must override. |
-| `selectDag(command)` — protected | Map the command token to a registered DAG name. Default returns the command token unchanged. |
+| `selectDag(command)` — protected | Map the command token to a registered DAG IRI. Default returns the command token unchanged, so the command token must already be an IRI unless overridden. |
 | `attach(runner)` | Calls `parseArgs`, then `runner.run(selectDag(command), input, options)`. |
 | `detach()` | Marks trigger as detached; future `attach` is a no-op. |
 
@@ -271,7 +274,7 @@ Abstract base for subscription-driven harnesses (WebSocket, EventEmitter, messag
 |--------|-------------|
 | `subscribe(onMessage)` — abstract | Register a handler with the event source. Return an unsubscribe function. |
 | `toInput(message)` — abstract | Convert a raw message to `TInput`. |
-| `selectDag(message)` — protected | Choose the DAG name for a message. Default returns `'default'`. |
+| `selectDag(message)` — protected | Choose the DAG IRI for a message. Default returns `urn:noocodec:dag:default`. |
 | `attach(runner)` | Registers the subscription and returns a promise that resolves only after `detach()` is called. |
 | `detach()` | Unsubscribes and resolves the `attach` promise. |
 
@@ -299,7 +302,7 @@ Abstract base for per-turn HTTP harnesses. `attach` stores the runner reference 
 | Member | Description |
 |--------|-------------|
 | `toInput(request)` — abstract | Convert a raw request to `TInput`. |
-| `selectDag(request)` — protected | Choose the DAG name per request. Default returns `'default'`. |
+| `selectDag(request)` — protected | Choose the DAG IRI per request. Default returns `urn:noocodec:dag:default`. |
 | `requestOptions(request)` — protected | Supply per-turn `ExecuteOptionsType` (signal, deadlineMs). Default returns `{}`. |
 | `attach(runner)` | Stores the runner reference. Resolves immediately — no subscription. |
 | `detach()` | Clears the runner reference. Subsequent `fire` calls throw. |
@@ -326,11 +329,12 @@ import type {
 
 `@studnicky/dagonizer/runner` ships the `DagRunner` abstract base class and trigger variants. Every callable hangs off a class; there are no freestanding functions.
 
-Triggers are adapters around external input. They should translate host-specific request shape into `TInput`, choose a DAG name, and pass execution options. They should not mutate DAG state directly or bypass `DagRunner.run()`.
+Triggers are adapters around external input. They should translate host-specific request shape into `TInput`, choose a DAG reference, and pass execution options. They should not mutate DAG state directly or bypass `DagRunner.run()`.
 
 ## Related Concepts
 
 - [Example 28: Runner and Triggers](../examples/28-runner) - Full working example for all trigger variants
+- [Guide: Chat Event Orchestration](../guide/chat-event-orchestration) - one registered agent DAG per inbound event or request turn
 - [Reference: Contracts](./contracts) - TriggerInterface adapter contract
 - [Reference: Dagonizer](./dagonizer) - The dispatcher DagRunner drives
 - [Example 08: Checkpoint and Resume](../examples/08-checkpoint) - DagRunner.resume() from a checkpoint cursor

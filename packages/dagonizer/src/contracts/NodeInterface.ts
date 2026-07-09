@@ -13,6 +13,12 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  */
 export type SchemaObjectType = JsonSchemaObjectType;
 
+/** Per-output-port JSON Schema map keyed by the node's declared output union. */
+export type NodeOutputSchemaMapType<
+  TOutput extends string,
+  TSchema extends SchemaObjectType = SchemaObjectType,
+> = Record<TOutput, TSchema>;
+
 /**
  * Thin validation contract the engine injects into `NodeContextType` when
  * `validateOutputs` is true. Lives in `contracts/` so `core/` can import it
@@ -45,6 +51,8 @@ export interface OutputSchemaValidatorInterface {
 export interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
+  TInputSchema extends SchemaObjectType = SchemaObjectType,
+  TOutputSchemas extends Record<string, SchemaObjectType> = Record<string, SchemaObjectType>,
 > extends Omit<NodeUnionType, 'outputs'> {
   /**
    * Clean up resources when dispatcher is destroyed.
@@ -80,7 +88,10 @@ export interface NodeInterface<
    */
   execute(batch: Batch<TState>, context: NodeContextType): Promise<RoutedBatchType<TOutput, TState>>;
 
-  /** Unique registration name; the dispatcher key and the contract identity. */
+  /** Canonical node IRI. Runtime registry lookup uses this key exclusively. */
+  readonly '@id': string;
+
+  /** Human-readable display name for observability, logs, and diagrams. */
   readonly 'name': string;
 
   /**
@@ -91,6 +102,14 @@ export interface NodeInterface<
   readonly 'outputs': readonly TOutput[];
 
   /**
+   * JSON Schema 2020-12 declaration describing the state shape this node
+   * expects before execution. The permissive object schema means "no additional
+   * structural requirement"; concrete nodes can narrow this to make route and
+   * mapping compatibility visible to graph validation.
+   */
+  readonly 'inputSchema': TInputSchema;
+
+  /**
    * Per-output-port JSON Schema 2020-12 declarations describing the state delta
    * this node guarantees when it routes to that port. Every declared output port
    * in `outputs` MUST have an entry here (enforced at `registerNode`). Schemas
@@ -99,7 +118,7 @@ export interface NodeInterface<
    * route with; use `MonadicNode.permissiveSchema(outputs)` only when every port
    * accepts the generic object shape.
    */
-  readonly 'outputSchema': Record<TOutput, SchemaObjectType>;
+  readonly 'outputSchema': TOutputSchemas;
 
   /**
    * Validate node configuration.
