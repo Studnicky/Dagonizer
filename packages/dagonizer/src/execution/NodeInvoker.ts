@@ -9,19 +9,19 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  */
 export interface NodeInvokerSourceInterface {
   /**
-   * Run the named registered node over `state` as a size-1 batch. Throws
+   * Run the registered node IRI over `state` as a size-1 batch. Throws
    * `DAGError` when the node is not registered. No-op when the lookup races to
    * `undefined` after the existence check.
    */
-  invokeRegisteredNode(nodeName: string, state: NodeStateInterface, dagName: string, signal: AbortSignal): Promise<void>;
+  invokeRegisteredNode(nodeIri: string, state: NodeStateInterface, dagName: string, signal: AbortSignal): Promise<void>;
 }
 
 /**
  * `NodeInvokerInterface` implementation handed to a `GatherStrategy` so a
- * `custom` gather can invoke a registered node by name during finalize.
+ * `custom` gather can invoke a registered node by IRI during finalize.
  *
  * Holds stable references to the dispatcher source, the gather's parent state,
- * the DAG name, and the run signal — no injected behaviour closures. The single
+ * the DAG IRI, and the run signal — no injected behaviour closures. The single
  * forwarding method delegates to `Dagonizer.invokeRegisteredNode`, where the
  * private registry and node-on-state machinery are in scope.
  */
@@ -43,7 +43,7 @@ export class NodeInvoker implements NodeInvokerInterface {
     this.#signal = signal;
   }
 
-  async invokeNode(nodeName: string): Promise<void> {
-    await this.#source.invokeRegisteredNode(nodeName, this.#state, this.#dagName, this.#signal);
+  async invokeNode(nodeIri: string): Promise<void> {
+    await this.#source.invokeRegisteredNode(nodeIri, this.#state, this.#dagName, this.#signal);
   }
 }

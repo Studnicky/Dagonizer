@@ -30,6 +30,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
 import type { ToolInvocationState } from '../../src/tool/ToolInvocationState.js';
 import { ToolRegistry } from '../../src/tool/ToolRegistry.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,16 @@ class ContractState extends NodeStateBase {
   }
 }
 
+const placementIri = TestDag.placementIri;
+const TEST_VIOLATING_DAG_IRI = 'urn:noocodec:dag:output-contract-violating';
+const TEST_CONFORMING_DAG_IRI = 'urn:noocodec:dag:output-contract-conforming';
+const TEST_VIOLATING_OFF_DAG_IRI = 'urn:noocodec:dag:output-contract-violating-off';
+const PARENT_BAD_OUTPUT_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-output';
+const PARENT_BAD_INPUT_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-input';
+const TEST_BATCH_VIOLATING_DAG_IRI = 'urn:noocodec:dag:output-contract-batch-violating';
+const TEST_BATCH_VIOLATING_OFF_DAG_IRI = 'urn:noocodec:dag:output-contract-batch-violating-off';
+const PARENT_BAD_OUTPUT_OFF_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-output-off';
+
 /**
  * A node that declares `{ minLength: 3 }` on `name` for the `'done'` port but
  * sets `state.name = ''` (empty string, fails minLength). This simulates a
@@ -52,6 +63,7 @@ class ContractState extends NodeStateBase {
  */
 class ViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'violating-node';
+  readonly '@id' = 'urn:noocodec:node:violating-node';
   readonly outputs = ['done', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
@@ -85,6 +97,7 @@ class ViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
  */
 class ConformingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'conforming-node';
+  readonly '@id' = 'urn:noocodec:node:conforming-node';
   readonly outputs = ['done', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
@@ -119,6 +132,7 @@ class ConformingNode extends MonadicNode<ContractState, 'done' | 'error'> {
  */
 class MissingPortSchemaNode extends MonadicNode<ContractState, 'done' | 'skip' | 'error'> {
   readonly name = 'missing-port-schema';
+  readonly '@id' = 'urn:noocodec:node:missing-port-schema';
   readonly outputs = ['done', 'skip', 'error'] as const;
 
   // Only 'done' and 'error' present — 'skip' is missing from the schema.
@@ -218,6 +232,7 @@ class StrictInputTool implements ToolInterface<Record<string, unknown>, unknown>
  */
 class BatchViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'batch-violating-node';
+  readonly '@id' = 'urn:noocodec:node:batch-violating-node';
   readonly outputs = ['done', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
@@ -252,10 +267,13 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
 
   void it('(a) routes to error when validateOutputs is true and node violates outputSchema', async () => {
     const node = new ViolatingNode();
-    const dag = new DAGBuilder('test-violating', '1')
-      .node('violating-node', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TEST_VIOLATING_DAG_IRI, '1', { 'name': 'test-violating' })
+      .node(placementIri(TEST_VIOLATING_DAG_IRI, 'violating-node'), node, {
+        'done': placementIri(TEST_VIOLATING_DAG_IRI, 'end'),
+        'error': placementIri(TEST_VIOLATING_DAG_IRI, 'end-fail'),
+      }, { 'name': 'violating-node' })
+      .terminal(placementIri(TEST_VIOLATING_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_VIOLATING_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ContractState>({ 'validateOutputs': true });
@@ -263,7 +281,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(dag);
 
     const state = new ContractState();
-    const result = await dispatcher.execute('test-violating', state);
+    const result = await dispatcher.execute(TEST_VIOLATING_DAG_IRI, state);
 
     // Item re-routed to 'error' → 'end-fail' terminal → failed outcome.
     assert.equal(result.terminalOutcome, 'failed', 'output contract violation must route to failed');
@@ -275,10 +293,13 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
 
   void it('(b) routes normally when validateOutputs is true and node satisfies outputSchema', async () => {
     const node = new ConformingNode();
-    const dag = new DAGBuilder('test-conforming', '1')
-      .node('conforming-node', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TEST_CONFORMING_DAG_IRI, '1', { 'name': 'test-conforming' })
+      .node(placementIri(TEST_CONFORMING_DAG_IRI, 'conforming-node'), node, {
+        'done': placementIri(TEST_CONFORMING_DAG_IRI, 'end'),
+        'error': placementIri(TEST_CONFORMING_DAG_IRI, 'end-fail'),
+      }, { 'name': 'conforming-node' })
+      .terminal(placementIri(TEST_CONFORMING_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_CONFORMING_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ContractState>({ 'validateOutputs': true });
@@ -286,7 +307,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(dag);
 
     const state = new ContractState();
-    const result = await dispatcher.execute('test-conforming', state);
+    const result = await dispatcher.execute(TEST_CONFORMING_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed', 'conforming output must route to completed');
     const contractErrors = state.errors.filter((e) => e.code === 'outputContractViolation');
@@ -297,10 +318,13 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
 
   void it('(c) does not validate when validateOutputs is false (default)', async () => {
     const node = new ViolatingNode();
-    const dag = new DAGBuilder('test-violating-off', '1')
-      .node('violating-node', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TEST_VIOLATING_OFF_DAG_IRI, '1', { 'name': 'test-violating-off' })
+      .node(placementIri(TEST_VIOLATING_OFF_DAG_IRI, 'violating-node'), node, {
+        'done': placementIri(TEST_VIOLATING_OFF_DAG_IRI, 'end'),
+        'error': placementIri(TEST_VIOLATING_OFF_DAG_IRI, 'end-fail'),
+      }, { 'name': 'violating-node' })
+      .terminal(placementIri(TEST_VIOLATING_OFF_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_VIOLATING_OFF_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     // Default: validateOutputs is false.
@@ -309,7 +333,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(dag);
 
     const state = new ContractState();
-    const result = await dispatcher.execute('test-violating-off', state);
+    const result = await dispatcher.execute(TEST_VIOLATING_OFF_DAG_IRI, state);
 
     // No validation → node routes 'done' → 'end' → completed.
     assert.equal(result.terminalOutcome, 'completed', 'no validation by default — should complete');
@@ -342,15 +366,15 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     const registry = new ToolRegistry();
     registry.register(new BadOutputTool());
 
-    const parentDag = new DAGBuilder('parent-bad-output', '1')
-      .embeddedDAG<ToolInvocationState, ToolParentState>(
-        'call-bad',
-        'tool:badOutput',
-        { 'success': 'end', 'error': 'end-fail' },
-        { 'inputs': { 'input': 'toolInput' } },
+    const parentDag = new DAGBuilder(PARENT_BAD_OUTPUT_DAG_IRI, '1', { 'name': 'parent-bad-output' })
+      .embed<ToolInvocationState, ToolParentState>(
+        placementIri(PARENT_BAD_OUTPUT_DAG_IRI, 'call-bad'),
+        'urn:noocodec:tool:badOutput',
+        { 'success': placementIri(PARENT_BAD_OUTPUT_DAG_IRI, 'end'), 'error': placementIri(PARENT_BAD_OUTPUT_DAG_IRI, 'end-fail') },
+        { 'inputs': { 'input': 'toolInput' }, 'name': 'call-bad' },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(PARENT_BAD_OUTPUT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(PARENT_BAD_OUTPUT_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ToolParentState>({ 'validateOutputs': true });
@@ -358,7 +382,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new ToolParentState();
-    const result = await dispatcher.execute('parent-bad-output', state);
+    const result = await dispatcher.execute(PARENT_BAD_OUTPUT_DAG_IRI, state);
 
     // ToolInvokeNode routes to 'error' → 'end-fail' → failed outcome.
     assert.equal(result.terminalOutcome, 'failed', 'tool output violation must route to failed');
@@ -370,15 +394,15 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     const registry = new ToolRegistry();
     registry.register(new StrictInputTool());
 
-    const parentDag = new DAGBuilder('parent-bad-input', '1')
-      .embeddedDAG<ToolInvocationState, ToolParentState>(
-        'call-strict',
-        'tool:strictInput',
-        { 'success': 'end', 'error': 'end-fail' },
-        { 'inputs': { 'input': 'toolInput' } },
+    const parentDag = new DAGBuilder(PARENT_BAD_INPUT_DAG_IRI, '1', { 'name': 'parent-bad-input' })
+      .embed<ToolInvocationState, ToolParentState>(
+        placementIri(PARENT_BAD_INPUT_DAG_IRI, 'call-strict'),
+        'urn:noocodec:tool:strictInput',
+        { 'success': placementIri(PARENT_BAD_INPUT_DAG_IRI, 'end'), 'error': placementIri(PARENT_BAD_INPUT_DAG_IRI, 'end-fail') },
+        { 'inputs': { 'input': 'toolInput' }, 'name': 'call-strict' },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(PARENT_BAD_INPUT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(PARENT_BAD_INPUT_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ToolParentState>({ 'validateOutputs': true });
@@ -388,7 +412,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     // toolInput deliberately omits required 'b' — triggers input contract violation.
     const state = new ToolParentState();
     state.toolInput = { 'a': 1 };
-    const result = await dispatcher.execute('parent-bad-input', state);
+    const result = await dispatcher.execute(PARENT_BAD_INPUT_DAG_IRI, state);
 
     // ToolInvokeNode routes to 'error' → 'end-fail' → failed outcome.
     assert.equal(result.terminalOutcome, 'failed', 'tool input violation must route to failed');
@@ -398,10 +422,13 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
 
   void it('(g) routes to error when a batch-native MonadicNode violates outputSchema and validateOutputs is true', async () => {
     const node = new BatchViolatingNode();
-    const dag = new DAGBuilder('test-batch-violating', '1')
-      .node('batch-violating-node', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TEST_BATCH_VIOLATING_DAG_IRI, '1', { 'name': 'test-batch-violating' })
+      .node(placementIri(TEST_BATCH_VIOLATING_DAG_IRI, 'batch-violating-node'), node, {
+        'done': placementIri(TEST_BATCH_VIOLATING_DAG_IRI, 'end'),
+        'error': placementIri(TEST_BATCH_VIOLATING_DAG_IRI, 'end-fail'),
+      }, { 'name': 'batch-violating-node' })
+      .terminal(placementIri(TEST_BATCH_VIOLATING_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_BATCH_VIOLATING_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ContractState>({ 'validateOutputs': true });
@@ -409,7 +436,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(dag);
 
     const state = new ContractState();
-    const result = await dispatcher.execute('test-batch-violating', state);
+    const result = await dispatcher.execute(TEST_BATCH_VIOLATING_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'failed', 'batch-native violation must route to failed');
     const contractErrors = state.errors.filter((e) => e.code === 'outputContractViolation');
@@ -420,10 +447,13 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
 
   void it('(h) does not validate a batch-native MonadicNode when validateOutputs is false', async () => {
     const node = new BatchViolatingNode();
-    const dag = new DAGBuilder('test-batch-violating-off', '1')
-      .node('batch-violating-node', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TEST_BATCH_VIOLATING_OFF_DAG_IRI, '1', { 'name': 'test-batch-violating-off' })
+      .node(placementIri(TEST_BATCH_VIOLATING_OFF_DAG_IRI, 'batch-violating-node'), node, {
+        'done': placementIri(TEST_BATCH_VIOLATING_OFF_DAG_IRI, 'end'),
+        'error': placementIri(TEST_BATCH_VIOLATING_OFF_DAG_IRI, 'end-fail'),
+      }, { 'name': 'batch-violating-node' })
+      .terminal(placementIri(TEST_BATCH_VIOLATING_OFF_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_BATCH_VIOLATING_OFF_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ContractState>();
@@ -431,7 +461,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(dag);
 
     const state = new ContractState();
-    const result = await dispatcher.execute('test-batch-violating-off', state);
+    const result = await dispatcher.execute(TEST_BATCH_VIOLATING_OFF_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed', 'no validation by default for batch-native — should complete');
     const contractErrors = state.errors.filter((e) => e.code === 'outputContractViolation');
@@ -444,15 +474,15 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     const registry = new ToolRegistry();
     registry.register(new BadOutputTool());
 
-    const parentDag = new DAGBuilder('parent-bad-output-off', '1')
-      .embeddedDAG<ToolInvocationState, ToolParentState>(
-        'call-bad',
-        'tool:badOutput',
-        { 'success': 'end', 'error': 'end-fail' },
-        { 'inputs': { 'input': 'toolInput' } },
+    const parentDag = new DAGBuilder(PARENT_BAD_OUTPUT_OFF_DAG_IRI, '1', { 'name': 'parent-bad-output-off' })
+      .embed<ToolInvocationState, ToolParentState>(
+        placementIri(PARENT_BAD_OUTPUT_OFF_DAG_IRI, 'call-bad'),
+        'urn:noocodec:tool:badOutput',
+        { 'success': placementIri(PARENT_BAD_OUTPUT_OFF_DAG_IRI, 'end'), 'error': placementIri(PARENT_BAD_OUTPUT_OFF_DAG_IRI, 'end-fail') },
+        { 'inputs': { 'input': 'toolInput' }, 'name': 'call-bad' },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(PARENT_BAD_OUTPUT_OFF_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(PARENT_BAD_OUTPUT_OFF_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     // validateOutputs: false (default) → tool output validation skipped.
@@ -461,7 +491,7 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new ToolParentState();
-    const result = await dispatcher.execute('parent-bad-output-off', state);
+    const result = await dispatcher.execute(PARENT_BAD_OUTPUT_OFF_DAG_IRI, state);
 
     // No validation → tool routes 'done' → 'end' → completed (despite wrong output shape).
     assert.equal(result.terminalOutcome, 'completed', 'tool output not validated when toggle is off — should complete');

@@ -18,7 +18,7 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript generics';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
     assert.ok(state.reply.startsWith('Echo:'), `Expected reply to start with "Echo:" but got: "${state.reply}"`);
     assert.equal(state.topic, 'on_topic');
@@ -30,7 +30,7 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'weather forecast for today';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
     assert.equal(state.topic, 'off_topic');
     assert.ok(
@@ -44,14 +44,14 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
     const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'Explain async/await';
-    const result = await dispatcher.execute('chat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:chat', state);
 
-    assert.ok(result.executedNodes.includes('classify'));
-    assert.ok(result.executedNodes.includes('respond'));
+    assert.ok(result.executedNodes.includes('dag:chat/node/classify'));
+    assert.ok(result.executedNodes.includes('dag:chat/node/respond'));
   });
 
-  it('dag entrypoint is classify', () => {
-    assert.equal(dag.entrypoint, 'classify');
+  it('dag main entrypoint is classify', () => {
+    assert.equal(dag.entrypoints['main'], 'urn:noocodec:dag:chat/node/classify');
   });
 
 });

@@ -39,7 +39,7 @@ const initial = new CountingState();
 
 // execute() returns an Execution (async-iterable over node results).
 // Iterating yields one result per completed node (not per stage internally).
-const execution = dispatcher.execute('count', initial, { "signal": ctl.signal });
+const execution = dispatcher.execute('urn:noocodec:dag:count', initial, { "signal": ctl.signal });
 let stages = 0;
 for await (const _stage of execution) {
   stages++;
@@ -56,7 +56,7 @@ process.stdout.write(`  partial: count=${partial.state.count} cursor="${partial.
 // #region persist
 // Checkpoint.capture() returns a Checkpoint instance.
 // cursor !== null here because we aborted mid-run.
-const checkpoint = await Checkpoint.capture('count', partial);
+const checkpoint = await Checkpoint.capture('urn:noocodec:dag:count', partial);
 const persisted  = checkpoint.toJson();  // → JSON string (store in DB, file, etc.)
 // #endregion persist
 

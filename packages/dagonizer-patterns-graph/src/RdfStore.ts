@@ -174,7 +174,7 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
   }
 
   #readValue(subject: string): JsonValueType | undefined {
-    // Iterate backwards: the latest write wins.
+    // Iterate backward: the newest write wins.
     for (let i = this.#quads.length - 1; i >= 0; i -= 1) {
       const quad = this.#quads[i];
       if (quad === undefined)                        continue;

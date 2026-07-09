@@ -538,7 +538,7 @@ describe('BusObserver.onFlowEnd', () => {
     await bus.close();
   });
 
-  it('falls back to interruptedAt.reason when terminalOutcome is null', async () => {
+  it('uses interruptedAt.reason when terminalOutcome is null', async () => {
     const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();

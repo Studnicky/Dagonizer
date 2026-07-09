@@ -1,5 +1,4 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { ContextResolver } from '../dag/ContextResolver.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
@@ -8,8 +7,8 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
 
-/** Max registered node names listed in an "Unknown node" error message before eliding the rest. */
-const UNKNOWN_NODE_LISTED_NAMES = 5;
+/** Max registered node IRIs listed in an "Unknown node" error message before eliding the rest. */
+const UNKNOWN_NODE_LISTED_IRIS = 5;
 
 /**
  * Dispatcher surface `LeafExecutor` needs to execute a `SingleNode` placement.
@@ -51,8 +50,7 @@ export class LeafExecutor {
     dagName: string,
     signal: AbortSignal,
   ): Promise<RunNodeResultType> {
-    const nodeIri = ContextResolver.expand(nodeConfig.node, {});
-    const dagNode = this.#source.nodes.get(nodeIri);
+    const dagNode = this.#source.nodes.get(nodeConfig.node);
 
     if (!dagNode) {
       throw new DAGError(this.#unknownNodeMessage(nodeConfig.node));
@@ -79,18 +77,16 @@ export class LeafExecutor {
 
   /**
    * Build an actionable "Unknown node" message for `nodeRef`: lists up to
-   * `UNKNOWN_NODE_LISTED_NAMES` of the currently registered node names (each
-   * node's own declared `.name`, not its registry IRI key) so the author can
-   * spot a typo or a missing `dispatcher.registerNode(...)` call without
-   * cross-referencing the DAG document against the registry by hand.
+   * `UNKNOWN_NODE_LISTED_IRIS` of the currently registered node IRIs so the
+   * author can spot a typo or a missing `dispatcher.registerNode(...)` call.
    */
   #unknownNodeMessage(nodeRef: string): string {
-    const registeredNames = [...this.#source.nodes.values()].map((node) => node.name);
-    if (registeredNames.length === 0) {
+    const registeredIris = [...this.#source.nodes.keys()];
+    if (registeredIris.length === 0) {
       return `Unknown node: '${nodeRef}'. No nodes are registered. Did you forget dispatcher.registerNode(...)?`;
     }
-    const shown = registeredNames.slice(0, UNKNOWN_NODE_LISTED_NAMES).join(', ');
-    const elided = registeredNames.length > UNKNOWN_NODE_LISTED_NAMES ? ', …' : '';
-    return `Unknown node: '${nodeRef}'. Registered nodes: ${shown}${elided}. Did you forget dispatcher.registerNode(...)?`;
+    const shown = registeredIris.slice(0, UNKNOWN_NODE_LISTED_IRIS).join(', ');
+    const elided = registeredIris.length > UNKNOWN_NODE_LISTED_IRIS ? ', …' : '';
+    return `Unknown node: '${nodeRef}'. Registered node IRIs: ${shown}${elided}. Did you forget dispatcher.registerNode(...)?`;
   }
 }

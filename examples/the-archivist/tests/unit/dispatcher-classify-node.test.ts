@@ -1,5 +1,5 @@
 /**
- * ClassifyMessageNode: unit tests for embedder-first triage with LLM fallback.
+ * ClassifyMessageNode: unit tests for embedder-first triage with LLM recovery.
  *
  * Tests call `execute(Batch.of(state), context)` and inspect the non-empty
  * routed batch. Stub `DispatcherLlmInterface` / `DispatcherIntentInterface`
@@ -130,7 +130,7 @@ describe('ClassifyMessageNode', () => {
     assert.equal(state.escalationReason, 'Agent determined this message requires human review.');
   });
 
-  it('falls back to LLM when embedder is below confidence floor (returns null)', async () => {
+  it('routes to LLM when embedder is below confidence floor (returns null)', async () => {
     const state = new DispatcherState();
     state.message = 'ambiguous message';
     const services: DispatcherServices = { 'llm': new StubLlm('routine'), 'intent': new StubIntent(null) };
@@ -139,7 +139,7 @@ describe('ClassifyMessageNode', () => {
     assert.equal(routedOutput(result), 'routine');
   });
 
-  it('falls back to LLM when no embedder is provisioned, and escalates on LLM failure', async () => {
+  it('routes to LLM when no embedder is provisioned, and escalates on LLM failure', async () => {
     const state = new DispatcherState();
     state.message = 'a message';
     const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': null };
@@ -196,7 +196,7 @@ describe('ClassifyMessageNode', () => {
     assert.equal(state.escalationReason, 'Agent determined this message requires human review.');
   });
 
-  it("classificationMode='embedder': below-floor verdict (null) falls back to the LLM", async () => {
+  it("classificationMode='embedder': below-floor verdict (null) routes to the LLM", async () => {
     const state = new DispatcherState();
     state.message = 'ambiguous message';
     state.classificationMode = 'embedder';
@@ -206,7 +206,7 @@ describe('ClassifyMessageNode', () => {
     assert.equal(routedOutput(result), 'routine');
   });
 
-  it("classificationMode='embedder': no embedder provisioned falls back to the LLM, escalating on LLM failure", async () => {
+  it("classificationMode='embedder': no embedder provisioned routes to the LLM, escalating on LLM failure", async () => {
     const state = new DispatcherState();
     state.message = 'a message';
     state.classificationMode = 'embedder';

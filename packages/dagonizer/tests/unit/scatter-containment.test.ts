@@ -24,12 +24,14 @@ import type { DagContainerInterface } from '../../src/contracts/DagContainerInte
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
 
 // ---------------------------------------------------------------------------
 // State
@@ -76,7 +78,7 @@ class ScatterContainerState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 /** Reads item from metadata and sets value on the clone. */
-const counterNode = TestNode.make<ScatterContainerState>('counter', ['done'], (state) => {
+const counterNode = TestNode.make<ScatterContainerState>('urn:noocodec:node:counter', ['done'], (state) => {
   const item = state.getter.number('item');
   // value is a declared field on ScatterContainerState; no cast required.
   state.value = item;
@@ -88,24 +90,25 @@ const counterNode = TestNode.make<ScatterContainerState>('counter', ['done'], (s
 // ---------------------------------------------------------------------------
 
 const BODY_DAG_NAME = 'scatter-body';
+const BODY_DAG_IRI = 'urn:noocodec:dag:scatter-body';
 
 const bodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:test:scatter-body',
+  '@id': BODY_DAG_IRI,
   '@type': 'DAG',
   'name': BODY_DAG_NAME,
   'version': '1',
-  'entrypoint': 'counter',
+  'entrypoints': { 'main': placementIri(BODY_DAG_IRI, 'counter') },
   'nodes': [
     {
-      '@id': 'urn:test:scatter-body/node/counter',
+      '@id': 'urn:noocodec:dag:scatter-body/node/counter',
       '@type': 'SingleNode',
       'name': 'counter',
-      'node': 'counter',
-      'outputs': { 'done': 'end' },
+      'node': 'urn:noocodec:node:counter',
+      'outputs': { 'done': placementIri(BODY_DAG_IRI, 'end') },
     },
     {
-      '@id': 'urn:test:scatter-body/node/end',
+      '@id': 'urn:noocodec:dag:scatter-body/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -118,35 +121,35 @@ const bodyDag: DAGType = Validator.dag.validate({
 // ---------------------------------------------------------------------------
 
 const RUNNER_DAG_NAME = 'scatter-runner';
+const RUNNER_DAG_IRI = 'urn:noocodec:dag:scatter-runner';
 const CONTAINER_ROLE = 'test-container';
 
 const runnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:test:scatter-runner',
+  '@id': RUNNER_DAG_IRI,
   '@type': 'DAG',
   'name': RUNNER_DAG_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RUNNER_DAG_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:test:scatter-runner/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-runner/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': BODY_DAG_NAME },
+      'body': { 'dag': BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'item',
       'execution': { 'mode': 'item', 'concurrency': 1 },
-      'gather': { 'strategy': 'discard' },
       'container': CONTAINER_ROLE,
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RUNNER_DAG_IRI, 'end'),
+        'partial': placementIri(RUNNER_DAG_IRI, 'end'),
+        'all-error': placementIri(RUNNER_DAG_IRI, 'end'),
+        'empty': placementIri(RUNNER_DAG_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:test:scatter-runner/node/end',
+      '@id': 'urn:noocodec:dag:scatter-runner/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -157,30 +160,29 @@ const runnerDag: DAGType = Validator.dag.validate({
 // In-process runner DAG (no container bound)
 const inProcessRunnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:test:scatter-inprocess',
+  '@id': 'urn:noocodec:dag:scatter-inprocess',
   '@type': 'DAG',
   'name': 'scatter-inprocess',
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:scatter-inprocess', 'fan') },
   'nodes': [
     {
-      '@id': 'urn:test:scatter-inprocess/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-inprocess/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': BODY_DAG_NAME },
+      'body': { 'dag': BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'item',
       'execution': { 'mode': 'item', 'concurrency': 1 },
-      'gather': { 'strategy': 'discard' },
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
+        'partial': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
+        'all-error': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
+        'empty': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
       },
     },
     {
-      '@id': 'urn:test:scatter-inprocess/node/end',
+      '@id': 'urn:noocodec:dag:scatter-inprocess/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -191,30 +193,29 @@ const inProcessRunnerDag: DAGType = Validator.dag.validate({
 // Node-body runner DAG (node body scatter, NO container)
 const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:test:scatter-nodebody',
+  '@id': 'urn:noocodec:dag:scatter-nodebody',
   '@type': 'DAG',
   'name': 'scatter-nodebody',
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri('urn:noocodec:dag:scatter-nodebody', 'fan') },
   'nodes': [
     {
-      '@id': 'urn:test:scatter-nodebody/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-nodebody/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'node': 'node-body-worker' },
+      'body': { 'node': 'urn:noocodec:node:node-body-worker' },
       'source': 'items',
       'itemKey': 'item',
       'execution': { 'mode': 'item', 'concurrency': 1 },
-      'gather': { 'strategy': 'discard' },
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
+        'partial': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
+        'all-error': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
+        'empty': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
       },
     },
     {
-      '@id': 'urn:test:scatter-nodebody/node/end',
+      '@id': 'urn:noocodec:dag:scatter-nodebody/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -316,7 +317,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const state = new ScatterContainerState();
     state.items = [1, 2, 3];
 
-    const result = await dispatcher.execute('scatter-inprocess', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:scatter-inprocess', state);
 
     assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
     // No container was bound, so CONTAINER_ROLE is unbound. The in-process path ran.
@@ -345,7 +346,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const state = new ScatterContainerState();
     state.items = [10, 20, 30];
 
-    const result = await dispatcher.execute(RUNNER_DAG_NAME, state);
+    const result = await dispatcher.execute(RUNNER_DAG_IRI, state);
 
     // Container must have been called once per item.
     assert.strictEqual(runDagCallCount, 3, `container.runDag must be called 3 times, got ${runDagCallCount}`);
@@ -376,7 +377,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Counting node-body node — uses a closure counter since node-body
     // scatter runs inline (no snapshot/restore boundary).
-    const countingNodeBody = TestNode.make<ScatterContainerState>('node-body-worker', ['done'], () => {
+    const countingNodeBody = TestNode.make<ScatterContainerState>('urn:noocodec:node:node-body-worker', ['done'], () => {
       inlineNodeCalls++;
       return 'done';
     });
@@ -391,7 +392,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const state = new ScatterContainerState();
     state.items = [5, 6, 7];
 
-    const result = await dispatcher.execute('scatter-nodebody', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:scatter-nodebody', state);
 
     // Container must NEVER be called for node-body scatter.
     assert.strictEqual(containerCalls, 0, 'container.runDag must NOT be called for node-body scatter');
@@ -433,7 +434,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     state.items = [1, 2, 3];
 
     // Must NOT throw even if container fails.
-    const result = await dispatcher.execute(RUNNER_DAG_NAME, state);
+    const result = await dispatcher.execute(RUNNER_DAG_IRI, state);
 
     // Errors were collected and routing happened.
     assert.ok(
@@ -446,7 +447,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (e) Law 7: per-ack checkpoint writes are deep-equal in-process vs contained
   //
   // The SCATTER_PROGRESS_KEY payload is keyed by scatter node name ('fan' in
-  // both cases). The scatter node name is not the DAG name, so identical
+  // both cases). The scatter node name is not the DAG IRI, so identical
   // checkpoint keys appear regardless of which runner DAG was used. Each
   // ScatterProgress entry contains { placementName, inbox, ackedResults }.
   // With gather:'discard' no mappingValues/fieldValue are present. The item

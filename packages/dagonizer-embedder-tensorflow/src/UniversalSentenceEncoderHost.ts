@@ -24,7 +24,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const TfjsUseModuleSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-tensorflow/TfjsUseModule',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-embedder-tensorflow/TfjsUseModule',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['load'],
@@ -35,7 +35,7 @@ export const TfjsUseModuleSchema = {
 } as const;
 
 export const TfjsUseModelSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-tensorflow/TfjsUseModel',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-embedder-tensorflow/TfjsUseModel',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['embed'],

@@ -5,7 +5,7 @@
  *     embedding in Markdown or feeding to a Mermaid renderer.
  *   - `JsonLdRenderer.render(dag)`: JSON-LD document for handing
  *     a DAG to graph databases, ontology projectors, or any other
- *     RDF-aware consumer in the noocodex stack.
+ *     RDF-aware consumer in the noocodec stack.
  *   - `CytoscapeRenderer.render(dag)`: Cytoscape `elements` array for
  *     mounting an interactive DAG view in a browser (live-highlight
  *     active nodes, drag the layout, click for inspection).

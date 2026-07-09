@@ -17,6 +17,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -40,6 +41,7 @@ export class TaskState extends NodeStateBase {
 // #region fast-node
 export class FastTaskNode extends MonadicNode<TaskState, 'done'> {
   readonly name = 'fast-task';
+  readonly '@id' = 'urn:noocodec:node:fast-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
   override readonly timeout = Timeout.ofMs(200);
@@ -63,6 +65,7 @@ export class FastTaskNode extends MonadicNode<TaskState, 'done'> {
 // #region slow-node
 export class SlowTaskNode extends MonadicNode<TaskState, 'done'> {
   readonly name = 'slow-task';
+  readonly '@id' = 'urn:noocodec:node:slow-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → DAGError (code NODE_TIMEOUT).
   override readonly timeout = Timeout.ofMs(50);
@@ -89,12 +92,17 @@ export class SlowTaskNode extends MonadicNode<TaskState, 'done'> {
 // DAGs: one for each node
 // ---------------------------------------------------------------------------
 
-export const fastDag = new DAGBuilder('fast-dag', '1')
-  .node('fast-task', new FastTaskNode(), { 'done': 'end' })
-  .terminal('end')
+export const fastDagIri = 'urn:noocodec:dag:fast-dag' as const;
+export const slowDagIri = 'urn:noocodec:dag:slow-dag' as const;
+const fastPlacement = (placementIdentifier: string): string => DAGIdentity.placementId(fastDagIri, placementIdentifier);
+const slowPlacement = (placementIdentifier: string): string => DAGIdentity.placementId(slowDagIri, placementIdentifier);
+
+export const fastDag = new DAGBuilder(fastDagIri, '1')
+  .node(fastPlacement('fast-task'), new FastTaskNode(), { 'done': fastPlacement('end') })
+  .terminal(fastPlacement('end'))
   .build();
 
-export const slowDag = new DAGBuilder('slow-dag', '1')
-  .node('slow-task', new SlowTaskNode(), { 'done': 'end' })
-  .terminal('end')
+export const slowDag = new DAGBuilder(slowDagIri, '1')
+  .node(slowPlacement('slow-task'), new SlowTaskNode(), { 'done': slowPlacement('end') })
+  .terminal(slowPlacement('end'))
   .build();

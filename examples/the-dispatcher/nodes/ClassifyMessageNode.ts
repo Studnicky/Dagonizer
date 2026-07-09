@@ -1,5 +1,5 @@
 /**
- * ClassifyMessageNode: mode-switched triage with LLM fallback.
+ * ClassifyMessageNode: mode-switched triage with LLM recovery.
  *
  * Routes each inbound customer message to one of three outputs:
  *   'routine'   — AI can handle; routes to ai-compose.
@@ -20,11 +20,11 @@
  *                  adapter timeout. If the embedder is confident (above its
  *                  floor), its verdict routes directly. If the embedder is
  *                  unavailable (`services.intent === null`) or unconfident
- *                  (returns `null`), the node falls back to the LLM path.
+ *                  (returns `null`), the node runs the LLM path.
  *
- * LLM fallback and error handling:
+ * LLM recovery and error handling:
  *   If the LLM call throws, the node escalates with a safety reason rather
- *   than surfacing an unhandled error — a conservative fallback that keeps
+ *   than surfacing an unhandled error — a conservative recovery that keeps
  *   customers in the flow.
  */
 
@@ -37,6 +37,7 @@ import type { DispatcherServices } from '../services.ts';
 
 export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
   readonly name = 'classify-message';
+  readonly '@id' = 'urn:noocodec:node:classify-message';
   readonly outputs = ['routine', 'escalate', 'off-topic'] as const;
   override readonly timeout = Timeout.ofMs(60_000);
 
@@ -105,7 +106,7 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
     }
 
     // Embedder mode: cosine similarity against the intent anchors, no LLM
-    // round-trip, no timeout exposure — falls back to the LLM path below
+    // round-trip, no timeout exposure — routes to the LLM path below
     // when the embedder is unavailable or unconfident.
     if (this.#services.intent !== null) {
       const result = await this.#services.intent.classify(state.message);

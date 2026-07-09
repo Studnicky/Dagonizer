@@ -17,6 +17,7 @@ const GEO_TABLE = new GeohashTzMap();
 
 // #region resolve-coords-node
 export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-coords';
   readonly 'name' = 'resolve-coords';
   readonly 'outputs' = ['resolved'] as const;
 
@@ -44,7 +45,7 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
       if (tableResolved) {
         item.state.candidate = GeoResolutionBuilder.from({
           'source':       'coords',
-          'fallbackUsed': false,
+          'secondaryLookupUsed': false,
           'timezone':     result.timezone,
           'country':      result.country,
           'countryName':  '',
@@ -61,11 +62,11 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
 
       const { timezone, country } = CoordTimezone.resolve(raw.lat, raw.lng);
       const locale = country.length > 0 ? CountryLocale.forIso2(country) : '';
-      const fallbackResolved = timezone.length > 0 || country.length > 0;
+      const secondaryLookupResolved = timezone.length > 0 || country.length > 0;
 
       item.state.candidate = GeoResolutionBuilder.from({
         'source':       'coords',
-        'fallbackUsed': true,
+        'secondaryLookupUsed': true,
         'timezone':     timezone,
         'country':      country,
         'countryName':  '',
@@ -75,7 +76,7 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
         'lat':          raw.lat,
         'lng':          raw.lng,
         'status':       'land',
-        'weight':       fallbackResolved ? raw.weight : 0,
+        'weight':       secondaryLookupResolved ? raw.weight : 0,
       });
     }
     return RoutedBatch.create('resolved', batch);

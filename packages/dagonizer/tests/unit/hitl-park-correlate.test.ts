@@ -18,6 +18,10 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
+const HITL_APPROVE_NODE_IRI = 'urn:noocodec:node:approve';
+const HITL_PROCESS_NODE_IRI = 'urn:noocodec:node:process';
+const HITL_WAIT_NODE_IRI = 'urn:noocodec:node:wait';
+
 // ---------------------------------------------------------------------------
 // Shared state fixture
 // ---------------------------------------------------------------------------
@@ -116,7 +120,7 @@ void describe('NodeStateBase — park()', () => {
 void describe('Engine — park-and-correlate integration', () => {
   void it('node routing "parked" stops execution and populates result.parked', async () => {
     const approvalNode = TestNode.make<HitlState>(
-      'approve',
+      HITL_APPROVE_NODE_IRI,
       ['parked', 'approved', 'rejected'],
       (state) => {
         state.setMetadata('correlationKey', 'ticket-789');
@@ -125,28 +129,31 @@ void describe('Engine — park-and-correlate integration', () => {
       },
     );
 
-    const doneNode = TestNode.make<HitlState>('process', ['done'], (state) => {
+    const doneNode = TestNode.make<HitlState>(HITL_PROCESS_NODE_IRI, ['done'], (state) => {
       state.log.push('process-called');
       return 'done';
     });
 
-    const dag = TestDag.of('hitl-test', 'approve', [
+    const dag = TestDag.of('urn:noocodec:dag:hitl-test', TestDag.placementIri('urn:noocodec:dag:hitl-test', 'approve'), [
       {
-        '@id':     'urn:noocodex:dag:hitl-test/node/approve',
+        '@id': 'urn:noocodec:dag:hitl-test/node/approve',
         '@type':   'SingleNode',
         'name':    'approve',
-        'node':    'approve',
-        'outputs': { 'approved': 'process', 'rejected': 'end' },
+        'node':    HITL_APPROVE_NODE_IRI,
+        'outputs': {
+          'approved': TestDag.placementIri('urn:noocodec:dag:hitl-test', 'process'),
+          'rejected': TestDag.placementIri('urn:noocodec:dag:hitl-test', 'end'),
+        },
       },
       {
-        '@id':     'urn:noocodex:dag:hitl-test/node/process',
+        '@id': 'urn:noocodec:dag:hitl-test/node/process',
         '@type':   'SingleNode',
         'name':    'process',
-        'node':    'process',
-        'outputs': { 'done': 'end' },
+        'node':    HITL_PROCESS_NODE_IRI,
+        'outputs': { 'done': TestDag.placementIri('urn:noocodec:dag:hitl-test', 'end') },
       },
       {
-        '@id':      'urn:noocodex:dag:hitl-test/node/end',
+        '@id': 'urn:noocodec:dag:hitl-test/node/end',
         '@type':    'TerminalNode',
         'name':     'end',
         'outcome':  'completed',
@@ -159,20 +166,20 @@ void describe('Engine — park-and-correlate integration', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HitlState();
-    const result = await dispatcher.execute('hitl-test', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:hitl-test', state);
 
     assert.equal(result.state.lifecycle.variant, 'awaiting-input');
     assert.ok(result.parked !== null, 'result.parked should be non-null');
     assert.equal(result.parked.correlationKey, 'ticket-789');
-    assert.equal(result.parked.cursor, 'approve');
-    assert.equal(result.parked.dagName, 'hitl-test');
-    assert.equal(result.cursor, 'approve');
+    assert.equal(result.parked.cursor, TestDag.placementIri('urn:noocodec:dag:hitl-test', 'approve'));
+    assert.equal(result.parked.dagName, 'urn:noocodec:dag:hitl-test');
+    assert.equal(result.cursor, TestDag.placementIri('urn:noocodec:dag:hitl-test', 'approve'));
     assert.deepEqual(result.state.log, ['approve-called']);
   });
 
   void it('resume() after park re-enters at the parked node', async () => {
     const approvalNode = TestNode.make<HitlState>(
-      'approve',
+      HITL_APPROVE_NODE_IRI,
       ['parked', 'approved', 'rejected'],
       (state) => {
         // On resume: decision is pre-set, so route 'approved'
@@ -183,28 +190,31 @@ void describe('Engine — park-and-correlate integration', () => {
       },
     );
 
-    const processNode = TestNode.make<HitlState>('process', ['done'], (state) => {
+    const processNode = TestNode.make<HitlState>(HITL_PROCESS_NODE_IRI, ['done'], (state) => {
       state.log.push('processed');
       return 'done';
     });
 
-    const dag = TestDag.of('hitl-resume', 'approve', [
+    const dag = TestDag.of('urn:noocodec:dag:hitl-resume', TestDag.placementIri('urn:noocodec:dag:hitl-resume', 'approve'), [
       {
-        '@id':     'urn:noocodex:dag:hitl-resume/node/approve',
+        '@id': 'urn:noocodec:dag:hitl-resume/node/approve',
         '@type':   'SingleNode',
         'name':    'approve',
-        'node':    'approve',
-        'outputs': { 'approved': 'process', 'rejected': 'end' },
+        'node':    HITL_APPROVE_NODE_IRI,
+        'outputs': {
+          'approved': TestDag.placementIri('urn:noocodec:dag:hitl-resume', 'process'),
+          'rejected': TestDag.placementIri('urn:noocodec:dag:hitl-resume', 'end'),
+        },
       },
       {
-        '@id':     'urn:noocodex:dag:hitl-resume/node/process',
+        '@id': 'urn:noocodec:dag:hitl-resume/node/process',
         '@type':   'SingleNode',
         'name':    'process',
-        'node':    'process',
-        'outputs': { 'done': 'end' },
+        'node':    HITL_PROCESS_NODE_IRI,
+        'outputs': { 'done': TestDag.placementIri('urn:noocodec:dag:hitl-resume', 'end') },
       },
       {
-        '@id':      'urn:noocodex:dag:hitl-resume/node/end',
+        '@id': 'urn:noocodec:dag:hitl-resume/node/end',
         '@type':    'TerminalNode',
         'name':     'end',
         'outcome':  'completed',
@@ -218,14 +228,14 @@ void describe('Engine — park-and-correlate integration', () => {
 
     // First run: parks at 'approve'
     const firstState = new HitlState();
-    const parkedResult = await dispatcher.execute('hitl-resume', firstState);
+    const parkedResult = await dispatcher.execute('urn:noocodec:dag:hitl-resume', firstState);
 
     assert.equal(parkedResult.state.lifecycle.variant, 'awaiting-input');
     assert.ok(parkedResult.parked !== null);
-    assert.equal(parkedResult.parked.cursor, 'approve');
+    assert.equal(parkedResult.parked.cursor, TestDag.placementIri('urn:noocodec:dag:hitl-resume', 'approve'));
 
     // Human makes a decision; restore state via checkpoint + resume
-    const ckpt = await Checkpoint.capture('hitl-resume', parkedResult);
+    const ckpt = await Checkpoint.capture('urn:noocodec:dag:hitl-resume', parkedResult);
     const { "state": restoredState, cursor } = ckpt.restoreState(
       CheckpointRestoreAdapter.wrap((snap) => HitlState.restore(snap)),
     );
@@ -233,7 +243,7 @@ void describe('Engine — park-and-correlate integration', () => {
     // Set the decision on the restored state to simulate human input
     restoredState.decision = 'yes';
 
-    const resumedResult = await dispatcher.resume('hitl-resume', restoredState, cursor);
+    const resumedResult = await dispatcher.resume('urn:noocodec:dag:hitl-resume', restoredState, cursor);
 
     assert.equal(resumedResult.state.lifecycle.variant, 'completed');
     assert.equal(resumedResult.parked, null);
@@ -242,7 +252,7 @@ void describe('Engine — park-and-correlate integration', () => {
 
   void it('Checkpoint.capture works on a parked result (cursor is set)', async () => {
     const parkNode = TestNode.make<HitlState>(
-      'wait',
+      HITL_WAIT_NODE_IRI,
       ['parked', 'done'],
       (state) => {
         state.setMetadata('correlationKey', 'ck-001');
@@ -250,16 +260,16 @@ void describe('Engine — park-and-correlate integration', () => {
       },
     );
 
-    const dag = TestDag.of('ckpt-park', 'wait', [
+    const dag = TestDag.of('urn:noocodec:dag:ckpt-park', TestDag.placementIri('urn:noocodec:dag:ckpt-park', 'wait'), [
       {
-        '@id':     'urn:noocodex:dag:ckpt-park/node/wait',
+        '@id': 'urn:noocodec:dag:ckpt-park/node/wait',
         '@type':   'SingleNode',
         'name':    'wait',
-        'node':    'wait',
-        'outputs': { 'done': 'end' },
+        'node':    HITL_WAIT_NODE_IRI,
+        'outputs': { 'done': TestDag.placementIri('urn:noocodec:dag:ckpt-park', 'end') },
       },
       {
-        '@id':      'urn:noocodex:dag:ckpt-park/node/end',
+        '@id': 'urn:noocodec:dag:ckpt-park/node/end',
         '@type':    'TerminalNode',
         'name':     'end',
         'outcome':  'completed',
@@ -271,12 +281,12 @@ void describe('Engine — park-and-correlate integration', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HitlState();
-    const result = await dispatcher.execute('ckpt-park', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:ckpt-park', state);
 
     assert.ok(result.cursor !== null, 'cursor must be set for a parked result');
     // Checkpoint.capture should not throw (requires cursor !== null)
-    const ckpt = await Checkpoint.capture('ckpt-park', result);
-    assert.equal(ckpt.data.cursor, 'wait');
-    assert.equal(ckpt.data.dagName, 'ckpt-park');
+    const ckpt = await Checkpoint.capture('urn:noocodec:dag:ckpt-park', result);
+    assert.equal(ckpt.data.cursor, TestDag.placementIri('urn:noocodec:dag:ckpt-park', 'wait'));
+    assert.equal(ckpt.data.dagName, 'urn:noocodec:dag:ckpt-park');
   });
 });

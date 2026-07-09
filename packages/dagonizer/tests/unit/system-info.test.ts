@@ -6,7 +6,7 @@
  *
  * Tests cover:
  *   1. Base clamp: parallelism minus mainThreadReservation, bounded by
- *      [fallbackWorkerCount, maximumWorkers], floored at 1.
+ *      [minimumWorkerCount, maximumWorkers], floored at 1.
  *   2. Memory clamp: applied when memoryPerWorkerBytes and freeMemoryBytes
  *      are both non-null and positive.
  *   3. Memory clamp skipped when freeMemoryBytes is null (browser path).
@@ -29,7 +29,7 @@ class WorkerCountConfig {
     return {
       'maximumWorkers': 16,
       'mainThreadReservation': 1,
-      'fallbackWorkerCount': 1,
+      'minimumWorkerCount': 1,
       'memoryPerWorkerBytes': null,
       ...overrides,
     };
@@ -67,10 +67,10 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
     );
   });
 
-  void it('fallbackWorkerCount floor: 1-core host → min 1 worker', () => {
+  void it('minimumWorkerCount floor: 1-core host → min 1 worker', () => {
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        WorkerCountConfig.of({ 'fallbackWorkerCount': 1, 'mainThreadReservation': 1 }),
+        WorkerCountConfig.of({ 'minimumWorkerCount': 1, 'mainThreadReservation': 1 }),
         SystemProbes.of(1),
       ),
       1,
@@ -78,21 +78,21 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
   });
 
   void it('parallelism - reservation goes negative → still floored at 1', () => {
-    // 1 core, 2 reserved → raw = -1; fallback = 1; max(1, min(16, max(1, -1))) = 1
+    // 1 core, 2 reserved → raw = -1; minimum = 1; max(1, min(16, max(1, -1))) = 1
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        WorkerCountConfig.of({ 'mainThreadReservation': 2, 'fallbackWorkerCount': 1 }),
+        WorkerCountConfig.of({ 'mainThreadReservation': 2, 'minimumWorkerCount': 1 }),
         SystemProbes.of(1),
       ),
       1,
     );
   });
 
-  void it('fallbackWorkerCount > (parallelism - reservation) → fallback wins', () => {
-    // 4-core, 1 reserved → raw=3; fallback=5; min(16, max(5, 3)) = 5
+  void it('minimumWorkerCount > (parallelism - reservation) → minimum wins', () => {
+    // 4-core, 1 reserved → raw=3; minimum=5; min(16, max(5, 3)) = 5
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        WorkerCountConfig.of({ 'fallbackWorkerCount': 5 }),
+        WorkerCountConfig.of({ 'minimumWorkerCount': 5 }),
         SystemProbes.of(4),
       ),
       5,
@@ -153,20 +153,20 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
     assert.equal(result, 7);
   });
 
-  void it('memory clamp respects fallbackWorkerCount floor', () => {
+  void it('memory clamp respects minimumWorkerCount floor', () => {
     // base = 7; memoryBased = floor(64MB / 256MB) = 0
-    // final = max(1, min(7, max(2, 0))) = 2  (fallback=2 wins over 0)
+    // final = max(1, min(7, max(2, 0))) = 2  (minimum=2 wins over 0)
     const result = SystemInfo.recommendedWorkerCount(
-      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 2 }),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'minimumWorkerCount': 2 }),
       SystemProbes.of(8, 64 * 1024 * 1024),
     );
     assert.equal(result, 2);
   });
 
-  void it('memory clamp floors at 1 even when fallbackWorkerCount is 0', () => {
-    // This is a guard against misconfigured fallback; result can never be < 1.
+  void it('memory clamp floors at 1 even when minimumWorkerCount is 0', () => {
+    // This is a guard against misconfigured minimums; result can never be < 1.
     const result = SystemInfo.recommendedWorkerCount(
-      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 0 }),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'minimumWorkerCount': 0 }),
       SystemProbes.of(8, 64 * 1024 * 1024),
     );
     assert.equal(result, 1);

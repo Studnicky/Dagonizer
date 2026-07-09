@@ -18,7 +18,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GatherStrategySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherStrategy',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/GatherStrategy',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['append', 'collect', 'custom', 'discard', 'map', 'partition'],

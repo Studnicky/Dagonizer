@@ -1,7 +1,7 @@
 /**
  * DeclineNode: politely redirects off-topic messages.
  *
- * Sets state.response to the standard Noocodex off-topic reply,
+ * Sets state.response to the standard Nocodec off-topic reply,
  * appends the exchange to the conversation log, and routes 'declined'.
  */
 
@@ -10,10 +10,11 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 import type { DispatcherState } from '../DispatcherState.ts';
 
-const DECLINE_REPLY = "I'm sorry, I can only help with questions about Noocodex orders and products. Is there something book-related I can assist you with?";
+const DECLINE_REPLY = "I'm sorry, I can only help with questions about Nocodec orders and products. Is there something book-related I can assist you with?";
 
 export class DeclineNode extends MonadicNode<DispatcherState, 'declined'> {
   readonly name = 'decline';
+  readonly '@id' = 'urn:noocodec:node:decline';
   readonly outputs = ['declined'] as const;
 
   override get outputSchema(): Record<'declined', SchemaObjectType> {

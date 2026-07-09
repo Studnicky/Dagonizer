@@ -99,7 +99,7 @@ void describe('ExecutionRequest schema', () => {
   });
 
   void it('rejects missing required dagName', () => {
-     
+
     const { 'dagName': _dagName, ...rest } = validRequest;
     assert.equal(requestValidator(rest), false);
   });
@@ -195,21 +195,21 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
   void it('Validator.dag.is accepts a minimal valid DAG and returns true', () => {
     const minimalDag: unknown = {
       '@context': { '@version': 1.1 },
-      '@id': 'urn:noocodex:dag:cte-smoke',
+      '@id': 'urn:noocodec:dag:cte-smoke',
       '@type': 'DAG',
       'name': 'cte-smoke',
       'version': '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:cte-smoke/node/step',
+          '@id': 'urn:noocodec:dag:cte-smoke/node/step',
           '@type': 'SingleNode',
           'name': 'step',
-          'node': 'step',
+          'node': 'urn:noocodec:node:step',
           'outputs': { 'done': 'end' },
         },
         {
-          '@id': 'urn:noocodex:dag:cte-smoke/node/end',
+          '@id': 'urn:noocodec:dag:cte-smoke/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',

@@ -9,7 +9,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const NodeTypeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeType',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['embedded', 'scatter', 'single'],

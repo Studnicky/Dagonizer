@@ -120,10 +120,10 @@ void test('chatStream maps a MAX_TOKENS finishReason through to the returned res
 });
 
 // ---------------------------------------------------------------------------
-// chatStream — tool turn falls back to the buffered default
+// chatStream — tool turn uses the buffered default
 // ---------------------------------------------------------------------------
 
-void test('chatStream falls back to generateContent (buffered) when the request carries tools', async () => {
+void test('chatStream uses generateContent (buffered) when the request carries tools', async () => {
   let capturedUrl: string | undefined;
   const restore = FetchStub.install((input) => {
     capturedUrl = String(input);

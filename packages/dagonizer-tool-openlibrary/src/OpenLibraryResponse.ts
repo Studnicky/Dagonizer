@@ -49,7 +49,7 @@ export const OpenLibraryDocSchema = {
 export type OpenLibraryDocType = FromSchema<typeof OpenLibraryDocSchema>;
 
 export const OpenLibraryResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-tool-openlibrary/OpenLibraryResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-tool-openlibrary/OpenLibraryResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {

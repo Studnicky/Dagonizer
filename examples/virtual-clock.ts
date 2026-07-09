@@ -1,6 +1,6 @@
 /**
  * virtual-clock: deterministic per-node-timeout testing under
- * VirtualScheduler from @studnicky/dagonizer/testing.
+ * VirtualScheduler from @studnicky/scheduler.
  *
  * `RetryPolicy`'s backoff delays run on `@studnicky/retry`'s own internal
  * timer (not the injected `Scheduler`), so `VirtualScheduler.advance()` no
@@ -39,7 +39,7 @@ dispatcher.registerDAG(dag);
 
 const state = new SlowState();
 const startedAt = Date.now();
-const runPromise = dispatcher.execute('virtual-clock-dag', state);
+const runPromise = dispatcher.execute('urn:noocodec:dag:virtual-clock-dag', state);
 
 // Drive the timeout concurrently while the run awaits: yield so the node's
 // `.after(200)` registers in the VirtualScheduler, advance past the budget,

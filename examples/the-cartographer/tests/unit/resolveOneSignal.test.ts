@@ -119,7 +119,7 @@ async function executeSingle<TOutput extends string>(
 // Test suites
 // ---------------------------------------------------------------------------
 
-describe('ResolveNoneNode — fallback resolver', () => {
+describe('ResolveNoneNode — secondary resolver', () => {
   it('always yields source:"none" weight:0', async () => {
     const state = new CartographerState();
     const node = new ResolveNoneNode();
@@ -330,7 +330,7 @@ describe('ResolveCoordsNode — coords kind', () => {
     const result = await executeSingle(node, state);
     assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'coords');
-    // Weight is non-zero: the table (or fallback) resolved something
+    // Weight is non-zero: the table or secondary resolver produced a result.
     assert.ok(state.candidate.weight > 0, 'weight should be positive for a resolvable coordinate');
   });
 });

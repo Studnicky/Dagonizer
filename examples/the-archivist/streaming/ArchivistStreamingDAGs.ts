@@ -32,6 +32,7 @@ export class StreamingDemoState extends NodeStateBase {
 
 export class CollectCandidateNode extends MonadicNode<StreamingDemoState, 'done'> {
   readonly name = 'collect-candidate';
+  readonly '@id' = 'urn:noocodec:node:collect-candidate';
   readonly outputs = ['done'] as const;
 
   static of(): CollectCandidateNode {
@@ -53,33 +54,37 @@ export class CollectCandidateNode extends MonadicNode<StreamingDemoState, 'done'
 
 export const fanInCandidatesDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:archivist-streaming:fan-in-candidates',
+  '@id': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates',
   '@type':      'DAG',
   'name':       'fan-in-candidates',
   'version':    '1',
-  'entrypoint': 'scatter-candidates',
+  'entrypoints': { 'main': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/scatter-candidates' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:archivist-streaming:fan-in-candidates/node/scatter-candidates',
+      '@id': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/scatter-candidates',
       '@type':       'ScatterNode',
       'name':        'scatter-candidates',
-      'body':        { 'node': 'collect-candidate' },
+      'body':        { 'node': 'urn:noocodec:node:collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
       'execution': { 'mode': 'item', 'concurrency': 2 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'collectedCandidates',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
+        'partial': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
+        'all-error': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
+        'empty':       'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:archivist-streaming:fan-in-candidates/node/end',
+      '@id': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
+      '@type': 'GatherNode',
+      'name': 'collect-candidates',
+      sources: { 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/scatter-candidates': {} },
+      'gather': { 'strategy': 'append', 'target': 'collectedCandidates' },
+      'outputs': { 'success': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/end', 'error': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/end', 'empty': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
@@ -93,33 +98,37 @@ export const fanInCandidatesDag: DAGType = {
 
 export const streamProducerCandidatesDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:archivist-streaming:stream-producer-candidates',
+  '@id': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates',
   '@type':      'DAG',
   'name':       'stream-producer-candidates',
   'version':    '1',
-  'entrypoint': 'scatter-candidates',
+  'entrypoints': { 'main': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/scatter-candidates' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:archivist-streaming:stream-producer-candidates/node/scatter-candidates',
+      '@id': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/scatter-candidates',
       '@type':       'ScatterNode',
       'name':        'scatter-candidates',
-      'body':        { 'node': 'collect-candidate' },
+      'body':        { 'node': 'urn:noocodec:node:collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
       'execution': { 'mode': 'item', 'concurrency': 2 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'collectedCandidates',
-      },
       'outputs': {
-        'all-success': 'stream-end',
-        'partial':     'stream-end',
-        'all-error':   'stream-end',
-        'empty':       'stream-end',
+        'all-success': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',
+        'partial': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',
+        'all-error': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',
+        'empty':       'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/stream-end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:archivist-streaming:stream-producer-candidates/node/stream-end',
+      '@id': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',
+      '@type': 'GatherNode',
+      'name': 'collect-candidates',
+      sources: { 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/scatter-candidates': {} },
+      'gather': { 'strategy': 'append', 'target': 'collectedCandidates' },
+      'outputs': { 'success': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/stream-end', 'error': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/stream-end', 'empty': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/stream-end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/stream-end',
       '@type':   'TerminalNode',
       'name':    'stream-end',
       'outcome': 'completed',

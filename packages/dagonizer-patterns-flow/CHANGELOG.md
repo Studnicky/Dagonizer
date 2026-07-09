@@ -96,7 +96,7 @@
 
   `NodeStateInterface` gains `deleteMetadata(key)`. The `./constants` subpath now resolves (constant value+type pairs: `GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ParallelCombine`, `ScatterOutput`).
 
-  No back-compat shims. Clean breaks, versioned:
+  Clean breaks, versioned:
 
   - `DAGDeriver.derive` takes `nodes` (contracts co-located on each node, single source of truth); the standalone `contracts` input is removed.
   - `CheckpointData.stores` is required; checkpoints produced before stores were captured no longer load.

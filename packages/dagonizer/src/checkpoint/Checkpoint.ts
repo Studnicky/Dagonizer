@@ -9,9 +9,10 @@
  * @example
  * ```ts
  * // Save a checkpoint after early termination.
- * const result = await dispatcher.execute('my-dag', state, { signal });
+ * const dagIri = 'urn:noocodec:dag:my-dag';
+ * const result = await dispatcher.execute(dagIri, state, { signal });
  * if (result.cursor !== null) {
- *   const ckpt = await Checkpoint.capture('my-dag', result);
+ *   const ckpt = await Checkpoint.capture(dagIri, result);
  *   await storage.set('ckpt', ckpt.toJson());
  * }
  *
@@ -26,7 +27,7 @@
  *
  * @example Named-store checkpoint
  * ```ts
- * const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
+ * const ckpt = await Checkpoint.capture('urn:noocodec:dag:my-dag', result, { stores: { memory } });
  * await checkpointStore.save(runId, ckpt.toJson());
  *
  * // Resume:
@@ -46,6 +47,7 @@ import type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointR
 import type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
 import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/SnapshottableInterface.js';
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
+import { DAGIdentity } from '../entities/dag/DAG.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
@@ -55,7 +57,7 @@ import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.j
 import { Validator } from '../validation/Validator.js';
 
 /**
- * Bare function signature for restoring state from a JSON snapshot.
+ * Plain function signature for restoring state from a JSON snapshot.
  * Used internally by `CheckpointRestoreAdapter`. Pass a function of this
  * shape to `CheckpointRestoreAdapter.wrap(fn)` to obtain an adapter
  * that satisfies `CheckpointRestoreAdapterInterface`.
@@ -154,7 +156,7 @@ export class Checkpoint {
   // ── Static factory methods ────────────────────────────────────────────────
 
   /**
-   * Build a `Checkpoint` instance from a flow name, execution result, and
+   * Build a `Checkpoint` instance from a DAG IRI, execution result, and
    * optional named stores. Store snapshots run through the shared batch
    * executor, so consumers can tune concurrency, throttle, and timing.
    *
@@ -170,8 +172,9 @@ export class Checkpoint {
       throw new DAGError(`Cannot checkpoint a completed DAG '${dagName}': no cursor to resume from`);
     }
 
+    const dagIri = DAGIdentity.id(dagName);
     const base: CheckpointDataType = {
-      'dagName': dagName,
+      'dagName': dagIri,
       'cursor': result.cursor,
       'state': result.state.snapshot(),
       'executedNodes': [...result.executedNodes],
@@ -252,7 +255,7 @@ export class Checkpoint {
 
   /**
    * Rehydrate the state from this checkpoint via the supplied adapter.
-   * Returns the rehydrated state, dag name, cursor, and execution history.
+   * Returns the rehydrated state, DAG IRI, cursor, and execution history.
    *
    * Pass a `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`
    * to wrap an inline lambda in the adapter contract.

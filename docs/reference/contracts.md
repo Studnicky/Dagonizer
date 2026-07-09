@@ -29,7 +29,7 @@ Use this page when authoring a plugin, backend, custom node, custom store, worke
 
 ## How It Works
 
-Contracts keep implementation detail outside JSON-LD. A DAG placement names a node, container role, channel, gather strategy, or embedded DAG; registries and injected services bind those names to concrete code that satisfies these interfaces.
+Contracts keep implementation detail outside JSON-LD. A DAG placement carries graph identity in `@id`, references node/DAG implementations by registered IRI, and names container roles, channels, gather strategies, or reducers. Registries and injected services bind those references to concrete code that satisfies these interfaces.
 
 The rule is practical: implement the smallest contract Dagonizer actually needs, then register or inject it at the boundary that owns it.
 
@@ -285,9 +285,9 @@ interface DagContainerInterface {
 }
 ```
 
-Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
+Adapter contract for running an embedded DAG or DAG-body scatter in an isolate (worker thread, forked child, spawned process, Web Worker, or remote host). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`.
+`runDag` must preserve the child DAG boundary: the task carries the selected DAG IRI, placement path, state snapshot, timeout, and execution context; the outcome returns terminal output, terminal state snapshot, collected errors, and intermediates. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
@@ -355,7 +355,7 @@ interface DagOutcomeType {
 }
 ```
 
-Result returned by `DagContainerInterface.runDag()` after an embedded DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `stateSnapshot` is the terminal child state snapshot (`null` when the container cannot produce one, e.g. transport failure); the parent calls `cloneState.applySnapshot(stateSnapshot)` when non-null. `intermediates` are per-node results forwarded to the parent execution stream.
+Result returned by `DagContainerInterface.runDag()` after a child DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `stateSnapshot` is the terminal child state snapshot (`null` when the container cannot produce one, e.g. transport failure); the parent calls `cloneState.applySnapshot(stateSnapshot)` when non-null. `intermediates` are per-node results forwarded to the parent execution stream.
 
 ### DagTaskInterface
 
@@ -385,7 +385,7 @@ interface SystemInfoInterface {
 }
 ```
 
-Host-environment probe for pool sizing recommendations. Implementations are environment-specific (Node `os.availableParallelism()` + `os.totalmem()`; Web `navigator.hardwareConcurrency`). The recommended count follows the quadrascope formula: `clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)`, optionally further clamped by `memoryPerWorkerBytes`.
+Host-environment probe for pool sizing recommendations. Implementations are environment-specific (Node `os.availableParallelism()` + `os.totalmem()`; Web `navigator.hardwareConcurrency`). The recommended count follows the quadrascope formula: `clamp(parallelism − mainThreadReservation, minimumWorkerCount, maximumWorkers)`, optionally further clamped by `memoryPerWorkerBytes`.
 
 ### GatherExecutionType / GatherRecordType / OutcomeRecordType
 
@@ -395,7 +395,7 @@ These contracts ship through `@studnicky/dagonizer/contracts` for use by custom 
 import type { GatherExecutionType, GatherRecordType, OutcomeRecordType } from '@studnicky/dagonizer/contracts';
 ```
 
-`GatherRecordType<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecutionType<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecordType` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
+`GatherRecordType<TState>` carries producer results into a `GatherNode`: `source`, `index`, `item`, `output`, `terminalOutcome`, `result`, and `cloneState`. `GatherExecutionType<TState>` is the invocation context handed to `GatherStrategy.finalize`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(nodeIri)`). `OutcomeRecordType` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
 
 ### LlmAdapterInterface / LlmClientInterface
 
@@ -421,24 +421,24 @@ interface LlmClientInterface {
 
 `LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `BaseAdapterOptionsType` also carries cross-cutting options every adapter accepts: `systemPrompt`, a default directive the base injects as the leading system message of any request that carries none (never overriding an explicit system turn), `timeoutMs` (default `60_000`), a per-request deadline, optional `circuitBreaker` / `tokenBucket` guards, and optional `timing` for substrate `adapter.chat.*` / `adapter.chatStream.*` events. An expired deadline surfaces as a `TIMEOUT` classification so a cascade falls through instead of hanging. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
 
-`chat()` is the buffered call: it resolves once with the complete `ChatResponseType`. `chatStream(request, sink)` additionally pushes incremental `ChatStreamChunkType` (`{ delta }`) values to `sink` as the response is generated, while still resolving with the same fully-assembled `ChatResponseType` — the sink is a pure observation channel, not an alternate return path. `BaseAdapter`'s default `performChatStream` is buffered: it calls `chat()` internally and pushes exactly one chunk carrying the full response text, so every adapter satisfies the streaming contract even without a real streaming backend. Anthropic, the Gemini API adapter, and the OpenAI-compatible base (Ollama plus the Groq/Cerebras/Mistral/OpenRouter presets built on it) override `performChatStream` to push real per-token deltas parsed from a server-sent-events response body. `gemini-nano` streams via the in-browser `LanguageModel` session's `promptStreaming()` async iterable; `web-llm` streams via the `@mlc-ai/web-llm` engine's own stream. Every override falls back to the buffered default for tool-bearing requests (`request.tools.length > 0`), because partial tool-call JSON is unsafe to parse mid-stream. `chatStream` is single-attempt — unlike `chat()` it is not retry-wrapped, since retrying a partially-emitted stream would double-emit deltas already delivered — but it is still bounded by the same abort+timeout deadline (`timeoutMs`). `sink.push()` delivery is best-effort: a rejecting sink never fails the call. See [Adapters](./adapters) for the full per-provider streaming reference and [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming) for a working `CallModelNode` + sink example.
+`chat()` is the buffered call: it resolves once with the complete `ChatResponseType`. `chatStream(request, sink)` additionally pushes incremental `ChatStreamChunkType` (`{ delta }`) values to `sink` as the response is generated, while still resolving with the same fully-assembled `ChatResponseType` — the sink is a pure observation channel, not an alternate return path. `BaseAdapter`'s default `performChatStream` is buffered: it calls `chat()` internally and pushes exactly one chunk carrying the full response text, so every adapter satisfies the streaming contract even without a streaming backend. Anthropic, the Gemini API adapter, and the Ollama, Groq, Cerebras, Mistral, and OpenRouter adapters override `performChatStream` to push real per-token deltas parsed from a server-sent-events response body. `gemini-nano` streams via the in-browser `LanguageModel` session's `promptStreaming()` async iterable; `web-llm` streams via the `@mlc-ai/web-llm` engine's own stream. Tool-bearing requests (`request.tools.length > 0`) use the buffered default because partial tool-call JSON is unsafe to parse mid-stream. `chatStream` is single-attempt and bounded by the same abort+timeout deadline (`timeoutMs`). `sink.push()` delivery is best-effort: a rejecting sink never fails the call. See [Adapters](./adapters) for the full per-provider streaming reference and [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming) for a working `CallModelNode` + sink example.
 
 ### NodeInvokerInterface
 
 ```ts twoslash
 // ---cut---
 interface NodeInvokerInterface {
-  invokeNode(nodeName: string): Promise<void>;
+  invokeNode(nodeIri: string): Promise<void>;
 }
 ```
 
-Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecutionType.invoker`; used exclusively by `custom` gather strategies to invoke the registered node named in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(name)`.
+Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecutionType.invoker`; used exclusively by `custom` gather strategies to invoke the registered node IRI in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(nodeIri)`.
 
 ## Details for Nerds
 
 Contracts are intentionally narrow. A node contract does not know how the dispatcher stores registries. A store contract does not know how checkpoints serialize. A channel contract does not know which host receives the handoff. Each seam receives only the methods Dagonizer needs to call.
 
-That keeps plugin packages portable: implement the contract, register or inject the implementation, and let JSON-LD continue describing topology by name.
+That keeps plugin packages portable: implement the contract, register or inject the implementation, and let JSON-LD continue describing topology by IRI.
 
 ## Related Concepts
 

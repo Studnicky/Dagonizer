@@ -14,6 +14,7 @@ import {
 
 // #region resolve-locale-node
 export class ResolveLocaleNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-locale';
   readonly 'name' = 'resolve-locale';
   readonly 'outputs' = ['resolved'] as const;
 
@@ -45,7 +46,7 @@ export class ResolveLocaleNode extends MonadicNode<CartographerState, 'resolved'
 
       item.state.candidate = GeoResolutionBuilder.from({
         'source':       'locale',
-        'fallbackUsed': false,
+        'secondaryLookupUsed': false,
         'timezone':     timezone,
         'country':      country,
         'countryName':  '',

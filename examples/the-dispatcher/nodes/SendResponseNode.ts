@@ -17,6 +17,7 @@ import type { DispatcherState } from '../DispatcherState.ts';
 
 export class SendResponseNode extends MonadicNode<DispatcherState, 'sent'> {
   readonly name = 'send-response';
+  readonly '@id' = 'urn:noocodec:node:send-response';
   readonly outputs = ['sent'] as const;
 
   override get outputSchema(): Record<'sent', SchemaObjectType> {

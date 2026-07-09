@@ -19,6 +19,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region merge-events-node
 export class MergeEventsNode extends MonadicNode<CartographerState, 'merged'> {
+  readonly '@id' = 'urn:noocodec:node:merge-events';
   readonly 'name' = 'merge-events';
   readonly 'outputs' = ['merged'] as const;
 

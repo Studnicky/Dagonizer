@@ -8,8 +8,8 @@
  *     SSE `ReadableStream` — deltas reach the sink in order, and the
  *     returned `ChatResponseType` carries the concatenated text, mapped
  *     `finishReason`, and the usage from the final `include_usage` chunk.
- *  3. Tool-turn fallback: a request carrying `tools` never sets
- *     `stream: true`; it routes to the buffered default (one chunk).
+ *  3. Tool-turn buffering: a request carrying `tools` never sets
+ *     `stream: true`; it uses the buffered stream contract (one chunk).
  *
  * Every test stubs `globalThis.fetch`; the original is restored in a
  * `finally` block regardless of outcome.
@@ -222,9 +222,9 @@ void describe('OpenAiCompatibleAdapter.chatStream — text turn', () => {
   });
 });
 
-// ── 3. Tool-turn fallback to the buffered default ─────────────────────────────
+// ── 3. Tool-turn buffering ────────────────────────────────────────────────────
 
-void describe('OpenAiCompatibleAdapter.chatStream — tool turn falls back to buffered', () => {
+void describe('OpenAiCompatibleAdapter.chatStream — tool turn uses buffered stream contract', () => {
   void it('never sends stream: true and pushes exactly one chunk carrying the full text', async () => {
     const adapter = OpenAiCompatibleAdapter.groq('test-key');
     const sink = new CollectingSink();
@@ -253,7 +253,7 @@ void describe('OpenAiCompatibleAdapter.chatStream — tool turn falls back to bu
     assert.equal(calls.length, 1, 'exactly one fetch call (buffered, not streamed)');
     const body: unknown = JSON.parse(typeof calls[0]?.body === 'string' ? calls[0].body : '{}');
     assert.ok(JsonRecord.is(body));
-    assert.ok(!('stream' in body), 'buffered fallback must not set stream: true');
+    assert.ok(!('stream' in body), 'buffered tool turn must not set stream: true');
 
     assert.equal(sink.deltas.length, 1, 'buffered default pushes exactly one chunk');
     assert.equal(sink.deltas[0], 'tool-turn ok');

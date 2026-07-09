@@ -30,7 +30,7 @@ The graph does not need to know whether vectors come from local Ollama, a browse
 
 ## How It Works
 
-The host provisions an `EmbedderInterface` before DAG execution and passes it through service injection. Nodes call the embedder to produce vectors, then apply domain logic such as cosine similarity or threshold routing. The registry and cascade mirror the LLM adapter surface, so availability probing and provider fallback happen outside the graph.
+The host provisions an `EmbedderInterface` before DAG execution and passes it through service injection. Nodes call the embedder to produce vectors, then apply domain logic such as cosine similarity or threshold routing. The registry and cascade mirror the LLM adapter surface, so availability probing and provider selection happen outside the graph.
 
 That symmetry is deliberate. If your application can configure chat providers through an adapter cascade, it can configure embedding providers through the same registry/cascade style.
 
@@ -56,7 +56,7 @@ Open [The Archivist](./the-archivist); the browser runner provisions the embedde
 
 Embedders let applications add semantic comparison to DAG nodes without tying the graph to one vector provider. Use them for intent classification, memory recall, deduplication, ranking, and similarity checks that should work across browser, local, or cloud embedding backends.
 
-The application benefit is portability: change vector providers, dimensions, or fallback order in service setup while keeping DAG topology and node routes stable.
+The application benefit is portability: change vector providers, dimensions, or selection order in service setup while keeping DAG topology and node routes stable.
 
 ## Code Samples
 
@@ -68,7 +68,7 @@ The provisioner snippet builds the embedder cascade. The browser services snippe
 
 ## Details for Nerds
 
-- **`OllamaEmbedder`.** Calls Ollama's `/api/embeddings` endpoint. Constructed with `{ model?, baseUrl?, dimensions? }`: defaults to `nomic-embed-text` (768-dim) at the local loopback. No API key required for local usage. Known model dimensions are resolved from a built-in table; unknown models require `dimensions` explicitly.
+- **`OllamaEmbedder`.** Calls Ollama's `/api/embeddings` endpoint. Constructed with `{ model?, baseUrl?, dimensions? }`: no API key required for local usage. `selectEmbeddingModel()` discovers an installed embedding model from `/api/tags`; known model dimensions are resolved from a built-in table, and unknown models require `dimensions` explicitly.
 - **`probe()`.** Issues `GET /api/tags` with a 500 ms timeout against the configured base URL. Returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Symmetric with `OllamaApiAdapter.probe()` so a single running Ollama daemon makes both surfaces available.
 - **`EmbedderRegistry`.** Stores embedders keyed by `(provider, model)` pairs. API mirrors `LlmAdapterRegistry` for consistency.
 - **`EmbedderCascade`.** Walks the preference list and returns the first available embedder. Throws when no embedder probes as available.

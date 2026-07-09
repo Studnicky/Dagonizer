@@ -49,7 +49,7 @@ describe('18-observability: subclass hooks fire at execution boundaries', () => 
     dispatcher.registerDAG(dag);
 
     const state = new PipelineState();
-    const result = await dispatcher.execute('observe-demo', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:observe-demo', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.value, 10);
@@ -61,7 +61,7 @@ describe('18-observability: subclass hooks fire at execution boundaries', () => 
     dispatcher.registerNode(new TransformNode());
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('observe-demo', new PipelineState());
+    await dispatcher.execute('urn:noocodec:dag:observe-demo', new PipelineState());
 
     assert.equal(dispatcher.flowStartCount, 1);
   });
@@ -72,7 +72,7 @@ describe('18-observability: subclass hooks fire at execution boundaries', () => 
     dispatcher.registerNode(new TransformNode());
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('observe-demo', new PipelineState());
+    await dispatcher.execute('urn:noocodec:dag:observe-demo', new PipelineState());
 
     assert.equal(dispatcher.flowEndCount, 1);
   });
@@ -83,14 +83,14 @@ describe('18-observability: subclass hooks fire at execution boundaries', () => 
     dispatcher.registerNode(new TransformNode());
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('observe-demo', new PipelineState());
+    await dispatcher.execute('urn:noocodec:dag:observe-demo', new PipelineState());
 
     assert.ok(
-      dispatcher.nodeStartNames.includes('validate'),
+      dispatcher.nodeStartNames.includes('dag:observe-demo/node/validate'),
       `nodeStartNames: ${JSON.stringify(dispatcher.nodeStartNames)}`,
     );
     assert.ok(
-      dispatcher.nodeStartNames.includes('transform'),
+      dispatcher.nodeStartNames.includes('dag:observe-demo/node/transform'),
       `nodeStartNames: ${JSON.stringify(dispatcher.nodeStartNames)}`,
     );
   });
@@ -101,14 +101,14 @@ describe('18-observability: subclass hooks fire at execution boundaries', () => 
     dispatcher.registerNode(new TransformNode());
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('observe-demo', new PipelineState());
+    await dispatcher.execute('urn:noocodec:dag:observe-demo', new PipelineState());
 
     assert.ok(
-      dispatcher.nodeEndNames.includes('validate'),
+      dispatcher.nodeEndNames.includes('dag:observe-demo/node/validate'),
       `nodeEndNames: ${JSON.stringify(dispatcher.nodeEndNames)}`,
     );
     assert.ok(
-      dispatcher.nodeEndNames.includes('transform'),
+      dispatcher.nodeEndNames.includes('dag:observe-demo/node/transform'),
       `nodeEndNames: ${JSON.stringify(dispatcher.nodeEndNames)}`,
     );
   });

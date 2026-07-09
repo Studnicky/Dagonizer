@@ -20,6 +20,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region parse-ndjson-node
 export class ParseNdjsonNode extends MonadicNode<CartographerState, 'normalized' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:parse-ndjson';
   readonly 'name' = 'parse-ndjson';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 

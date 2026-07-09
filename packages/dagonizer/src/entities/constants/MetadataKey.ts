@@ -9,7 +9,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const MetadataKeySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/MetadataKey',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/MetadataKey',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['currentItem', 'gatherResults', 'itemIndex'],

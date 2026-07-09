@@ -76,7 +76,7 @@ Nodes receive the composed signal in the `context` argument and must propagate i
 
 <<< @/../examples/dags/06-cancellation.ts#node-cancellation-aware
 
-`context` also carries `context.dagName` and `context.nodeName` for logging.
+`context` also carries `context.dagName` and `context.nodeName` for logging and correlation. Treat them as observability fields; the DAG document `@id` and placement `@id` remain the execution identity.
 
 ### Detecting abort inside a node
 
@@ -89,7 +89,7 @@ A node that ignores `context.signal` runs to completion even after the signal fi
 Once the signal fires:
 
 - The iterator stops without starting the next node.
-- `result.cursor` holds the node that would have run next. Pass it to `dispatcher.resume()` to continue from that point.
+- `result.cursor` holds the placement IRI that would have run next. Pass it to `dispatcher.resume()` to continue from that point.
 - `result.state.lifecycle.variant` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
 <<< @/../examples/06-cancellation.ts#cursor-check

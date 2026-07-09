@@ -18,7 +18,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const OllamaEmbedResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/OllamaEmbedResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/OllamaEmbedResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['embedding'],

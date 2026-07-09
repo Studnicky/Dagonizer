@@ -22,7 +22,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const TransformersModuleSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-transformers/TransformersModule',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-embedder-transformers/TransformersModule',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['pipeline', 'env'],

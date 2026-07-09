@@ -2,7 +2,7 @@
  * routeEventType: dispatches state.canonicalVariant.eventType to one of FIVE
  * per-type outputs (one per CanonicalEventVariant member). Sets state.routing
  * path and run/skip flags so downstream records carry correct lane metadata
- * (mirrors what routeKind did for the legacy fat-CanonicalEvent pipeline).
+ * (matches the routeKind behavior for CanonicalEvent variants).
  *
  * Lane mapping:
  *   position-ping         → 'geo-only'  (geometry only; no order/sensor/customs)
@@ -46,6 +46,7 @@ const ROUTING_PATH: Readonly<Record<VariantRoute, RoutingPath>> = {
 };
 
 export class RouteEventTypeNode extends MonadicNode<CartographerState, VariantRoute> {
+  readonly '@id' = 'urn:noocodec:node:route-event-type-variant';
   readonly 'name' = 'route-event-type-variant';
   readonly 'outputs' = ['position-ping', 'sensor-reading', 'customs-event', 'facility-scan', 'delivery-confirmation'] as const;
 

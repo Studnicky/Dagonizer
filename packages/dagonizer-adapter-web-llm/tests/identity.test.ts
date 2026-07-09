@@ -192,7 +192,7 @@ void test('WebLlmAdapter.selectChatModel picks a preferred model by name', async
   assert.equal(picked, 'Llama-3.2-1B-Instruct-q4f16_1-MLC');
 });
 
-void test('WebLlmAdapter.selectChatModel falls back to first catalog entry when preferred is absent', async () => {
+void test('WebLlmAdapter.selectChatModel selects first catalog entry when preferred is absent', async () => {
   const a = new WebLlmAdapter();
   const models = await a.listModels();
   const picked = await a.selectChatModel();

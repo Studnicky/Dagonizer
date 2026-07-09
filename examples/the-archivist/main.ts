@@ -16,7 +16,7 @@
  *     Resuming restores the checkpoint and continues the parked DAG.
  *
  *   URL params:
- *     ?apiKey=<key>        Gemini API key for the REST adapter fallback.
+ *     ?apiKey=<key>        Gemini API key for the REST adapter.
  *     ?lang=<tag>          Override browser language detection (e.g. ?lang=fr).
  *     ?park                Skip auto-run; park immediately on load.
  *     ?webLlmModel=<id>    Override the WebLLM prebuilt model.
@@ -165,7 +165,7 @@ if (webLlmModel !== null) {
   );
 }
 
-// REST fallback: registered only when ?apiKey= is supplied.
+// REST adapter: registered only when ?apiKey= is supplied.
 if (urlApiKey.length > 0) {
   const geminiApiAdapter = new GeminiApiAdapter(urlApiKey, { 'systemPrompt': prompts.systemPrompt() });
   const geminiApiModel   = await geminiApiAdapter.selectChatModel();

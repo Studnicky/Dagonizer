@@ -8,6 +8,18 @@ import { CompositeLayout } from '../../src/viz/CompositeLayout.js';
 import { CytoscapeGraph } from '../../src/viz/CytoscapeGraph.js';
 import { TestDag } from '../_support/TestDag.js';
 
+const LINEAR_DAG_IRI = 'urn:noocodec:dag:linear';
+const MINI_DAG_IRI = 'urn:noocodec:dag:mini';
+const RETRY_DAG_IRI = 'urn:noocodec:dag:retry';
+const INNER_A_DAG_IRI = 'urn:noocodec:dag:innerA';
+const INNER_B_DAG_IRI = 'urn:noocodec:dag:innerB';
+const OUTER_TWO_DAG_IRI = 'urn:noocodec:dag:outer2';
+const INNER_DAG_IRI = 'urn:noocodec:dag:inner';
+const OUTER_DAG_IRI = 'urn:noocodec:dag:outer';
+
+const placementIri = TestDag.placementIri;
+const scopedPlacementIri = (parentIri: string, dagIri: string, placement: string): string => `${parentIri}/${placementIri(dagIri, placement)}`;
+
 // ── Local type-narrowing helpers ─────────────────────────────────────────────
 
 class CytoscapeGuard {
@@ -44,9 +56,9 @@ const fakeContainer = rawContainer;
 class PlacementFixture {
   private constructor() {}
 
-  static single(name: string, outputs: Record<string, string>): DAGType['nodes'][0] {
+  static single(dagIri: string, name: string, outputs: Record<string, string>): DAGType['nodes'][0] {
     return {
-      '@id':    `urn:noocodex:dag:test/node/${name}`,
+      '@id': placementIri(dagIri, name),
       '@type':  'SingleNode',
       'name':   name,
       'node':   name,
@@ -125,11 +137,11 @@ class CaptureReader {
 
 void describe('CytoscapeGraph.mount', () => {
   void it('mounts: resolves the Core, sets .cy, and invokes onReady', async () => {
-    const dag = TestDag.of('linear', 'A', [
-      PlacementFixture.single('A', { "next": 'B' }),
-      PlacementFixture.single('B', { "next": 'C' }),
-      PlacementFixture.single('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const dag = TestDag.of(LINEAR_DAG_IRI, placementIri(LINEAR_DAG_IRI, 'A'), [
+      PlacementFixture.single(LINEAR_DAG_IRI, 'A', { "next": placementIri(LINEAR_DAG_IRI, 'B') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'B', { "next": placementIri(LINEAR_DAG_IRI, 'C') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'C', { "done": placementIri(LINEAR_DAG_IRI, 'end') }),
+      { '@id': placementIri(LINEAR_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -149,11 +161,11 @@ void describe('CytoscapeGraph.mount', () => {
   });
 
   void it('applies pre-computed positions to every node element', async () => {
-    const dag = TestDag.of('linear', 'A', [
-      PlacementFixture.single('A', { "next": 'B' }),
-      PlacementFixture.single('B', { "next": 'C' }),
-      PlacementFixture.single('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const dag = TestDag.of(LINEAR_DAG_IRI, placementIri(LINEAR_DAG_IRI, 'A'), [
+      PlacementFixture.single(LINEAR_DAG_IRI, 'A', { "next": placementIri(LINEAR_DAG_IRI, 'B') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'B', { "next": placementIri(LINEAR_DAG_IRI, 'C') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'C', { "done": placementIri(LINEAR_DAG_IRI, 'end') }),
+      { '@id': placementIri(LINEAR_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -170,9 +182,9 @@ void describe('CytoscapeGraph.mount', () => {
   });
 
   void it('stylesheet uses explicit numeric node sizing — never the string "label"', async () => {
-    const dag = TestDag.of('mini', 'A', [
-      PlacementFixture.single('A', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const dag = TestDag.of(MINI_DAG_IRI, placementIri(MINI_DAG_IRI, 'A'), [
+      PlacementFixture.single(MINI_DAG_IRI, 'A', { "done": placementIri(MINI_DAG_IRI, 'end') }),
+      { '@id': placementIri(MINI_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
     const capture: Capture = { "config": null, "batchCalls": 0 };
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
@@ -184,8 +196,7 @@ void describe('CytoscapeGraph.mount', () => {
     assert.equal(typeof nodeBase.style?.['width'], 'number', 'node width must be numeric');
     assert.equal(typeof nodeBase.style?.['height'], 'number', 'node height must be numeric');
 
-    // Regression guard: the deprecated 'label' auto-size value (which makes
-    // self-loop nodes invisible) must never appear for width or height.
+    // Regression guard: label auto-sizing makes self-loop nodes invisible.
     for (const rule of style) {
       assert.notEqual(rule.style?.['width'], 'label', `${rule.selector} width must not be 'label'`);
       assert.notEqual(rule.style?.['height'], 'label', `${rule.selector} height must not be 'label'`);
@@ -194,20 +205,20 @@ void describe('CytoscapeGraph.mount', () => {
 
   void it('self-loop (retry-to-self) node still renders and enforceVisibility does not throw', async () => {
     // 'retry' route targets the node itself → a cytoscape self-loop edge.
-    const dag = TestDag.of('retry', 'work', [
-      PlacementFixture.single('work', { "success": 'end', "retry": 'work' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const dag = TestDag.of(RETRY_DAG_IRI, placementIri(RETRY_DAG_IRI, 'work'), [
+      PlacementFixture.single(RETRY_DAG_IRI, 'work', { "success": placementIri(RETRY_DAG_IRI, 'end'), "retry": placementIri(RETRY_DAG_IRI, 'work') }),
+      { '@id': placementIri(RETRY_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
-    const workNode = CaptureReader.elements(capture).find((el) => el.group === 'nodes' && el.data?.id === 'work');
+    const workNode = CaptureReader.elements(capture).find((el) => el.group === 'nodes' && el.data?.id === placementIri(RETRY_DAG_IRI, 'work'));
     assert.ok(workNode !== undefined, 'the self-loop node must be present in the element set');
     assert.ok(workNode.position !== undefined, 'the self-loop node must carry a position');
 
-    const selfLoop = CaptureReader.elements(capture).find((el) => el.group === 'edges' && el.data?.id === 'work__retry__work');
+    const selfLoop = CaptureReader.elements(capture).find((el) => el.group === 'edges' && el.data?.id === `${placementIri(RETRY_DAG_IRI, 'work')}__retry__${placementIri(RETRY_DAG_IRI, 'work')}`);
     assert.ok(selfLoop !== undefined, 'the self-loop edge must be present');
     assert.equal(capture.batchCalls, 2, 'visibility sweep runs even with a self-loop present');
   });
@@ -215,18 +226,18 @@ void describe('CytoscapeGraph.mount', () => {
 
 void describe('CompositeLayout.compute', () => {
   void it('linear DAG: A→B→C positions form a top-down sequence (A smallest y)', async () => {
-    const dag = TestDag.of('linear', 'A', [
-      PlacementFixture.single('A', { "next": 'B' }),
-      PlacementFixture.single('B', { "next": 'C' }),
-      PlacementFixture.single('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const dag = TestDag.of(LINEAR_DAG_IRI, placementIri(LINEAR_DAG_IRI, 'A'), [
+      PlacementFixture.single(LINEAR_DAG_IRI, 'A', { "next": placementIri(LINEAR_DAG_IRI, 'B') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'B', { "next": placementIri(LINEAR_DAG_IRI, 'C') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'C', { "done": placementIri(LINEAR_DAG_IRI, 'end') }),
+      { '@id': placementIri(LINEAR_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     const { positions } = await CompositeLayout.compute(dag);
 
-    const posA = positions.get('A');
-    const posB = positions.get('B');
-    const posC = positions.get('C');
+    const posA = positions.get(placementIri(LINEAR_DAG_IRI, 'A'));
+    const posB = positions.get(placementIri(LINEAR_DAG_IRI, 'B'));
+    const posC = positions.get(placementIri(LINEAR_DAG_IRI, 'C'));
 
     assert.ok(posA !== undefined, 'A must have a position');
     assert.ok(posB !== undefined, 'B must have a position');
@@ -238,49 +249,49 @@ void describe('CompositeLayout.compute', () => {
 
   void it('2-level nesting: sibling compounds do not overlap each other', async () => {
     // inner DAGs: each has two leaf nodes
-    const innerA = TestDag.of('innerA', 'a1', [
-      PlacementFixture.single('a1', { "go": 'a2' }),
-      PlacementFixture.single('a2', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const innerA = TestDag.of(INNER_A_DAG_IRI, placementIri(INNER_A_DAG_IRI, 'a1'), [
+      PlacementFixture.single(INNER_A_DAG_IRI, 'a1', { "go": placementIri(INNER_A_DAG_IRI, 'a2') }),
+      PlacementFixture.single(INNER_A_DAG_IRI, 'a2', { "done": placementIri(INNER_A_DAG_IRI, 'end') }),
+      { '@id': placementIri(INNER_A_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
-    const innerB = TestDag.of('innerB', 'b1', [
-      PlacementFixture.single('b1', { "go": 'b2' }),
-      PlacementFixture.single('b2', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const innerB = TestDag.of(INNER_B_DAG_IRI, placementIri(INNER_B_DAG_IRI, 'b1'), [
+      PlacementFixture.single(INNER_B_DAG_IRI, 'b1', { "go": placementIri(INNER_B_DAG_IRI, 'b2') }),
+      PlacementFixture.single(INNER_B_DAG_IRI, 'b2', { "done": placementIri(INNER_B_DAG_IRI, 'end') }),
+      { '@id': placementIri(INNER_B_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     // outer DAG: embedA then embedB in sequence
-    const outerDAG: DAGType = TestDag.of('outer2', 'embedA', [
+    const outerDAG: DAGType = TestDag.of(OUTER_TWO_DAG_IRI, placementIri(OUTER_TWO_DAG_IRI, 'embedA'), [
       {
-        '@id':    'urn:noocodex:dag:outer2/node/embedA',
+        '@id': placementIri(OUTER_TWO_DAG_IRI, 'embedA'),
         '@type':  'EmbeddedDAGNode',
         'name':   'embedA',
-        'dag':    'innerA',
-        'outputs': { "done": 'embedB' },
+        'dag':    INNER_A_DAG_IRI,
+        'outputs': { "done": placementIri(OUTER_TWO_DAG_IRI, 'embedB') },
       },
       {
-        '@id':    'urn:noocodex:dag:outer2/node/embedB',
+        '@id': placementIri(OUTER_TWO_DAG_IRI, 'embedB'),
         '@type':  'EmbeddedDAGNode',
         'name':   'embedB',
-        'dag':    'innerB',
-        'outputs': { "done": 'end', "error": 'end' },
+        'dag':    INNER_B_DAG_IRI,
+        'outputs': { "done": placementIri(OUTER_TWO_DAG_IRI, 'end'), "error": placementIri(OUTER_TWO_DAG_IRI, 'end') },
       },
-      { '@id': 'urn:noocodex:dag:outer2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+      { '@id': placementIri(OUTER_TWO_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
-    const embeddedDAGs = new Map<string, DAGType>([['innerA', innerA], ['innerB', innerB]]);
+    const embeddedDAGs = new Map<string, DAGType>([[INNER_A_DAG_IRI, innerA], [INNER_B_DAG_IRI, innerB]]);
     const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
 
     // embedA compound center
-    const posEmbedA = positions.get('embedA');
+    const posEmbedA = positions.get(placementIri(OUTER_TWO_DAG_IRI, 'embedA'));
     // embedB compound center
-    const posEmbedB = positions.get('embedB');
+    const posEmbedB = positions.get(placementIri(OUTER_TWO_DAG_IRI, 'embedB'));
     // children of embedA
-    const posA1 = positions.get('embedA/a1');
-    const posA2 = positions.get('embedA/a2');
+    const posA1 = positions.get(scopedPlacementIri(placementIri(OUTER_TWO_DAG_IRI, 'embedA'), INNER_A_DAG_IRI, 'a1'));
+    const posA2 = positions.get(scopedPlacementIri(placementIri(OUTER_TWO_DAG_IRI, 'embedA'), INNER_A_DAG_IRI, 'a2'));
     // children of embedB
-    const posB1 = positions.get('embedB/b1');
-    const posB2 = positions.get('embedB/b2');
+    const posB1 = positions.get(scopedPlacementIri(placementIri(OUTER_TWO_DAG_IRI, 'embedB'), INNER_B_DAG_IRI, 'b1'));
+    const posB2 = positions.get(scopedPlacementIri(placementIri(OUTER_TWO_DAG_IRI, 'embedB'), INNER_B_DAG_IRI, 'b2'));
 
     assert.ok(posEmbedA !== undefined, 'embedA compound must have a position');
     assert.ok(posEmbedB !== undefined, 'embedB compound must have a position');
@@ -306,36 +317,36 @@ void describe('CompositeLayout.compute', () => {
 
   void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', async () => {
     // inner DAG: entry-node → middle-node → exit-node
-    const innerDAG = TestDag.of('inner', 'entry-node', [
-      PlacementFixture.single('entry-node',  { "go": 'middle-node' }),
-      PlacementFixture.single('middle-node', { "go": 'exit-node' }),
-      PlacementFixture.single('exit-node',   { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    const innerDAG = TestDag.of(INNER_DAG_IRI, placementIri(INNER_DAG_IRI, 'entry-node'), [
+      PlacementFixture.single(INNER_DAG_IRI, 'entry-node',  { "go": placementIri(INNER_DAG_IRI, 'middle-node') }),
+      PlacementFixture.single(INNER_DAG_IRI, 'middle-node', { "go": placementIri(INNER_DAG_IRI, 'exit-node') }),
+      PlacementFixture.single(INNER_DAG_IRI, 'exit-node',   { "done": placementIri(INNER_DAG_IRI, 'end') }),
+      { '@id': placementIri(INNER_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
-    const outerDAG: DAGType = TestDag.of('outer', 'before', [
-      PlacementFixture.single('before', { "go": 'embed' }),
+    const outerDAG: DAGType = TestDag.of(OUTER_DAG_IRI, placementIri(OUTER_DAG_IRI, 'before'), [
+      PlacementFixture.single(OUTER_DAG_IRI, 'before', { "go": placementIri(OUTER_DAG_IRI, 'embed') }),
       {
-        '@id':    'urn:noocodex:dag:outer/node/embed',
+        '@id': placementIri(OUTER_DAG_IRI, 'embed'),
         '@type':  'EmbeddedDAGNode',
         'name':   'embed',
-        'dag':    'inner',
-        'outputs': { "done": 'after' },
+        'dag':    INNER_DAG_IRI,
+        'outputs': { "done": placementIri(OUTER_DAG_IRI, 'after') },
       },
-      PlacementFixture.single('after', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+      PlacementFixture.single(OUTER_DAG_IRI, 'after', { "done": placementIri(OUTER_DAG_IRI, 'end') }),
+      { '@id': placementIri(OUTER_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
-    const embeddedDAGs = new Map<string, DAGType>([['inner', innerDAG]]);
+    const embeddedDAGs = new Map<string, DAGType>([[INNER_DAG_IRI, innerDAG]]);
     const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
 
-    const posBefore  = positions.get('before');
-    const posEmbed   = positions.get('embed');
-    const posAfter   = positions.get('after');
-    const posEntry   = positions.get('embed/entry-node');
-    const posMiddle  = positions.get('embed/middle-node');
-    const posExit    = positions.get('embed/exit-node');
+    const posBefore  = positions.get(placementIri(OUTER_DAG_IRI, 'before'));
+    const posEmbed   = positions.get(placementIri(OUTER_DAG_IRI, 'embed'));
+    const posAfter   = positions.get(placementIri(OUTER_DAG_IRI, 'after'));
+    const posEntry   = positions.get(scopedPlacementIri(placementIri(OUTER_DAG_IRI, 'embed'), INNER_DAG_IRI, 'entry-node'));
+    const posMiddle  = positions.get(scopedPlacementIri(placementIri(OUTER_DAG_IRI, 'embed'), INNER_DAG_IRI, 'middle-node'));
+    const posExit    = positions.get(scopedPlacementIri(placementIri(OUTER_DAG_IRI, 'embed'), INNER_DAG_IRI, 'exit-node'));
 
     assert.ok(posBefore !== undefined,  'before must have a position');
     assert.ok(posEmbed  !== undefined,  'embed compound must have a position');

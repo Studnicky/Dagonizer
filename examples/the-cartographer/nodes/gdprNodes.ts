@@ -22,6 +22,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 // #region gdpr-nodes
 
 export class ConsentGateNode extends MonadicNode<CartographerState, 'classify'> {
+  readonly '@id' = 'urn:noocodec:node:consent-gate';
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
 
@@ -50,6 +51,7 @@ export class ConsentGateNode extends MonadicNode<CartographerState, 'classify'> 
 }
 
 export class ClassifyPiiNode extends MonadicNode<CartographerState, 'redact'> {
+  readonly '@id' = 'urn:noocodec:node:classify-pii';
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
@@ -76,6 +78,7 @@ export class ClassifyPiiNode extends MonadicNode<CartographerState, 'redact'> {
 }
 
 export class RedactPiiNode extends MonadicNode<CartographerState, 'ok' | 'violation'> {
+  readonly '@id' = 'urn:noocodec:node:redact-pii';
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
 

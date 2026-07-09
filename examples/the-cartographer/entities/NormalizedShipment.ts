@@ -4,7 +4,7 @@
  * Produced by the `normalize` node from a RawShipmentEvent, AFTER geo-context
  * (geo runs first so normalize can use the scan's timezone for local time).
  * Timestamps are epoch ms + UTC ISO + LOCAL ISO/offset at the scan's zone,
- * carrier aliases are resolved, country is ISO-3, weight is grams. Classify
+ * carrier labels are resolved, country is ISO-3, weight is grams. Classify
  * fills status/serviceTier/sizeTier afterward.
  *
  * Journey fields (`scanSeq`, leg coords, origin/dest) carry through so the
@@ -15,7 +15,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const NormalizedShipmentSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/NormalizedShipment',
+  '$id': 'https://noocodec.dev/schemas/cartographer/NormalizedShipment',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': [

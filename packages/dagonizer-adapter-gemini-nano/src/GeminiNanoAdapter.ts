@@ -50,7 +50,7 @@ const GEMINI_NANO_MODEL_ID = 'gemini-nano';
  */
 const SUPPORTED_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set(['de', 'en', 'es', 'fr', 'ja']);
 
-/** Fallback output language when no adapter option or browser locale resolves to a supported code. */
+/** Default output language when no adapter option or browser locale resolves to a supported code. */
 const DEFAULT_OUTPUT_LANGUAGE = 'en';
 
 /**
@@ -100,7 +100,7 @@ export type GeminiNanoAdapterOptionsType = {
   readonly timeoutMs?: number;
   /**
    * BCP-47 output-language code attested to `LanguageModel.create()` (`de`,
-   * `en`, `es`, `fr`, or `ja`). Omitted values fall back to the browser's
+   * `en`, `es`, `fr`, or `ja`). Omitted values use the browser's
    * `navigator.language`, narrowed to a supported code, then to `en`.
    */
   readonly outputLanguage?: string;

@@ -67,6 +67,7 @@ export class PipelineState extends NodeStateBase {
 // #region node-collect
 export class CollectANode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectA';
+  readonly '@id' = 'urn:noocodec:node:collectA';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -80,6 +81,7 @@ export class CollectANode extends MonadicNode<PipelineState, 'done'> {
 
 export class CollectBNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectB';
+  readonly '@id' = 'urn:noocodec:node:collectB';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -93,6 +95,7 @@ export class CollectBNode extends MonadicNode<PipelineState, 'done'> {
 
 export class CollectCNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectC';
+  readonly '@id' = 'urn:noocodec:node:collectC';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -109,6 +112,7 @@ export class CollectCNode extends MonadicNode<PipelineState, 'done'> {
 // #region node-summarize
 export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'summarize';
+  readonly '@id' = 'urn:noocodec:node:summarize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -131,37 +135,37 @@ export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
 // #region dag-a
 export const dagA: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:pipeline-a',
+  '@id': 'urn:noocodec:dag:pipeline-a',
   '@type':     'DAG',
   "name":        'pipeline-a',
   "version":     '1',
-  "entrypoint":  'step-a',
+  "entrypoints": { "main": 'urn:noocodec:dag:pipeline-a/node/step-a' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:pipeline-a/node/step-a',
+      '@id': 'urn:noocodec:dag:pipeline-a/node/step-a',
       '@type': 'SingleNode',
       "name":    'step-a',
-      "node":    'collectA',
-      "outputs": { "done": 'step-b' },
+      "node":    'urn:noocodec:node:collectA',
+      "outputs": { "done": 'urn:noocodec:dag:pipeline-a/node/step-b' },
     },
     {
-      '@id':   'urn:noocodex:dag:pipeline-a/node/step-b',
+      '@id': 'urn:noocodec:dag:pipeline-a/node/step-b',
       '@type': 'SingleNode',
       "name":    'step-b',
-      "node":    'collectB',
-      "outputs": { "done": 'step-c' },
+      "node":    'urn:noocodec:node:collectB',
+      "outputs": { "done": 'urn:noocodec:dag:pipeline-a/node/step-c' },
     },
     {
-      '@id':   'urn:noocodex:dag:pipeline-a/node/step-c',
+      '@id': 'urn:noocodec:dag:pipeline-a/node/step-c',
       '@type': 'SingleNode',
       "name":    'step-c',
-      "node":    'collectC',
-      "outputs": { "done": 'handoff' },
+      "node":    'urn:noocodec:node:collectC',
+      "outputs": { "done": 'urn:noocodec:dag:pipeline-a/node/handoff' },
     },
     // Terminal named "handoff" — dispatcher publishes a DAGHandoff envelope
     // to the channel bound under this name.
     {
-      '@id':     'urn:noocodex:dag:pipeline-a/node/handoff',
+      '@id': 'urn:noocodec:dag:pipeline-a/node/handoff',
       '@type':   'TerminalNode',
       "name":    'handoff',
       "outcome": 'completed',
@@ -177,21 +181,21 @@ export const dagA: DAGType = {
 // #region dag-b
 export const dagB: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:pipeline-b',
+  '@id': 'urn:noocodec:dag:pipeline-b',
   '@type':     'DAG',
   "name":        'pipeline-b',
   "version":     '1',
-  "entrypoint":  'summarize',
+  "entrypoints": { "main": 'urn:noocodec:dag:pipeline-b/node/summarize' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:pipeline-b/node/summarize',
+      '@id': 'urn:noocodec:dag:pipeline-b/node/summarize',
       '@type': 'SingleNode',
       "name":    'summarize',
-      "node":    'summarize',
-      "outputs": { "done": 'end' },
+      "node":    'urn:noocodec:node:summarize',
+      "outputs": { "done": 'urn:noocodec:dag:pipeline-b/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:pipeline-b/node/end',
+      '@id': 'urn:noocodec:dag:pipeline-b/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

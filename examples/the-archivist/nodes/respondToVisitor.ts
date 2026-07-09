@@ -28,6 +28,7 @@ const EMPTY_RETRY_BUDGET = 2;
 
 export class RespondToVisitorNode extends MonadicNode<ArchivistState, 'success'> {
   readonly name = 'respond-to-visitor';
+  readonly '@id' = 'urn:noocodec:node:respond-to-visitor';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return {
@@ -42,6 +43,7 @@ export class RespondToVisitorNode extends MonadicNode<ArchivistState, 'success'>
 
 export class DeclineOffTopicNode extends MonadicNode<ArchivistState, 'success'> {
   readonly name = 'decline-off-topic';
+  readonly '@id' = 'urn:noocodec:node:decline-off-topic';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return {
@@ -67,13 +69,14 @@ export class DeclineOffTopicNode extends MonadicNode<ArchivistState, 'success'> 
  *
  * Failure is a flow decision: the node arms its own deadline and, on its own
  * timeout or an LLM error, routes `retry` (loops back, bounded) or `salvage`.
- * The canned fallback message lives in `compose-empty-salvage`, reached by the
+ * The canned recovery message lives in `compose-empty-salvage`, reached by the
  * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
 export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'compose-empty';
+  readonly '@id' = 'urn:noocodec:node:compose-empty';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
     return {
@@ -142,6 +145,7 @@ export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'draft
  */
 export class ParkForInputNode extends MonadicNode<ArchivistState, 'parked' | 'resumed'> {
   readonly name = 'park-for-input';
+  readonly '@id' = 'urn:noocodec:node:park-for-input';
   readonly outputs = ['parked', 'resumed'] as const;
   override get outputSchema(): Record<'parked' | 'resumed', SchemaObjectType> {
     return {

@@ -17,19 +17,19 @@ seeAlso:
 
 ## What It Is
 
-Core contains the pluggable execution primitives behind scatter gather and aggregate routing: `GatherStrategy`, `GatherStrategies`, `OutcomeReducer`, `OutcomeReducers`, gather records, and default reducers.
+Core contains the pluggable execution primitives behind first-class gather nodes and scatter aggregate routing: `GatherStrategy`, `GatherStrategies`, `OutcomeReducer`, `OutcomeReducers`, gather records, and default reducers.
 
 Use this page when built-in gather or reducer policy does not match the domain merge, ranking, quorum, or routing decision your DAG needs.
 
 ## How It Works
 
-Scatter runs isolated clone work. Gather strategies merge clone state back into the parent. Outcome reducers decide which output route the aggregate scatter placement emits.
+Scatter runs isolated clone work and emits producer records. `GatherNode` placements use gather strategies to merge producer records back into the parent. Outcome reducers decide which output route an aggregate scatter placement emits.
 
-The JSON-LD placement stores strategy and reducer names; the core registries resolve those names to concrete implementations. That keeps graph documents portable while still allowing domain-specific merge behavior.
+JSON-LD stores gather strategy names on `GatherNode.gather` and reducer names on `ScatterNode.reducer`; the core registries resolve those names to concrete implementations. That keeps graph documents portable while still allowing domain-specific merge and routing behavior.
 
 ## Diagrams, Examples, and Outputs
 
-Core primitives are easiest to see in scatter examples. These pages show strategy and reducer names in real DAG documents:
+Core primitives are easiest to see in scatter-then-gather examples. These pages show strategy and reducer names in real DAG documents:
 
 - [Reference: Contracts](./contracts) - `StateAccessor`, `NodeInterface`, `ExecuteOptionsType`
 - [Reference: Dagonizer](./dagonizer) - wires `GatherStrategies.resolve` and `OutcomeReducers.resolve`
@@ -82,7 +82,7 @@ class MyGather extends GatherStrategy {
 GatherStrategies.register(new MyGather());
 ```
 
-The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `reduce` for each incoming batch of scatter clone results. Strategies mutate `state` in place via `accessor`; the `custom` strategy uses `execution.invoker.invokeNode(name)` in `finalize` to dispatch a registered node back through the engine.
+The dispatcher resolves a strategy by `name` (the `GatherNode.gather.strategy` field) and calls `reduce` for each incoming batch of producer records. Strategies mutate `state` in place via `accessor`; the `custom` strategy uses `execution.invoker.invokeNode(nodeIri)` in `finalize` to dispatch a registered node back through the engine.
 
 #### `GatherStrategy` contract
 
@@ -90,8 +90,8 @@ The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field)
 |--------|-------------|
 | `abstract name` | Wire-shape identifier; matches `GatherConfig.strategy`. |
 | `retainsRecordsForFinalize` | When `true`, the engine retains every acked record across resume (retained checkpoint). When `false` (default), checkpoint is O(1) with respect to item count. |
-| `initial(config, state, accessor)` | Called once per scatter before any clones run. Default: no-op. |
-| `abstract reduce(config, batch, state, accessor)` | Fold a batch of clone results into state. Called per-batch during streaming or once with all results for bulk strategies. |
+| `initial(config, state, accessor)` | Called once when the gather barrier initializes. Default: no-op. |
+| `abstract reduce(config, batch, state, accessor)` | Fold a batch of producer records into state. Called per-batch during streaming or once with all results for bulk strategies. |
 | `finalize(config, execution)` | End-of-gather work after all clones complete. Default: no-op. |
 
 #### GatherRecordType
@@ -100,7 +100,7 @@ The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field)
 import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// GatherRecordType carries per-clone results from the scatter loop.
+// GatherRecordType carries producer results into a GatherNode.
 declare const record: GatherRecordType<NodeStateInterface>;
 ```
 
@@ -112,7 +112,7 @@ declare const record: GatherRecordType<NodeStateInterface>;
 | `terminalOutcome` | `'completed' \| 'failed' \| null` | Terminal outcome of a DAG body, or `null` for a node body. |
 | `cloneState` | `TState` | Live clone state after the body ran. |
 
-Per-clone record produced by the scatter loop. Records are ordered by source index (ascending) and strategies must not re-sort.
+Producer record consumed by a `GatherNode`. Scatter records are ordered by source index (ascending) and strategies must not re-sort records that depend on source order.
 
 #### GatherExecutionType
 
@@ -139,7 +139,7 @@ declare const execution: GatherExecutionType<NodeStateInterface>;
 - `append`. Flatten the clone's `field` (or the source item when `field` is absent) across all records into `config.target`. Throws `DAGError` when `target` is missing.
 - `partition`. For each `[outputToken, path]` in `config.partitions`, append the matching records to that path.
 - `collect`. Collect each clone's output token (or `field` value when `field` is set) into `config.target` in source-index order. Throws `DAGError` when `target` is missing.
-- `discard`. No-op. Nothing is written to parent state. Use for side-effect-only fan-outs where no clone state flows back.
+- `discard`. No-op. Nothing is written to parent state. Use for producer flows where no record state should flow back.
 - `custom`. Sets `state.metadata.gatherResults` to the per-clone records (without `cloneState`) and invokes the registered node at `config.customNode` via `execution.invoker.invokeNode`.
 
 ### GatherStrategies
@@ -178,7 +178,7 @@ class MyReducer extends OutcomeReducer {
 OutcomeReducers.register(new MyReducer());
 ```
 
-The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, defaulting to `'aggregate'` when `source` is present and `'terminal'` when absent) and calls `.reduce(records)` after gather completes. Returns an output token that maps to a key in the scatter placement's `outputs` map.
+The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, defaulting to `'aggregate'`) and calls `.reduce(records)` after scatter clone execution completes. Returns an output token that maps to a key in the scatter placement's `outputs` map.
 
 #### OutcomeRecordType
 
@@ -229,6 +229,6 @@ Call `reset()` in tests when a suite registers custom strategies or reducers and
 - [Reference: Contracts](./contracts) - `StateAccessor`, `NodeInterface`, `ExecuteOptionsType`
 - [Reference: Dagonizer](./dagonizer) - wires `GatherStrategies.resolve` and `OutcomeReducers.resolve`
 - [Reference: Entities](./entities) - `GatherConfig`, `GatherStrategyName`
-- [DAGBuilder](../guide/builder) - placements that use `gather.strategy` and `reducer`
+- [DAGBuilder](../guide/builder) - placements that use `GatherNode.gather.strategy` and `ScatterNode.reducer`
 - [State Accessors](../guide/state-accessor) - strategies receive the dispatcher's accessor
 - [Example: Scatter Extensions](../examples/scatter-extensions) - custom gather and reducer registration in runnable code

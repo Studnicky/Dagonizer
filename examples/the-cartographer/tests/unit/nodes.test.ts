@@ -323,10 +323,10 @@ describe('ColdChainCheckNode', () => {
     assert.equal(state.coldChainBreach, false);
   });
 
-  it('treats non-sensor variants as no-breach (zero telemetry fallback)', async () => {
+  it('treats non-sensor variants as no-breach (zero telemetry default)', async () => {
     const state = new CartographerState();
     // Default canonicalVariant is a position-ping with tempC/shockG absent
-    // The node reads body.tempC/shockG with fallback 0, which is below 2°C — a breach.
+    // The node reads body.tempC/shockG with default 0, which is below 2°C — a breach.
     // Verify the node does NOT throw for non-sensor variants.
     const node = new ColdChainCheckNode();
     await assert.doesNotReject(async () => { await executeSingle(node, state); });
@@ -415,7 +415,7 @@ describe('CustomsDwellNode', () => {
     assert.equal(state.customsDwellHours, 2);
   });
 
-  it('defaults dwell to 4 for non-customs variants (empty status fallback)', async () => {
+  it('defaults dwell to 4 for non-customs variants (empty status default)', async () => {
     const state = new CartographerState();
     // canonicalVariant is a position-ping — customsStatus reads '' → 4 hours default
     const node = new CustomsDwellNode();

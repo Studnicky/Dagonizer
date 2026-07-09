@@ -129,10 +129,10 @@ type DomSvgElementType = DomElementType & {
 /**
  * Minimal `document` stub.
  *
- * `element` is the alias for `document.createElement` (the real method name
+ * `element` is the local stand-in for `document.createElement` (the real method name
  * `createElement` triggers the `no-restricted-syntax` rule that forbids
  * `create*`-prefixed method names on interfaces). Since this is an internal
- * structural stub typed via `declare const`, the alias maps structurally to the
+ * structural stub typed via `declare const`, the stand-in maps structurally to the
  * real `document.createElement` at the ambient-declaration level — the name
  * `element` is the TYPE identifier here; the runtime value is still the real
  * `document` object whose `.element` property does not exist. We therefore
@@ -148,7 +148,7 @@ type DomSvgElementType = DomElementType & {
  * type `document` as an object with BOTH `createElement` (the real name, used
  * at call sites) AND the body/query methods. The `no-restricted-syntax` rule
  * only flags `interface` member declarations, not `type` function-property
- * entries, so declaring the type as a `type` alias with a `createElement`
+ * entries, so declaring the type as a `type` with a `createElement`
  * function-property field avoids the lint error.
  */
 type DomDocumentType = {
@@ -183,7 +183,7 @@ declare const requestAnimationFrame: (cb: () => void) => void;
 // ---------------------------------------------------------------------------
 
 /**
- * Theme fallback values used when VitePress CSS custom properties
+ * Theme default values used when VitePress CSS custom properties
  * (`var(--vp-c-*)`) are not available in the host environment.
  */
 export type MermaidExplorerThemeType = {
@@ -467,7 +467,7 @@ export class MermaidExplorer {
    * Scale to fit the diagram's natural bounds inside the stage, never
    * upscaling past 1× (contain, not fill).
    *
-   * Natural bounds are read from `getBBox()` (most accurate), falling back to
+   * Natural bounds are read from `getBBox()` (most accurate), then
    * the SVG `viewBox` attribute, then to a 1024×768 safe default.
    */
   static #fitContain(
@@ -520,7 +520,7 @@ export class MermaidExplorer {
 
   /**
    * Natural size of an SVG. Prefer the viewBox (the svg's own coordinate frame)
-   * so sizing the element to it is distortion-free; fall back to getBBox, then
+   * so sizing the element to it is distortion-free; then getBBox, then
    * a default.
    */
   static #naturalSize(svg: DomSvgElementType): { readonly w: number; readonly h: number } {
@@ -788,7 +788,7 @@ export class MermaidExplorer {
   }
 
   /**
-   * Write `theme` fallback values as inline CSS custom properties on the
+   * Write `theme` default values as inline CSS custom properties on the
    * D-pad wrap element. Only provided fields are written; absent fields fall
    * through to the stylesheet's `var(--vp-c-*)` defaults.
    */

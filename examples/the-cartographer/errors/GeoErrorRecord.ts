@@ -24,7 +24,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 export const GeoErrorRecordSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/GeoErrorRecord',
+  '$id': 'https://noocodec.dev/schemas/cartographer/GeoErrorRecord',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['source', 'variant', 'message', 'input'],
@@ -65,7 +65,7 @@ export class GeoErrorRecord {
   /**
    * Capture a caught value into a `GeoErrorRecordType`. `error` is the value a
    * `catch` bound (typed `unknown`); a thrown `Error` yields its class name and
-   * message, any other thrown value falls back to `'UnknownError'` and its
+   * message, any other thrown value uses `'UnknownError'` and its
    * string form. `input` is a short human summary of the offending input.
    */
   static capture(source: string, error: unknown, input: string): GeoErrorRecordType {

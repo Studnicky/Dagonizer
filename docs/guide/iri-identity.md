@@ -1,6 +1,6 @@
 ---
 title: 'IRI Identity'
-description: 'Node and DAG registries are keyed by expanded IRI. ContextResolver maps prefix:local names to namespace IRIs via the DAG document @context, preventing cross-plugin name collisions.'
+description: 'Node and DAG registries are keyed by expanded IRI. ContextResolver maps prefix:local references through the DAG document @context, preventing cross-plugin collisions while name remains display/observability text.'
 seeAlso:
   - text: 'Reference: Entities — DAGSchema'
     link: '../reference/entities'
@@ -14,15 +14,15 @@ seeAlso:
 
 ## What It Is
 
-IRI identity is how Dagonizer lets independently authored plugins share a dispatcher without fighting over short names. A plugin can publish a node named `classify`, another plugin can publish its own `classify`, and both can run in one application because registry keys are expanded IRIs, not bare strings.
+IRI identity is how Dagonizer lets independently authored plugins share a dispatcher without fighting over short labels. A plugin can publish a node displayed as `classify`, another plugin can publish its own `classify`, and both can run in one application because registry keys are expanded IRIs, not bare strings. Names are display and observability text only.
 
-`ContextResolver` maps `prefix:local` names through a DAG or bundle `@context`. The short name is what people read and write; the expanded IRI is what the registry stores.
+`ContextResolver` maps `prefix:local` references through a DAG or bundle `@context`. The short form is what people can read and write; the expanded IRI is what the registry stores.
 
 ## How It Works
 
-Every registry key is expanded through a JSON-LD-style `@context` before storage. Absolute IRIs pass through unchanged, known prefixes expand to their namespace, unknown prefixes fall back to the default namespace, and bare names remain backward-compatible by expanding under the default namespace.
+Every registry key is an explicit IRI. Absolute IRIs pass through unchanged, and declared prefixes expand through the active JSON-LD-style `@context`. Unknown prefixes and short names fail validation; the runtime does not synthesize identities.
 
-Every node and DAG name in Dagonizer is expanded to an **absolute IRI** before it enters the registry. Two plugins that both ship a node named `classify` can coexist without collision because each resolves to a distinct IRI key.
+Every node reference, DAG reference, and DAG `@id` is expanded to an **absolute IRI** before it enters the registry. Two plugins that both ship a node labeled `classify` can coexist without collision because each resolves to a distinct IRI key.
 
 ## Diagrams, Examples, and Outputs
 
@@ -34,7 +34,7 @@ IRI identity is registry behavior, not graph topology, so this page uses focused
 
 ### Referencing prefixed registry names
 
-The `node`, `dag`, phase `node`, and scatter body references in a DAG document are expanded using the document's `@context`. Output routes target placement names inside the same DAG, so they are not registry lookups.
+The `node`, `dag`, phase `node`, and scatter body references in a DAG document are expanded using the document's `@context`. Output routes target placement IRIs inside the same DAG, so they are not registry lookups.
 
 ```json
 {
@@ -42,48 +42,51 @@ The `node`, `dag`, phase `node`, and scatter body references in a DAG document a
     "myPlugin": "https://myplugin.dev/dag#"
   },
   "name": "intent-pipeline",
-  "entrypoint": "summarize",
+  "entrypoints": { "main": "urn:myplugin:intent-pipeline/node/summarize" },
   "nodes": [
     {
+      "@id": "urn:myplugin:intent-pipeline/node/summarize",
       "@type": "SingleNode",
       "name": "summarize",
       "node": "myPlugin:summarize",
-      "outputs": { "done": "end" }
+      "outputs": { "done": "urn:myplugin:intent-pipeline/node/end" }
+    },
+    {
+      "@id": "urn:myplugin:intent-pipeline/node/end",
+      "@type": "TerminalNode",
+      "name": "end",
+      "outcome": "completed"
     }
   ]
 }
 ```
 
-`myPlugin:summarize` resolves to `https://myplugin.dev/dag#summarize` before the node registry lookup occurs. The `"done": "end"` route remains a placement-to-placement edge.
+`myPlugin:summarize` resolves to `https://myplugin.dev/dag#summarize` before the node registry lookup occurs. The `"done"` route remains a placement-to-placement edge over placement IRIs.
 
 ## What It Lets You Do
 
 ### Use when
 
-Use IRI identity when multiple plugins, packages, or teams may register the same local node or DAG names in one dispatcher. Prefix-scoped names let `classify`, `normalize`, or `route` coexist without forcing every application to invent globally unique bare names.
+Use IRI identity when multiple plugins, packages, or teams may register the same local node or DAG labels in one dispatcher. Prefix-scoped references let `classify`, `normalize`, or `route` coexist without forcing every application to invent globally unique display names.
 
 ## Code Samples
 
 ### Why IRI keying
 
-A bare name like `classify` is a local identifier: it is unique within one plugin's codebase but globally ambiguous. When two plugins register under the same dispatcher, their bare names collide.
+A short name like `classify` is a local identifier: it is unique within one plugin's codebase but globally ambiguous. When two plugins register under the same dispatcher without declaring prefixes, their short names resolve to the same default-namespace IRI.
 
-Dagonizer addresses this by treating every name as an **expandable IRI prefix reference**, inspired by JSON-LD 1.1. The registration key is never the short name — it is always the result of `ContextResolver.expand(name, context)`.
+Dagonizer addresses this by treating every name as an **expandable IRI prefix reference**, inspired by JSON-LD 1.1. The registration key is never the short name - it is always the result of `ContextResolver.expand(name, context)`.
 
 ### How expansion works
 
-`ContextResolver.expand` applies four rules in order:
+`ContextResolver.expand` applies two accepted rules:
 
 | Input | Rule | Result |
 |-------|------|--------|
-| `classify` | Bare name (no colon) | `DEFAULT_NS + 'classify'` |
 | `https://myplugin.dev/dag#classify` | Absolute IRI (contains `://`) | returned as-is |
 | `myPlugin:classify` where `myPlugin` is declared | Prefixed name — known prefix | `https://myplugin.dev/dag#classify` |
-| `tool:calculator` where `tool` is NOT declared | Prefixed name — unknown prefix | `DEFAULT_NS + 'tool:calculator'` |
 
-`DEFAULT_NS` is `https://noocodex.dev/dag/default#`.
-
-Rule 4 keeps existing compound names that use colons as separators (e.g. `tool-invoke:calculator`) working without requiring callers to declare them as prefixes. Unknown prefixes fall through to `DEFAULT_NS + fullName` — they are still unique in the registry.
+Bare names such as `classify` and undeclared prefixes such as `tool:calculator` fail immediately. If a string identifies runtime behavior, it is an IRI, not a display label.
 
 ### Declaring a prefix in a DAG document
 
@@ -98,14 +101,14 @@ Add an `@context` object to the DAG document. Each key is a short prefix; each v
   "@type": "DAG",
   "name":  "intent-pipeline",
   "version": "1",
-  "entrypoint": "myPlugin:classify",
+  "entrypoints": { "main": "myPlugin:classify" },
   "nodes": [
     {
       "@id":   "urn:myplugin:intent-pipeline/node/classify",
       "@type": "SingleNode",
       "name":  "myPlugin:classify",
       "node":  "myPlugin:classify",
-      "outputs": { "done": "end" }
+      "outputs": { "done": "urn:myplugin:intent-pipeline/node/end" }
     },
     {
       "@id":   "urn:myplugin:intent-pipeline/node/end",
@@ -117,7 +120,7 @@ Add an `@context` object to the DAG document. Each key is a short prefix; each v
 }
 ```
 
-Every `name` and `node` reference inside the document is expanded through the document's own `@context` before it is stored in the registry. The short form `myPlugin:classify` is a notation convenience; `https://myplugin.dev/dag#classify` is what is stored.
+The DAG `@id`, `node` references, and DAG references inside the document are expanded through the document's own `@context` before registry lookup. The short form `myPlugin:classify` is a notation convenience; `https://myplugin.dev/dag#classify` is what is stored. Placement `name` stays as display and observability text.
 
 ### Declaring a prefix at bundle registration
 
@@ -187,17 +190,17 @@ dispatcher.nodes.get(iriB) === classifyNodeB; // true
 dispatcher.nodes.size === 2;                  // true
 ```
 
-### Bare-name backward compatibility
+### No Default Namespace
 
-Nodes and DAGs registered without any `@context` continue to work. Their names expand to `DEFAULT_NS + name`. A bare `classify` becomes `https://noocodex.dev/dag/default#classify`. This is the same behavior as before IRI keying was introduced; existing code requires no changes.
+Nodes and DAGs register under the exact absolute IRI they declare, or under the expanded IRI produced by a declared JSON-LD prefix. There is no default namespace and no short-reference authoring mode. Placement `name` is for diagrams, logs, and operator-facing text only.
 
 ## Details for Nerds
 
 ### What expands, and when
 
-Bundle registration expands node names through the bundle `context`. DAG registration expands DAG names through the DAG `@context`. Execution resolves node references, embedded DAG references, scatter body references, phase-node references, and validation lookups through the relevant DAG context before registry lookup.
+Bundle registration expands node references through the bundle `context`. DAG registration expands the DAG `@id` through the DAG `@context`. Child-state factory records are keyed by the expanded DAG IRI. Execution resolves node references, embedded DAG references, scatter body references, phase-node references, and validation lookups through the relevant DAG context before registry lookup.
 
-Route targets inside a single DAG are placement names, not registry keys. A route such as `"done": "normalize"` points to another placement in the same `nodes` array; a placement's `node` or `dag` field points to something in the registry and receives IRI expansion.
+Route targets inside a single DAG are placement IRIs, not registry keys. A route such as `"done": "urn:workflow:agent/node/normalize"` points to another placement in the same `nodes` array; a placement's `node` or `dag` field points to something in the registry and receives IRI expansion.
 
 ## Related Concepts
 

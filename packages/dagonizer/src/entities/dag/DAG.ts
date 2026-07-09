@@ -12,13 +12,18 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { GatherConfigSchema } from './GatherConfig.js';
+import { EmbeddedDAGNodeSchema } from './EmbeddedDAGNode.js';
+import { GatherNodeSchema } from './GatherNode.js';
+import { PhaseNodeSchema } from './PhaseNode.js';
+import { ScatterNodeSchema } from './ScatterNode.js';
+import { SingleNodeSchema } from './SingleNode.js';
+import { TerminalNodeSchema } from './TerminalNode.js';
 
 // ---------------------------------------------------------------------------
 // Namespace
 // ---------------------------------------------------------------------------
 
-const NS = 'https://noocodex.dev/ontology/dag/';
+const NS = 'https://noocodec.dev/ontology/dag/';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -43,8 +48,8 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // ── DAG-level properties ──────────────────────────────────────────────────
   'name':       { '@id': `${NS}name` },
   'version':    { '@id': `${NS}version` },
-  'entrypoint': { '@id': `${NS}entrypoint` },
-  'nodes':      { '@id': `${NS}nodes`, '@container': '@set' },
+  'entrypoints': { '@id': `${NS}entrypoints`, '@container': '@index' },
+  'nodes':       { '@id': `${NS}nodes`, '@container': '@set' },
 
   // ── placement-level properties ────────────────────────────────────────────
   'outputs':  { '@id': `${NS}outputs` },
@@ -54,12 +59,22 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // scatter properties
   'body':        { '@id': `${NS}body` },
   'source':      { '@id': `${NS}source` },
+  'sources': { '@id': `${NS}sources`, '@container': '@index' },
   'itemKey':     { '@id': `${NS}itemKey` },
   'execution':   { '@id': `${NS}execution` },
   'concurrency': { '@id': `${NS}concurrency` },
   'throttle':    { '@id': `${NS}throttle` },
   'reservoir':   { '@id': `${NS}reservoir` },
   'gather':      { '@id': `${NS}gather` },
+  'dagReference': { '@id': `${NS}dagReference`, '@type': '@id' },
+  'DagReference': { '@id': `${NS}DagReference` },
+  'from':        { '@id': `${NS}from` },
+  'path':        { '@id': `${NS}path` },
+  'candidates':  { '@id': `${NS}candidates`, '@container': '@set' },
+  'candidateDag': { '@id': `${NS}candidateDag`, '@type': '@id' },
+  'selectedDag': { '@id': `${NS}selectedDag`, '@type': '@id' },
+  'resultField': { '@id': `${NS}resultField` },
+  'policy':      { '@id': `${NS}policy` },
   'reducer':     { '@id': `${NS}reducer` },
 
   // terminal properties
@@ -80,6 +95,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'SingleNode':      { '@id': `${NS}SingleNode` },
   'ScatterNode':     { '@id': `${NS}ScatterNode` },
   'EmbeddedDAGNode': { '@id': `${NS}EmbeddedDAGNode` },
+  'GatherNode':      { '@id': `${NS}GatherNode` },
   'TerminalNode':    { '@id': `${NS}TerminalNode` },
   'PhaseNode':       { '@id': `${NS}PhaseNode` },
 } as const;
@@ -90,193 +106,32 @@ export const DAG_CONTEXT: Record<string, unknown> = {
 
 const DAGNodeEntrySchema = {
   'oneOf': [
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'node', 'outputs'],
-      'properties': {
-        '@id':     { 'type': 'string', 'minLength': 1 },
-        '@type':   { 'type': 'string', 'const': 'SingleNode' },
-        'name':    { 'type': 'string', 'minLength': 1 },
-        'node':    { 'type': 'string', 'minLength': 1 },
-        'outputs': {
-          'type': 'object',
-          'additionalProperties': { 'type': 'string' },
-        },
-        'retry': {
-          'type': 'object',
-          'properties': {
-            'maxAttempts':  { 'type': 'integer', 'minimum': 1 },
-            'strategy':     { 'type': 'string', 'enum': ['constant', 'linear', 'exponential', 'decorrelated-jitter'] },
-            'baseDelay':    { 'type': 'integer', 'minimum': 0 },
-            'maxDelay':     { 'type': 'integer', 'minimum': 0 },
-            'multiplier':   { 'type': 'number' },
-            'jitterFactor': { 'type': 'number' },
-            'on': {
-              'type': 'array',
-              'items': { 'type': 'string' },
-            },
-          },
-        },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'body', 'source', 'gather', 'outputs'],
-      'properties': {
-        '@id':         { 'type': 'string', 'minLength': 1 },
-        '@type':       { 'type': 'string', 'const': 'ScatterNode' },
-        'name':        { 'type': 'string', 'minLength': 1 },
-        'body': {
-          'oneOf': [
-            {
-              'type': 'object',
-              'required': ['node'],
-              'properties': { 'node': { 'type': 'string', 'minLength': 1 } },
-              'additionalProperties': false,
-            },
-            {
-              'type': 'object',
-              'required': ['dag'],
-              'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
-              'additionalProperties': false,
-            },
-            {
-              'type': 'object',
-              'required': ['dagFrom'],
-              'properties': { 'dagFrom': { 'type': 'string', 'minLength': 1 } },
-              'additionalProperties': false,
-            },
-          ],
-        },
-        'source':      { 'type': 'string', 'minLength': 1 },
-        'itemKey':     { 'type': 'string', 'minLength': 1 },
-        'stateMapping': {
-          'type': 'object',
-          'properties': {
-            'input': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-          },
-          'additionalProperties': false,
-        },
-        'gather':      GatherConfigSchema,
-        'reducer':     { 'type': 'string', 'minLength': 1 },
-        'outputs': {
-          'type': 'object',
-          'additionalProperties': { 'type': 'string' },
-        },
-        'container': { 'type': 'string', 'minLength': 1 },
-        // Unified concurrency-limiting policy: ONE discriminated `mode` structure
-        // instead of three uncoordinated sibling knobs. See ScatterNode.ts's doc
-        // comment for the full `item` vs `reservoir` semantics.
-        'execution': {
-          'oneOf': [
-            {
-              'type': 'object',
-              'required': ['mode'],
-              'properties': {
-                'mode': { 'type': 'string', 'const': 'item' },
-                'concurrency': { 'type': 'integer', 'minimum': 1 },
-                'throttle': {
-                  'type': 'object',
-                  'required': ['concurrencyLimit'],
-                  'properties': {
-                    'concurrencyLimit': { 'type': 'integer', 'minimum': 1 },
-                  },
-                  'additionalProperties': false,
-                },
-              },
-              'additionalProperties': false,
-            },
-            {
-              'type': 'object',
-              'required': ['mode', 'reservoir'],
-              'properties': {
-                'mode': { 'type': 'string', 'const': 'reservoir' },
-                'concurrency': { 'type': 'integer', 'minimum': 1 },
-                'reservoir': {
-                  'type': 'object',
-                  'required': ['keyField', 'capacity'],
-                  'properties': {
-                    'keyField':  { 'type': 'string', 'minLength': 1 },
-                    'capacity':  { 'type': 'integer', 'minimum': 1 },
-                    'idleMs':    { 'type': 'integer', 'minimum': 1 },
-                  },
-                  'additionalProperties': false,
-                },
-              },
-              'additionalProperties': false,
-            },
-          ],
-        },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      // Exactly one of `dag` | `dagFrom` is enforced by DAGValidator; the wire
-      // schema allows either to be present (or, structurally, neither/both —
-      // the semantic check rejects those).
-      'required': ['@id', '@type', 'name', 'outputs'],
-      'properties': {
-        '@id':     { 'type': 'string', 'minLength': 1 },
-        '@type':   { 'type': 'string', 'const': 'EmbeddedDAGNode' },
-        'name':    { 'type': 'string', 'minLength': 1 },
-        'dag':     { 'type': 'string', 'minLength': 1 },
-        'dagFrom': { 'type': 'string', 'minLength': 1 },
-        'outputs': {
-          'type': 'object',
-          'additionalProperties': { 'type': 'string' },
-        },
-        'stateMapping': {
-          'type': 'object',
-          'properties': {
-            'input':  { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-            'output': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-          },
-          'additionalProperties': false,
-        },
-        'container': { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'outcome'],
-      'properties': {
-        '@id':     { 'type': 'string', 'minLength': 1 },
-        '@type':   { 'type': 'string', 'const': 'TerminalNode' },
-        'name':    { 'type': 'string', 'minLength': 1 },
-        'outcome': { 'type': 'string', 'enum': ['completed', 'failed'] },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'node', 'phase'],
-      'properties': {
-        '@id':   { 'type': 'string', 'minLength': 1 },
-        '@type': { 'type': 'string', 'const': 'PhaseNode' },
-        'name':  { 'type': 'string', 'minLength': 1 },
-        'node':  { 'type': 'string', 'minLength': 1 },
-        'phase': { 'type': 'string', 'enum': ['pre', 'post'] },
-      },
-      'additionalProperties': false,
-    },
+    SingleNodeSchema,
+    ScatterNodeSchema,
+    EmbeddedDAGNodeSchema,
+    GatherNodeSchema,
+    TerminalNodeSchema,
+    PhaseNodeSchema,
   ],
 } as const;
 
 export const DAGSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DAG',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/DAG',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['@context', '@id', '@type', 'name', 'version', 'entrypoint', 'nodes'],
+  'required': ['@context', '@id', '@type', 'name', 'version', 'entrypoints', 'nodes'],
   'properties': {
     '@context': { 'type': 'object' },
     '@id':      { 'type': 'string', 'minLength': 1 },
     '@type':    { 'type': 'string', 'const': 'DAG' },
     'name':       { 'type': 'string', 'minLength': 1 },
     'version':    { 'type': 'string', 'minLength': 1 },
-    'entrypoint': { 'type': 'string', 'minLength': 1 },
+    'entrypoints': {
+      'type': 'object',
+      'minProperties': 1,
+      'propertyNames': { 'minLength': 1 },
+      'additionalProperties': { 'type': 'string', 'minLength': 1 },
+    },
     'nodes': { 'type': 'array', 'items': DAGNodeEntrySchema, 'minItems': 1 },
   },
   'additionalProperties': false,
@@ -285,46 +140,48 @@ export const DAGSchema = {
 /** TypeScript type derived from `DAGSchema` via `json-schema-to-ts`. */
 export type DAGType = FromSchema<typeof DAGSchema>;
 
+export class DAGEntrypoints {
+  private constructor() { /* static-only */ }
+
+  static primary(dag: DAGType): string {
+    const main = dag.entrypoints['main'];
+    if (main !== undefined) return main;
+    for (const entrypoint of Object.values(dag.entrypoints)) {
+      return entrypoint;
+    }
+    throw new Error(`DAG '${dag.name}' has no entrypoints`);
+  }
+}
+
 /**
  * Identity helpers for DAG documents.
  *
  * `DAG` is both the wire-shape type (derived from `DAGSchema`) and this
- * frozen value namespace. TypeScript permits a `type` alias and a `const`
+ * frozen value namespace. TypeScript permits a `type` and a `const`
  * with the same identifier because they live in separate declaration spaces.
  *
- * `DAGIdentity.id` and `DAGIdentity.placementId` produce the canonical URN
- * identifiers used in `@id` fields of JSON-LD DAG documents. The value carries a
- * distinct name from the `DAG` entity type so the two never share one identifier.
+ * `DAGIdentity.id` validates caller-supplied DAG IRIs. `DAGIdentity.placementId`
+ * composes a placement IRI from an explicit DAG IRI and an explicit placement
+ * identifier. Display names never participate in identity construction.
  */
 export const DAGIdentity = Object.freeze({
   /**
-   * Returns the canonical URN for a DAG by name.
-   *
-   * @param dagName - The DAG `name` field value.
-   * @returns `urn:noocodex:dag:<dagName>`
-   *
-   * @example
-   * ```ts
-   * DAGIdentity.id('my-workflow'); // 'urn:noocodex:dag:my-workflow'
-   * ```
+   * Validate and return a canonical DAG IRI.
    */
-  id(dagName: string): string {
-    return `urn:noocodex:dag:${dagName}`;
+  id(iri: string): string {
+    if (iri.length === 0 || !(iri.startsWith('urn:') || iri.includes('://'))) {
+      throw new Error(`DAGIdentity.id requires an absolute IRI`);
+    }
+    return iri;
   },
 
   /**
-   * Returns the canonical URN for a node placement within a DAG.
-   *
-   * @param dagName - The DAG `name` field value.
-   * @param placementName - The placement `name` field value.
-   * @returns `urn:noocodex:dag:<dagName>/node/<placementName>`
-   *
-   * @example
-   * ```ts
-   * DAGIdentity.placementId('my-workflow', 'fetchData'); // 'urn:noocodex:dag:my-workflow/node/fetchData'
-   * ```
+   * Compose a placement IRI from a DAG IRI and explicit placement identifier.
    */
-  placementId(dagName: string, placementName: string): string {
-    return `urn:noocodex:dag:${dagName}/node/${placementName}`;
+  placementId(dagIri: string, placementId: string): string {
+    if (placementId.length === 0) {
+      throw new Error(`DAGIdentity.placementId requires a non-empty placement identifier`);
+    }
+    return `${DAGIdentity.id(dagIri)}/node/${placementId}`;
   },
 });

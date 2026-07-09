@@ -35,7 +35,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const RawShipmentEventSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/RawShipmentEvent',
+  '$id': 'https://noocodec.dev/schemas/cartographer/RawShipmentEvent',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': [

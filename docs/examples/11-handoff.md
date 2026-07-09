@@ -59,7 +59,7 @@ Operator hand-off lets applications split one workflow across actors or processe
 The grain of a hand-off is execution state, not a callback. The first Dispatcher call runs until the park point. The second operator action restores state from the parked result and resumes from the cursor. The parked node does not know who resumes it.
 
 ```
-dispatcher.execute('support-dispatcher', state)
+dispatcher.execute('urn:noocodec:dag:support-dispatcher', state)
   │
   └─ park-for-operator routes 'parked'
        │

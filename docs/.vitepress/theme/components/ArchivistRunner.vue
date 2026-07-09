@@ -35,7 +35,7 @@ import { ArchivistNodes } from '../../../../examples/the-archivist/nodes/Archivi
 import {
   ApiKeyStore,
   BackendMatrix,
-  OllamaModels,
+  PreferredModels,
   ProviderInstantiator,
 } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
@@ -93,7 +93,7 @@ const activeBackend = ref<ProviderId | null>(savedBackend);
 const noModel = ref(false);
 const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
-const ollamaModel = ref<string>(OllamaModels.loadModel());
+const preferredModels = ref<Partial<Record<ProviderId, string>>>(PreferredModels.load());
 
 // Slow-backend banner: shown when the active backend is the browser
 // built-in `LanguageModel` or WebLLM AND no cloud key is configured.
@@ -270,13 +270,16 @@ const toolContextMap: Record<string, string> = {
 };
 
 /**
- * The model to instantiate the active backend's adapter with. For ollama, the
- * visitor's explicit choice takes priority (if set); for all other backends the
- * detector-resolved model is used directly. An empty string means "no explicit
- * override": the adapter falls back to its internal default.
+ * The model to instantiate the active backend's adapter with. Backend detection
+ * resolves this value through `selectChatModel`; the Ollama input is only a
+ * discovery preference. An empty string means "no explicit override": the
+ * adapter falls back to its internal default.
  */
 const resolvedModel = computed<string>(() => {
-  if (activeBackend.value === 'ollama' && ollamaModel.value.length > 0) return ollamaModel.value;
+  if (activeBackend.value !== null) {
+    const preferred = preferredModels.value[activeBackend.value];
+    if (typeof preferred === 'string' && preferred.length > 0) return preferred;
+  }
   const entry = backends.value.find((b) => b.id === activeBackend.value);
   return entry?.resolvedModel ?? '';
 });
@@ -624,7 +627,17 @@ watch(apiKeys, async (keys) => {
   ApiKeyStore.save(keys);
   backends.value = await BackendMatrix.detect({
     'apiKeys': keys,
-    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+    'preferredModels': preferredModels.value,
+  });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  session.setBackends(backends.value);
+}, { 'deep': true });
+
+watch(preferredModels, async (models) => {
+  session.setPreferredModels(models);
+  backends.value = await BackendMatrix.detect({
+    'apiKeys': apiKeys.value,
+    'preferredModels': models,
   });
   noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
   session.setBackends(backends.value);
@@ -636,12 +649,6 @@ watch(activeBackend, (id) => {
   if (typeof localStorage !== 'undefined' && id !== null) {
     localStorage.setItem('dagonizer-active-backend', id);
   }
-});
-
-// Persist the ollama model and keep the session in sync.
-watch(ollamaModel, (next) => {
-  session.setOllamaModel(next);
-  OllamaModels.saveModel(next);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -668,7 +675,7 @@ onMounted(async () => {
 
   // Push initial settings into the session before boot.
   session.setApiKeys(apiKeys.value);
-  session.setOllamaModel(ollamaModel.value);
+  session.setPreferredModels(preferredModels.value);
   session.setConversationContextWindow(conversationContextWindow.value);
   session.setTimeoutSettings(timeoutSettings.value);
 
@@ -892,11 +899,11 @@ async function resumeFromCheckpoint(): Promise<void> {
         :backends="backends"
         :active-id="activeBackend ?? ''"
         :api-keys="apiKeys"
-        :ollama-model="ollamaModel"
+        :preferred-models="preferredModels"
         :is-mobile="isMobile"
         @update:active-id="activeBackend = $event as ProviderId"
         @update:api-keys="apiKeys = $event"
-        @update:ollama-model="ollamaModel = $event"
+        @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
       />
     </section>
 
@@ -1001,12 +1008,12 @@ async function resumeFromCheckpoint(): Promise<void> {
                     :backends="backends"
                     :active-id="activeBackend ?? ''"
                     :api-keys="apiKeys"
-                    :ollama-model="ollamaModel"
+                    :preferred-models="preferredModels"
                     :is-mobile="isMobile"
                     :disabled="isRunning"
                     @update:active-id="activeBackend = $event as ProviderId"
                     @update:api-keys="apiKeys = $event"
-                    @update:ollama-model="ollamaModel = $event"
+                    @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
                   />
                 </section>
 

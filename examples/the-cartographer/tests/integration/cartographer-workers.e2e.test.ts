@@ -28,6 +28,7 @@ import assert from 'node:assert/strict';
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
+import { CARTOGRAPHER_IRIS } from '../../cartographerIds.ts';
 import { CartographerWorkersDag } from '../../dag.ts';
 import { GeoSourceResolveDAG } from '../../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
@@ -84,7 +85,7 @@ class WorkersHarness {
     const state = new CartographerState();
     state.eventConfig = config ?? WorkersHarness.minimalEventConfig();
 
-    const execution = dispatcher.execute('cartographer', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:cartographer', state);
     for await (const _stage of execution) { /* drain stages */ }
     await execution;
     return state;
@@ -94,8 +95,14 @@ class WorkersHarness {
 // ── Workers bundle construction smoke ─────────────────────────────────────────
 
 describe('Cartographer workers-bundle registration', () => {
-  it('registers all bundles without throwing', () => {
-    assert.doesNotThrow(() => WorkersHarness.dispatcher());
+  it('registers the workers top-level DAG, embedded DAGs, and processing nodes', () => {
+    const dispatcher = WorkersHarness.dispatcher();
+
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.cartographer) !== undefined, 'workers Cartographer DAG must be registered');
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.streamEvent) !== undefined, 'stream-event embedded DAG must be registered');
+    assert.ok(dispatcher.getDAG(CARTOGRAPHER_IRIS.dag.insightsSummary) !== undefined, 'container-delegated summary DAG must be registered');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:decode-payload') !== undefined, 'stream decoder node must be registered');
+    assert.ok(dispatcher.getNode('urn:noocodec:node:summarize') !== undefined, 'summary node must be registered');
   });
 
   it('CartographerWorkersDag.bundle() produces a non-empty bundle', () => {
@@ -112,21 +119,41 @@ describe('Cartographer workers-bundle registration', () => {
 
   it('CartographerWorkersDag.bundle() carries cpu and io container placements', () => {
     const bundle = CartographerWorkersDag.bundle();
-    const dag = bundle.dags.find((candidate) => candidate.name === 'cartographer');
+    const dag = bundle.dags.find((candidate) => candidate['@id'] === CARTOGRAPHER_IRIS.dag.cartographer);
     assert.ok(dag, 'cartographer DAG must be registered');
 
-    const scatter = dag.nodes.find((node) => node.name === 'process-stream');
+    const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
+    const sourceIris = CARTOGRAPHER_IRIS.intakeEventTypes.map((source) => CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source));
+
+    assert.deepEqual(dag.entrypoints, {
+      'position-ping':         intakeGatherIri,
+      'facility-scan':         intakeGatherIri,
+      'sensor-reading':        intakeGatherIri,
+      'customs-event':         intakeGatherIri,
+      'delivery-confirmation': intakeGatherIri,
+    });
+    assert.ok(!dag.nodes.some((node) => node['@type'] === 'PhaseNode'), 'workers cartographer must not use a pre-phase intake node');
+    assert.ok(!dag.nodes.some((node) => node.name.endsWith('-intake')), 'workers cartographer must not use pre-gather intake placements');
+
+    const gather = dag.nodes.find((node) => node['@id'] === intakeGatherIri);
+    assert.ok(gather, 'intake-gather placement must exist');
+    assert.equal(gather['@type'], 'GatherNode');
+    if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
+    assert.deepEqual(Object.keys(gather.sources), sourceIris);
+    assert.equal(gather.gather.strategy, 'source-intake');
+
+    const scatter = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
     assert.ok(scatter, 'process-stream placement must exist');
     assert.equal(scatter['@type'], 'ScatterNode');
     if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
     assert.equal(scatter.container, 'cpu');
 
-    const summary = dag.nodes.find((node) => node.name === 'summarize-insights');
+    const summary = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'summarize-insights'));
     assert.ok(summary, 'summarize-insights placement must exist');
     assert.equal(summary['@type'], 'EmbeddedDAGNode');
     if (summary['@type'] !== 'EmbeddedDAGNode') assert.fail('summarize-insights must be an EmbeddedDAGNode');
     assert.equal(summary.container, 'io');
-    assert.equal(summary.dag, 'insights-summary');
+    assert.equal(summary.dag, CARTOGRAPHER_IRIS.dag.insightsSummary);
   });
 
   it('workers dispatcher uses recorded geo services', () => {

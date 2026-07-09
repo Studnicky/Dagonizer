@@ -5,8 +5,9 @@
  * candidate through `GeoLookupOutcomeType`.
  *
  * `resolve-ip` and `resolve-address` convert a resolved candidate into a
- * `GeoResolution` (the scatter-gather wire shape). The `geo-weighted-fusion` gather folds all
- * clones' `GeoResolution` values by weight into the final `ResolvedGeo`.
+ * `GeoResolution` (the scatter-gather wire shape). The first-class
+ * `geo-weighted-fusion` gather folds all clones' `GeoResolution` values by
+ * weight into the final `ResolvedGeo`.
  *
  * A candidate carries only what the transport observed. Jurisdiction,
  * confidence, and back-fill from other modalities are computed in the gather.
@@ -27,7 +28,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GeoCandidateSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/GeoCandidate',
+  '$id': 'https://noocodec.dev/schemas/cartographer/GeoCandidate',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['modality', 'resolved', 'country', 'countryName', 'continent', 'region', 'locality', 'lat', 'lng', 'water'],

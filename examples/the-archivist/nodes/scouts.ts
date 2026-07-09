@@ -7,7 +7,7 @@
  *
  * ToolCandidateGatherStrategy ('tool-candidate-merge'): folds each tool clone's
  * output array into the parent state's `candidates` and `failureCause` fields.
- * Each clone runs a `tool:<name>` embedded DAG via ToolInvokeNode; this strategy
+ * Each clone runs a tool DAG IRI via ToolInvokeNode; this strategy
  * reads `cloneState.output` (via StateAccessor, no cast) to retrieve the
  * CandidateType[] the tool returned, then filters by visitor language, and
  * appends to the parent's candidates.
@@ -125,7 +125,7 @@ export class ScoutUtils {
 // so there are no unsafe casts — the strategy never knows the parent state's
 // concrete class, only the state path names.
 //
-// Each scatter clone ran a `tool:<name>` embedded DAG on a fresh
+// Each scatter clone ran a tool DAG IRI on a fresh
 // ToolInvocationState. On success, ToolInvokeNode sets `toolState.output` to
 // the tool's return value (a CandidateType[]). On error the clone's output
 // stays at its default value of null, so the Array.isArray check below
@@ -133,6 +133,7 @@ export class ScoutUtils {
 
 class ToolCandidateGatherStrategy extends GatherStrategy {
   readonly name = 'tool-candidate-merge';
+  readonly '@id' = 'urn:noocodec:node:tool-candidate-merge';
 
   private static readonly candidateValidator = Validator.compile<CandidateType>(CandidateSchema);
 

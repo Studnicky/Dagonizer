@@ -24,27 +24,38 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 export class TestBatchNode {
   private constructor() { /* static class */ }
 
+  private static displayName(iri: string): string {
+    const hashIndex = iri.lastIndexOf('#');
+    if (hashIndex >= 0) return iri.slice(hashIndex + 1);
+    const slashIndex = iri.lastIndexOf('/');
+    if (slashIndex >= 0) return iri.slice(slashIndex + 1);
+    const colonIndex = iri.lastIndexOf(':');
+    return colonIndex >= 0 ? iri.slice(colonIndex + 1) : iri;
+  }
+
   /**
    * Build a batch-native `NodeInterface<TState, TOutput>` whose `execute`
    * delegates to the supplied `route` callback. The callback receives the live
    * batch and the node context and returns the routed sub-batches.
    *
-   * @param name    - Node name (must match the DAG placement `node` reference).
+   * @param name    - Node IRI (must match the DAG placement `node` reference).
    * @param outputs - Declared output port tokens; the per-port schema is derived
    *                  from these.
    * @param route   - Whole-batch transform returning a `RoutedBatchType`
    *                  (sync or async).
    */
   static of<TState extends NodeStateInterface, TOutput extends string>(
-    name: string,
+    iri: string,
     outputs: readonly TOutput[],
     route: (
       batch: Batch<TState>,
       context: NodeContextType,
     ) => RoutedBatchType<TOutput, TState> | Promise<RoutedBatchType<TOutput, TState>>,
   ): NodeInterface<TState, TOutput> {
+    const displayName = TestBatchNode.displayName(iri);
     class BatchNode extends MonadicNode<TState, TOutput> {
-      override readonly name = name;
+      override readonly '@id' = iri;
+      override readonly name = displayName;
       override readonly outputs = outputs;
 
       override get outputSchema(): Record<string, SchemaObjectType> {

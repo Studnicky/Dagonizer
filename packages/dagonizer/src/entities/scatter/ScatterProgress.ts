@@ -27,7 +27,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * uses a `reservoir` config; absent for non-reservoir scatter.
  */
 export const ScatterInboxItemSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterInboxItem',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterInboxItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['index', 'item'],
@@ -47,7 +47,7 @@ export type ScatterInboxItemType = FromSchema<typeof ScatterInboxItemSchema>;
 // ---------------------------------------------------------------------------
 
 export const ScatterAckedResultSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterAckedResult',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterAckedResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {
@@ -59,6 +59,8 @@ export const ScatterAckedResultSchema = {
         'item':          {},
         'output':        { 'type': 'string' },
         'mappingValues': { 'type': 'object' },
+        'result':        {},
+        'selectedDag':   { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -71,6 +73,8 @@ export const ScatterAckedResultSchema = {
         'item':       {},
         'output':     { 'type': 'string' },
         'fieldValue': {},
+        'result':     {},
+        'selectedDag': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -82,6 +86,8 @@ export const ScatterAckedResultSchema = {
         'index':   { 'type': 'integer', 'minimum': 0 },
         'item':    {},
         'output':  { 'type': 'string' },
+        'result':  {},
+        'selectedDag': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -94,6 +100,7 @@ export const ScatterAckedResultSchema = {
  *   `map`:   carries `mappingValues`, the resolved clone-field-to-parent-path mapping values.
  *   `field`: carries `fieldValue`, the value of `gather.field` read from the clone state.
  *   `plain`: carries only the routing `output`; used by `collect`, `discard`, and `partition` strategies.
+ *   `result`: optional resultField projection for non-compactable finalize resume.
  */
 export type ScatterAckedResultType = FromSchema<typeof ScatterAckedResultSchema>;
 
@@ -125,6 +132,8 @@ const ackedResultInline = {
         'item':          {},
         'output':        { 'type': 'string' },
         'mappingValues': { 'type': 'object' },
+        'result':        {},
+        'selectedDag':   { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -137,6 +146,8 @@ const ackedResultInline = {
         'item':       {},
         'output':     { 'type': 'string' },
         'fieldValue': {},
+        'result':     {},
+        'selectedDag': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -148,6 +159,8 @@ const ackedResultInline = {
         'index':   { 'type': 'integer', 'minimum': 0 },
         'item':    {},
         'output':  { 'type': 'string' },
+        'result':  {},
+        'selectedDag': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -155,7 +168,7 @@ const ackedResultInline = {
 } as const;
 
 export const ScatterProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {
@@ -215,7 +228,7 @@ export type ScatterProgressType = FromSchema<typeof ScatterProgressSchema>;
 // ---------------------------------------------------------------------------
 
 export const StoredScatterProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoredScatterProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/StoredScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'additionalProperties': ScatterProgressSchema,

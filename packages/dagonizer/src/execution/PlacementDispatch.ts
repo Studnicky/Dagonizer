@@ -6,7 +6,7 @@ import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { RunNodeResultType } from './ScatterDispatch.js';
+import type { GatherRecordSinkType, RunNodeResultType } from './ScatterDispatch.js';
 
 /**
  * Leaf (`SingleNode`) placement executor surface. `LeafExecutor` implements
@@ -29,6 +29,7 @@ export interface EmbeddedPlacementExecutorInterface {
   executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
+    dagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
@@ -46,6 +47,7 @@ export interface ScatterPlacementExecutorInterface {
     dagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
+    gatherRecordSink?: GatherRecordSinkType | null,
   ): Promise<RunNodeResultType>;
 }
 
@@ -86,6 +88,7 @@ export class PlacementDispatch {
     signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
+    gatherRecordSink: GatherRecordSinkType | null = null,
   ): Promise<RunNodeResultType> {
     // Dispatch map over @type: each handler is keyed by the placement discriminant.
     // SingleNode is handled structurally by the work-set scheduler (via
@@ -98,15 +101,19 @@ export class PlacementDispatch {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
         // the dispatch key; guard makes the narrowing explicit.
         if (!Placement.isEmbeddedDAG(e)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.#embedded.executeEmbeddedDAG(e, state, signal, placementPath, bufferIntermediates);
+        return this.#embedded.executeEmbeddedDAG(e, state, dagName, signal, placementPath, bufferIntermediates);
       },
       'ScatterNode': (e) => {
         if (!Placement.isScatter(e)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
-        return this.#scatter.executeScatter(e, state, dagName, signal, placementPath);
+        return this.#scatter.executeScatter(e, state, dagName, signal, placementPath, gatherRecordSink);
       },
       'SingleNode': (e) => {
         if (!Placement.isSingle(e)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
         return this.#leaf.executeSingleNode(e, state, dagName, signal);
+      },
+      'GatherNode': (e) => {
+        if (!Placement.isGather(e)) throw new DAGError(`Dispatch type mismatch: expected GatherNode`);
+        return Promise.reject(new DAGError(`GatherNode '${e.name}' is scheduler-managed and cannot be dispatched directly`));
       },
       'TerminalNode': (e) => {
         if (!Placement.isTerminal(e)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);

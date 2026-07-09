@@ -12,7 +12,7 @@ describe('06-cancellation: abort signal interrupts execution', () => {
     const ctl = new AbortController();
     const state = new NodeStateBase();
 
-    const execution = dispatcher.execute('slow-dag', state, { signal: ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:slow-dag', state, { signal: ctl.signal });
     // Abort before the node can complete
     ctl.abort(new Error('cancel'));
 
@@ -31,7 +31,7 @@ describe('06-cancellation: abort signal interrupts execution', () => {
     const state = new NodeStateBase();
 
     // Start execution and abort after a very short delay
-    const execution = dispatcher.execute('batch-dag', state, { signal: ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:batch-dag', state, { signal: ctl.signal });
     setTimeout(() => ctl.abort(new Error('cancel-batch')), 50);
 
     const result = await execution;

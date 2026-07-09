@@ -22,12 +22,15 @@
  *
  * Supplies the fields a node needs but that don't vary by domain: `timeout`
  * (defaults to `Timeout.none()`), and `validate`/`destroy` defaults. Subclasses
- * declare `abstract readonly name`, `abstract readonly outputs`, and
+ * declare `abstract readonly '@id'`, `abstract readonly name`,
+ * `abstract readonly outputs`, and
  * `abstract execute`.
  *
- * @typeParam TState    the node state the dispatcher threads through the batch.
- * @typeParam TOutput   the literal union of output port names. Narrows the
- *                      placement-routing surface at compile time.
+ * @typeParam TState          the node state the dispatcher threads through the batch.
+ * @typeParam TOutput         the literal union of output port names. Narrows the
+ *                            placement-routing surface at compile time.
+ * @typeParam TInputSchema    the literal JSON Schema accepted by the node.
+ * @typeParam TOutputSchemas  the per-output literal JSON Schemas produced by the node.
  */
 
 import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
@@ -38,23 +41,28 @@ import { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-const PERMISSIVE_PORT_SCHEMA: SchemaObjectType = { 'type': 'object' };
+const PERMISSIVE_STATE_SCHEMA = { 'type': 'object' } as const satisfies SchemaObjectType;
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = 'success' | 'empty' | 'error',
-> implements NodeInterface<TState, TOutput> {
+  TInputSchema extends SchemaObjectType = SchemaObjectType,
+  TOutputSchemas extends Record<TOutput, SchemaObjectType> = Record<TOutput, SchemaObjectType>,
+> implements NodeInterface<TState, TOutput, TInputSchema, TOutputSchemas> {
   static permissiveSchema<TOutput extends string>(
     outputs: readonly TOutput[],
   ): Record<TOutput, SchemaObjectType> {
     const schema: Record<string, SchemaObjectType> = {};
     for (const output of outputs) {
-      schema[output] = PERMISSIVE_PORT_SCHEMA;
+      schema[output] = PERMISSIVE_STATE_SCHEMA;
     }
     return schema;
   }
 
-  /** Stable identifier used at registration with the dispatcher. */
+  /** Canonical node IRI used by the dispatcher registry. */
+  abstract readonly '@id': string;
+
+  /** Human-readable display name used for observability. */
   abstract readonly name: string;
 
   /** Literal union of output port names. Narrows placement routing. */
@@ -67,6 +75,15 @@ export abstract class MonadicNode<
   readonly timeout: Timeout = Timeout.none();
 
   /**
+   * Default input contract for nodes without stronger structural requirements.
+   * Subclasses override this getter when their incoming state has required
+   * fields that graph validation can check before execution.
+   */
+  get inputSchema(): TInputSchema {
+    return PERMISSIVE_STATE_SCHEMA as TInputSchema;
+  }
+
+  /**
    * Per-port output contract: a JSON Schema fragment for each declared output
    * port describing the state delta the node writes when it routes to that port.
    * `abstract` — there is no passthrough default. Every concrete node MUST
@@ -75,7 +92,7 @@ export abstract class MonadicNode<
    * check), and it keeps the node's data-flow statically legible to consumers
    * and to the opt-in `validateOutputs` lifecycle stage.
    */
-  abstract get outputSchema(): Record<TOutput, SchemaObjectType>;
+  abstract get outputSchema(): TOutputSchemas;
 
   /**
    * The one node contract: consume a batch and partition its items across the

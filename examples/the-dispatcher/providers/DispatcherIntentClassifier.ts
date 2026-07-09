@@ -5,7 +5,7 @@
  * That works, but the LLM call sits behind the same adapter timeout as
  * every other request: when the model is cold, a trivial classification
  * (a one-line "when do you open?" message) can blow the 60s timeout and
- * gets wrongly escalated to a human "for safety" — the fallback the node
+ * gets wrongly escalated to a human "for safety" — the recovery path the node
  * takes on any LLM error. The vector route embeds three canonical intent
  * descriptions once at startup and then, for every inbound message, embeds
  * the message and picks the intent whose anchor has the highest cosine
@@ -16,7 +16,7 @@
  *   pick argmax above confidence floor; else return null
  *
  * When the top score is below the floor we return `null`; the caller
- * (`ClassifyMessageNode.execute`) then falls back to the LLM path,
+ * (`ClassifyMessageNode.execute`) then routes to the LLM path,
  * preserving today's classify → escalate-on-error behavior for the
  * messages the embedder isn't confident about.
  */
@@ -46,7 +46,7 @@ export const DISPATCHER_INTENT_DESCRIPTIONS: Readonly<Record<'routine' | 'escala
 
 /**
  * Default confidence floor. Below this, the classifier returns null and the
- * caller falls back to the LLM. Calibrated low for this three-anchor regime:
+ * caller routes to the LLM. Calibrated low for this three-anchor regime:
  * with the offline MiniLM model, short support messages score modest absolute
  * cosine (routine/escalate winners land ~0.22–0.46, off-topic ~0.03–0.18)
  * while the argmax stays well-separated, so the floor is a "similar to any
@@ -72,7 +72,7 @@ export class DispatcherIntentClassifier {
    * Build a classifier: embeds the three canonical intent descriptions
    * once, then reuses the vectors for every `classify()` call. Throws if
    * the embedder fails on any anchor; the caller chooses how to recover
-   * (typically by skipping embedder classification and falling back to
+   * (typically by skipping embedder classification and routing to
    * LLM-only).
    */
   static async create(embedder: EmbedderInterface): Promise<DispatcherIntentClassifier> {
@@ -99,7 +99,7 @@ export class DispatcherIntentClassifier {
    * Embed the message, compute cosine similarity vs every intent vector,
    * return the highest-scoring intent paired with its score. Returns
    * `null` when the top score is below `confidenceFloor`; the caller
-   * falls back to LLM classification.
+   * routes to LLM classification.
    */
   async classify(
     message: string,

@@ -10,7 +10,7 @@
  *   generate (ScatterNode over `providers`)
  *     ├─ one clone per provider; each provider node scores + writes
  *     │  clone.candidate = { provider, text, score }
- *     └─ gather: { strategy: 'map', mapping: { candidate: 'candidates' } }
+ *     └─ collect-candidates (GatherNode: map candidate → candidates)
  *        ⇒ parent.candidates = [candidate_0, candidate_1, …] (index-ordered)
  *   select (SingleNode)
  *     └─ reads parent.candidates, picks the highest score → parent.chosen
@@ -38,7 +38,7 @@ dispatcher.registerDAG(dag);
 
 const state = new GenerateState();
 state.providers = ['alpha', 'bravo', 'charlie', 'delta'];
-await dispatcher.execute('generate-select', state);
+await dispatcher.execute('urn:noocodec:dag:generate-select', state);
 
 process.stdout.write('\nScatter-collect: scatter over providers, collect candidates, select best\n');
 process.stdout.write(`  providers:  ${JSON.stringify(state.providers)}\n`);

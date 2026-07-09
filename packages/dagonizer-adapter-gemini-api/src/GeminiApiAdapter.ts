@@ -187,7 +187,7 @@ export class GeminiApiAdapter extends BaseAdapter {
    * `geminiResponseBodyValidator` the buffered path uses. Single-attempt (no
    * retry), matching `chatStream`'s contract.
    *
-   * Tool-turns fall back to the buffered default (`super.performChatStream`):
+   * Tool-turns use the buffered default (`super.performChatStream`):
    * Gemini's function-call parts arrive fully formed rather than as
    * incremental deltas, so streaming brings no benefit for tool turns.
    */
@@ -401,7 +401,7 @@ export class GeminiApiAdapter extends BaseAdapter {
    * HTTP-shaped status (`429`, `403`, …) so it routes through the shared
    * `LlmError.classifyHttp` classifier the buffered path's non-2xx branch
    * uses; an envelope with no `code` (never observed in practice, but the
-   * schema does not require it) falls back to `UNKNOWN`.
+   * schema does not require it) uses `UNKNOWN`.
    */
   #toStreamError(frame: GeminiErrorFrameType): LlmError {
     const message = frame.error.message ?? 'Gemini API: streamed error';

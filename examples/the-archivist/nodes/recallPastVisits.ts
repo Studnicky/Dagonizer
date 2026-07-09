@@ -27,6 +27,7 @@ const MAX_PRIOR_TITLES  = 6;
 export class RecallPastVisitsNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-past-visits';
+  readonly '@id' = 'urn:noocodec:node:recall-past-visits';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
     return {

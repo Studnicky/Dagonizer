@@ -37,6 +37,7 @@ export class WordState extends NodeStateBase {
  */
 export class TrimNode extends MonadicNode<WordState, 'done'> {
   readonly name = 'trim';
+  readonly '@id' = 'urn:noocodec:node:trim';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -54,6 +55,7 @@ export class TrimNode extends MonadicNode<WordState, 'done'> {
  */
 export class CountNode extends MonadicNode<WordState, 'done'> {
   readonly name = 'count';
+  readonly '@id' = 'urn:noocodec:node:count';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -73,28 +75,28 @@ export class CountNode extends MonadicNode<WordState, 'done'> {
 // #region dag
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:word-count',
+  '@id': 'urn:noocodec:dag:word-count',
   '@type':      'DAG',
   "name":       'word-count',
   "version":    '1',
-  "entrypoint": 'trim',
+  "entrypoints": { "main": 'urn:noocodec:dag:word-count/node/trim' },
   "nodes": [
     {
-      '@id':     'urn:noocodex:dag:word-count/node/trim',
+      '@id': 'urn:noocodec:dag:word-count/node/trim',
       '@type':   'SingleNode',
       "name":    'trim',
-      "node":    'trim',
-      "outputs": { "done": 'count' },
+      "node":    'urn:noocodec:node:trim',
+      "outputs": { "done": 'urn:noocodec:dag:word-count/node/count' },
     },
     {
-      '@id':     'urn:noocodex:dag:word-count/node/count',
+      '@id': 'urn:noocodec:dag:word-count/node/count',
       '@type':   'SingleNode',
       "name":    'count',
-      "node":    'count',
-      "outputs": { "done": 'end' },
+      "node":    'urn:noocodec:node:count',
+      "outputs": { "done": 'urn:noocodec:dag:word-count/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:word-count/node/end',
+      '@id': 'urn:noocodec:dag:word-count/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

@@ -8,7 +8,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const OutputSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/Output',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/Output',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['error', 'success'],

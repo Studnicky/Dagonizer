@@ -312,7 +312,7 @@ export class BaseLlmClient implements LlmClientInterface {
    * `decideTools` only emits indices now; argument generation lives here.
    *
    * The `query` / `subject` field is intentionally omitted: every scout
-   * already falls back to `state.terms.join(' ')` when its query arg is
+   * already uses `state.terms.join(' ')` when its query arg is
    * missing, and `state.terms` is the keyword set produced by the
    * `extract-query` node (which ran before `decide-tools` in the DAG).
    * Letting scouts use the extracted terms instead of the raw visitor

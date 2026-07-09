@@ -18,7 +18,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GeminiModelsResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/gemini/GeminiModelsResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/gemini/GeminiModelsResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['models'],

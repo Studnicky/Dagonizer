@@ -8,17 +8,20 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const ERRORING_DAG_IRI = 'urn:noocodec:dag:erroring-dag';
+const ERRORING_FAILING_IRI = 'urn:noocodec:dag:erroring-dag/node/failing';
+const ERRORING_END_IRI = 'urn:noocodec:dag:erroring-dag/node/end';
 
 class PlainState extends NodeStateBase {}
 
 void describe('NodeScheduler error-context enrichment', () => {
   void it('a node throw is wrapped in a DAGError whose context carries dagName, placementPath, and correlationId', async () => {
-    const failing = TestNode.make<PlainState>('failing', ['success'], () => {
+    const failing = TestNode.make<PlainState>('urn:noocodec:node:failing', ['success'], () => {
       throw new Error('boom');
     });
-    const dag = new DAGBuilder('erroring-dag', '1')
-      .node('failing', failing, { 'success': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(ERRORING_DAG_IRI, '1', { 'name': 'erroring-dag' })
+      .node(ERRORING_FAILING_IRI, failing, { 'success': ERRORING_END_IRI }, { 'name': 'failing' })
+      .terminal(ERRORING_END_IRI, { 'name': 'end' })
       .build();
 
     let captured: Error | undefined;
@@ -30,7 +33,7 @@ void describe('NodeScheduler error-context enrichment', () => {
     observedDispatcher.registerNode(failing);
     observedDispatcher.registerDAG(dag);
 
-    await observedDispatcher.execute('erroring-dag', new PlainState());
+    await observedDispatcher.execute(ERRORING_DAG_IRI, new PlainState());
 
     assert.ok(captured !== undefined);
     assert.ok(captured instanceof DAGError);
@@ -38,7 +41,7 @@ void describe('NodeScheduler error-context enrichment', () => {
 
     // The enriched wrapper carries structured context — not the empty `{}`
     // the wrapping DAGError used to construct with.
-    assert.equal(wrapped.context['dagName'], 'erroring-dag');
+    assert.equal(wrapped.context['dagName'], ERRORING_DAG_IRI);
     assert.deepEqual(wrapped.context['placementPath'], []);
     const correlationId = wrapped.context['correlationId'];
     assert.equal(typeof correlationId, 'string');

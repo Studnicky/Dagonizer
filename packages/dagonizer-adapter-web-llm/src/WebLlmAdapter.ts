@@ -274,7 +274,7 @@ export class WebLlmAdapter extends BaseAdapter {
    * `stream_options: { include_usage: true }` in `#openStream`), falling
    * back to `ZERO_TOKEN_USAGE` when the engine never sends it.
    *
-   * A tool-bearing request falls back to the buffered default
+   * A tool-bearing request uses the buffered default
    * (`super.performChatStream`): partial-JSON `tool_calls` deltas are unsafe
    * to expose mid-stream, so any request carrying tools is never streamed
    * token-by-token.

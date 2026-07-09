@@ -24,6 +24,7 @@ import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-eta-node
 export class EnrichEtaNode extends MonadicNode<CartographerState, 'eta-estimated'> {
+  readonly '@id' = 'urn:noocodec:node:enrich-eta';
   readonly 'name' = 'enrich-eta';
   readonly 'outputs' = ['eta-estimated'] as const;
 

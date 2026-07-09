@@ -61,21 +61,21 @@ class DiscoverCandidatesNode extends MonadicNode<CandidateDiscoveryState, 'done'
 
 const CANDIDATE_DISCOVERY_DAG: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:archivist-streaming:candidate-discovery',
+  '@id': 'urn:noocodec:dag:archivist-streaming:candidate-discovery',
   '@type':      'DAG',
   'name':       'candidate-discovery',
   'version':    '1',
-  'entrypoint': 'discover-candidates',
+  'entrypoints': { 'main': 'urn:noocodec:dag:archivist-streaming:candidate-discovery/node/discover-candidates' },
   'nodes': [
     {
-      '@id':     'urn:noocodex:dag:archivist-streaming:candidate-discovery/node/discover-candidates',
+      '@id': 'urn:noocodec:dag:archivist-streaming:candidate-discovery/node/discover-candidates',
       '@type':   'SingleNode',
       'name':    'discover-candidates',
-      'node':    'discover-candidates',
-      'outputs': { 'done': 'found' },
+      'node':    'urn:noocodec:node:discover-candidates',
+      'outputs': { 'done': 'urn:noocodec:dag:archivist-streaming:candidate-discovery/node/found' },
     },
     {
-      '@id':     'urn:noocodex:dag:archivist-streaming:candidate-discovery/node/found',
+      '@id': 'urn:noocodec:dag:archivist-streaming:candidate-discovery/node/found',
       '@type':   'TerminalNode',
       'name':    'found',
       'outcome': 'completed',
@@ -106,7 +106,7 @@ export class BookSearchStreamProducer extends DagStreamProducer<CandidateType> {
     for (const batch of this.#batches) {
       const state = new CandidateDiscoveryState();
       state.pendingBatch = batch;
-      for await (const stage of dispatcher.execute('candidate-discovery', state)) {
+      for await (const stage of dispatcher.execute('urn:noocodec:dag:candidate-discovery', state)) {
         yield stage;
       }
     }

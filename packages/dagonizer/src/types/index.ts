@@ -77,7 +77,9 @@ export type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 
 export type { LlmModelType } from '../entities/adapter/LlmModel.js';
 export type { DAGType } from '../entities/dag/DAG.js';
+export type { DagReferenceType, DynamicDagReferenceType } from '../entities/dag/DagReference.js';
 export type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+export type { GatherNodeType, GatherPolicyType } from '../entities/dag/GatherNode.js';
 export type { DAGNodeType } from '../entities/dag/Placement.js';
 export type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 export type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
@@ -99,6 +101,7 @@ export type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 export type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 export type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
 export type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+export type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
 export type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
 export type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 export type { DAGLifecycleStateDataType } from '../entities/state-machines/DAGLifecycleState.js';
@@ -117,7 +120,16 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { EmbeddableDAGType, ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
+export type {
+  DynamicDAGReferenceInputType,
+  EmbeddableDAGType,
+  ItemDAGReferenceInputType,
+  ScatterDAGBodyType,
+  ScatterOptionsType,
+  StateDAGReferenceInputType,
+  TypedEmbeddedDAGOptionsType,
+} from '../builder/DAGBuilder.js';
+export type { SchemaRouteTypes } from '../builder/SchemaRouteTypes.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types
@@ -129,6 +141,7 @@ export type { GatherExecutionType, GatherRecordType } from '../contracts/GatherE
 export type { GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
+export type { DagReferenceEdgeType } from '../graph/DagReferenceGraph.js';
 export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElementType,

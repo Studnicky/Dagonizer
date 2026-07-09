@@ -118,8 +118,8 @@ export class DagHost {
 
     // Dispatch map over variant: handlers are keyed by message variant.
     // DagHost receives only parent→host messages; host→parent messages are
-    // unexpected on this side but must not crash the host — the fallback
-    // sends an UNEXPECTED_MESSAGE error for any unknown variant.
+    // unexpected on this side but must not crash the host; unknown variants
+    // receive an UNEXPECTED_MESSAGE error.
     type HostMsg = typeof message;
     const variantDispatch: Partial<{ [K in HostMsg['variant']]: (m: Extract<HostMsg, { variant: K }>) => Promise<void> | void }> = {
       'init': async (m) => {
@@ -128,7 +128,6 @@ export class DagHost {
           m.registryModule,
           m.registryVersion,
           servicesConfig,
-          m.keyingScheme ?? 'name',
         );
       },
       'execute': (m) => {
@@ -156,8 +155,7 @@ export class DagHost {
 
     // Exhaustive switch over the discriminant narrows `message` per case, so each
     // handler call typechecks cast-free. Variants DagHost does not handle
-    // (host→parent messages arriving on this side) fall to `default`, which sends
-    // the UNEXPECTED_MESSAGE error — the prior fallback semantics, preserved exactly.
+    // (host→parent messages arriving on this side) receive UNEXPECTED_MESSAGE.
     switch (message.variant) {
       case 'init':     await variantDispatch.init?.(message);     break;
       case 'execute':  await variantDispatch.execute?.(message);  break;
@@ -194,7 +192,6 @@ export class DagHost {
     registryModule: string,
     expectedVersion: string,
     servicesConfig: JsonObjectType,
-    parentKeyingScheme: 'name' | 'iri' = 'name',
   ): Promise<void> {
     try {
       let registry: RegistryModuleInterface;
@@ -232,21 +229,6 @@ export class DagHost {
           'correlationId': null,
           'code': 'VERSION_MISMATCH',
           'message': `Registry version mismatch: expected '${expectedVersion}', got '${bundle.registryVersion}'`,
-          'recoverable': false,
-        });
-        return;
-      }
-
-      // Keying-scheme handshake: parent and bundle must agree on whether names
-      // are bare or IRI-expanded. A mismatch means the bundle was built for a
-      // different namespace strategy and cannot run in this host.
-      const bundleKeyingScheme = bundle.keyingScheme ?? 'name';
-      if (parentKeyingScheme !== bundleKeyingScheme) {
-        this.#channel.send({
-          'variant': 'error',
-          'correlationId': null,
-          'code': 'VERSION_MISMATCH',
-          'message': `Keying scheme mismatch: parent expects '${parentKeyingScheme}', bundle provides '${bundleKeyingScheme}'`,
           'recoverable': false,
         });
         return;

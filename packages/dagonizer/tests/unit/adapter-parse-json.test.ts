@@ -5,13 +5,11 @@
  *  - #decodeJson rejects malformed tool-call arguments with
  *    LlmError(SCHEMA_VIOLATION) instead of silently returning {}.
  *  - Valid tool-call arguments parse into a typed tools message.
- *  - A response without `usage` falls back to ZERO_TOKEN_USAGE.
+ *  - A response without `usage` uses ZERO_TOKEN_USAGE.
  *  - Untrusted-input hardening: a schema-valid body parses; non-object and
  *    wrong-typed bodies, and tool_calls entries missing required fields,
  *    reject with SCHEMA_VIOLATION (never UNKNOWN).
- *  - shouldFallbackWithoutTools: default is no fallback; a subclass override
- *    retries tools-free on the chosen classification; fallback is skipped when
- *    the request carries no tools; the config exposes no toolsFallback field.
+ *  - Tool requests stay tool requests. Provider rejection is surfaced.
  */
 
 import assert from 'node:assert/strict';
@@ -26,7 +24,7 @@ import type { OpenAiCompatibleConfigType } from '../../src/adapter/OpenAiCompati
 const FULL_CAPS: AdapterCapabilitiesType = { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true };
 const PARTIAL_CAPS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': false, 'jsonMode': false };
 
-const FALLBACK_CONFIG: OpenAiCompatibleConfigType = {
+const TEST_CONFIG: OpenAiCompatibleConfigType = {
   'id': 'test-adapter',
   'displayName': 'Test',
   'capabilities': PARTIAL_CAPS,
@@ -90,37 +88,14 @@ class TestRequest {
   }
 }
 
-class TestResponse {
-  private constructor() {}
-  static fake(content: string): Response {
-    return new Response(JSON.stringify({
-      'choices': [{ 'message': { 'content': content }, 'finish_reason': 'stop' }],
-      'usage': { 'prompt_tokens': 5, 'completion_tokens': 3 },
-    }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
-  }
-}
-
 async function withFetch<T>(impl: () => Promise<Response>, fn: () => Promise<T>): Promise<T> {
   const saved = globalThis.fetch;
   globalThis.fetch = impl;
   try { return await fn(); } finally { globalThis.fetch = saved; }
 }
 
-/** Default adapter — shouldFallbackWithoutTools returns false. */
-class DefaultFallbackAdapter extends OpenAiCompatibleAdapter {
-  constructor() { super('key', FALLBACK_CONFIG, { 'maxAttempts': 1 }); }
-}
-
-/** Adapter that overrides shouldFallbackWithoutTools for SCHEMA_VIOLATION. */
-class FallbackEnabledAdapter extends OpenAiCompatibleAdapter {
-  constructor() { super('key', FALLBACK_CONFIG, { 'maxAttempts': 1 }); }
-
-  protected override shouldFallbackWithoutTools(error: unknown): boolean {
-    if (error instanceof LlmError) {
-      return error.classification.reason === 'SCHEMA_VIOLATION';
-    }
-    return false;
-  }
+class ToolRequestAdapter extends OpenAiCompatibleAdapter {
+  constructor() { super('key', TEST_CONFIG, { 'maxAttempts': 1 }); }
 }
 
 void describe('OpenAiCompatibleAdapter — response parsing and tool-call handling', () => {
@@ -167,7 +142,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     }
   });
 
-  void it('falls back to ZERO_TOKEN_USAGE when the response omits usage', async () => {
+  void it('uses ZERO_TOKEN_USAGE when the response omits usage', async () => {
     const adapter = new InjectableAdapter({
       'choices': [{
         'message': { 'content': 'hello', 'tool_calls': [] },
@@ -287,16 +262,15 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
   });
 });
 
-void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
-  void it('default adapter does not fallback — SCHEMA_VIOLATION propagates after one call', async () => {
-    const adapter = new DefaultFallbackAdapter();
+void describe('OpenAiCompatibleAdapter tool rejection handling', () => {
+  void it('propagates provider rejection for tool requests after one call', async () => {
+    const adapter = new ToolRequestAdapter();
     let callCount = 0;
 
     await assert.rejects(
       () => withFetch(
         async () => {
           callCount++;
-          // Provider returns 422 (SCHEMA_VIOLATION) for tools
           return new Response('tools not supported', { 'status': 422 });
         },
         () => adapter.chat(TestRequest.withTools(true)),
@@ -307,57 +281,6 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
         return true;
       },
     );
-    assert.equal(callCount, 1, 'should not retry on non-retryable error');
-  });
-
-  void it('subclass override retries tools-free on SCHEMA_VIOLATION and succeeds', async () => {
-    const adapter = new FallbackEnabledAdapter();
-    let fetchCallCount = 0;
-
-    const resp = await withFetch(
-      async () => {
-        fetchCallCount++;
-        if (fetchCallCount === 1) {
-          // First call: 422 triggers shouldFallbackWithoutTools
-          return new Response('tools not supported', { 'status': 422 });
-        }
-        // Second call (without tools): success
-        return TestResponse.fake('fallback works');
-      },
-      () => adapter.chat(TestRequest.withTools(true)),
-    );
-
-    assert.equal(fetchCallCount, 2, 'should make exactly 2 fetch calls');
-    assert.equal(resp.message.variant, 'text');
-    if (resp.message.variant === 'text') {
-      assert.equal(resp.message.content, 'fallback works');
-    }
-  });
-
-  void it('does not fall back when the request carries no tools', async () => {
-    const adapter = new FallbackEnabledAdapter();
-    let fetchCallCount = 0;
-
-    await assert.rejects(
-      () => withFetch(
-        async () => {
-          fetchCallCount++;
-          return new Response('error', { 'status': 422 });
-        },
-        () => adapter.chat(TestRequest.withTools(false)), // no tools
-      ),
-      (err: unknown): err is LlmError => {
-        if (!(err instanceof LlmError)) return false;
-        assert.equal(err.classification.reason, 'SCHEMA_VIOLATION');
-        return true;
-      },
-    );
-    // shouldFallbackWithoutTools is only consulted when tools.length > 0
-    assert.equal(fetchCallCount, 1, 'fallback not triggered with empty tools');
-  });
-
-  void it('OpenAiCompatibleConfigType carries no toolsFallback property', () => {
-    const config: OpenAiCompatibleConfigType = { ...FALLBACK_CONFIG };
-    assert.ok(!('toolsFallback' in config), 'toolsFallback should not be present on config');
+    assert.equal(callCount, 1, 'tool request should be attempted exactly once');
   });
 });

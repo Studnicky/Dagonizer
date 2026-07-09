@@ -13,7 +13,7 @@
  *   pick argmax above confidence floor; else return null
  *
  * When the top score is below the floor we return `null`; the caller
- * (`BaseLlmClient.classifyIntent`) then falls back to the LLM. This is
+ * (`BaseLlmClient.classifyIntent`) then routes to the LLM. This is
  * a guard against degenerate query embeddings (off-topic noise that
  * happens to be close to one anchor by chance).
  *
@@ -90,7 +90,7 @@ export class IntentClassifier {
    * Build a classifier: embeds the canonical intent descriptions once,
    * then reuses the vectors for every `classify()` call. Throws if the
    * embedder fails on any anchor; the caller chooses how to recover
-   * (typically by skipping vector classification and falling back to
+   * (typically by skipping vector classification and routing to
    * LLM-only).
    */
   static async create(embedder: EmbedderInterface): Promise<IntentClassifier> {
@@ -117,7 +117,7 @@ export class IntentClassifier {
    * Embed the query, compute cosine similarity vs every intent vector,
    * return the highest-scoring intent paired with its score. Returns
    * `null` when the top score is below `confidenceFloor`; the caller
-   * falls back to LLM classification.
+   * routes to LLM classification.
    */
   async classify(
     query: string,

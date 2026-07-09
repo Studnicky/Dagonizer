@@ -14,6 +14,7 @@ import {
 
 // #region resolve-ip-node
 export class ResolveIpNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-ip';
   private readonly ipGeolocator: IpGeolocator;
 
   readonly 'name' = 'resolve-ip';

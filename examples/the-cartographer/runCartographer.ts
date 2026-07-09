@@ -46,14 +46,14 @@ import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { ObservedCartographer } from './ObservedCartographer.ts';
 import { normalizeSourcesPlugin } from './plugins/NormalizeSourcesPlugin.ts';
+import { CartographerSourceIntake } from './nodes/sourceIntake.ts';
 import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { DAGError } from '@studnicky/dagonizer/errors';
-import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
+import { StreamCursor } from '@studnicky/dagonizer/channels';
 import { Signal } from '@studnicky/signal';
-import { EventStreamSource } from './services/EventStreamSource.ts';
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
 let eventCount = 200;
@@ -192,7 +192,7 @@ class InsightsFingerprint {
  *   Step A   — Interrupted run: abort after ABORT_AFTER_ITEMS aggregate-event
  *              completions; read durable cursor from checkpoint.
  *   Step B   — Resume: restore from firstState.snapshot() (carries accumulator +
- *              checkpoint) and supply the remainder via StreamChannel.resumable.
+ *              checkpoint) and supply the remainder through CartographerSourceIntake.
  *              Assert cursor > 0 and resumeResult.cursor === null (completed).
  *   Proof    — Compare InsightsFingerprint of resumed state to baseline fingerprint.
  *              Equal → exactly-once; unequal → throw with full diff.
@@ -228,11 +228,7 @@ class CartographerResumableScenario {
     baselineState.useStreamingSource = true;
     baselineState.eventCount = RESUME_EVENT_COUNT;
     baselineState.streamCount = RESUME_EVENT_COUNT;
-    baselineState.sources = StreamChannel.resumable(
-      EventStreamSource.resumableProducer(baselineState.eventConfig, RESUME_EVENT_COUNT),
-      0,
-    );
-    await baselineDispatcher.execute('cartographer-resume', baselineState);
+    await baselineDispatcher.execute('urn:noocodec:dag:cartographer-resume', baselineState);
     const baselineFingerprint = InsightsFingerprint.of(baselineState.insights);
     logger.info('CartographerResumableScenario', 'baseline', `Baseline streamed run folded ${baselineState.insights.size} region(s).`);
 
@@ -289,15 +285,11 @@ class CartographerResumableScenario {
     resumeState.useStreamingSource = true;
     resumeState.eventCount = RESUME_EVENT_COUNT;
     resumeState.streamCount = RESUME_EVENT_COUNT;
-    // Supply the remainder: producer skips [0, cursor) items already consumed.
-    // On resume the engine skips the pre-phase and enters process-stream directly;
-    // sources must be wired here rather than relying on the seed node.
-    resumeState.sources = StreamChannel.resumable(
-      EventStreamSource.resumableProducer(resumeState.eventConfig, RESUME_EVENT_COUNT),
-      cursor,
-    );
+    // Supply the remainder: the top-level intake gather is already complete in
+    // the restored checkpoint, so resume enters process-stream directly.
+    resumeState.sources = CartographerSourceIntake.mergedFor(resumeState, cursor);
 
-    const resumeResult = await resumeDispatcher.resume('cartographer-resume', resumeState, 'process-stream');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:cartographer-resume', resumeState, 'process-stream');
 
     logger.info(
       'CartographerResumableScenario', 'resume',
@@ -536,7 +528,7 @@ process.once('SIGINT', () => {
 let stageCount = 0;
 let peakHeap = process.memoryUsage().heapUsed;
 try {
-  const execution = dispatcher.execute('cartographer', state, { 'signal': ac.signal });
+  const execution = dispatcher.execute('urn:noocodec:dag:cartographer', state, { 'signal': ac.signal });
   for await (const stage of execution) {
     const cur = process.memoryUsage().heapUsed;
     if (cur > peakHeap) peakHeap = cur;
@@ -699,7 +691,7 @@ let geoRun = 0, geoSkip = 0, redRun = 0, redSkip = 0, priceSkip = 0, etaSkip = 0
 let coldRun = 0, customsRun = 0;
 // Source-model tally
 let modelCoords = 0, modelLocale = 0, modelCode = 0, modelIp = 0, modelNone = 0;
-let coordsPlusIp = 0, fallbackFired = 0;
+let coordsPlusIp = 0, secondaryLookupFired = 0;
 let ipgeoRun = 0, ipgeoSkip = 0;
 let actualNodes = 0, naiveNodes = 0;
 const pathCounts = new Map<string, number>();
@@ -722,7 +714,7 @@ for (const r of sampleProcessed) {
   else if (rt.geoSourceModel === 'ip') modelIp++;
   else modelNone++;
   if (rt.geoModalities.includes('ip') && (rt.geoModalities.includes('coords') || rt.geoModalities.includes('geohash'))) coordsPlusIp++;
-  if (rt.geoFallbackUsed) fallbackFired++;
+  if (rt.geoSecondaryLookupUsed) secondaryLookupFired++;
   pathCounts.set(rt.path, (pathCounts.get(rt.path) ?? 0) + 1);
 
   naiveNodes += GEO_CHAIN_NODES + ORDER_ENRICH_NODES + REDACTION_NODES;
@@ -751,7 +743,7 @@ logger.result(`    • ip   (gateway IP only):         ${String(modelIp).padStar
 logger.result(`    • none (no signal):               ${String(modelNone).padStart(5)}`);
 logger.result('');
 logger.result(`  coords+IP enriched (dual modality): ${coordsPlusIp}`);
-logger.result(`  CoordTimezone fallback fired:        ${fallbackFired}`);
+logger.result(`  CoordTimezone secondary lookup fired: ${secondaryLookupFired}`);
 logger.result('');
 logger.result(`  geo-lookup:  RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG avoided)`);
 logger.result(`  ip-geolocate (freeipapi.com): RAN ${ipgeoRun}  ·  SKIPPED ${ipgeoSkip}`);

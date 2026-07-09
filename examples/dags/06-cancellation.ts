@@ -21,6 +21,7 @@ import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dago
 // #region signal-iteration
 export class BatchProcessNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'batch-process';
+  readonly '@id' = 'urn:noocodec:node:batch-process';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -55,6 +56,7 @@ export class BatchProcessNode extends MonadicNode<NodeStateBase, 'success'> {
 // #region node-cancellation-aware
 export class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'slow';
+  readonly '@id' = 'urn:noocodec:node:slow';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -87,21 +89,21 @@ export class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
 
 export const batchDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:batch-dag',
+  '@id': 'urn:noocodec:dag:batch-dag',
   '@type':     'DAG',
   name:        'batch-dag',
   version:     '1',
-  entrypoint:  'batch-process',
+  entrypoints: { main: 'urn:noocodec:dag:batch-dag/node/batch-process' },
   nodes: [
     {
-      '@id':   'urn:noocodex:dag:batch-dag/node/batch-process',
+      '@id': 'urn:noocodec:dag:batch-dag/node/batch-process',
       '@type': 'SingleNode',
       name:    'batch-process',
-      node:    'batch-process',
-      outputs: { success: 'end' },
+      node:    'urn:noocodec:node:batch-process',
+      outputs: { success: 'urn:noocodec:dag:batch-dag/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:batch-dag/node/end',
+      '@id': 'urn:noocodec:dag:batch-dag/node/end',
       '@type':   'TerminalNode',
       name:      'end',
       outcome:   'completed',
@@ -111,21 +113,21 @@ export const batchDag: DAGType = {
 
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:slow-dag',
+  '@id': 'urn:noocodec:dag:slow-dag',
   '@type':     'DAG',
   "name":        'slow-dag',
   "version":     '1',
-  "entrypoint":  'slow',
+  "entrypoints": { "main": 'urn:noocodec:dag:slow-dag/node/slow' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:slow-dag/node/slow',
+      '@id': 'urn:noocodec:dag:slow-dag/node/slow',
       '@type': 'SingleNode',
       "name":    'slow',
-      "node":    'slow',
-      "outputs": { "success": 'end' },
+      "node":    'urn:noocodec:node:slow',
+      "outputs": { "success": 'urn:noocodec:dag:slow-dag/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:slow-dag/node/end',
+      '@id': 'urn:noocodec:dag:slow-dag/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

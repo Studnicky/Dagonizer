@@ -57,7 +57,7 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import { SCATTER_PROGRESS_KEY, Validator } from '@studnicky/dagonizer';
+import { DAGIdentity, SCATTER_PROGRESS_KEY, Validator } from '@studnicky/dagonizer';
 import type { StoredScatterProgressType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
@@ -230,6 +230,8 @@ export class DagConformance {
       'name': 'Law 4: timeoutMs honored — node with timeoutMs times out',
       async run(): Promise<void> {
         const dispatcher = LawDispatcher.for(harness);
+        // Law 4 measures node timeout behavior, not lazy container startup.
+        await dispatcher.execute(CONFORMANCE_DAG.law1, harness.createState());
         const state = harness.createState();
 
         const start = Date.now();
@@ -394,7 +396,7 @@ export class DagConformance {
         };
 
         // Run 1: in-process (no container bound → resolveContainer returns null → inline path).
-        // Use harness.createInProcessDispatcher when available; otherwise fall back to a
+        // Use harness.createInProcessDispatcher when available; otherwise build a
         // second contained run (weaker but backend-agnostic and still proves determinism).
         const emptyContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({});
         const inProcessDispatcher = harness.createInProcessDispatcher !== undefined
@@ -488,7 +490,8 @@ export class DagConformance {
         // At least one item must have been acked before the kill.
         const raw = state1.getMetadata(SCATTER_PROGRESS_KEY);
         const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
-        const progressEntry = progress['fan'];
+        const fanIri = DAGIdentity.placementId(CONFORMANCE_DAG.law8, 'fan');
+        const progressEntry = progress[fanIri];
         const ackedBefore = progressEntry === undefined ? 0
           : progressEntry.mode === 'bounded'
             ? progressEntry.watermark + progressEntry.aheadAcked.length
@@ -505,7 +508,7 @@ export class DagConformance {
         const freshContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: freshContainer });
         const freshDispatcher = harness.createDispatcher(bundle, freshContainers);
 
-        const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state1, 'fan');
+        const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state1, fanIri);
         assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
 
         // All 3 items must be in the final gathered state (no item lost).

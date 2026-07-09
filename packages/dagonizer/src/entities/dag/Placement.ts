@@ -12,6 +12,7 @@
  */
 
 import type { EmbeddedDAGNodeType } from './EmbeddedDAGNode.js';
+import type { GatherNodeType } from './GatherNode.js';
 import type { PhaseNodeType } from './PhaseNode.js';
 import type { ScatterNodeType } from './ScatterNode.js';
 import type { SingleNodePlacementType } from './SingleNode.js';
@@ -20,6 +21,7 @@ import type { TerminalNodeType } from './TerminalNode.js';
 /** Canonical union of every node placement shape. Derived from `DAG['nodes'][number]`. */
 export type DAGNodeType =
   | EmbeddedDAGNodeType
+  | GatherNodeType
   | ScatterNodeType
   | SingleNodePlacementType
   | TerminalNodeType
@@ -43,6 +45,11 @@ export class Placement {
   /** Narrows `n` to `ScatterNode` when `@type === 'ScatterNode'`. */
   static isScatter(n: DAGNodeType): n is ScatterNodeType {
     return n['@type'] === 'ScatterNode';
+  }
+
+  /** Narrows `n` to `GatherNode` when `@type === 'GatherNode'`. */
+  static isGather(n: DAGNodeType): n is GatherNodeType {
+    return n['@type'] === 'GatherNode';
   }
 
   /** Narrows `n` to `SingleNodePlacementType` when `@type === 'SingleNode'`. */

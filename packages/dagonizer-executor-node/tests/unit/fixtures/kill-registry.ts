@@ -45,8 +45,9 @@ export const KILL_ITEM = 20;
  * via the node context's itemKey ('currentItem').
  */
 class ScatterKillerNode extends MonadicNode<ConformanceState, 'done'> {
-  readonly 'name' = 'scatter-counter';
-  readonly 'outputs' = ['done'] as const;
+  override readonly name = 'scatter-counter';
+  override readonly '@id' = 'urn:noocodec:node:scatter-counter';
+  override readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };

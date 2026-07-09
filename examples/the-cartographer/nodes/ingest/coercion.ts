@@ -33,6 +33,7 @@ const NUMERIC_FIELDS = [
 const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 
 export class CoerceTypesNode extends MonadicNode<CartographerState, 'validate-event'> {
+  readonly '@id' = 'urn:noocodec:node:coerce-types';
   readonly 'name' = 'coerce-types';
   readonly 'outputs' = ['validate-event'] as const;
 

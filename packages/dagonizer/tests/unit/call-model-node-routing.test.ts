@@ -25,6 +25,11 @@ import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { CallModelNode } from '../../src/patterns/agent/CallModelNode.js';
 
+const ROUTING_TEST_DAG_IRI = 'urn:noocodec:dag:routing-test';
+const ROUTING_TEST_CALL_MODEL_IRI = 'urn:noocodec:dag:routing-test/node/call-model';
+const ROUTING_TEST_END_IRI = 'urn:noocodec:dag:routing-test/node/end';
+const ROUTING_TEST_END_FAIL_IRI = 'urn:noocodec:dag:routing-test/node/end-fail';
+
 // ── Harness state: carries a per-run id and the words to stream ────────────
 
 class RunState extends NodeStateBase {
@@ -101,6 +106,7 @@ class CollectingSink implements StreamSinkInterface<RoutedChatStreamChunkType> {
 
 class RunKeyedCallModelNode extends CallModelNode<RunState> {
   readonly name = 'call-model';
+  readonly '@id' = 'urn:noocodec:node:call-model';
 
   protected override routeKey(state: RunState): string {
     return state.runId;
@@ -130,10 +136,15 @@ void describe('CallModelNode: routed-sink demultiplexing', () => {
     const sink = new CollectingSink();
     const node = new RunKeyedCallModelNode(new InterleavingWordAdapter(), { 'sink': sink });
 
-    const dag = new DAGBuilder('routing-test', '1')
-      .node('call-model', node, { 'text': 'end', 'tools': 'end', 'mixed': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(ROUTING_TEST_DAG_IRI, '1', { 'name': 'routing-test' })
+      .node(ROUTING_TEST_CALL_MODEL_IRI, node, {
+        'text': ROUTING_TEST_END_IRI,
+        'tools': ROUTING_TEST_END_IRI,
+        'mixed': ROUTING_TEST_END_IRI,
+        'error': ROUTING_TEST_END_FAIL_IRI,
+      }, { 'name': 'call-model' })
+      .terminal(ROUTING_TEST_END_IRI, { 'name': 'end' })
+      .terminal(ROUTING_TEST_END_FAIL_IRI, { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RunState>();
@@ -144,8 +155,8 @@ void describe('CallModelNode: routed-sink demultiplexing', () => {
     const stateB = new RunState('run-b', ['delta', 'echo']);
 
     const [resultA, resultB] = await Promise.all([
-      dispatcher.execute('routing-test', stateA),
-      dispatcher.execute('routing-test', stateB),
+      dispatcher.execute(ROUTING_TEST_DAG_IRI, stateA),
+      dispatcher.execute(ROUTING_TEST_DAG_IRI, stateB),
     ]);
 
     assert.equal(resultA.terminalOutcome, 'completed');
@@ -163,7 +174,7 @@ void describe('CallModelNode: routed-sink demultiplexing', () => {
 
     // Every routed chunk also carries a consistent source (dag/node).
     for (const chunk of sink.received) {
-      assert.deepEqual(chunk.source, { 'dagName': 'routing-test', 'nodeName': 'call-model' });
+      assert.deepEqual(chunk.source, { 'dagName': ROUTING_TEST_DAG_IRI, 'nodeName': 'call-model' });
     }
   });
 });

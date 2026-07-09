@@ -28,7 +28,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 export const EnrichedShipmentSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/EnrichedShipment',
+  '$id': 'https://noocodec.dev/schemas/cartographer/EnrichedShipment',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': [
@@ -93,7 +93,7 @@ export const EnrichedShipmentSchema = {
         'geoLookupRun', 'geoLookupSkipped',
         'ipGeolocateRun', 'ipGeolocateSkipped',
         'geoConfidence', 'geoModalities',
-        'geoSourceModel', 'geoFallbackUsed',
+        'geoSourceModel', 'geoSecondaryLookupUsed',
         'redactionRun', 'redactionSkipped',
         'pricingRun', 'pricingSkipped',
         'etaRun', 'etaSkipped',
@@ -113,8 +113,8 @@ export const EnrichedShipmentSchema = {
         'geoModalities':     { 'type': 'array', 'items': { 'type': 'string' } },
         // Source-model classification: which geo signal classify-geo-source selected.
         'geoSourceModel':    { 'type': 'string' },
-        // Whether resolve-coords-fallback fired (CoordTimezone secondary lookup).
-        'geoFallbackUsed':   { 'type': 'boolean' },
+        // Whether CoordTimezone secondary lookup fired.
+        'geoSecondaryLookupUsed': { 'type': 'boolean' },
         'redactionRun':      { 'type': 'boolean' },
         'redactionSkipped':  { 'type': 'boolean' },
         'pricingRun':        { 'type': 'boolean' },

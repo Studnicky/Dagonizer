@@ -11,7 +11,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ScatterOutputSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterOutput',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterOutput',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['all-error', 'all-success', 'empty', 'partial'],

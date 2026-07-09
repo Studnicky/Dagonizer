@@ -16,7 +16,7 @@
  * output: 'ready' — always routes forward; the `pre` phase never gates.
  *
  * Wiring (once enabled in dag.ts):
- *   DAGBuilder.phase('setup', 'pre', preRunSetup)
+ *   DAGBuilder.phase(setupPlacementIri, 'pre', preRunSetup, { name: 'setup' })
  */
 
 // #region pre-phase-setup
@@ -27,6 +27,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 
 export class PreRunSetupNode extends MonadicNode<ArchivistState, 'ready'> {
   readonly name = 'pre-run-setup';
+  readonly '@id' = 'urn:noocodec:node:pre-run-setup';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
     return {

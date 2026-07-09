@@ -40,13 +40,19 @@ export type { PhaseNodeType } from './dag/PhaseNode.js';
 export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfigType } from './dag/GatherConfig.js';
 
+export { DagReference, DagReferenceSchema, DynamicDagReferenceSchema, LiteralDagReferenceSchema } from './dag/DagReference.js';
+export type { DagReferenceType, DynamicDagReferenceType } from './dag/DagReference.js';
+
+export { GatherNodeDefaults, GatherNodeSchema } from './dag/GatherNode.js';
+export type { GatherNodeType, GatherPolicyType } from './dag/GatherNode.js';
+
 export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
 export type { ScatterNodeType, ScatterThrottleOptionsType, ScatterExecutionOptionsType, ScatterExecutionPolicyType } from './dag/ScatterNode.js';
 
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNodeType } from './dag/EmbeddedDAGNode.js';
 
-export { DAGSchema, DAG_CONTEXT, DAGIdentity } from './dag/DAG.js';
+export { DAGSchema, DAG_CONTEXT, DAGEntrypoints, DAGIdentity } from './dag/DAG.js';
 export type { DAGType } from './dag/DAG.js';
 
 export { Placement } from './dag/Placement.js';
@@ -107,6 +113,13 @@ export { ParkedSchema } from './execution/Parked.js';
 export type { ParkedType } from './execution/Parked.js';
 
 // ---------------------------------------------------------------------------
+// gather
+// ---------------------------------------------------------------------------
+
+export { GatherProgressSchema, GatherRecordProgressSchema } from './gather/GatherProgress.js';
+export type { GatherProgressType, GatherRecordProgressType } from './gather/GatherProgress.js';
+
+// ---------------------------------------------------------------------------
 // validation
 // ---------------------------------------------------------------------------
 
@@ -160,7 +173,7 @@ export {
   RecommendedWorkerCountConfigSchema,
   RecommendedWorkerCountConfigDefault,
   RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
-  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MINIMUM,
   RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
 } from './executor/RecommendedWorkerCountConfig.js';
 export type { RecommendedWorkerCountConfigType } from './executor/RecommendedWorkerCountConfig.js';

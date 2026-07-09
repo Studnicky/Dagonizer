@@ -51,8 +51,8 @@ export class DispatcherState extends NodeStateBase {
   language: string = 'en';
   /**
    * Classification strategy for `ClassifyMessageNode`: `'embedder'` runs
-   * cosine-similarity triage via `services.intent` with automatic LLM
-   * fallback; `'llm'` runs the LLM classifier exclusively.
+   * cosine-similarity triage via `services.intent` with LLM recovery;
+   * `'llm'` runs the LLM classifier exclusively.
    */
   classificationMode: 'embedder' | 'llm' = 'embedder';
   /** Full conversation history across turns. */

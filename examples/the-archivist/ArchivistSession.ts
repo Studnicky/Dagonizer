@@ -1,9 +1,8 @@
 /**
  * ArchivistSession: framework-agnostic orchestration base class.
  *
- * Extracts the session lifecycle that was previously hand-rolled twice —
- * once in `ArchivistRunner.vue` (Vue reactive refs) and once in `main.ts`
- * (DOM imperative). Both frontends will extend this class and override the
+ * Owns the shared session lifecycle used by `ArchivistRunner.vue`
+ * (Vue reactive refs) and `main.ts` (DOM imperative). Both frontends extend this class and override the
  * abstract seam methods to drive their respective view layers.
  *
  * Extension model:
@@ -27,9 +26,9 @@
  *   HITL park info (`result.parked`) is surfaced here; the base class has no
  *   IndexedDB or localStorage dependency.
  *
- * Static fallback pools:
- *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants here,
- *   replacing the copies that were previously duplicated in the Vue component.
+ * Static sample pools:
+ *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants shared
+ *   by every frontend.
  */
 
 import type { ExecutionResultType } from '@studnicky/dagonizer';
@@ -56,7 +55,7 @@ import {
   ApiKeyStore,
   BackendMatrix,
   EmbedderProvisioner,
-  OllamaModels,
+  PreferredModels,
   ProviderInstantiator,
 } from './providers/index.ts';
 import type {
@@ -72,8 +71,10 @@ import type { ArchivistServices, LlmClientInterface } from './services.ts';
 import { StateProjection } from './state/StateProjection.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 
-// ── Static fallback pools ────────────────────────────────────────────────────
-// Single source of truth: previously duplicated in ArchivistRunner.vue.
+// ── Static sample pools ───────────────────────────────────────────────────────
+// Single source of truth for every Archivist frontend.
+
+const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
 
 export const STATIC_GREETINGS: readonly string[] = [
   'Welcome to the shop. The shelves remember everything they hold. What brings you in?',
@@ -181,7 +182,7 @@ const DEFAULT_TIMEOUT_SETTINGS: SessionTimeoutSettings = {
 export interface ArchivistSessionOptions {
   readonly conversationContextWindow?: number;
   readonly timeoutSettings?: Partial<SessionTimeoutSettings>;
-  /** Clock for session timestamps and deterministic fallback selection. */
+  /** Clock for session timestamps and deterministic sample selection. */
   readonly clock?: SubstrateClock;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
@@ -207,7 +208,7 @@ const NODE_TRACE_MESSAGES: Readonly<Record<string, (state: ArchivistState) => st
     return state.bookWorksets.map((ws) => {
       const a = ws.arguments;
       const q = a['query'] ?? a['isbn'] ?? a['author'] ?? a['subject'] ?? '?';
-      return `search: ${ws.dagName.replace('tool:', '')} → "${String(q)}"`;
+      return `search: ${ws.dagIri.replace('urn:noocodec:tool:', '')} → "${String(q)}"`;
     }).join(' | ');
   },
   'rank-candidates': (state) => `candidates from tools: ${String(state.candidates.length)}`,
@@ -363,7 +364,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   // ── Backend state ─────────────────────────────────────────────────────────
   protected activeBackend: ProviderId | null;
   protected apiKeys: Partial<Record<ProviderId, string>>;
-  protected ollamaModel: string;
+  protected preferredModels: Partial<Record<ProviderId, string>>;
   protected isMobile: boolean;
   protected backends: readonly BackendAvailability[];
   protected embedder: EmbedderInterface | null;
@@ -390,7 +391,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     };
     this.activeBackend    = null;
     this.apiKeys          = ApiKeyStore.load();
-    this.ollamaModel      = OllamaModels.loadModel();
+    this.preferredModels  = PreferredModels.load();
     this.isMobile         = false;
     this.backends         = [];
     this.embedder         = null;
@@ -409,7 +410,12 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   }
 
   setOllamaModel(model: string): void {
-    this.ollamaModel = model;
+    this.preferredModels = PreferredModels.set('ollama', model);
+  }
+
+  setPreferredModels(models: Partial<Record<ProviderId, string>>): void {
+    this.preferredModels = models;
+    PreferredModels.save(models);
   }
 
   setActiveBackend(id: ProviderId | null): void {
@@ -434,7 +440,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * real HTTP tool instances.
    *
    * The same tool instances MUST appear in both `services` and `toolRegistry`
-   * because the DAG's scatter body resolves `tool:<name>` embedded DAGs from
+   * because the DAG's scatter body resolves tool DAG IRIs from
    * the registry, and the node implementations call `services.webSearch`, etc.
    */
   protected buildRig(llm: LlmClientInterface, embedder: EmbedderInterface | null): SessionRig {
@@ -486,7 +492,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Served asset paths for the on-device transformers embedder (model + WASM),
    * so it loads fully offline from the app bundle. Default empty — the embedder
-   * falls back to its package-local vendored weights (node/headless). A browser
+   * uses its package-local vendored weights (node/headless). A browser
    * frontend overrides this to return the bundler-served paths.
    */
   protected embedderAssetPaths(): EmbedderProvisionOptionsType {
@@ -522,7 +528,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
     this.backends = await BackendMatrix.detect({
       'apiKeys': this.apiKeys,
-      ...(this.ollamaModel.length > 0 ? { 'preferredOllamaModel': this.ollamaModel } : {}),
+      'preferredModels': this.preferredModels,
     });
 
     // Provision embedder concurrently without blocking backend selection.
@@ -558,7 +564,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         this.activeBackend = picked.id;
         this.logger.info(
           {
-            'context': { 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' },
+            'context': { 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'available-default' },
             'event': 'archivist.backend-select',
             'message': savedId === null
               ? `backend auto-selected: ${picked.displayName}`
@@ -573,8 +579,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Generate and emit the Archivist greeting for a fresh session.
    *
-   * Tries the LLM first; falls back to a static pool entry when the LLM is
-   * unavailable or throws. Calls `onGreetingReady(greeting)` with the result.
+   * Tries the LLM first; uses a static sample when the LLM is unavailable or
+   * throws. Calls `onGreetingReady(greeting)` with the result.
    *
    * Returns the greeting text so callers can chain `sampleReply(greeting)`.
    */
@@ -587,7 +593,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         const generated = await llm.suggestGreeting();
         if (generated.length > 0) greeting = generated;
       } catch {
-        // static fallback
+        // Static sample remains selected.
       }
     }
 
@@ -598,8 +604,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Generate and emit a visitor-style reply to the supplied greeting.
    *
-   * Tries the LLM first; falls back to a static pool entry when unavailable
-   * or when the LLM produces an empty string. Calls `onSampleReplyReady(reply)`.
+   * Tries the LLM first; uses a static sample when unavailable or when the LLM
+   * produces an empty string. Calls `onSampleReplyReady(reply)`.
    */
   async sampleReply(greeting: string): Promise<void> {
     const llm = this.#resolveLlm();
@@ -610,7 +616,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         const generated = await llm.suggestVisitorReplyTo(greeting);
         if (generated.length > 0) reply = generated;
       } catch {
-        // static fallback
+        // Static sample remains selected.
       }
     }
 
@@ -686,7 +692,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     };
 
     try {
-      await observer.execute('the-archivist', visitor, executeOptions);
+      await observer.execute(ARCHIVIST_DAG_IRI, visitor, executeOptions);
     } catch (err) {
       this.onError(err instanceof Error ? err : new Error(String(err)));
     } finally {
@@ -700,9 +706,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Reset the session to a blank slate and run the bootstrap sequence.
    *
    * Clears conversation history, clears the logger, then calls
-   * `greet()` + `sampleReply()` — the single implementation that
-   * replaces the duplicate logic previously split between Vue's
-   * `onMounted` and `reset()`.
+   * `greet()` + `sampleReply()` through the single shared implementation.
    *
    * The memory store is cleared via `store.clear()`. Subclasses that
    * manage a seed library should reload it by overriding `onReset`.
@@ -1063,8 +1067,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   #resolveLlm(): LlmClientInterface | null {
     if (this.#injectedLlm !== null) return this.#injectedLlm;
     if (this.activeBackend === null) return null;
-    const model = this.activeBackend === 'ollama' && this.ollamaModel.length > 0
-      ? this.ollamaModel
+    const preferred = this.preferredModels[this.activeBackend];
+    const model = typeof preferred === 'string' && preferred.length > 0
+      ? preferred
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
     return ProviderInstantiator.instantiate(this.activeBackend, {
       'apiKeys':  this.apiKeys,

@@ -7,15 +7,15 @@
  *   2. Drive it with a real OllamaApiAdapter against a discovered model. When
  *      the model supports tool calling it emits a typed ToolCall[] via the
  *      native 'tools' channel; the DAG node dispatches the call directly.
- *   3. Demonstrate the ToolCallCodec text-channel fallback path: feed a
+ *   3. Demonstrate the ToolCallCodec text-channel decode path: feed a
  *      sample assistant message string with embedded JSON to ToolCallCodec.decode
  *      and dispatch the result. This path requires no model — it shows the
  *      codec decoding a fixed string so the reader understands how the text
- *      fallback works for models that embed tool calls in prose.
+ *      path works for models that embed tool calls in prose.
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
- *   - A tool-capable model pulled (e.g. ollama pull llama3.2:3b).
+ *   - A tool-capable Ollama chat model installed locally.
  *     The example discovers an installed chat model from the daemon's tag
  *     list; override the choice with the OLLAMA_MODEL env var.
  *
@@ -37,6 +37,7 @@ import {
   OnTextNode,
   OnToolDoneNode,
   OnToolErrorNode,
+  TOOL_USE_DAG_IRI,
   dag,
 } from './dags/26-tool-use.js';
 
@@ -56,7 +57,7 @@ const OLLAMA_MODEL = await adapter.selectChatModel(
 
 if (OLLAMA_MODEL === null) {
   process.stdout.write(
-    'No Ollama chat model installed — start the daemon at 127.0.0.1:11434 and run `ollama pull llama3.2:3b`.\n',
+    'No Ollama chat model installed — start the daemon at 127.0.0.1:11434 and install any tool-capable chat model.\n',
   );
   process.exit(0);
 }
@@ -89,7 +90,7 @@ dispatcher.registerDAG(dag);
 // ---------------------------------------------------------------------------
 // Run A: real OllamaApiAdapter — native tool_calls channel.
 //
-//   Sends the tool definition to llama3.2. When the model calls the tool,
+//   Sends the tool definition to the selected model. When the model calls the tool,
 //   the adapter returns response.message.variant === 'tools' with a typed
 //   ToolCall[]. The CallLlmNode dispatches the call without codec decoding.
 // ---------------------------------------------------------------------------
@@ -101,14 +102,14 @@ stateA.question = 'What is 7 + 35?';
 stateA.adapter  = adapter;
 stateA.registry = registry;
 
-await dispatcher.execute('tool-use-demo', stateA);
+await dispatcher.execute('urn:noocodec:dag:tool-use-demo', stateA);
 
 process.stdout.write(`  question:      "${stateA.question}"\n`);
 process.stdout.write(`  dispatched:    "${stateA.dispatchedTool}"\n`);
 process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 
 // ---------------------------------------------------------------------------
-// Run B: ToolCallCodec text-channel fallback demonstration.
+// Run B: ToolCallCodec text-channel decode demonstration.
 //
 //   No model call here. Feed a fixed assistant message string — the format a
 //   model that embeds tool calls in prose would return — to ToolCallCodec.decode.
@@ -120,7 +121,7 @@ process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 //   calls in prose rather than using the structured tool channel.
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Run B: ToolCallCodec.decode text-channel fallback ---\n');
+process.stdout.write('--- Run B: ToolCallCodec.decode text-channel path ---\n');
 
 const sampleProse =
   'Sure! I will compute that for you. '
@@ -166,7 +167,7 @@ stateC.dispatchedTool = unknownCalls[0]?.name ?? '';
 const dispatchNode = new DispatchToolNode();
 const ac = new AbortController();
 await dispatchNode.execute(Batch.of(stateC), {
-  dagName: 'tool-use-demo',
+  dagName: TOOL_USE_DAG_IRI,
   nodeName: 'dispatchTool',
   signal: ac.signal,
   validateOutputs: false,

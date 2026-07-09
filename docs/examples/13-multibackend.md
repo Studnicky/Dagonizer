@@ -24,11 +24,11 @@ import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/St
 
 Multi-Backend Roles let one application DAG send different placements to different execution backends. The Cartographer assigns stream processing to `cpu` and summary generation to `io` while preserving the same JSON-LD graph.
 
-The role names are deployment labels, not new workflow primitives. The graph stays portable because it asks for `cpu` and `io`; the host decides whether those roles mean browser workers, Node worker threads, forked processes, or in-process fallback.
+The role names are deployment labels, not new workflow primitives. The graph stays portable because it asks for `cpu` and `io`; the host decides whether those roles mean browser workers, Node worker threads, forked processes, or in-process execution.
 
 ## How It Works
 
-Each placement declares only a logical role name. The host decides what backend satisfies that role: a browser worker pool, Node worker threads, forked processes, or in-process fallback. The JSON-LD graph remains portable because topology references roles, not concrete transports.
+Each placement declares only a logical role name. The host decides what backend satisfies that role: a browser worker pool, Node worker threads, forked processes, or in-process execution. The JSON-LD graph remains portable because topology references roles, not concrete transports.
 
 ### Runtime behavior
 

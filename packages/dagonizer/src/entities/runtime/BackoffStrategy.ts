@@ -17,7 +17,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const BackoffStrategySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/BackoffStrategy',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/BackoffStrategy',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['constant', 'decorrelated-jitter', 'exponential', 'linear'],

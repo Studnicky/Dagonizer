@@ -38,6 +38,8 @@ import { ConsoleLogger } from '../../logger/ConsoleLogger.ts';
 import type { ArchivistServices, ClassifiedIntent, LlmClientInterface } from '../../services.ts';
 import type { CandidateType } from '../../entities/Book.ts';
 
+const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
+
 // ── Stub tool definition ─────────────────────────────────────────────────────
 
 const STUB_DEF = {
@@ -261,7 +263,7 @@ describe('ArchivistSession.greet()', () => {
     assert.equal(session.greetingsReceived[0], greeting);
   });
 
-  it('uses LLM-generated greeting (not static fallback)', () => {
+  it('uses LLM-generated greeting (not static sample)', () => {
     assert.equal(greeting, HeadlessStubLlm.GREETING);
   });
 });
@@ -364,7 +366,7 @@ describe('ArchivistSession.ask()', () => {
     const run = session.runEnds[0];
     assert.ok(run !== undefined);
     assert.ok(typeof run.execution === 'object', 'execution result must be present');
-    assert.equal(run.dagName, 'the-archivist');
+    assert.equal(run.dagName, ARCHIVIST_DAG_IRI);
   });
 
   it('uses the injected clock for conversation timestamps', async () => {

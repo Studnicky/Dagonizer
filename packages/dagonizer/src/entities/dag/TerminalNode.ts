@@ -2,7 +2,7 @@
  * TerminalNode: explicit terminal placement in JSON-LD canonical form.
  *
  * Uses `@type: 'TerminalNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
+ * URN: `urn:noocodec:dag:<dagName>/node/<name>`.
  *
  * A TerminalNode ends the flow when reached. The `outcome` field declares
  * whether the flow should be marked `completed` or `failed`. This is the
@@ -18,7 +18,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const TerminalNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/TerminalNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/TerminalNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'outcome'],
@@ -33,4 +33,3 @@ export const TerminalNodeSchema = {
 
 /** TypeScript type derived from `TerminalNodeSchema` via `json-schema-to-ts`. */
 export type TerminalNodeType = FromSchema<typeof TerminalNodeSchema>;
-

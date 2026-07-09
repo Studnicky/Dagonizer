@@ -22,7 +22,7 @@ import { NodeErrorProperties, NodeErrorSchema } from './NodeError.js';
 import { NodeWarningProperties, NodeWarningSchema } from './NodeWarning.js';
 
 export const NodeStateDataSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeStateData',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeStateData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['errors', 'warnings', 'metadata', 'retries'],

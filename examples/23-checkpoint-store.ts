@@ -53,7 +53,7 @@ const dispatcher1 = PipelineDispatcher.make();
 const ctl          = new AbortController();
 const initial      = new PipelineState();
 
-const execution = dispatcher1.execute('pipeline', initial, { signal: ctl.signal });
+const execution = dispatcher1.execute('urn:noocodec:dag:pipeline', initial, { signal: ctl.signal });
 let stagesCompleted = 0;
 for await (const _stage of execution) {
   stagesCompleted++;
@@ -77,7 +77,7 @@ if (partial.cursor === null) {
 // #region store-lifecycle
 // #region store-init
 const store1   = new MemoryCheckpointStore();
-const ckpt     = await Checkpoint.capture('pipeline', partial);
+const ckpt     = await Checkpoint.capture('urn:noocodec:dag:pipeline', partial);
 await ckpt.persist(store1, CHECKPOINT_KEY);
 // #endregion store-init
 

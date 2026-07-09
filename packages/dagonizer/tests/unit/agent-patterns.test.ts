@@ -38,6 +38,16 @@ import { NormalizeResponseNode } from '../../src/patterns/agent/NormalizeRespons
 import { NormalizeToolCallsNode } from '../../src/patterns/agent/NormalizeToolCallsNode.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
 import { ToolRegistry } from '../../src/tool/ToolRegistry.js';
+import { TestDag } from '../_support/TestDag.js';
+
+const placementIri = TestDag.placementIri;
+const NORMALIZE_TEST_DAG_IRI = 'urn:noocodec:dag:agent-normalize-test';
+const NORMALIZE_EMPTY_TEST_DAG_IRI = 'urn:noocodec:dag:agent-normalize-empty-test';
+const APPEND_TEST_DAG_IRI = 'urn:noocodec:dag:agent-append-test';
+const APPEND_MISSING_TEST_DAG_IRI = 'urn:noocodec:dag:agent-append-missing-test';
+const NORMALIZE_CALLS_TEST_DAG_IRI = 'urn:noocodec:dag:agent-normalize-calls-test';
+const NORMALIZE_BAD_CALLS_TEST_DAG_IRI = 'urn:noocodec:dag:agent-normalize-bad-calls-test';
+const AGENT_PIPELINE_DAG_IRI = 'urn:noocodec:dag:agent-pipeline';
 
 // ── Harness state ─────────────────────────────────────────────────────────────
 
@@ -182,6 +192,7 @@ class CalculatorTool implements ToolInterface<Record<string, unknown>, { result:
 
 class TestBuildChatRequestNode extends BuildChatRequestNode<HarnessState> {
   readonly name = 'build-request';
+  readonly '@id' = 'urn:noocodec:node:build-request';
 
   protected buildRequest(
     state: HarnessState,
@@ -203,6 +214,7 @@ class TestBuildChatRequestNode extends BuildChatRequestNode<HarnessState> {
 
 class TestCallModelNode extends CallModelNode<HarnessState> {
   readonly name = 'call-model';
+  readonly '@id' = 'urn:noocodec:node:call-model';
   constructor(llm: LlmAdapterInterface) { super(llm); }
 
   protected getRequest(state: HarnessState, _context: NodeContextType): ChatRequestType {
@@ -222,6 +234,7 @@ class TestCallModelNode extends CallModelNode<HarnessState> {
 
 class TestDecodeTextToolCallsNode extends DecodeTextToolCallsNode<HarnessState> {
   readonly name = 'decode-tools';
+  readonly '@id' = 'urn:noocodec:node:decode-tools';
 
   protected getText(state: HarnessState, _context: NodeContextType): string {
     return state.assistantText;
@@ -234,6 +247,7 @@ class TestDecodeTextToolCallsNode extends DecodeTextToolCallsNode<HarnessState> 
 
 class TestNormalizeToolCallsNode extends NormalizeToolCallsNode<HarnessState> {
   readonly name = 'normalize-tools';
+  readonly '@id' = 'urn:noocodec:node:normalize-tools';
 
   protected getToolCalls(state: HarnessState, _context: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -246,6 +260,7 @@ class TestNormalizeToolCallsNode extends NormalizeToolCallsNode<HarnessState> {
 
 class TestBuildToolWorksetsNode extends BuildToolWorksetsNode<HarnessState> {
   readonly name = 'build-worksets';
+  readonly '@id' = 'urn:noocodec:node:build-worksets';
 
   protected getToolCalls(state: HarnessState, _context: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -266,6 +281,7 @@ class TestBuildToolWorksetsNode extends BuildToolWorksetsNode<HarnessState> {
 
 class TestCollectToolResultsNode extends CollectToolResultsNode<HarnessState> {
   readonly name = 'collect-results';
+  readonly '@id' = 'urn:noocodec:node:collect-results';
 
   protected getGatheredResults(state: HarnessState, _context: NodeContextType): readonly unknown[] {
     return state.toolOutputs;
@@ -278,6 +294,7 @@ class TestCollectToolResultsNode extends CollectToolResultsNode<HarnessState> {
 
 class TestNormalizeResponseNode extends NormalizeResponseNode<HarnessState> {
   readonly name = 'normalize-response';
+  readonly '@id' = 'urn:noocodec:node:normalize-response';
 
   protected getResponse(state: HarnessState, _context: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
@@ -286,6 +303,7 @@ class TestNormalizeResponseNode extends NormalizeResponseNode<HarnessState> {
 
 class TestAppendAssistantNode extends AppendAssistantNode<HarnessState> {
   readonly name = 'append-assistant';
+  readonly '@id' = 'urn:noocodec:node:append-assistant';
 
   protected getResponse(state: HarnessState, _context: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
@@ -323,9 +341,15 @@ class AgentFixtures {
 void describe('NormalizeResponseNode: unit', () => {
   void it('routes text response to text output', async () => {
     const node = new TestNormalizeResponseNode();
-    const dag = new DAGBuilder('normalize-test', '1')
-      .node('normalize-response', node, { 'text': 'end', 'tools': 'end', 'mixed': 'end', 'empty': 'end', 'error': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(NORMALIZE_TEST_DAG_IRI, '1', { 'name': 'normalize-test' })
+      .node(placementIri(NORMALIZE_TEST_DAG_IRI, 'normalize-response'), node, {
+        'text': placementIri(NORMALIZE_TEST_DAG_IRI, 'end'),
+        'tools': placementIri(NORMALIZE_TEST_DAG_IRI, 'end'),
+        'mixed': placementIri(NORMALIZE_TEST_DAG_IRI, 'end'),
+        'empty': placementIri(NORMALIZE_TEST_DAG_IRI, 'end'),
+        'error': placementIri(NORMALIZE_TEST_DAG_IRI, 'end'),
+      })
+      .terminal(placementIri(NORMALIZE_TEST_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -339,15 +363,21 @@ void describe('NormalizeResponseNode: unit', () => {
       'usage': { 'promptTokens': 1, 'completionTokens': 1 },
     };
 
-    const result = await dispatcher.execute('normalize-test', state);
+    const result = await dispatcher.execute(NORMALIZE_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'completed');
   });
 
   void it('routes null response to empty output', async () => {
     const node = new TestNormalizeResponseNode();
-    const dag = new DAGBuilder('normalize-empty-test', '1')
-      .node('normalize-response', node, { 'text': 'end', 'tools': 'end', 'mixed': 'end', 'empty': 'end', 'error': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(NORMALIZE_EMPTY_TEST_DAG_IRI, '1', { 'name': 'normalize-empty-test' })
+      .node(placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'normalize-response'), node, {
+        'text': placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'),
+        'tools': placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'),
+        'mixed': placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'),
+        'empty': placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'),
+        'error': placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'),
+      })
+      .terminal(placementIri(NORMALIZE_EMPTY_TEST_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -355,7 +385,7 @@ void describe('NormalizeResponseNode: unit', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HarnessState();
-    const result = await dispatcher.execute('normalize-empty-test', state);
+    const result = await dispatcher.execute(NORMALIZE_EMPTY_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'completed');
   });
 });
@@ -363,10 +393,13 @@ void describe('NormalizeResponseNode: unit', () => {
 void describe('AppendAssistantNode: unit', () => {
   void it('appends text response to assistant text field', async () => {
     const node = new TestAppendAssistantNode();
-    const dag = new DAGBuilder('append-test', '1')
-      .node('append-assistant', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(APPEND_TEST_DAG_IRI, '1', { 'name': 'append-test' })
+      .node(placementIri(APPEND_TEST_DAG_IRI, 'append-assistant'), node, {
+        'done': placementIri(APPEND_TEST_DAG_IRI, 'end'),
+        'error': placementIri(APPEND_TEST_DAG_IRI, 'end-fail'),
+      })
+      .terminal(placementIri(APPEND_TEST_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(APPEND_TEST_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -380,17 +413,20 @@ void describe('AppendAssistantNode: unit', () => {
       'usage': { 'promptTokens': 1, 'completionTokens': 1 },
     };
 
-    const result = await dispatcher.execute('append-test', state);
+    const result = await dispatcher.execute(APPEND_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.assistantText, '[appended] Hello world');
   });
 
   void it('routes error when no response stored', async () => {
     const node = new TestAppendAssistantNode();
-    const dag = new DAGBuilder('append-missing-test', '1')
-      .node('append-assistant', node, { 'done': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(APPEND_MISSING_TEST_DAG_IRI, '1', { 'name': 'append-missing-test' })
+      .node(placementIri(APPEND_MISSING_TEST_DAG_IRI, 'append-assistant'), node, {
+        'done': placementIri(APPEND_MISSING_TEST_DAG_IRI, 'end'),
+        'error': placementIri(APPEND_MISSING_TEST_DAG_IRI, 'end-fail'),
+      })
+      .terminal(placementIri(APPEND_MISSING_TEST_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(APPEND_MISSING_TEST_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -398,7 +434,7 @@ void describe('AppendAssistantNode: unit', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HarnessState();
-    const result = await dispatcher.execute('append-missing-test', state);
+    const result = await dispatcher.execute(APPEND_MISSING_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'failed');
   });
 });
@@ -406,10 +442,14 @@ void describe('AppendAssistantNode: unit', () => {
 void describe('NormalizeToolCallsNode: unit', () => {
   void it('filters invalid calls and routes valid', async () => {
     const node = new TestNormalizeToolCallsNode();
-    const dag = new DAGBuilder('normalize-calls-test', '1')
-      .node('normalize-tools', node, { 'valid': 'end', 'empty': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(NORMALIZE_CALLS_TEST_DAG_IRI, '1', { 'name': 'normalize-calls-test' })
+      .node(placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'normalize-tools'), node, {
+        'valid': placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'end'),
+        'empty': placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'end'),
+        'error': placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'end-fail'),
+      })
+      .terminal(placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(NORMALIZE_CALLS_TEST_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -421,17 +461,21 @@ void describe('NormalizeToolCallsNode: unit', () => {
       { 'id': 'c1', 'name': 'calculator', 'arguments': { 'a': 1, 'b': 2 } },
     ];
 
-    const result = await dispatcher.execute('normalize-calls-test', state);
+    const result = await dispatcher.execute(NORMALIZE_CALLS_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.decodedCalls.length, 1);
   });
 
   void it('routes error when all calls are invalid', async () => {
     const node = new TestNormalizeToolCallsNode();
-    const dag = new DAGBuilder('normalize-bad-calls-test', '1')
-      .node('normalize-tools', node, { 'valid': 'end', 'empty': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, '1', { 'name': 'normalize-bad-calls-test' })
+      .node(placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'normalize-tools'), node, {
+        'valid': placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'end'),
+        'empty': placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'end'),
+        'error': placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'end-fail'),
+      })
+      .terminal(placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<HarnessState>();
@@ -441,7 +485,7 @@ void describe('NormalizeToolCallsNode: unit', () => {
     const state = new HarnessState();
     state.decodedCalls = [{ 'id': '', 'name': 'calculator', 'arguments': { 'a': 1 } }];
 
-    const result = await dispatcher.execute('normalize-bad-calls-test', state);
+    const result = await dispatcher.execute(NORMALIZE_BAD_CALLS_TEST_DAG_IRI, state);
     assert.equal(result.terminalOutcome, 'failed');
   });
 });
@@ -450,7 +494,7 @@ void describe('NormalizeToolCallsNode: unit', () => {
 
 void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
   void it('build-request → call-model → decode-tools → normalize → build-worksets → scatter → collect-results', async () => {
-    // Tool registry: registers calculator as tool:calculator DAG with isolation factory.
+    // Tool registry: registers calculator as urn:noocodec:tool:calculator DAG with isolation factory.
     const registry = AgentFixtures.registry();
     const services = AgentFixtures.services(registry);
 
@@ -464,38 +508,64 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     // Parent DAG:
     //   build-request (ready) → call-model (text) → decode-tools (decoded)
     //   → normalize-tools (valid) → build-worksets (ready)
-    //   → scatter [dispatch-tools] on safeWorkset (dagFrom: 'dagName')
-    //   → (all-success) → collect-results (done) → end
+    //   → scatter [dispatch-tools] on safeWorkset (DagReference reads item.dagIri)
+    //   → gather [join-tool-results] → collect-results (done) → end
     //
-    // The scatter `map` gather strategy maps each clone's `output` field
+    // The explicit `map` gather strategy maps each clone's `output` field
     // into the parent's `toolOutputs` array.
-    const parentDag = new DAGBuilder('agent-pipeline', '1')
-      .node('build-request', buildRequestNode, { 'ready': 'call-model', 'error': 'end-fail' })
-      .node('call-model', callModelNode, { 'text': 'decode-tools', 'tools': 'end-fail', 'mixed': 'end-fail', 'error': 'end-fail' })
-      .node('decode-tools', decodeToolsNode, { 'decoded': 'normalize-tools', 'empty': 'end-fail', 'error': 'end-fail' })
-      .node('normalize-tools', normalizeToolsNode, { 'valid': 'build-worksets', 'empty': 'end-fail', 'error': 'end-fail' })
-      .node('build-worksets', buildWorksetsNode, { 'ready': 'dispatch-tools', 'empty': 'end-fail', 'error': 'end-fail' })
+    const parentDag = new DAGBuilder(AGENT_PIPELINE_DAG_IRI, '1', { 'name': 'agent-pipeline' })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'build-request'), buildRequestNode, {
+        'ready': placementIri(AGENT_PIPELINE_DAG_IRI, 'call-model'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'call-model'), callModelNode, {
+        'text': placementIri(AGENT_PIPELINE_DAG_IRI, 'decode-tools'),
+        'tools': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'mixed': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'decode-tools'), decodeToolsNode, {
+        'decoded': placementIri(AGENT_PIPELINE_DAG_IRI, 'normalize-tools'),
+        'empty': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'normalize-tools'), normalizeToolsNode, {
+        'valid': placementIri(AGENT_PIPELINE_DAG_IRI, 'build-worksets'),
+        'empty': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'build-worksets'), buildWorksetsNode, {
+        'ready': placementIri(AGENT_PIPELINE_DAG_IRI, 'dispatch-tools'),
+        'empty': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      })
       .scatter<HarnessState, string>(
-        'dispatch-tools',
+        placementIri(AGENT_PIPELINE_DAG_IRI, 'dispatch-tools'),
         'safeWorkset',
-        { 'dagFrom': 'dagName' },
+        { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': ['urn:noocodec:tool:calculator'] } },
         {
-          'all-success': 'collect-results',
-          'partial':     'collect-results',
-          'all-error':   'collect-results',
-          'empty':       'collect-results',
+          'all-success': placementIri(AGENT_PIPELINE_DAG_IRI, 'join-tool-results'),
+          'partial':     placementIri(AGENT_PIPELINE_DAG_IRI, 'join-tool-results'),
+          'all-error':   placementIri(AGENT_PIPELINE_DAG_IRI, 'join-tool-results'),
+          'empty':       placementIri(AGENT_PIPELINE_DAG_IRI, 'join-tool-results'),
         },
-        {
-          // map strategy: for each clone reads clone.output → appends to parent.toolOutputs
-          'gather': {
-            'strategy': 'map',
-            'mapping': { 'output': 'toolOutputs' },
-          },
-        },
+        { 'name': 'dispatch-tools' },
       )
-      .node('collect-results', collectResultsNode, { 'done': 'end', 'empty': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .gather(placementIri(AGENT_PIPELINE_DAG_IRI, 'join-tool-results'), { [placementIri(AGENT_PIPELINE_DAG_IRI, 'dispatch-tools')]: {} }, {
+        'strategy': 'map',
+        'mapping': { 'output': 'toolOutputs' },
+      }, {
+        'success': placementIri(AGENT_PIPELINE_DAG_IRI, 'collect-results'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+        'empty': placementIri(AGENT_PIPELINE_DAG_IRI, 'collect-results'),
+      }, { 'name': 'join-tool-results' })
+      .node(placementIri(AGENT_PIPELINE_DAG_IRI, 'collect-results'), collectResultsNode, {
+        'done': placementIri(AGENT_PIPELINE_DAG_IRI, 'end'),
+        'empty': placementIri(AGENT_PIPELINE_DAG_IRI, 'end'),
+        'error': placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'),
+      }, { 'name': 'collect-results' })
+      .terminal(placementIri(AGENT_PIPELINE_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(AGENT_PIPELINE_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     // Dispatcher: register parent nodes, then the tool bundle (ToolInvokeNode instances
@@ -514,7 +584,7 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     const state = new HarnessState();
     state.prompt = 'What is 7 + 35?';
 
-    const result = await dispatcher.execute('agent-pipeline', state);
+    const result = await dispatcher.execute(AGENT_PIPELINE_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed', 'pipeline must complete successfully');
 
@@ -529,9 +599,9 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     assert.equal(state.decodedCalls.length, 1, 'one tool call decoded from text');
     assert.equal(state.decodedCalls[0]?.name, 'calculator', 'decoded call is calculator');
 
-    // 4. Safe workset: one item stamped with correct dagName.
+    // 4. Safe workset: one item stamped with the target DAG IRI.
     assert.equal(state.safeWorkset.length, 1, 'one safe workset item');
-    assert.equal(state.safeWorkset[0]?.dagName, 'tool:calculator', 'scatter item dagName is tool:calculator');
+    assert.equal(state.safeWorkset[0]?.dagIri, 'urn:noocodec:tool:calculator', 'scatter item dagIri is urn:noocodec:tool:calculator');
 
     // 5. Scatter dispatched the tool DAG on isolated ToolInvocationState.
     //    The map gather strategy folded clone.output → parent.toolOutputs.

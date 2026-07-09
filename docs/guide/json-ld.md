@@ -36,7 +36,7 @@ import { dag as schemaDag } from '../../examples/dags/03-schema.ts';
 
 JSON-LD is Dagonizer's workflow document format, not a reporting export. `DAGBuilder.build()` returns a JSON-LD-shaped object, `DAGDocument.load()` validates external JSON-LD into that object, and `DAGDocument.serialize()` writes it back out for storage or transport.
 
-Every DAG carries `@context`, `@id`, and `@type`, so the same file can be consumed by Dagonizer, checked by JSON Schema, rendered as a graph, or inspected by RDF tooling.
+Every DAG carries `@context`, `@id`, and `@type`, so the same file can be consumed by Dagonizer, checked by JSON Schema, rendered as a graph, or inspected by RDF tooling. The DAG `@id` is the registry identity; `name` is the display and observability label.
 
 ## How It Works
 
@@ -79,10 +79,8 @@ Use JSON-LD when a DAG must leave TypeScript source: plugin packages, persisted 
 
 - Malformed JSON (delegates to `JSON.parse`).
 - Schema-noncompliant input (validates against `DAGSchema` via Ajv 2020-12).
-- Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`).
+- Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoints`, `nodes`).
 - Invalid `@type` discriminator on any placement.
-
-For callers that have already decoded their input (a database row that returned a parsed object, for example), `DAGDocument.ofValue(value)` skips the JSON parse step and runs only the schema validation.
 
 ## Details for Nerds
 
@@ -91,16 +89,16 @@ For callers that have already decoded their input (a database row that returned 
 A DAG document carries these top-level fields:
 
 - `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@studnicky/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
-- `@id`. URN identifier for the DAG document. Convention: `urn:noocodex:dag:<name>`.
+- `@id`. IRI identifier for the DAG document. This is the registry key after `@context` expansion. Convention: `urn:noocodec:dag:<slug>` or a project-owned HTTPS IRI.
 - `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ScatterNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
-- `name`, `version`, `entrypoint`. The dispatcher uses `name` and `entrypoint` to register and execute.
-- `nodes`. Array of placement objects, each with its own `@id` and `@type`.
+- `name`, `version`, `entrypoints`. `name` is display/observability text; `entrypoints` point at placement IRIs.
+- `nodes`. Array of placement objects, each with its own `@id` and `@type`. Placement `@id` values are route targets.
 
 Example 03 embeds a full JSON-LD DAG as a string and feeds it through the ingest boundary:
 
 <<< @/../examples/dags/03-schema.ts#dag-literal
 
-Placement `@id`s typically nest under the DAG's URN: `urn:noocodex:dag:demo/node/transform`.
+Placement `@id`s typically nest under the DAG's URN: `urn:noocodec:dag:demo/node/transform`.
 
 ### `@type` vocabulary
 
@@ -110,7 +108,8 @@ Six placement classes plus the document class:
 |---|---|
 | `DAG` | Top-level document |
 | `SingleNode` | One registered node, routed by named outputs |
-| `ScatterNode` | Fork over a `source` array: one clone per item, run a body in each clone, gather produced state back through a required `gather`, route on aggregate outcome |
+| `ScatterNode` | Fork over a `source` array: one clone per item, run a body in each clone, emit clone outcome records, route on aggregate outcome |
+| `GatherNode` | Fan in records from one or more producer placements and fold them into parent state |
 | `EmbeddedDAGNode` | Invoke a nested registered DAG at cardinality 1, with optional `stateMapping` to copy fields in and out |
 | `TerminalNode` | Explicit terminus with `outcome` of `'completed'` or `'failed'` |
 | `PhaseNode` | Lifecycle-attached pre or post placement |
@@ -121,7 +120,7 @@ Six placement classes plus the document class:
 
 <<< @/../examples/json-ld.ts#persistence-file
 
-`DAGDocument.serializeCompact(dag)` produces single-line JSON (no whitespace) for transport over the wire:
+`DAGDocument.serialize(dag)` produces pretty JSON for storage or inspection:
 
 <<< @/../examples/json-ld.ts#serialize-compact
 
@@ -134,13 +133,14 @@ The serializer is a thin wrapper over `JSON.stringify`. There is no transformati
 Use the reachable renderer when you want the canonical JSON-LD document for a plugin-backed forest instead of a single DAG:
 
 ```ts
+import { DagGraphProjector } from '@studnicky/dagonizer/graph';
 import { JsonLdRenderer } from '@studnicky/dagonizer/viz';
 
-const registry = new Map(dispatcher.listDAGs().map((dag) => [dag.name, dag]));
+const registry = new Map(dispatcher.listDAGs().map((dag) => [DagGraphProjector.dagIri(dag), dag]));
 const doc = JsonLdRenderer.renderReachable(parentDag, registry);
 ```
 
-The registry is keyed by DAG name. That keeps local DAGs and plugin-exported DAGs on the same lookup path.
+The registry is keyed by expanded DAG IRI. That keeps local DAGs, plugin-exported DAGs, tool DAGs, and dynamic candidates on the same lookup path.
 
 ### Round-trip
 
@@ -155,7 +155,8 @@ Each placement type carries a distinct `@type` that drives the runtime dispatch:
 | `@type` | Placement | Required fields |
 |---|---|---|
 | `SingleNode` | One registered node | `@id`, `@type`, `name`, `node`, `outputs` |
-| `ScatterNode` | Fork over source array, run body per clone, gather, route | `@id`, `@type`, `name`, `body`, `source`, `gather`, `outputs` |
+| `ScatterNode` | Fork over source array, run body per clone, route | `@id`, `@type`, `name`, `body`, `source`, `outputs` |
+| `GatherNode` | Fan in producer records, gather, route | `@id`, `@type`, `name`, `sources`, `gather`, `outputs` |
 | `EmbeddedDAGNode` | Nested DAG invocation at cardinality 1 | `@id`, `@type`, `name`, `dag`, `outputs` |
 | `TerminalNode` | Explicit terminus | `@id`, `@type`, `name`, `outcome` |
 | `PhaseNode` | Lifecycle-attached node | `@id`, `@type`, `name`, `phase`, `node` |
@@ -170,29 +171,25 @@ Database column (text or JSON body):
 
 <<< @/../examples/json-ld.ts#persistence-db
 
-For HTTP transport, use `serializeCompact` and the `application/ld+json` content-type. For already-parsed values (Postgres `jsonb`, decoded message envelope), use `DAGDocument.ofValue`:
-
-<<< @/../examples/json-ld.ts#from-value-round-trip
-
-The MIME type `application/ld+json` is the canonical content-type for JSON-LD over HTTP. Dagonizer DAGs satisfy that contract.
+For HTTP transport, pass the JSON string to `DAGDocument.load(json)` at the ingest boundary.
 
 ### RDF interop
 
 Because every field carries a canonical IRI through `@context`, a Dagonizer DAG is a valid RDF graph. Generic JSON-LD processors can extract triples without knowing anything about Dagonizer:
 
 ```
-<urn:noocodex:dag:demo>
+<urn:noocodec:dag:demo>
   rdf:type                              dag:DAG ;
   dag:name                              "demo" ;
   dag:version                           "1" ;
-  dag:entrypoint                        "transform" ;
-  dag:nodes                             <urn:noocodex:dag:demo/node/transform> .
+  dag:entrypoints                       [ dag:main "urn:noocodec:dag:demo/node/transform" ] ;
+  dag:nodes                             <urn:noocodec:dag:demo/node/transform> .
 
-<urn:noocodex:dag:demo/node/transform>
+<urn:noocodec:dag:demo/node/transform>
   rdf:type                              dag:SingleNode ;
   dag:name                              "transform" ;
   dag:node                              "transform" ;
-  dag:outputs                           [ dag:success "null" ] .
+  dag:outputs                           [ dag:success "urn:noocodec:dag:demo/node/end" ] .
 ```
 
 This is the same data the engine consumes. No separate ontology model, no projection. Applications that want to query DAGs as RDF (SHACL validation, SPARQL queries over a fleet of stored DAGs) get it for free by treating the JSON document as JSON-LD.

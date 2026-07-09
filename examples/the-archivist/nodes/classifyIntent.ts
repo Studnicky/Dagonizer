@@ -45,6 +45,7 @@ const RETRY_BUDGET = 2;
 export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput> {
   private readonly services: ArchivistServices;
   readonly name = 'classify-intent';
+  readonly '@id' = 'urn:noocodec:node:classify-intent';
   constructor(services: ArchivistServices) {
     super();
     this.services = services;

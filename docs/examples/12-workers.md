@@ -10,7 +10,7 @@ seeAlso:
     description: 'cross-host state pass-over via DAGHandoff channels'
   - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
-    description: 'scatter mechanics: source, body, gather, reduce'
+    description: 'scatter mechanics: source, body DAG, gather placement, reduce'
   - text: 'Example 05: Embedded DAGs'
     link: './05-embedded-dags'
     description: 'embedded DAG placements with stateMapping'
@@ -33,7 +33,7 @@ The important contract is the role binding: the DAG declares a logical container
 
 ## How It Works
 
-The parent placement names a logical container role. The host binds that role to a `DagContainerInterface` implementation, and the worker loads a registry module that reconstructs the DAG bundle and services inside the isolated context. The dispatcher sends clone tasks to the container, receives outcomes, and applies the same gather and reducer semantics it uses in-process.
+The parent placement declares a logical container role. The host binds that role to a `DagContainerInterface` implementation, and the worker loads a registry module that reconstructs the DAG bundle and services inside the isolated context. The dispatcher sends clone tasks to the container, receives outcomes, and applies the same gather and reducer semantics it uses in-process.
 
 This keeps worker adoption incremental. Application authors do not fork their DAG into "local" and "worker" versions; they bind a role when isolation or parallel throughput is needed.
 
@@ -107,13 +107,13 @@ Vite chunks the worker entry for the docs site; the runner supplies the module U
 - **`containers` option.** `new Dagonizer({ containers: { cpu: workerContainer } })` binds the `"cpu"` role. Any scatter or embedded-DAG placement declaring `container: "cpu"` uses this backend.
 - **Pool lifecycle.** `WebWorkerContainer` manages a pool of workers. Workers initialize on first use (sending `init` with the registry module URL and services config) and reuse across requests. Call `await container.destroy()` or `await dispatcher.destroy()` to shut down the pool cleanly.
 - **`registryVersion` handshake.** The container sends the `registryVersion` to each worker during `init`. The worker's `DagHost` rejects an `init` message whose version does not match the string from `RegistryModuleInterface.instantiate`. This prevents a stale bundle from executing state from a newer bundle's run.
-- **In-process fallback.** Remove the `container` key from the scatter placement (or omit `containers` from the dispatcher options) to run the scatter in-process. The output is byte-identical; no code changes are needed in node implementations.
+- **In-process execution.** Remove the `container` key from the scatter placement (or omit `containers` from the dispatcher options) to run the scatter in-process. The output is byte-identical; no code changes are needed in node implementations.
 - **V8 resource limits.** `WorkerThreadContainerOptions.resourceLimits` accepts a `maxOldGenerationSizeMb` cap to prevent runaway heap growth in individual workers.
 
 ## Related Concepts
 
 - [Guide: Distribution and Cloud](../guide/distribution) - in-fleet containment, registry module contract, pool sizing
 - [Example 11: Operator Hand-Off](./11-handoff) - cross-host state pass-over via DAGHandoff channels
-- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body DAG, gather placement, reduce
 - [Example 05: Embedded DAGs](./05-embedded-dags) - embedded DAG placements with stateMapping
 - [Reference: Contracts, DagContainerInterface](../reference/contracts)

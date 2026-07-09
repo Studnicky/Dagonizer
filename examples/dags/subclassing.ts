@@ -109,6 +109,7 @@ export class ApiState extends NodeStateBase {
 
 export class ApiNode extends MonadicNode<ApiState, 'success' | 'retry' | 'salvage'> {
   readonly name    = 'api';
+  readonly '@id'   = 'urn:noocodec:node:api';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'success' | 'retry' | 'salvage', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'retry': { 'type': 'object' }, 'salvage': { 'type': 'object' } };

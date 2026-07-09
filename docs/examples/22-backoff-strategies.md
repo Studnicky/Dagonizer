@@ -77,7 +77,7 @@ The query extraction node uses the same pattern earlier in the run:
 - **Retry as topology.** Retry edges are visible in JSON-LD and Mermaid, so application developers can see where loops occur and which route exits them.
 - **Timing as policy.** Deadlines and backoff parameters stay in services/runtime configuration instead of changing DAG shape.
 - **Bounded attempts.** State-held counters decide whether a node retries or routes to salvage.
-- **Grounded fallback.** Salvage/exhaustion paths still produce deterministic visitor output when the LLM path is weak.
+- **Deterministic salvage.** Salvage/exhaustion paths still produce deterministic visitor output when the LLM path is weak.
 
 ## Related Concepts
 

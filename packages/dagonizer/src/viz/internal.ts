@@ -5,16 +5,18 @@
  * within the viz module only.
  */
 
-import type { DAGType } from '../entities/dag/DAG.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 
-/** 5-member union of every concrete placement shape. */
+/** Union of every concrete placement shape. */
 export type PlacementEntryType =
   | EmbeddedDAGNodeType
+  | GatherNodeType
   | ScatterNodeType
   | SingleNodePlacementType
   | TerminalNodeType
@@ -30,6 +32,10 @@ export type PlacementEntryType =
  */
 export type PlacementDispatchType<R> = {
   [K in PlacementEntryType['@type']]: (p: Extract<PlacementEntryType, { '@type': K }>) => R;
+};
+
+type PlacementNodeSourceType = {
+  readonly nodes?: readonly object[] | null;
 };
 
 
@@ -140,6 +146,7 @@ export class PlacementUtils {
   /** The discriminant values that identify a valid `PlacementEntryType`. */
   private static readonly PLACEMENT_TYPES = new Set<string>([
     'EmbeddedDAGNode',
+    'GatherNode',
     'ScatterNode',
     'SingleNode',
     'TerminalNode',
@@ -161,7 +168,7 @@ export class PlacementUtils {
   }
 
   /**
-   * Return the sub-DAG name that this placement embeds, or `null` if it does
+   * Return the sub-DAG IRI that this placement embeds, or `null` if it does
    * not embed a DAG.
    *
    * Covers both shapes:
@@ -169,8 +176,12 @@ export class PlacementUtils {
    *   - `ScatterNode` with dag body → `placement.body.dag`
    */
   static embeddedDagName(placement: PlacementEntryType): string | null {
-    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag ?? null;
-    if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
+    if (placement['@type'] === 'EmbeddedDAGNode') {
+      return typeof placement.dag === 'string' ? placement.dag : null;
+    }
+    if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
+      return typeof placement.body.dag === 'string' ? placement.body.dag : null;
+    }
     return null;
   }
 
@@ -203,8 +214,14 @@ export class PlacementUtils {
    * Nodes that fail the guard (which would indicate a schema bypass) are
    * excluded rather than crashing the renderer, preserving graceful degradation.
    */
-  static narrowNodes(dag: DAGType): PlacementEntryType[] {
+  static narrowNodes(dag: PlacementNodeSourceType): PlacementEntryType[] {
+    if (!Array.isArray(dag.nodes)) return [];
     return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
+  }
+
+  /** Return the placement label for UI surfaces: display name or CURIE(@id). */
+  static displayLabel(placement: PlacementEntryType, context: Record<string, unknown> = {}): string {
+    return placement.name.length > 0 ? placement.name : ContextResolver.compact(placement['@id'], context);
   }
 
   /**
@@ -220,13 +237,14 @@ export class PlacementUtils {
       case 'SingleNode':      return dispatch['SingleNode'](placement);
       case 'ScatterNode':     return dispatch['ScatterNode'](placement);
       case 'EmbeddedDAGNode': return dispatch['EmbeddedDAGNode'](placement);
+      case 'GatherNode':      return dispatch['GatherNode'](placement);
       case 'TerminalNode':    return dispatch['TerminalNode'](placement);
       case 'PhaseNode':       return dispatch['PhaseNode'](placement);
     }
   }
 
-  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
-  static idIn(prefix: string, name: string): string {
-    return prefix === '' ? name : `${prefix}/${name}`;
+  /** Build a placement-IRI id, optionally prefixed by an enclosing scope. */
+  static idIn(prefix: string, placementIri: string): string {
+    return prefix === '' ? placementIri : `${prefix}/${placementIri}`;
   }
 }

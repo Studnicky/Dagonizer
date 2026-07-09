@@ -25,6 +25,7 @@ import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-pricing-node
 export class EnrichPricingNode extends MonadicNode<CartographerState, 'priced'> {
+  readonly '@id' = 'urn:noocodec:node:enrich-pricing';
   readonly 'name' = 'enrich-pricing';
   readonly 'outputs' = ['priced'] as const;
 

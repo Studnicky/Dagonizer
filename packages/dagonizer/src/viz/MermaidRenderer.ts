@@ -11,15 +11,15 @@
  *   terminal (completed) → double-circle: `nodeName(((name)))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name]`
  *
- * Output routes render as labeled edges. All routes must target named
- * placements — null routes are not permitted in the DAG model. Explicit
+ * Output routes render as labeled edges. All routes must target placement
+ * IRIs — null routes are not permitted in the DAG model. Explicit
  * `TerminalNode` placements render as their own distinct shapes and do
  * not emit edges (they are leaf placements; they end the flow).
  *
  * Rendering-correctness passes applied by default (configurable via options):
  *
  *   - Orientation: `flowchart TB` (top-bottom) by default.
- *   - Node-id sanitization: colons in placement names are replaced with `_`
+ *   - Node-id sanitization: colons in placement IRIs are replaced with `_`
  *     in bare ids while labels keep their original form, preventing Mermaid
  *     from lexing `:class`, `:end` etc. as reserved keywords.
  *   - Terminal-annotation strip: removes `\n(completed|failed|…)` suffixes
@@ -48,6 +48,18 @@ import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
 import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
+
+type MermaidIdIndexType = {
+  readonly entrypointIds: ReadonlyMap<string, string>;
+  readonly placementIds: ReadonlyMap<string, string>;
+}
+
+type MermaidDagViewType = {
+  readonly name: string;
+  readonly version: string;
+  readonly entrypoints: Readonly<Record<string, string>>;
+  readonly nodes: readonly object[];
+};
 
 /**
  * Rendering options for `MermaidRenderer.render`.
@@ -109,29 +121,34 @@ const MERMAID_RENDER_DEFAULTS = {
 export class MermaidRenderer {
   private constructor() { /* static class */ }
 
-  static render(dag: DAGType, options?: MermaidRenderOptionsType): string {
+  static render(dag: DAGType | null | undefined, options?: MermaidRenderOptionsType): string {
     const opts = { ...MERMAID_RENDER_DEFAULTS, ...options };
     const theme = options?.theme;
+    const view = MermaidRenderer.normalizeDag(dag);
 
-    const idByName = MermaidRenderer.nodeIdMap(dag, opts.sanitizeNodeIds);
+    const idIndex = MermaidRenderer.composeIdIndex(view, opts.sanitizeNodeIds);
     const lines: string[] = [];
     const init = MermaidRenderer.renderInitDirective(theme);
     if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
-    lines.push(`  %% ${dag.name} (v${dag.version})`);
-    lines.push(`  ${MermaidRenderer.idFor(dag.entrypoint, idByName, opts.sanitizeNodeIds)}`);
+    lines.push(`  %% ${view.name} (v${view.version})`);
+    for (const [label, placement] of Object.entries(view.entrypoints)) {
+      const entryId = idIndex.entrypointIds.get(label) ?? MermaidRenderer.entryIdFor(label, opts.sanitizeNodeIds);
+      lines.push(`  ${entryId}([${MermaidRenderer.label(label)}])`);
+      lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idIndex.placementIds, opts.sanitizeNodeIds)}`);
+    }
 
-    // Map from sanitized role token → list of placement names assigned that token.
+    // Map from sanitized role token → list of placement IDs assigned that token.
     const roleToIds = new Map<string, string[]>();
     // Map from sanitized role token → original role string (for color lookup).
     const roleTokenToRole = new Map<string, string>();
     // Reservoir-configured scatter placement names (for classDef emission).
     const reservoirIds: string[] = [];
 
-    for (const placement of PlacementUtils.narrowNodes(dag)) {
-      const placementId = MermaidRenderer.idFor(placement.name, idByName, opts.sanitizeNodeIds);
+    for (const placement of PlacementUtils.narrowNodes(view)) {
+      const placementId = MermaidRenderer.idFor(placement['@id'], idIndex.placementIds, opts.sanitizeNodeIds);
       lines.push(`  ${MermaidRenderer.renderShape(placement, placementId)}`);
-      for (const edge of MermaidRenderer.renderEdges(placement, placementId, idByName, opts.sanitizeNodeIds)) {
+      for (const edge of MermaidRenderer.renderEdges(placement, placementId, idIndex.placementIds, opts.sanitizeNodeIds)) {
         lines.push(edge);
       }
       // Track contained placements grouped by their sanitized role token.
@@ -285,7 +302,7 @@ export class MermaidRenderer {
     // Each interior negated class excludes its OWN opening delimiter char(s), not
     // only the closing one. That removes overlapping start positions (e.g. a
     // second '[[' inside a '[[...]]' match), so every pattern is linear — no
-    // polynomial ReDoS on adversarial DAG names (CodeQL js/polynomial-redos).
+    // polynomial ReDoS on adversarial DAG labels (CodeQL js/polynomial-redos).
     const masked = line
       // triple-bracket subroutine: [[...]]
       .replace(/\[\[([^[\]]*)\]\]/gu, (_m, inner) => mask(`[[${inner}]]`))
@@ -332,6 +349,37 @@ export class MermaidRenderer {
     );
   }
 
+  /** Convert runtime DAG-like input into the subset Mermaid rendering needs. */
+  private static normalizeDag(dag: DAGType | null | undefined): MermaidDagViewType {
+    if (dag === null || dag === undefined) {
+      return {
+        'name':        'unavailable-dag',
+        'version':     'unknown',
+        'entrypoints': {},
+        'nodes':       [],
+      };
+    }
+
+    return {
+      'name':        typeof dag.name === 'string' && dag.name.length > 0 ? dag.name : 'unnamed-dag',
+      'version':     typeof dag.version === 'string' && dag.version.length > 0 ? dag.version : 'unknown',
+      'entrypoints': MermaidRenderer.normalizeEntrypoints(dag.entrypoints),
+      'nodes':       Array.isArray(dag.nodes) ? dag.nodes : [],
+    };
+  }
+
+  /** Keep only usable entrypoint references so transient bad input cannot crash rendering. */
+  private static normalizeEntrypoints(entrypoints: DAGType['entrypoints'] | null | undefined): Record<string, string> {
+    if (entrypoints === null || entrypoints === undefined) return {};
+    const normalized: Record<string, string> = {};
+    for (const [label, placement] of Object.entries(entrypoints)) {
+      if (typeof placement === 'string' && placement.length > 0) {
+        normalized[label] = placement;
+      }
+    }
+    return normalized;
+  }
+
   /**
    * Convert a role string to a valid Mermaid class identifier token
    * (alphanumeric + underscore only).
@@ -364,29 +412,40 @@ export class MermaidRenderer {
     return candidate;
   }
 
-  /** Compose deterministic Mermaid-safe ids for every placement name. */
-  private static nodeIdMap(dag: DAGType, sanitize: boolean): ReadonlyMap<string, string> {
-    const ids = new Map<string, string>();
+  /** Compose deterministic Mermaid-safe ids for every entrypoint and placement IRI. */
+  private static composeIdIndex(dag: MermaidDagViewType, sanitize: boolean): MermaidIdIndexType {
+    const placementIds = new Map<string, string>();
+    const entrypointIds = new Map<string, string>();
     const occupied = new Set<string>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const base = sanitize
-        ? MermaidRenderer.sanitizeNodeId(placement.name)
-        : placement.name;
-      let candidate = base;
-      let suffix = 2;
-      while (occupied.has(candidate)) {
-        candidate = `${base}_${String(suffix)}`;
-        suffix++;
-      }
-      ids.set(placement.name, candidate);
-      occupied.add(candidate);
+        ? MermaidRenderer.sanitizeNodeId(placement['@id'])
+        : placement['@id'];
+      placementIds.set(placement['@id'], MermaidRenderer.reserveId(base, occupied));
     }
 
-    return ids;
+    for (const label of Object.keys(dag.entrypoints)) {
+      const base = MermaidRenderer.entryIdFor(label, sanitize);
+      entrypointIds.set(label, MermaidRenderer.reserveId(base, occupied));
+    }
+
+    return { entrypointIds, placementIds };
   }
 
-  /** Return the rendered Mermaid id for a placement name or a dangling target. */
+  /** Return an id that is unique within `occupied`, then reserve it. */
+  private static reserveId(base: string, occupied: Set<string>): string {
+    let candidate = base;
+    let suffix = 2;
+    while (occupied.has(candidate)) {
+      candidate = `${base}_${String(suffix)}`;
+      suffix++;
+    }
+    occupied.add(candidate);
+    return candidate;
+  }
+
+  /** Return the rendered Mermaid id for a placement IRI or a dangling target. */
   private static idFor(
     name: string,
     ids: ReadonlyMap<string, string>,
@@ -402,6 +461,12 @@ export class MermaidRenderer {
     if (MermaidRenderer.RESERVED_NODE_IDS.has(id.toLowerCase())) return `${id}_node`;
     if (MermaidRenderer.hasReservedNodeIdPrefix(id)) id = `node_${id}`;
     return id;
+  }
+
+  /** Return a deterministic pseudo-node id for a DAG entrypoint label. */
+  private static entryIdFor(label: string, sanitize: boolean): string {
+    const id = sanitize ? MermaidRenderer.sanitizeNodeId(label) : label;
+    return `entry_${id}`;
   }
 
   /** Return true when a bare id starts with a Mermaid reserved token. */
@@ -452,7 +517,8 @@ export class MermaidRenderer {
 
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
   private static renderShape(placement: PlacementEntryType, id: string): string {
-    const label = MermaidRenderer.label(placement.name);
+    const displayLabel = PlacementUtils.displayLabel(placement);
+    const label = MermaidRenderer.label(displayLabel);
     const shapeDispatch: PlacementDispatchType<string> = {
       'SingleNode': () => `${id}[${label}]`,
       'ScatterNode': (sp) => {
@@ -461,7 +527,7 @@ export class MermaidRenderer {
           // Per-key fill and per-firing batch size are runtime values — the
           // animation layer renders them from observer buffer-size deltas.
           const reservoirLabel = MermaidRenderer.label(
-            `${placement.name}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
+            `${displayLabel}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
           );
           return `${id}[/${reservoirLabel}/]`;
         }
@@ -469,8 +535,9 @@ export class MermaidRenderer {
         return `${id}[/${label}/]`;
       },
       'EmbeddedDAGNode': () => `${id}[[${label}]]`,
+      'GatherNode': () => `${id}{${label}}`,
       'TerminalNode': (tp) => {
-        const outcomeLabel = MermaidRenderer.label(`${placement.name}\\n(${tp.outcome})`);
+        const outcomeLabel = MermaidRenderer.label(`${displayLabel}\\n(${tp.outcome})`);
         if (tp.outcome === 'completed') {
           // double-circle: connotes "final state" in Mermaid
           return `${id}(((${outcomeLabel})))`;
@@ -480,7 +547,7 @@ export class MermaidRenderer {
       },
       'PhaseNode': (pp) => {
         // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
-        return `${id}([${MermaidRenderer.label(`${placement.name} (${pp.phase})`)}])`;
+        return `${id}([${MermaidRenderer.label(`${displayLabel} (${pp.phase})`)}])`;
       },
     };
     return PlacementUtils.invoke(shapeDispatch, placement);

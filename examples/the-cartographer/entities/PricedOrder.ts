@@ -10,7 +10,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const PricedOrderSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/PricedOrder',
+  '$id': 'https://noocodec.dev/schemas/cartographer/PricedOrder',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['lines', 'subtotalMinor', 'currency', 'subtotalUsdMinor', 'fxRate'],

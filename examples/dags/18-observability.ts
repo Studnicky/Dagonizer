@@ -7,6 +7,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -29,6 +30,7 @@ export class PipelineState extends NodeStateBase {
 
 export class ValidateNode extends MonadicNode<PipelineState, 'ok' | 'invalid'> {
   readonly name = 'validate';
+  readonly '@id' = 'urn:noocodec:node:validate';
   readonly outputs = ['ok', 'invalid'] as const;
   override get outputSchema(): Record<'ok' | 'invalid', SchemaObjectType> {
     return { 'ok': { 'type': 'object' }, 'invalid': { 'type': 'object' } };
@@ -42,6 +44,7 @@ export class ValidateNode extends MonadicNode<PipelineState, 'ok' | 'invalid'> {
 
 export class TransformNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'transform';
+  readonly '@id' = 'urn:noocodec:node:transform';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -57,12 +60,15 @@ export class TransformNode extends MonadicNode<PipelineState, 'done'> {
 // DAG
 // ---------------------------------------------------------------------------
 
+export const dagIri = 'urn:noocodec:dag:observe-demo' as const;
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 const validateNode = new ValidateNode();
 const transformNode = new TransformNode();
 
-export const dag = new DAGBuilder('observe-demo', '1')
-  .node('validate', validateNode, { 'ok': 'transform', 'invalid': 'end-invalid' })
-  .node('transform', transformNode, { 'done': 'end-ok' })
-  .terminal('end-ok')
-  .terminal('end-invalid', { outcome: 'failed' })
+export const dag = new DAGBuilder(dagIri, '1')
+  .node(placement('validate'), validateNode, { 'ok': placement('transform'), 'invalid': placement('end-invalid') })
+  .node(placement('transform'), transformNode, { 'done': placement('end-ok') })
+  .terminal(placement('end-ok'))
+  .terminal(placement('end-invalid'), { outcome: 'failed' })
   .build();

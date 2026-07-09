@@ -31,13 +31,13 @@ dispatcher.registerDAG(batchDag);
 const ctl    = new AbortController();
 const aState = new NodeStateBase();
 setTimeout(() => ctl.abort(new Error('user pressed cancel')), 25);
-const aResult = await dispatcher.execute('slow-dag', aState, { "signal": ctl.signal });
+const aResult = await dispatcher.execute('urn:noocodec:dag:slow-dag', aState, { "signal": ctl.signal });
 // #endregion abort-signal
 
 // #region deadline
 // (b) Dispatcher deadline: fires after 25 ms automatically
 const bState  = new NodeStateBase();
-const bResult = await dispatcher.execute('slow-dag', bState, { "deadlineMs": 25 });
+const bResult = await dispatcher.execute('urn:noocodec:dag:slow-dag', bState, { "deadlineMs": 25 });
 // #endregion deadline
 
 // #region cursor-check
@@ -72,7 +72,7 @@ const combined = Signal.compose({
 });
 
 const cState  = new NodeStateBase();
-const cResult = await dispatcher.execute('slow-dag', cState, { signal: combined });
+const cResult = await dispatcher.execute('urn:noocodec:dag:slow-dag', cState, { signal: combined });
 userAbortController.abort(new Error('request scope ended')); // clean up
 // #endregion signal-composition
 

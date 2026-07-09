@@ -5,7 +5,7 @@
  * identical (a `Map`-backed `register`/`has`/`resolve`/`list` with a
  * duplicate-key throw and a private `RegistryEntry` interface). This
  * abstract base owns the shared logic; each child extends it with its
- * specific instance type and factory alias.
+ * specific instance type and factory function.
  *
  * The `registryName` constructor parameter drives the duplicate-key
  * error message so diagnostics remain accurate.

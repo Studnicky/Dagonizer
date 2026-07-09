@@ -23,12 +23,14 @@ import { describe, it } from 'node:test';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
 
 // ── test state ────────────────────────────────────────────────────────────────
 
@@ -61,27 +63,40 @@ class AbortState extends NodeStateBase {
 /** Build a simple scatter DAG over an `items` source with an append gather. */
 class TestAbortDag {
   private constructor() {}
-  static ofConcurrency(name: string, concurrency: number): DAGType {
+  static ofConcurrency(dagIri: string, name: string, concurrency: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'node': 'worker' },
+          'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':      { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri(dagIri, 'join'),
+            'partial': placementIri(dagIri, 'join'),
+            'all-error': placementIri(dagIri, 'join'),
+            'empty': placementIri(dagIri, 'end'),
+          },
         },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': placementIri(dagIri, 'join'), '@type': 'GatherNode',
+          'name': 'join', 'sources': { [placementIri(dagIri, 'fan')]: {} }, 'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': placementIri(dagIri, 'end'),
+            'error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
+          }
+        },
+        { '@id': placementIri(dagIri, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
   }
@@ -114,7 +129,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     const dispatcher = new Dagonizer<AbortState>();
 
-    const worker = TestNode.make<AbortState>('worker', ['success'], async (state, context) => {
+    const worker = TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], async (state, context) => {
       // Simulate some async work.
       await new Promise<void>((resolve, reject) => {
         const handle = setTimeout(resolve, 2);
@@ -133,7 +148,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     });
 
     dispatcher.registerNode(worker);
-    dispatcher.registerDAG(TestAbortDag.ofConcurrency('abort-async-50', 2));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('urn:noocodec:dag:abort-async-50', 'abort-async-50', 2));
 
     const state = new AbortState();
 
@@ -145,13 +160,13 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     }
     state.items = makeSource();
 
-    const result = await dispatcher.execute('abort-async-50', state, { 'signal': controller.signal });
+    const result = await dispatcher.execute('urn:noocodec:dag:abort-async-50', state, { 'signal': controller.signal });
 
     // ── Post-abort invariants ────────────────────────────────────────────────
 
     // 1. The run must have been interrupted — cursor stays on 'fan'.
-    assert.equal(result.cursor, 'fan',
-      `cursor should be 'fan' after abort; got '${result.cursor}'`);
+    assert.equal(result.cursor, placementIri('urn:noocodec:dag:abort-async-50', 'fan'),
+      `cursor should be '${placementIri('urn:noocodec:dag:abort-async-50', 'fan')}' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint must survive — progress entry must still be present.
     const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
@@ -159,7 +174,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
     const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
 
-    const entry = stored['fan'];
+    const entry = stored[placementIri('urn:noocodec:dag:abort-async-50', 'fan')];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
     // 3. Not all items were acked — the acked count must be fewer than total.
@@ -184,35 +199,12 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     //    must supply the remainder. We test the simpler array-based resume path
     //    to confirm the checkpoint is usable.)
     const resumeDispatcher = new Dagonizer<AbortState>();
-    resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+    resumeDispatcher.registerNode(TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], (state) => {
       state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
 
-    // Supply an array-based resume DAG so the engine can skip seen indices.
-    const resumeDag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:abort-async-resume',
-      '@type':    'DAG',
-      'name':     'abort-async-resume',
-      'version':  '1',
-      'entrypoint': 'fan',
-      'nodes': [
-        {
-          '@id':         'urn:noocodex:dag:abort-async-resume/node/fan',
-          '@type':       'ScatterNode',
-          'name':        'fan',
-          'body':        { 'node': 'worker' },
-          'source':      'items',
-          'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': 2 },
-          'gather':      { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-        },
-        { '@id': 'urn:noocodex:dag:abort-async-resume/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
-      ],
-    };
-    resumeDispatcher.registerDAG(resumeDag);
+    resumeDispatcher.registerDAG(TestAbortDag.ofConcurrency('urn:noocodec:dag:abort-async-50', 'abort-async-50', 2));
 
     // Build resume state: rehydrate the aborted state's snapshot, set a full
     // array source (index-stable), preserve the checkpoint metadata.
@@ -227,7 +219,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Provide full array source for index-stable resume.
     resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const resumeResult = await resumeDispatcher.resume('abort-async-resume', resumeState, 'fan');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:abort-async-50', resumeState, placementIri('urn:noocodec:dag:abort-async-50', 'fan'));
 
     // 5. Resume must complete successfully (cursor null).
     assert.equal(resumeResult.cursor, null,
@@ -248,11 +240,11 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
    */
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<AbortState>();
-    dispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], (state) => {
       state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
-    dispatcher.registerDAG(TestAbortDag.ofConcurrency('pre-aborted', 2));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('urn:noocodec:dag:pre-aborted', 'pre-aborted', 2));
 
     const state = new AbortState();
 
@@ -265,11 +257,12 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const ctl = new AbortController();
     ctl.abort(new Error('pre-abort'));
 
-    const result = await dispatcher.execute('pre-aborted', state, { 'signal': ctl.signal });
+    const result = await dispatcher.execute('urn:noocodec:dag:pre-aborted', state, { 'signal': ctl.signal });
 
     // Pre-abort is caught in runNodes mainLoop before executeScatter is even
     // reached, so cursor stays on 'fan', processed is empty.
-    assert.equal(result.cursor, 'fan', 'cursor should be fan after pre-abort');
+    assert.equal(result.cursor, placementIri('urn:noocodec:dag:pre-aborted', 'fan'),
+      `cursor should be ${placementIri('urn:noocodec:dag:pre-aborted', 'fan')} after pre-abort`);
     assert.equal(result.state.processed.length, 0, 'no items should have been processed');
   });
 
@@ -286,7 +279,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const executedItems: number[] = [];
 
     const dispatcher = new Dagonizer<AbortState>();
-    dispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], async (state, context) => {
+    dispatcher.registerNode(TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], async (state, context) => {
       await new Promise<void>((resolve, reject) => {
         const handle = setTimeout(resolve, 1);
         context.signal.addEventListener('abort', () => {
@@ -306,24 +299,37 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Use array source for deterministic index-stable resume.
     const abortDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:exactly-once-abort',
+      '@id': 'urn:noocodec:dag:exactly-once-abort',
       '@type':    'DAG',
       'name':     'exactly-once-abort',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:exactly-once-abort', 'fan') },
       'nodes': [
         {
-          '@id':         'urn:noocodex:dag:exactly-once-abort/node/fan',
+          '@id': 'urn:noocodec:dag:exactly-once-abort/node/fan',
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'node': 'worker' },
+          'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather':      { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodec:dag:exactly-once-abort', 'join'),
+            'partial': placementIri('urn:noocodec:dag:exactly-once-abort', 'join'),
+            'all-error': placementIri('urn:noocodec:dag:exactly-once-abort', 'join'),
+            'empty': placementIri('urn:noocodec:dag:exactly-once-abort', 'end'),
+          },
         },
-        { '@id': 'urn:noocodex:dag:exactly-once-abort/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': 'urn:noocodec:dag:exactly-once-abort/node/join', '@type': 'GatherNode',
+          'name': 'join', 'sources': { [placementIri('urn:noocodec:dag:exactly-once-abort', 'fan')]: {} }, 'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': placementIri('urn:noocodec:dag:exactly-once-abort', 'end'),
+            'error': placementIri('urn:noocodec:dag:exactly-once-abort', 'end'),
+            'empty': placementIri('urn:noocodec:dag:exactly-once-abort', 'end'),
+          }
+        },
+        { '@id': 'urn:noocodec:dag:exactly-once-abort/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(abortDag);
@@ -331,14 +337,15 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const state = new AbortState();
     state.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const partial = await dispatcher.execute('exactly-once-abort', state, { 'signal': controller.signal });
+    const partial = await dispatcher.execute('urn:noocodec:dag:exactly-once-abort', state, { 'signal': controller.signal });
 
-    assert.equal(partial.cursor, 'fan', 'run must be interrupted');
+    assert.equal(partial.cursor, placementIri('urn:noocodec:dag:exactly-once-abort', 'fan'),
+      'run must be interrupted');
 
     // Resume with fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<AbortState>();
-    resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+    resumeDispatcher.registerNode(TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item', -1);
       resumeItems.push(item);
       state.processed.push(item);
@@ -355,7 +362,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     resumeState.processed = [...partial.state.processed];
     resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const resumeResult = await resumeDispatcher.resume('exactly-once-abort', resumeState, 'fan');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:exactly-once-abort', resumeState, placementIri('urn:noocodec:dag:exactly-once-abort', 'fan'));
 
     assert.equal(resumeResult.cursor, null, 'resume must complete');
 

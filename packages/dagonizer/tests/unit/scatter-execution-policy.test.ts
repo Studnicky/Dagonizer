@@ -22,7 +22,11 @@ import type { ScatterNodeType } from '../../src/entities/dag/ScatterNode.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
+const SCATTER_POLICY_FIXTURE_DAG_IRI = 'urn:noocodec:dag:x';
 
 // ─── ScatterNodeDefaults.executionPolicy — unit-level default resolution ─────
 
@@ -40,13 +44,17 @@ void describe('ScatterNodeDefaults.executionPolicy', () => {
   } as const;
 
   const BASE: ScatterNodeType = {
-    '@id':     'urn:noocodex:dag:x/node/fan',
+    '@id': 'urn:noocodec:dag:x/node/fan',
     '@type':   'ScatterNode',
     'name':    'fan',
     'source':  'items',
-    'body':    { 'node': 'worker' },
-    'gather':  { 'strategy': 'discard' },
-    'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    'body': { 'node': 'urn:noocodec:node:worker' },
+    'outputs': {
+      'all-success': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
+      'partial': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
+      'all-error': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
+      'empty': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
+    },
   };
 
   void it('resolves to item mode, concurrency 1, throttle null when execution is absent', () => {
@@ -126,32 +134,31 @@ class ItemsState extends NodeStateBase {
 class ItemModeDag {
   private constructor() {}
 
-  static of(name: string, concurrency: number): DAGType {
+  static of(dagIri: string, name: string, concurrency: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':       `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':     'ScatterNode',
           'name':      'fan',
-          'body':      { 'node': 'worker' },
+          'body':      { 'node': 'urn:noocodec:node:worker' },
           'source':    'items',
           'itemKey':   'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':    { 'strategy': 'discard' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'end'),
+            'partial': placementIri(dagIri, 'end'),
+            'all-error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
-        { '@id': `urn:noocodex:dag:${name}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': placementIri(dagIri, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
   }
@@ -163,18 +170,18 @@ void describe('Scatter execution policy — mode: item caps concurrently in-flig
     let inFlight = 0;
     let peak = 0;
 
-    dispatcher.registerNode(TestNode.make<ItemsState>('worker', ['success'], async () => {
+    dispatcher.registerNode(TestNode.make<ItemsState>('urn:noocodec:node:worker', ['success'], async () => {
       inFlight++;
       peak = Math.max(peak, inFlight);
       await new Promise<void>((resolve) => setImmediate(resolve));
       inFlight--;
       return 'success';
     }));
-    dispatcher.registerDAG(ItemModeDag.of('item-mode-cap', 3));
+    dispatcher.registerDAG(ItemModeDag.of('urn:noocodec:dag:item-mode-cap', 'item-mode-cap', 3));
 
     const state = new ItemsState();
     state.items = [1, 2, 3, 4, 5, 6, 7, 8];
-    await dispatcher.execute('item-mode-cap', state);
+    await dispatcher.execute('urn:noocodec:dag:item-mode-cap', state);
 
     assert.ok(peak <= 3, `peak in-flight clones was ${peak}, expected <= 3`);
     assert.ok(peak > 1, `peak in-flight clones was ${peak}, expected concurrency to actually parallelize (> 1)`);
@@ -205,20 +212,20 @@ class BatchState extends NodeStateBase {
 class ReservoirModeDag {
   private constructor() {}
 
-  static of(name: string, concurrency: number): DAGType {
+  static of(dagIri: string, name: string, concurrency: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':       `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':     'ScatterNode',
           'name':      'fan',
-          'body':      { 'node': 'batch-worker' },
+          'body':      { 'node': 'urn:noocodec:node:batch-worker' },
           'source':    'events',
           'itemKey':   'item',
           'execution': {
@@ -229,15 +236,14 @@ class ReservoirModeDag {
             // concurrency cap actually bind.
             'reservoir': { 'keyField': 'key', 'capacity': 1 },
           },
-          'gather':    { 'strategy': 'discard' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'end'),
+            'partial': placementIri(dagIri, 'end'),
+            'all-error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
-        { '@id': `urn:noocodex:dag:${name}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': placementIri(dagIri, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
   }
@@ -249,19 +255,19 @@ void describe('Scatter execution policy — mode: reservoir caps concurrently in
     let inFlight = 0;
     let peak = 0;
 
-    dispatcher.registerNode(TestNode.make<BatchState>('batch-worker', ['success'], async () => {
+    dispatcher.registerNode(TestNode.make<BatchState>('urn:noocodec:node:batch-worker', ['success'], async () => {
       inFlight++;
       peak = Math.max(peak, inFlight);
       await new Promise<void>((resolve) => setImmediate(resolve));
       inFlight--;
       return 'success';
     }));
-    dispatcher.registerDAG(ReservoirModeDag.of('reservoir-mode-cap', 2));
+    dispatcher.registerDAG(ReservoirModeDag.of('urn:noocodec:dag:reservoir-mode-cap', 'reservoir-mode-cap', 2));
 
     const state = new BatchState();
     // 6 distinct keys, capacity 1 → 6 independently-releasable batches.
     state.events = Array.from({ 'length': 6 }, (_, i) => ({ 'key': `k${i}`, 'value': i }));
-    await dispatcher.execute('reservoir-mode-cap', state);
+    await dispatcher.execute('urn:noocodec:dag:reservoir-mode-cap', state);
 
     assert.ok(peak <= 2, `peak in-flight batches was ${peak}, expected <= 2`);
     assert.ok(peak > 1, `peak in-flight batches was ${peak}, expected concurrency to actually parallelize (> 1)`);

@@ -13,6 +13,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -22,12 +23,14 @@ class TrackingState extends NodeStateBase {
 }
 
 class PhaseThrowingNode extends MonadicNode<TrackingState, string> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly ['success'] = ['success'];
   private readonly message: string;
 
   constructor(name: string, message: string) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.message = message;
   }
@@ -41,20 +44,25 @@ class PhaseThrowingNode extends MonadicNode<TrackingState, string> {
 
 class TestPhaseNode {
   private constructor() { /* static class */ }
+
+  private static iri(name: string): string {
+    return `urn:noocodec:node:${encodeURIComponent(name)}`;
+  }
+
   static of(
     name: string,
     outputs: readonly string[] = ['success'],
     side?: (state: TrackingState) => void | Promise<void>,
   ): NodeInterface<TrackingState> {
     if (side !== undefined) {
-      return TestNode.make<TrackingState>(name, outputs, async (state) => {
+      return TestNode.make<TrackingState>(TestPhaseNode.iri(name), outputs, async (state) => {
         await side(state);
         const first = outputs[0];
         if (first === undefined) throw new Error('outputs must be non-empty');
         return first;
       });
     }
-    return TestNode.make<TrackingState>(name, outputs, (state) => {
+    return TestNode.make<TrackingState>(TestPhaseNode.iri(name), outputs, (state) => {
       state.trace.push(name);
       const first = outputs[0];
       if (first === undefined) throw new Error('outputs must be non-empty');
@@ -75,6 +83,19 @@ type Call = {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
+
+const placementIri = TestDag.placementIri;
+const DEMO_DAG_IRI = 'urn:noocodec:dag:demo';
+const PRE_RUNS_FIRST_DAG_IRI = 'urn:noocodec:dag:pre-runs-first';
+const PRE_ABORTS_DAG_IRI = 'urn:noocodec:dag:pre-aborts';
+const MULTI_PRE_DAG_IRI = 'urn:noocodec:dag:multi-pre';
+const POST_SUCCESS_DAG_IRI = 'urn:noocodec:dag:post-success';
+const POST_ABORT_DAG_IRI = 'urn:noocodec:dag:post-abort';
+const POST_THROWS_DAG_IRI = 'urn:noocodec:dag:post-throws';
+const MULTI_POST_DAG_IRI = 'urn:noocodec:dag:multi-post';
+const INSTR_PHASES_DAG_IRI = 'urn:noocodec:dag:instr-phases';
+const ORDERING_DAG_IRI = 'urn:noocodec:dag:ordering';
+const BAD_PHASE_DAG_IRI = 'urn:noocodec:dag:bad-phase';
 
 class RecordingDagonizer extends Dagonizer<TrackingState> {
   readonly calls: Call[] = [];
@@ -102,10 +123,10 @@ class RecordingDagonizer extends Dagonizer<TrackingState> {
 void describe('PhaseNode placements: schema validation', () => {
   void it('accepts a valid pre-phase placement', () => {
     const valid = {
-      '@id':   'urn:noocodex:dag:demo/node/setup',
+      '@id': 'urn:noocodec:dag:demo/node/setup',
       '@type': 'PhaseNode',
       'name':  'setup',
-      'node':  'setup-node',
+      'node':  'urn:noocodec:node:setup-node',
       'phase': 'pre',
     };
     assert.equal(Validator.phaseNode.is(valid), true);
@@ -113,10 +134,10 @@ void describe('PhaseNode placements: schema validation', () => {
 
   void it('accepts a valid post-phase placement', () => {
     const valid = {
-      '@id':   'urn:noocodex:dag:demo/node/teardown',
+      '@id': 'urn:noocodec:dag:demo/node/teardown',
       '@type': 'PhaseNode',
       'name':  'teardown',
-      'node':  'teardown-node',
+      'node':  'urn:noocodec:node:teardown-node',
       'phase': 'post',
     };
     assert.equal(Validator.phaseNode.is(valid), true);
@@ -124,20 +145,20 @@ void describe('PhaseNode placements: schema validation', () => {
 
   void it('rejects a PhaseNode missing phase field', () => {
     const bad = {
-      '@id':   'urn:noocodex:dag:demo/node/setup',
+      '@id': 'urn:noocodec:dag:demo/node/setup',
       '@type': 'PhaseNode',
       'name':  'setup',
-      'node':  'setup-node',
+      'node':  'urn:noocodec:node:setup-node',
     };
     assert.equal(Validator.phaseNode.is(bad), false);
   });
 
   void it('rejects phase=mid (not in enum)', () => {
     const bad = {
-      '@id':   'urn:noocodex:dag:demo/node/setup',
+      '@id': 'urn:noocodec:dag:demo/node/setup',
       '@type': 'PhaseNode',
       'name':  'setup',
-      'node':  'setup-node',
+      'node':  'urn:noocodec:node:setup-node',
       'phase': 'mid',
     };
     assert.equal(Validator.phaseNode.is(bad), false);
@@ -145,12 +166,12 @@ void describe('PhaseNode placements: schema validation', () => {
 
   void it('rejects an extra outputs field (additionalProperties: false)', () => {
     const bad = {
-      '@id':   'urn:noocodex:dag:demo/node/setup',
+      '@id': 'urn:noocodec:dag:demo/node/setup',
       '@type': 'PhaseNode',
       'name':  'setup',
-      'node':  'setup-node',
+      'node':  'urn:noocodec:node:setup-node',
       'phase': 'pre',
-      'outputs': { 'success': 'end' },
+      'outputs': { 'success': placementIri(DEMO_DAG_IRI, 'end') },
     };
     assert.equal(Validator.phaseNode.is(bad), false);
   });
@@ -158,27 +179,27 @@ void describe('PhaseNode placements: schema validation', () => {
   void it('PhaseNode passes Validator.dag.is() when embedded in a DAG', () => {
     const dag: unknown = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:demo',
+      '@id': DEMO_DAG_IRI,
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': placementIri(DEMO_DAG_IRI, 'a') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:demo/node/setup',
+          '@id': 'urn:noocodec:dag:demo/node/setup',
           '@type': 'PhaseNode',
           'name':  'setup',
-          'node':  'setup-node',
+          'node':  'urn:noocodec:node:setup-node',
           'phase': 'pre',
         },
         {
-          '@id':   'urn:noocodex:dag:demo/node/a',
+          '@id': 'urn:noocodec:dag:demo/node/a',
           '@type': 'SingleNode',
           'name':  'a',
-          'node':  'a',
-          'outputs': { 'success': 'end' },
+          'node':  'urn:noocodec:node:a',
+          'outputs': { 'success': placementIri(DEMO_DAG_IRI, 'end') },
         },
-        { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.equal(Validator.dag.is(dag), true);
@@ -195,15 +216,15 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     }));
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
-    const dag = new DAGBuilder('pre-runs-first', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', TestPhaseNode.of('setup-node', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(PRE_RUNS_FIRST_DAG_IRI, '1', { 'name': 'pre-runs-first' })
+      .node(placementIri(PRE_RUNS_FIRST_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(PRE_RUNS_FIRST_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(PRE_RUNS_FIRST_DAG_IRI, 'setup'), 'pre', TestPhaseNode.of('setup-node', ['success']), { 'name': 'setup' })
+      .terminal(placementIri(PRE_RUNS_FIRST_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('pre-runs-first', new TrackingState());
+    const result = await dispatcher.execute(PRE_RUNS_FIRST_DAG_IRI, new TrackingState());
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.deepEqual(result.state.trace, ['pre-setup', 'entry']);
   });
@@ -213,16 +234,16 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(TestThrowingNode.of('boom-pre', 'pre-phase fail'));
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
-    const dag = new DAGBuilder('pre-aborts', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('boom', 'pre', TestThrowingNode.of('boom-pre', 'pre-phase fail'))
-      .terminal('end')
+    const dag = new DAGBuilder(PRE_ABORTS_DAG_IRI, '1', { 'name': 'pre-aborts' })
+      .node(placementIri(PRE_ABORTS_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(PRE_ABORTS_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(PRE_ABORTS_DAG_IRI, 'boom'), 'pre', TestThrowingNode.of('boom-pre', 'pre-phase fail'), { 'name': 'boom' })
+      .terminal(placementIri(PRE_ABORTS_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
     const state = new TrackingState();
-    const result = await dispatcher.execute('pre-aborts', state);
+    const result = await dispatcher.execute(PRE_ABORTS_DAG_IRI, state);
     assert.equal(result.state.lifecycle.variant, 'failed');
     assert.equal(state.trace.includes('entry'), false, 'entrypoint must not run');
   });
@@ -234,17 +255,17 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(TestPhaseNode.of('p3', ['success'], (s) => { s.trace.push('p3'); }));
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
-    const dag = new DAGBuilder('multi-pre', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('p1', 'pre', TestPhaseNode.of('p1', ['success']))
-      .phase('p2', 'pre', TestPhaseNode.of('p2', ['success']))
-      .phase('p3', 'pre', TestPhaseNode.of('p3', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(MULTI_PRE_DAG_IRI, '1', { 'name': 'multi-pre' })
+      .node(placementIri(MULTI_PRE_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(MULTI_PRE_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(MULTI_PRE_DAG_IRI, 'p1'), 'pre', TestPhaseNode.of('p1', ['success']), { 'name': 'p1' })
+      .phase(placementIri(MULTI_PRE_DAG_IRI, 'p2'), 'pre', TestPhaseNode.of('p2', ['success']), { 'name': 'p2' })
+      .phase(placementIri(MULTI_PRE_DAG_IRI, 'p3'), 'pre', TestPhaseNode.of('p3', ['success']), { 'name': 'p3' })
+      .terminal(placementIri(MULTI_PRE_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('multi-pre', new TrackingState());
+    const result = await dispatcher.execute(MULTI_PRE_DAG_IRI, new TrackingState());
     assert.deepEqual(result.state.trace, ['p1', 'p2', 'p3', 'entry']);
   });
 });
@@ -257,15 +278,15 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
     dispatcher.registerNode(TestPhaseNode.of('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
 
-    const dag = new DAGBuilder('post-success', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(POST_SUCCESS_DAG_IRI, '1', { 'name': 'post-success' })
+      .node(placementIri(POST_SUCCESS_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(POST_SUCCESS_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(POST_SUCCESS_DAG_IRI, 'teardown'), 'post', TestPhaseNode.of('teardown', ['success']), { 'name': 'teardown' })
+      .terminal(placementIri(POST_SUCCESS_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('post-success', new TrackingState());
+    const result = await dispatcher.execute(POST_SUCCESS_DAG_IRI, new TrackingState());
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.deepEqual(result.state.trace, ['entry', 'post-teardown']);
   });
@@ -280,9 +301,11 @@ void describe('PhaseNode placements: post-phase execution', () => {
     const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
     dispatcher.registerNode({
+      '@id': 'urn:noocodec:node:slow',
       'name': 'slow',
       'outputs': ['success'] as const,
       'timeout': Timeout.none(),
+      'inputSchema': { 'type': 'object' as const },
       'outputSchema': { 'success': { 'type': 'object' as const } },
       async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<'success', TrackingState>> {
         const acc = new Map<'success', ItemType<TrackingState>[]>();
@@ -302,17 +325,17 @@ void describe('PhaseNode placements: post-phase execution', () => {
       },
     });
 
-    const dag = new DAGBuilder('post-abort', '1')
-      .node('slow', TestPhaseNode.of('slow', ['success']), { 'success': 'end' })
-      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(POST_ABORT_DAG_IRI, '1', { 'name': 'post-abort' })
+      .node(placementIri(POST_ABORT_DAG_IRI, 'slow'), TestPhaseNode.of('slow', ['success']), { 'success': placementIri(POST_ABORT_DAG_IRI, 'end') }, { 'name': 'slow' })
+      .phase(placementIri(POST_ABORT_DAG_IRI, 'teardown'), 'post', TestPhaseNode.of('teardown', ['success']), { 'name': 'teardown' })
+      .terminal(placementIri(POST_ABORT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
     const controller = new AbortController();
     const state = new TrackingState();
-    const exec = dispatcher.execute('post-abort', state, { 'signal': controller.signal });
+    const exec = dispatcher.execute(POST_ABORT_DAG_IRI, state, { 'signal': controller.signal });
     // Abort deterministically once the node body is provably suspended.
     nodeReady.then(() => { controller.abort(); });
     const result = await exec;
@@ -325,15 +348,15 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
     dispatcher.registerNode(TestThrowingNode.of('boom-post', 'post-phase fail'));
 
-    const dag = new DAGBuilder('post-throws', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('boom', 'post', TestThrowingNode.of('boom-post', 'post-phase fail'))
-      .terminal('end')
+    const dag = new DAGBuilder(POST_THROWS_DAG_IRI, '1', { 'name': 'post-throws' })
+      .node(placementIri(POST_THROWS_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(POST_THROWS_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(POST_THROWS_DAG_IRI, 'boom'), 'post', TestThrowingNode.of('boom-post', 'post-phase fail'), { 'name': 'boom' })
+      .terminal(placementIri(POST_THROWS_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('post-throws', new TrackingState());
+    const result = await dispatcher.execute(POST_THROWS_DAG_IRI, new TrackingState());
     assert.equal(result.state.lifecycle.variant, 'completed', 'lifecycle is unchanged');
     const warnings = result.state.warnings;
     assert.equal(warnings.length, 1);
@@ -348,17 +371,17 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(TestPhaseNode.of('p2', ['success'], (s) => { s.trace.push('p2'); }));
     dispatcher.registerNode(TestPhaseNode.of('p3', ['success'], (s) => { s.trace.push('p3'); }));
 
-    const dag = new DAGBuilder('multi-post', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('p1', 'post', TestPhaseNode.of('p1', ['success']))
-      .phase('p2', 'post', TestPhaseNode.of('p2', ['success']))
-      .phase('p3', 'post', TestPhaseNode.of('p3', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(MULTI_POST_DAG_IRI, '1', { 'name': 'multi-post' })
+      .node(placementIri(MULTI_POST_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(MULTI_POST_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(MULTI_POST_DAG_IRI, 'p1'), 'post', TestPhaseNode.of('p1', ['success']), { 'name': 'p1' })
+      .phase(placementIri(MULTI_POST_DAG_IRI, 'p2'), 'post', TestPhaseNode.of('p2', ['success']), { 'name': 'p2' })
+      .phase(placementIri(MULTI_POST_DAG_IRI, 'p3'), 'post', TestPhaseNode.of('p3', ['success']), { 'name': 'p3' })
+      .terminal(placementIri(MULTI_POST_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('multi-post', new TrackingState());
+    const result = await dispatcher.execute(MULTI_POST_DAG_IRI, new TrackingState());
     assert.deepEqual(result.state.trace, ['entry', 'p1', 'p2', 'p3']);
   });
 });
@@ -373,15 +396,15 @@ void describe('PhaseNode placements: subclass phase hooks', () => {
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
     dispatcher.registerNode(TestPhaseNode.of('teardown', ['success']));
 
-    const dag = new DAGBuilder('instr-phases', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', TestPhaseNode.of('setup', ['success']))
-      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(INSTR_PHASES_DAG_IRI, '1', { 'name': 'instr-phases' })
+      .node(placementIri(INSTR_PHASES_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(INSTR_PHASES_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(INSTR_PHASES_DAG_IRI, 'setup'), 'pre', TestPhaseNode.of('setup', ['success']), { 'name': 'setup' })
+      .phase(placementIri(INSTR_PHASES_DAG_IRI, 'teardown'), 'post', TestPhaseNode.of('teardown', ['success']), { 'name': 'teardown' })
+      .terminal(placementIri(INSTR_PHASES_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
-    await dispatcher.execute('instr-phases', new TrackingState());
+    await dispatcher.execute(INSTR_PHASES_DAG_IRI, new TrackingState());
 
     const enters = dispatcher.hooksOfType('phaseEnter');
     const exits  = dispatcher.hooksOfType('phaseExit');
@@ -410,16 +433,16 @@ void describe('PhaseNode placements: executedNodes ordering', () => {
     dispatcher.registerNode(TestPhaseNode.of('teardown', ['success']));
     dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
-    const dag = new DAGBuilder('ordering', '1')
-      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', TestPhaseNode.of('setup', ['success']))
-      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
-      .terminal('end')
+    const dag = new DAGBuilder(ORDERING_DAG_IRI, '1', { 'name': 'ordering' })
+      .node(placementIri(ORDERING_DAG_IRI, 'entry'), TestPhaseNode.of('entry', ['success']), { 'success': placementIri(ORDERING_DAG_IRI, 'end') }, { 'name': 'entry' })
+      .phase(placementIri(ORDERING_DAG_IRI, 'setup'), 'pre', TestPhaseNode.of('setup', ['success']), { 'name': 'setup' })
+      .phase(placementIri(ORDERING_DAG_IRI, 'teardown'), 'post', TestPhaseNode.of('teardown', ['success']), { 'name': 'teardown' })
+      .terminal(placementIri(ORDERING_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('ordering', new TrackingState());
+    const result = await dispatcher.execute(ORDERING_DAG_IRI, new TrackingState());
     assert.deepEqual(result.executedNodes, ['setup', 'entry', 'end', 'teardown']);
   });
 });
@@ -433,29 +456,29 @@ void describe('PhaseNode placements: registration validation', () => {
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:bad-phase',
+      '@id': BAD_PHASE_DAG_IRI,
       '@type':    'DAG',
       'name':       'bad-phase',
       'version':    '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': placementIri(BAD_PHASE_DAG_IRI, 'entry') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:bad-phase/node/entry',
+          '@id': 'urn:noocodec:dag:bad-phase/node/entry',
           '@type': 'SingleNode',
           'name':  'entry',
-          'node':  'entry',
-          'outputs': { 'success': 'end' },
+          'node':  'urn:noocodec:node:entry',
+          'outputs': { 'success': placementIri(BAD_PHASE_DAG_IRI, 'end') },
         },
         {
-          '@id':   'urn:noocodex:dag:bad-phase/node/missing',
+          '@id': 'urn:noocodec:dag:bad-phase/node/missing',
           '@type': 'PhaseNode',
           'name':  'missing',
-          'node':  'not-registered',
+          'node':  'urn:noocodec:node:not-registered',
           'phase': 'pre',
         },
-        { '@id': 'urn:noocodex:dag:bad-phase/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:bad-phase/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
-    assert.throws(() => dispatcher.registerDAG(dag), /unknown registered node: not-registered/);
+    assert.throws(() => dispatcher.registerDAG(dag), /unknown registered node: urn:noocodec:node:not-registered/u);
   });
 });

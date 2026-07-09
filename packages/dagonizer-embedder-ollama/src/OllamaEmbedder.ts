@@ -64,7 +64,7 @@ const EMBEDDING_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
  *
  * `model` is intentionally absent here: the base class holds the selected
  * model and throws when unset. `OllamaEmbedder` resolves a concrete model
- * at construction (from the explicit option or the DEFAULT_MODEL fallback)
+ * at construction (from the explicit option or the DEFAULT_MODEL default)
  * and calls `setModel()` so the base field is always populated when `model`
  * is supplied; when omitted, `selectEmbeddingModel()` must be called first.
  */

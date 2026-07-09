@@ -5,8 +5,8 @@
  * Run after stamp-version.mjs has written the versioned SVG:
  *   node scripts/stamp-version.mjs && node scripts/rasterize-og-image.mjs
  *
- * Tolerant of rsvg-convert absence: exits 0 and keeps the committed PNG
- * fallback when librsvg is not installed.
+ * Tolerant of rsvg-convert absence: exits 0 and keeps the committed PNG when
+ * librsvg is not installed.
  *
  * Install rsvg-convert:
  *   brew install librsvg          (macOS)

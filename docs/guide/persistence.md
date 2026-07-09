@@ -108,7 +108,7 @@ export {};
 
 <<< @/../examples/08-checkpoint.ts#recall
 
-`Checkpoint.recall` returns `null` when the key is absent, or a `Checkpoint` instance whose `restoreState` yields the rehydrated state, the dag name, the resume cursor, and the executed/skipped node histories.
+`Checkpoint.recall` returns `null` when the key is absent, or a `Checkpoint` instance whose `restoreState` yields the rehydrated state, the DAG IRI/CURIE string, the placement-IRI resume cursor, and the executed/skipped node histories.
 
 ### Implementing a custom store
 
@@ -126,7 +126,7 @@ The `custom-checkpoint-store` example exercises the full `save` → `load` → `
 
 <<< @/../examples/dags/custom-checkpoint-store.ts#snapshottable
 
-`FactLog` implements only `snapshot()` and `restore()` — no `get`/`set`/`has`/`delete`/`update`. Pass it to `Checkpoint.capture('my-dag', result, { stores: { log } })` alongside any `MemoryStore`, and restore it on resume with `recalled.restoreStores({ log: freshLog })`. The `custom-checkpoint-store` example runs the `snapshot` → `restore` round-trip; run it with `npx tsx examples/custom-checkpoint-store.ts`.
+`FactLog` implements only `snapshot()` and `restore()` — no `get`/`set`/`has`/`delete`/`update`. Pass it to `Checkpoint.capture('urn:noocodec:dag:my-dag', result, { stores: { log } })` alongside any `MemoryStore`, and restore it on resume with `recalled.restoreStores({ log: freshLog })`. The `custom-checkpoint-store` example runs the `snapshot` → `restore` round-trip; run it with `npx tsx examples/custom-checkpoint-store.ts`.
 
 `CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
 

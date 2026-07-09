@@ -7,6 +7,11 @@ import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
 import type { CytoscapeNodeElementType, CytoscapeEdgeElementType } from '../../src/viz/CytoscapeRenderer.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
+import { TestDag } from '../_support/TestDag.js';
+
+const placementIri = TestDag.placementIri;
+const nodeIri = (dagName: string, placement: string): string => `urn:noocodex:dag:${dagName}/node/${placement}`;
+const scopedNodeIri = (parentIri: string, dagName: string, placement: string): string => `${parentIri}/${nodeIri(dagName, placement)}`;
 
 class CytoscapeRendererGuard {
   private constructor() {}
@@ -24,14 +29,14 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'mini',
       'version':    '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:mini', 'greet') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:mini/node/greet',
           '@type':  'SingleNode',
           'name':   'greet',
-          'node':   'greet',
-          'outputs': { 'success': 'done' },
+          'node':   'urn:noocodec:node:greet',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:mini', 'done') },
         },
         {
           '@id':    'urn:noocodex:dag:mini/node/done',
@@ -47,7 +52,8 @@ void describe('CytoscapeRenderer.render', () => {
     assert.equal(nodes.length, 2);                          // greet + done
     assert.equal(edges.length, 1);
     assert.equal(edges[0]?.data.label, 'success');
-    assert.equal(edges[0]?.data.target, 'done');
+    assert.equal(edges[0]?.data.source, nodeIri('mini', 'greet'));
+    assert.equal(edges[0]?.data.target, nodeIri('mini', 'done'));
   });
 
   void it('marks ScatterNode placements with type=scatter and class dag-scatter', () => {
@@ -57,22 +63,26 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'fan',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:fan', 'fan') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:fan/node/fan',
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
-          'gather': { 'strategy': 'partition', 'partitions': { 'success': 'collected', 'error': 'errors' } },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodex:dag:fan', 'end'),
+            'partial': placementIri('urn:noocodex:dag:fan', 'end'),
+            'all-error': placementIri('urn:noocodex:dag:fan', 'end'),
+            'empty': placementIri('urn:noocodex:dag:fan', 'end'),
+          },
         },
         { '@id': 'urn:noocodex:dag:fan/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const fan = elements.find((entry): entry is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(entry) && entry.data.id === 'fan');
+    const fan = elements.find((entry): entry is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(entry) && entry.data.id === nodeIri('fan', 'fan'));
     assert.equal(fan?.data.type, 'scatter');
     assert.equal(fan?.classes, 'dag-scatter');
   });
@@ -84,18 +94,30 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'chain',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:chain', 'a') },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:chain/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'n', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:chain/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'n', 'outputs': { 'success': 'end' } },
+        {
+          '@id': 'urn:noocodex:dag:chain/node/a',
+          '@type': 'SingleNode',
+          'name': 'a',
+          'node': 'urn:noocodec:node:n',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:chain', 'b') },
+        },
+        {
+          '@id': 'urn:noocodex:dag:chain/node/b',
+          '@type': 'SingleNode',
+          'name': 'b',
+          'node': 'urn:noocodec:node:n',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:chain', 'end') },
+        },
         { '@id': 'urn:noocodex:dag:chain/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const edgeAtoB = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === 'a');
-    assert.equal(edgeAtoB?.data.target, 'b');
-    const edgeBtoEnd = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === 'b');
-    assert.equal(edgeBtoEnd?.data.target, 'end');
+    const edgeAtoB = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === nodeIri('chain', 'a'));
+    assert.equal(edgeAtoB?.data.target, nodeIri('chain', 'b'));
+    const edgeBtoEnd = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === nodeIri('chain', 'b'));
+    assert.equal(edgeBtoEnd?.data.target, nodeIri('chain', 'end'));
     // no synthetic END (there are no null routes)
     const endNodes = elements.filter((el) => CytoscapeRendererGuard.isNode(el) && el.data.id === 'END');
     assert.equal(endNodes.length, 0, 'no synthetic END node when null routes are absent');
@@ -108,14 +130,14 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'ids',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ids', 'a') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ids/node/a',
           '@type':  'SingleNode',
           'name':   'a',
-          'node':   'n',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'node':   'urn:noocodec:node:n',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:ids', 'end'), 'error': placementIri('urn:noocodex:dag:ids', 'end') },
         },
         { '@id': 'urn:noocodex:dag:ids/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -124,7 +146,10 @@ void describe('CytoscapeRenderer.render', () => {
     const ids = elements
       .filter((entry) => entry.group === 'edges')
       .map((entry) => entry.data.id);
-    assert.deepEqual([...ids].sort(), ['a__error__end', 'a__success__end']);
+    assert.deepEqual([...ids].sort(), [
+      `${placementIri('urn:noocodex:dag:ids', 'a')}__error__${placementIri('urn:noocodex:dag:ids', 'end')}`,
+      `${placementIri('urn:noocodex:dag:ids', 'a')}__success__${placementIri('urn:noocodex:dag:ids', 'end')}`,
+    ]);
   });
 
   void it('EmbeddedDAGNode expands inline when the DAG is registered', () => {
@@ -134,14 +159,14 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'inner',
       'version':  '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:inner', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:inner/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'done': 'end' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'done': placementIri('urn:noocodex:dag:inner', 'end') },
         },
         { '@id': 'urn:noocodex:dag:inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -152,31 +177,98 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'outer',
       'version':  '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:outer', 'embed') },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:outer/node/embed',
           '@type': 'EmbeddedDAGNode',
           'name':  'embed',
-          'dag':   'inner',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'dag':   'urn:noocodex:dag:inner',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:outer', 'end'), 'error': placementIri('urn:noocodex:dag:outer', 'end') },
         },
         { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const embeddedDAGs = new Map<string, DAGType>([['inner', innerDAG]]);
+    const embeddedDAGs = new Map<string, DAGType>([['urn:noocodex:dag:inner', innerDAG]]);
     const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs });
 
     // The compound parent node is emitted for the EmbeddedDAGNode placement
-    const embedNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'embed');
+    const embedNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('outer', 'embed'));
     assert.ok(embedNode !== undefined, 'embed compound node must be present');
     assert.equal(embedNode.data.type, 'embedded-dag');
     assert.equal(embedNode.classes, 'dag-embedded-dag');
 
     // The inner step node is emitted as a child with parent=embed
-    const stepNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'embed/step');
+    const stepNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === scopedNodeIri(nodeIri('outer', 'embed'), 'inner', 'step'));
     assert.ok(stepNode !== undefined, 'embed/step inner node must be present');
-    assert.equal(stepNode.data['parent'], 'embed');
+    assert.equal(stepNode.data['parent'], nodeIri('outer', 'embed'));
+  });
+
+  void it('rewrites incoming embedded-DAG edges to every child entrypoint', () => {
+    const innerDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:inner-multi-entry',
+      '@type':    'DAG',
+      'name':     'inner-multi-entry',
+      'version':  '1',
+      'entrypoints': {
+        'left': placementIri('urn:noocodex:dag:inner-multi-entry', 'left-root'),
+        'right': placementIri('urn:noocodex:dag:inner-multi-entry', 'right-root'),
+      },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:inner-multi-entry/node/left-root',
+          '@type':   'SingleNode',
+          'name':    'left-root',
+          'node':    'urn:noocodec:node:left',
+          'outputs': { 'done': placementIri('urn:noocodex:dag:inner-multi-entry', 'end') },
+        },
+        {
+          '@id':     'urn:noocodex:dag:inner-multi-entry/node/right-root',
+          '@type':   'SingleNode',
+          'name':    'right-root',
+          'node':    'urn:noocodec:node:right',
+          'outputs': { 'done': placementIri('urn:noocodex:dag:inner-multi-entry', 'end') },
+        },
+        { '@id': 'urn:noocodex:dag:inner-multi-entry/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const outerDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:outer-multi-entry',
+      '@type':    'DAG',
+      'name':     'outer-multi-entry',
+      'version':  '1',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:outer-multi-entry', 'start') },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:outer-multi-entry/node/start',
+          '@type':   'SingleNode',
+          'name':    'start',
+          'node':    'urn:noocodec:node:start',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:outer-multi-entry', 'embed') },
+        },
+        {
+          '@id':     'urn:noocodex:dag:outer-multi-entry/node/embed',
+          '@type':   'EmbeddedDAGNode',
+          'name':    'embed',
+          'dag':     'urn:noocodex:dag:inner-multi-entry',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:outer-multi-entry', 'end'), 'error': placementIri('urn:noocodex:dag:outer-multi-entry', 'end') },
+        },
+        { '@id': 'urn:noocodex:dag:outer-multi-entry/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const embeddedDAGs = new Map<string, DAGType>([['urn:noocodex:dag:inner-multi-entry', innerDAG]]);
+    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs });
+    const startEdges = elements
+      .filter((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === nodeIri('outer-multi-entry', 'start'))
+      .map((edge) => edge.data.target)
+      .sort();
+
+    assert.deepEqual(startEdges, [
+      scopedNodeIri(nodeIri('outer-multi-entry', 'embed'), 'inner-multi-entry', 'left-root'),
+      scopedNodeIri(nodeIri('outer-multi-entry', 'embed'), 'inner-multi-entry', 'right-root'),
+    ]);
   });
 
   void it('ScatterNode with body.node does not expand inline', () => {
@@ -186,16 +278,20 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'scatter-node',
       'version':  '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:scatter-node', 'scatter') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:scatter-node/node/scatter',
           '@type':  'ScatterNode',
           'name':   'scatter',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
-          'gather': { 'strategy': 'discard' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodex:dag:scatter-node', 'end'),
+            'partial': placementIri('urn:noocodex:dag:scatter-node', 'end'),
+            'all-error': placementIri('urn:noocodex:dag:scatter-node', 'end'),
+            'empty': placementIri('urn:noocodex:dag:scatter-node', 'end'),
+          },
         },
         { '@id': 'urn:noocodex:dag:scatter-node/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -211,7 +307,7 @@ void describe('CytoscapeRenderer.render', () => {
 
     // The scatter node itself is still emitted as type=scatter
     const scatterNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'scatter',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('scatter-node', 'scatter'),
     );
     assert.ok(scatterNode !== undefined);
     assert.equal(scatterNode.data.type, 'scatter');
@@ -226,22 +322,22 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-worker',
       'version':    '1',
-      'entrypoint': 'plain',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:cy-worker', 'plain') },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:cy-worker/node/plain',
           '@type':   'SingleNode',
           'name':    'plain',
-          'node':    'noop',
-          'outputs': { 'success': 'worker' },
+          'node':    'urn:noocodec:node:noop',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:cy-worker', 'worker') },
         },
         {
           '@id':       'urn:noocodex:dag:cy-worker/node/worker',
           '@type':     'EmbeddedDAGNode',
           'name':      'worker',
-          'dag':       'inner',
+          'dag':       'urn:noocodex:dag:inner',
           'container': 'cpu',
-          'outputs':   { 'success': 'end', 'error': 'end' },
+          'outputs':   { 'success': placementIri('urn:noocodex:dag:cy-worker', 'end'), 'error': placementIri('urn:noocodex:dag:cy-worker', 'end') },
         },
         { '@id': 'urn:noocodex:dag:cy-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -250,7 +346,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const cpuColors = RoleColorUtils.forRole('cpu');
 
     const workerNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'worker',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-worker', 'worker'),
     );
     assert.ok(workerNode !== undefined, 'worker node must be present');
     assert.equal(workerNode.data['container'], 'cpu', 'data.container must equal the role');
@@ -268,7 +364,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     );
 
     const plainNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'plain',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-worker', 'plain'),
     );
     assert.ok(plainNode !== undefined, 'plain node must be present');
     assert.equal(plainNode.data['container'],       undefined, 'in-process node must not have data.container');
@@ -288,17 +384,21 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-scatter-worker',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:cy-scatter-worker', 'fan') },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:cy-scatter-worker/node/fan',
           '@type':     'ScatterNode',
           'name':      'fan',
-          'body':      { 'dag': 'item-dag' },
+          'body':      { 'dag': 'urn:noocodec:dag:item-dag' },
           'source':    'items',
-          'gather':    { 'strategy': 'discard' },
           'container': 'gpu',
-          'outputs':   { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs':   {
+            'all-success': placementIri('urn:noocodex:dag:cy-scatter-worker', 'end'),
+            'partial': placementIri('urn:noocodex:dag:cy-scatter-worker', 'end'),
+            'all-error': placementIri('urn:noocodex:dag:cy-scatter-worker', 'end'),
+            'empty': placementIri('urn:noocodex:dag:cy-scatter-worker', 'end'),
+          },
         },
         { '@id': 'urn:noocodex:dag:cy-scatter-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -307,7 +407,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const gpuColors = RoleColorUtils.forRole('gpu');
 
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-scatter-worker', 'fan'),
     );
     assert.ok(fanNode !== undefined, 'fan node must be present');
     assert.equal(fanNode.data.type, 'scatter');
@@ -334,23 +434,27 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-scatter-node',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:cy-scatter-node', 'fan') },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:cy-scatter-node/node/fan',
           '@type':   'ScatterNode',
           'name':    'fan',
-          'body':    { 'node': 'worker' },
+          'body':    { 'node': 'urn:noocodec:node:worker' },
           'source':  'items',
-          'gather':  { 'strategy': 'discard' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodex:dag:cy-scatter-node', 'end'),
+            'partial': placementIri('urn:noocodex:dag:cy-scatter-node', 'end'),
+            'all-error': placementIri('urn:noocodex:dag:cy-scatter-node', 'end'),
+            'empty': placementIri('urn:noocodex:dag:cy-scatter-node', 'end'),
+          },
         },
         { '@id': 'urn:noocodex:dag:cy-scatter-node/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-scatter-node', 'fan'),
     );
     assert.ok(fanNode !== undefined);
     assert.equal(fanNode.data['container'],       undefined);
@@ -369,25 +473,29 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':     'cy-multi-role',
       'version':  '1',
-      'entrypoint': 'cpu-step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:cy-multi-role', 'cpu-step') },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:cy-multi-role/node/cpu-step',
           '@type':     'ScatterNode',
           'name':      'cpu-step',
-          'body':      { 'dag': 'item-dag' },
+          'body':      { 'dag': 'urn:noocodec:dag:item-dag' },
           'source':    'tasks',
-          'gather':    { 'strategy': 'discard' },
           'container': 'cpu',
-          'outputs':   { 'all-success': 'io-step', 'partial': 'io-step', 'all-error': 'end', 'empty': 'end' },
+          'outputs':   {
+            'all-success': placementIri('urn:noocodex:dag:cy-multi-role', 'io-step'),
+            'partial': placementIri('urn:noocodex:dag:cy-multi-role', 'io-step'),
+            'all-error': placementIri('urn:noocodex:dag:cy-multi-role', 'end'),
+            'empty': placementIri('urn:noocodex:dag:cy-multi-role', 'end'),
+          },
         },
         {
           '@id':       'urn:noocodex:dag:cy-multi-role/node/io-step',
           '@type':     'EmbeddedDAGNode',
           'name':      'io-step',
-          'dag':       'io-dag',
+          'dag':       'urn:noocodec:dag:io-dag',
           'container': 'io',
-          'outputs':   { 'success': 'end', 'error': 'end' },
+          'outputs':   { 'success': placementIri('urn:noocodex:dag:cy-multi-role', 'end'), 'error': placementIri('urn:noocodex:dag:cy-multi-role', 'end') },
         },
         { '@id': 'urn:noocodex:dag:cy-multi-role/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -397,10 +505,10 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const ioColors  = RoleColorUtils.forRole('io');
 
     const cpuNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'cpu-step',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-multi-role', 'cpu-step'),
     );
     const ioNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'io-step',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('cy-multi-role', 'io-step'),
     );
 
     assert.ok(cpuNode !== undefined, 'cpu-step node must be present');
@@ -415,39 +523,39 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
   void it('two placements with the SAME role get the SAME containerColor value (grouping)', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:cy-same-role',
+      '@id':      'urn:noocodex:dag:same-role',
       '@type':    'DAG',
-      'name':     'cy-same-role',
+      'name':     'same-role',
       'version':  '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:same-role', 'a') },
       'nodes': [
         {
-          '@id':       'urn:noocodex:dag:cy-same-role/node/a',
+          '@id':       'urn:noocodex:dag:same-role/node/a',
           '@type':     'EmbeddedDAGNode',
           'name':      'a',
-          'dag':       'inner-a',
+          'dag':       'urn:noocodec:dag:inner-a',
           'container': 'cpu',
-          'outputs':   { 'success': 'b' },
+          'outputs':   { 'success': placementIri('urn:noocodex:dag:same-role', 'b') },
         },
         {
-          '@id':       'urn:noocodex:dag:cy-same-role/node/b',
+          '@id':       'urn:noocodex:dag:same-role/node/b',
           '@type':     'EmbeddedDAGNode',
           'name':      'b',
-          'dag':       'inner-b',
+          'dag':       'urn:noocodec:dag:inner-b',
           'container': 'cpu',
-          'outputs':   { 'success': 'end', 'error': 'end' },
+          'outputs':   { 'success': placementIri('urn:noocodex:dag:same-role', 'end'), 'error': placementIri('urn:noocodex:dag:same-role', 'end') },
         },
-        { '@id': 'urn:noocodex:dag:cy-same-role/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:same-role/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const cpuColors = RoleColorUtils.forRole('cpu');
 
     const nodeA = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'a',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('same-role', 'a'),
     );
     const nodeB = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'b',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('same-role', 'b'),
     );
 
     assert.ok(nodeA !== undefined);
@@ -473,25 +581,25 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ct', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'success': 'done' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:ct', 'done') },
         },
         terminal,
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const doneNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'done');
+    const doneNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ct', 'done'));
     assert.ok(doneNode !== undefined, 'done node should exist');
     assert.equal(doneNode.data.type, 'terminal');
     assert.equal(doneNode.data['outcome'], 'completed');
     // no edges originate from the terminal node
-    const edgesFromDone = elements.filter((el) => el.group === 'edges' && el.data.source === 'done');
+    const edgesFromDone = elements.filter((el) => el.group === 'edges' && el.data.source === nodeIri('ct', 'done'));
     assert.equal(edgesFromDone.length, 0);
     // no synthetic END (no null routes)
     const endNode = elements.find((el) => CytoscapeRendererGuard.isNode(el) && el.data.id === 'END');
@@ -511,20 +619,20 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ct2', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct2/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'error': 'abort' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'error': placementIri('urn:noocodex:dag:ct2', 'abort') },
         },
         terminal,
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const abortNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'abort');
+    const abortNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ct2', 'abort'));
     assert.ok(abortNode !== undefined);
     assert.equal(abortNode.data.type, 'terminal');
     assert.equal(abortNode.data['outcome'], 'failed');
@@ -537,22 +645,25 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct-multi',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ct-multi', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct-multi/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'ok': 'done', 'error': 'abort' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': {
+            'ok': placementIri('urn:noocodex:dag:ct-multi', 'done'),
+            'error': placementIri('urn:noocodex:dag:ct-multi', 'abort'),
+          },
         },
         { '@id': 'urn:noocodex:dag:ct-multi/node/done',  '@type': 'TerminalNode', 'name': 'done',  'outcome': 'completed' },
         { '@id': 'urn:noocodex:dag:ct-multi/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const doneNode  = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'done');
-    const abortNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'abort');
+    const doneNode  = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ct-multi', 'done'));
+    const abortNode = elements.find((el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ct-multi', 'abort'));
     assert.ok(doneNode !== undefined, 'done node must be present');
     assert.ok(abortNode !== undefined, 'abort node must be present');
     assert.equal(doneNode.data['outcome'], 'completed');
@@ -573,20 +684,20 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ph', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'success': 'end' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:ph', 'end') },
         },
         {
           '@id':   'urn:noocodex:dag:ph/node/setup',
           '@type': 'PhaseNode',
           'name':  'setup',
-          'node':  'setup-worker',
+          'node':  'urn:noocodec:node:setup-worker',
           'phase': 'pre',
         },
         { '@id': 'urn:noocodex:dag:ph/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
@@ -594,16 +705,16 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const setupNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'setup',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ph', 'setup'),
     );
     assert.ok(setupNode !== undefined, 'PhaseNode element must be present');
     assert.equal(setupNode.data.type, 'phase');
     assert.equal(setupNode.data['phase'], 'pre');
-    assert.equal(setupNode.data['node'], 'setup-worker');
+    assert.equal(setupNode.data['node'], 'urn:noocodec:node:setup-worker');
     assert.equal(setupNode.classes, 'dag-phase');
     // PhaseNode emits no outgoing edges
     const edgesFromSetup = elements.filter(
-      (el) => el.group === 'edges' && el.data.source === 'setup',
+      (el) => el.group === 'edges' && el.data.source === nodeIri('ph', 'setup'),
     );
     assert.equal(edgesFromSetup.length, 0);
   });
@@ -615,20 +726,20 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:ph2', 'step') },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph2/node/step',
           '@type':  'SingleNode',
           'name':   'step',
-          'node':   'step',
-          'outputs': { 'success': 'end' },
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:ph2', 'end') },
         },
         {
           '@id':   'urn:noocodex:dag:ph2/node/teardown',
           '@type': 'PhaseNode',
           'name':  'teardown',
-          'node':  'teardown-worker',
+          'node':  'urn:noocodec:node:teardown-worker',
           'phase': 'post',
         },
         { '@id': 'urn:noocodex:dag:ph2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
@@ -636,7 +747,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const teardownNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'teardown',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('ph2', 'teardown'),
     );
     assert.ok(teardownNode !== undefined, 'post-phase PhaseNode element must be present');
     assert.equal(teardownNode.data.type, 'phase');
@@ -678,17 +789,21 @@ const RESERVOIR_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir',
   'version':    '1',
-  'entrypoint': 'buffer',
+  'entrypoints': { 'main': placementIri('urn:noocodex:dag:reservoir', 'buffer') },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir/node/buffer',
       '@type':    'ScatterNode',
       'name':     'buffer',
-      'body':     { 'node': 'worker' },
+      'body':     { 'node': 'urn:noocodec:node:worker' },
       'source':   'events',
-      'gather':   { 'strategy': 'discard' },
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'tenantId', 'capacity': 50, 'idleMs': 5000 } },
-      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      'outputs':  {
+        'all-success': placementIri('urn:noocodex:dag:reservoir', 'end'),
+        'partial': placementIri('urn:noocodex:dag:reservoir', 'end'),
+        'all-error': placementIri('urn:noocodex:dag:reservoir', 'end'),
+        'empty': placementIri('urn:noocodex:dag:reservoir', 'end'),
+      },
     },
     { '@id': 'urn:noocodex:dag:reservoir/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
   ],
@@ -701,17 +816,21 @@ const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir-no-idle',
   'version':    '1',
-  'entrypoint': 'batch',
+  'entrypoints': { 'main': placementIri('urn:noocodex:dag:reservoir-no-idle', 'batch') },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir-no-idle/node/batch',
       '@type':    'ScatterNode',
       'name':     'batch',
-      'body':     { 'node': 'processor' },
+      'body':     { 'node': 'urn:noocodec:node:processor' },
       'source':   'records',
-      'gather':   { 'strategy': 'discard' },
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'region', 'capacity': 100 } },
-      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      'outputs':  {
+        'all-success': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),
+        'partial': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),
+        'all-error': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),
+        'empty': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),
+      },
     },
     { '@id': 'urn:noocodex:dag:reservoir-no-idle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
   ],
@@ -724,16 +843,20 @@ const PLAIN_SCATTER_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'plain-scatter',
   'version':    '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri('urn:noocodex:dag:plain-scatter', 'fan') },
   'nodes': [
     {
       '@id':    'urn:noocodex:dag:plain-scatter/node/fan',
       '@type':  'ScatterNode',
       'name':   'fan',
-      'body':   { 'node': 'worker' },
+      'body':   { 'node': 'urn:noocodec:node:worker' },
       'source': 'items',
-      'gather': { 'strategy': 'discard' },
-      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      'outputs': {
+        'all-success': placementIri('urn:noocodex:dag:plain-scatter', 'end'),
+        'partial': placementIri('urn:noocodex:dag:plain-scatter', 'end'),
+        'all-error': placementIri('urn:noocodex:dag:plain-scatter', 'end'),
+        'empty': placementIri('urn:noocodex:dag:plain-scatter', 'end'),
+      },
     },
     { '@id': 'urn:noocodex:dag:plain-scatter/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
   ],
@@ -743,7 +866,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('reservoir-configured scatter carries dag-reservoir + dag-scatter classes, type=scatter, and a reservoir data field with exact keyField/capacity/idleMs', () => {
     const elements = CytoscapeRenderer.render(RESERVOIR_DAG, {});
     const bufferNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'buffer',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('reservoir', 'buffer'),
     );
     assert.ok(bufferNode !== undefined, 'buffer node must be present');
     assert.ok(
@@ -765,7 +888,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('reservoir data field without idleMs has idleMs undefined', () => {
     const elements = CytoscapeRenderer.render(RESERVOIR_NO_IDLEMS_DAG, {});
     const batchNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'batch',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('reservoir-no-idle', 'batch'),
     );
     assert.ok(batchNode !== undefined, 'batch node must be present');
     const res = batchNode.data['reservoir'];
@@ -780,7 +903,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('plain (non-reservoir) scatter has no dag-reservoir class, no reservoir data field, classes exactly dag-scatter, and type=scatter', () => {
     const elements = CytoscapeRenderer.render(PLAIN_SCATTER_DAG, {});
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('plain-scatter', 'fan'),
     );
     assert.ok(fanNode !== undefined, 'fan node must be present');
     assert.ok(

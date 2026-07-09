@@ -2,7 +2,7 @@
  * IRI-keyed identity tests (A1).
  *
  * Verifies that:
- *   (a) Two nodes with the same bare name registered under different bundle
+ *   (a) Two nodes with the same local name registered under different bundle
  *       @context prefixes resolve to distinct IRI keys and coexist in the
  *       registry without collision.
  *   (b) A DAG @context with two different prefix keys mapping to the same
@@ -23,60 +23,57 @@ import { TestNode } from '../_support/TestNode.js';
 // ── (a) Prefix-isolated node coexistence ─────────────────────────────────────
 
 void describe('IRI identity — prefix-isolated node coexistence', () => {
-  void it('two nodes with the same bare name under distinct prefixes coexist', () => {
+  void it('two nodes with the same local name under distinct prefixes coexist', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
     const contextA: Record<string, unknown> = { 'pluginA': 'https://a.example.com/' };
     const contextB: Record<string, unknown> = { 'pluginB': 'https://b.example.com/' };
 
-    // Node names include the prefix: 'pluginA:fanout' and 'pluginB:fanout'.
-    // Each resolves to a different IRI key via the bundle-level context.
-    const fanoutAP = TestNode.make('pluginA:fanout', ['success'], () => 'success');
-    const fanoutBP = TestNode.make('pluginB:fanout', ['success'], () => 'success');
+    const iriA = ContextResolver.expand('pluginA:fanout', contextA);
+    const iriB = ContextResolver.expand('pluginB:fanout', contextB);
+    const fanoutAP = TestNode.make(iriA, ['success'], () => 'success');
+    const fanoutBP = TestNode.make(iriB, ['success'], () => 'success');
 
     dispatcher.registerBundle({ 'nodes': [fanoutAP], 'dags': [], 'context': contextA });
     dispatcher.registerBundle({ 'nodes': [fanoutBP], 'dags': [], 'context': contextB });
 
-    // Both IRIs must be distinct entries in the registry.
-    const iriA = ContextResolver.expand('pluginA:fanout', contextA);
-    const iriB = ContextResolver.expand('pluginB:fanout', contextB);
-
     assert.notStrictEqual(iriA, iriB, 'prefix-expanded IRIs must differ');
     assert.strictEqual(dispatcher.getNode(iriA), fanoutAP, 'pluginA:fanout resolves to fanoutAP');
     assert.strictEqual(dispatcher.getNode(iriB), fanoutBP, 'pluginB:fanout resolves to fanoutBP');
-    assert.strictEqual(dispatcher.nodeNames().length, 2, 'registry must hold both nodes without collision');
+    assert.strictEqual(dispatcher.nodeIris().length, 2, 'registry must hold both nodes without collision');
   });
 
-  void it('two bare-name nodes differ in IRI from two prefixed nodes with the same local part', () => {
+  void it('bare references are rejected instead of being assigned a default namespace', () => {
     const contextA: Record<string, unknown> = { 'pluginA': 'https://a.example.com/' };
 
-    const bareIri = ContextResolver.expand('increment', {});
     const prefixedIri = ContextResolver.expand('pluginA:increment', contextA);
 
-    assert.notStrictEqual(bareIri, prefixedIri, 'bare name and prefixed name must not alias');
-    assert.strictEqual(bareIri, `${ContextResolver.DEFAULT_NS}increment`);
+    assert.throws(
+      () => ContextResolver.expand('increment', {}),
+      /must be an absolute IRI or declared CURIE/u,
+    );
     assert.strictEqual(prefixedIri, 'https://a.example.com/increment');
   });
 
-  void it('bare-name nodes with the same name ARE the same registry key', () => {
+  void it('same node IRI registered twice for the same object stays one registry entry', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
-    const nodeA = TestNode.make('increment', ['success'], () => 'success');
+    const nodeA = TestNode.make('urn:noocodec:node:increment', ['success'], () => 'success');
 
     // Two registerNode calls for the same node (identity check) — OK.
     dispatcher.registerNode(nodeA);
     dispatcher.registerNode(nodeA);
 
-    assert.strictEqual(dispatcher.nodeNames().length, 1, 'same node registered twice stays as one entry');
+    assert.strictEqual(dispatcher.nodeIris().length, 1, 'same node registered twice stays as one entry');
   });
 
-  void it('duplicate bare-name registration of DIFFERENT nodes throws', () => {
+  void it('duplicate node IRI registration of different nodes throws', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
-    dispatcher.registerNode(TestNode.make('increment', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:increment', ['success'], () => 'success'));
 
     assert.throws(
-      () => dispatcher.registerNode(TestNode.make('increment', ['success'], () => 'success')),
+      () => dispatcher.registerNode(TestNode.make('urn:noocodec:node:increment', ['success'], () => 'success')),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
         assert.ok(err.message.includes('already registered'), `expected 'already registered', got: ${err.message}`);
@@ -110,7 +107,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
 
   void it('registerDAG with a colliding @context throws DAGError before mutating registries', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('step', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step', ['done'], () => 'done'));
 
     const collidingDag: DAGType = {
       '@context': {
@@ -122,11 +119,11 @@ void describe('IRI identity — duplicate prefix rejection', () => {
       '@type':      'DAG',
       'name':       'collision-dag',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id': 'urn:test:collision-dag/node/step', '@type': 'SingleNode',
-          'name': 'step', 'node': 'step', 'outputs': { 'done': 'end' },
+          'name': 'step', 'node': 'urn:noocodec:node:step', 'outputs': { 'done': 'end' },
         },
         {
           '@id': 'urn:test:collision-dag/node/end', '@type': 'TerminalNode',
@@ -135,7 +132,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
       ],
     };
 
-    const dagsBefore = dispatcher.dagNames().length;
+    const dagsBefore = dispatcher.dagIris().length;
     assert.throws(
       () => dispatcher.registerDAG(collidingDag),
       (err: unknown) => {
@@ -143,7 +140,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
         return true;
       },
     );
-    assert.strictEqual(dispatcher.dagNames().length, dagsBefore, 'dags registry must not be mutated on rejection');
+    assert.strictEqual(dispatcher.dagIris().length, dagsBefore, 'dags registry must not be mutated on rejection');
   });
 
   void it('ContextResolver.validate accepts a context with distinct namespace IRIs', () => {

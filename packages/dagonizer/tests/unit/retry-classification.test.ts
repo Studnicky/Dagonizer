@@ -38,7 +38,7 @@ void describe('RetryableErrorPolicy honors LlmError.classification.retryable', (
     assert.equal(calls, 3, 'retryable error is attempted maxAttempts times');
   });
 
-  void it('falls back to default behavior for non-LlmError errors', async () => {
+  void it('uses default behavior for non-LlmError errors', async () => {
     let calls = 0;
     await assert.rejects(
       () => RetryPolicyFixture.of().run(async () => {

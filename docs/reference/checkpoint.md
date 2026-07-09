@@ -28,7 +28,7 @@ Use this page when a run must survive process exit, browser refresh, worker repl
 
 `Checkpoint.capture()` builds the record from an execution result and optional named stores. `Checkpoint.load()` parses a persisted record. `Checkpoint.recall()` reads from a checkpoint store. `restoreState()` and `restoreStores()` apply the payload back to runtime objects before `Dagonizer.resume()`.
 
-The checkpoint does not contain node implementations or dispatcher registries. The host must register the same DAG and node names before resuming.
+The checkpoint does not contain node implementations or dispatcher registries. The host must register the DAG and node IRIs before resuming.
 
 ## Diagrams, Examples, and Outputs
 
@@ -74,7 +74,7 @@ import { Checkpoint } from '@studnicky/dagonizer';
 
 ---
 
-#### `Checkpoint.capture(dagName, result, options?)`
+#### `Checkpoint.capture(dagIri, result, options?)`
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -84,13 +84,13 @@ import { NodeStateBase } from '@studnicky/dagonizer';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 // ---cut---
 declare function capture<TState extends NodeStateInterface & NodeStateBase>(
-  dagName: string,
+  dagIri: string,
   result: ExecutionResultType<TState>,
   options?: CaptureOptionsType,
 ): Promise<Checkpoint>;
 ```
 
-Async factory. Builds a `Checkpoint` instance from a flow name, execution result, and optional named stores. Store snapshots run through the shared batch executor; `options.execution` controls snapshot concurrency, throttle, and timing. The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
+Async factory. Builds a `Checkpoint` instance from a DAG reference, execution result, and optional named stores. The DAG reference is expanded to the stored DAG IRI; `result.cursor` is the placement IRI to resume from. Store snapshots run through the shared batch executor; `options.execution` controls snapshot concurrency, throttle, and timing. The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
 
 Throws `DAGError` when `result.cursor === null` (the DAG completed; nothing to resume).
 
@@ -177,7 +177,7 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 #### `ckpt.restoreState(adapter)`
 
-Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, DAG IRI, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
 `CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObjectType): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapter.wrap(fn)` from `@studnicky/dagonizer/checkpoint`:
 
@@ -207,8 +207,8 @@ import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const recalled: RecalledCheckpointType<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
-const _dagName: string = recalled.dagName;
-const _cursor: string = recalled.cursor;
+const _dagIri: string = recalled.dagName;
+const _placementIri: string = recalled.cursor;
 const _executedNodes: string[] = recalled.executedNodes;
 const _skippedNodes: string[] = recalled.skippedNodes;
 ```
@@ -313,7 +313,7 @@ import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const recalled: RecalledCheckpointType<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
-const _dagName: string = recalled.dagName;
+const _dagIri: string = recalled.dagName;
 const _cursor: string = recalled.cursor;
 const _executedNodes: string[] = recalled.executedNodes;
 const _skippedNodes: string[] = recalled.skippedNodes;
@@ -329,8 +329,8 @@ Derived from `CheckpointDataSchema` via `json-schema-to-ts`.
 import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const data: CheckpointDataType;
-const _dagName: string = data.dagName;
-const _cursor: string | null = data.cursor;
+const _dagIri: string = data.dagName;
+const _placementIri: string | null = data.cursor;
 const _state: Record<string, unknown> = data.state;
 const _executedNodes: string[] = data.executedNodes;
 const _skippedNodes: string[] = data.skippedNodes;
@@ -351,7 +351,7 @@ JSON Schema object for `CheckpointData`.
 import { CheckpointDataSchema } from '@studnicky/dagonizer/entities';
 // ---cut---
 console.log(CheckpointDataSchema.$id);
-// 'https://noocodex.dev/schemas/dagonizer/CheckpointData'
+// 'https://noocodec.dev/schemas/dagonizer/CheckpointData'
 ```
 
 ---
@@ -381,7 +381,7 @@ import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 ## Details for Nerds
 
-A checkpoint is only useful with a compatible registry. Before resume, the host must register the DAG, nodes, plugin DAGs, state factories, and stores needed by the saved cursor.
+A checkpoint is only useful with the registered DAG and node IRIs, plus any plugin DAG IRIs, state factories, and stores needed by the saved cursor.
 
 Store snapshots are named. Capture and restore should use stable store names so a persisted checkpoint can rehydrate the intended store instead of a new empty instance.
 

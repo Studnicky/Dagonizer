@@ -73,6 +73,7 @@ class MemorySummarizer {
 export class RecallMemoriesNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-memories';
+  readonly '@id' = 'urn:noocodec:node:recall-memories';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
     return {

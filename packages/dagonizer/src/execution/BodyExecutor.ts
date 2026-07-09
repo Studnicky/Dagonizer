@@ -69,7 +69,7 @@ export type BodyRunResultType = {
  * Shared body-run + transport-branch primitive.
  *
  * `executeEmbeddedDAG` and the scatter per-item DAG-body path run the SAME
- * operation: take a sub-DAG name and a pre-seeded clone, run it in-process or
+ * operation: take a sub-DAG IRI and a pre-seeded clone, run it in-process or
  * through a bound container, collect the child's errors into the clone, and
  * report a uniform terminal outcome. `BodyExecutor` is that operation in one
  * place.

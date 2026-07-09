@@ -32,7 +32,7 @@ import { type EntityValidatorInterface, Validator } from '@studnicky/dagonizer/v
  * Runtime validator narrows deserialized log lines to this schema before use.
  */
 export const EventLogEntrySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-store-eventlog/EventLogEntry',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-store-eventlog/EventLogEntry',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {

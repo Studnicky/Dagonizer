@@ -30,7 +30,7 @@
 import { Dagonizer } from '@studnicky/dagonizer';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { Signal } from '@studnicky/signal';
-import { PipelineState, ValidateNode, TransformNode, dag } from './dags/18-observability.js';
+import { PipelineState, ValidateNode, TransformNode, dag, dagIri } from './dags/18-observability.js';
 
 // ---------------------------------------------------------------------------
 // Subclass: TracingDispatcher
@@ -153,7 +153,7 @@ dispatcher.registerNode(new TransformNode());
 dispatcher.registerDAG(dag);
 
 const state = new PipelineState();
-await dispatcher.execute('observe-demo', state);
+await dispatcher.execute(dagIri, state);
 
 // ---------------------------------------------------------------------------
 // Print
@@ -185,7 +185,7 @@ composed.registerNode(new TransformNode());
 composed.registerDAG(dag);
 
 const composedState = new PipelineState();
-await composed.execute('observe-demo', composedState);
+await composed.execute(dagIri, composedState);
 
 process.stdout.write('\nComposedDispatcher: two log sinks in one subclass\n');
 process.stdout.write(`  logA lines: ${String(logA.length)} | logB lines: ${String(logB.length)}\n`);
@@ -217,7 +217,7 @@ lifecycleDispatcher.registerNode(new TransformNode());
 lifecycleDispatcher.registerDAG(dag);
 
 const lifecycleState = new PipelineState();
-await lifecycleDispatcher.execute('observe-demo', lifecycleState);
+await lifecycleDispatcher.execute(dagIri, lifecycleState);
 
 const lc = lifecycleState.lifecycle;
 if (lc.variant === 'completed') {

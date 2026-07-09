@@ -84,7 +84,7 @@ class RoutingRunHarness {
     // 1. Start the routing drain FIRST, without awaiting. It begins pulling
     //    from `channel` immediately, so the (256-item default) buffer never
     //    fills — pushes from either conversation never block.
-    const routingDone = routingDispatcher.execute('react-agent-routing', routingState);
+    const routingDone = routingDispatcher.execute('urn:noocodec:dag:react-agent-routing', routingState);
 
     // 2. Run two conversations CONCURRENTLY against the ONE shared node and
     //    ONE shared channel, each seeded with a distinct conversationId.
@@ -96,8 +96,8 @@ class RoutingRunHarness {
     };
 
     await Promise.all([
-      agentDispatcher.execute('react-agent', stateFor('c1', 'Tell me about dagonizer.')),
-      agentDispatcher.execute('react-agent', stateFor('c2', 'Tell me about dagonizer, briefly.')),
+      agentDispatcher.execute('urn:noocodec:dag:react-agent', stateFor('c1', 'Tell me about dagonizer.')),
+      agentDispatcher.execute('urn:noocodec:dag:react-agent', stateFor('c2', 'Tell me about dagonizer, briefly.')),
     ]);
 
     // 3. Only after both conversations finish pushing does the sink close —

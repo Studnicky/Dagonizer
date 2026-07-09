@@ -55,21 +55,27 @@ Tool schemas let applications expose useful model-callable capabilities without 
 
 ## Code Samples
 
-These snippets are the model/tool boundary. The tool schema tells the model what shape to produce; the canonical ID helper shows how the application normalizes results after tool execution.
+These snippets are the runnable model/tool boundary inside The Archivist. The model sees schema-backed tool definitions through `decideTools`; the example code then converts the selected calls into DAG worksets and deduplicates the returned candidates after execution.
 
 ### Code
 
-#### SubjectSearchTool: input schema
+#### DecideToolsNode: schema-backed tool planning
 
-The `#tool-schema` region covers the `definition` property, the tool name, description, and `inputSchema`. The `examples` fields are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
+`DecideToolsNode` passes registered tool definitions to the LLM adapter, applies deterministic safety nets for common query shapes, and writes the selected calls to `state.toolPlan`:
 
-<<< @/../packages/dagonizer-tool-openlibrary/src/SubjectSearchTool.ts#tool-schema
+<<< @/../examples/the-archivist/nodes/decideTools.ts
 
-#### CanonicalId: cross-source deduplication
+#### BuildBookWorksetsNode: tool calls become DAG references
 
-Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
+The workset builder turns `state.toolPlan` into JSON-serializable items. Each item carries `dagIri: 'urn:noocodec:tool:<name>'`, which the scatter placement resolves through a dynamic `DagReference`:
 
-<<< @/../packages/dagonizer-book-entities/src/CanonicalId.ts
+<<< @/../examples/the-archivist/nodes/buildBookWorksets.ts
+
+#### MergeCandidatesNode: cross-source deduplication
+
+Every tool produces candidates that merge through `CanonicalId.dedupe` in the runnable node. The same work indexed by OpenLibrary, Google Books, or Wikipedia folds into one shortlist entry before response composition:
+
+<<< @/../examples/the-archivist/nodes/mergeCandidates.ts
 
 ## Details for Nerds
 

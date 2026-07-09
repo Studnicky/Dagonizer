@@ -28,6 +28,7 @@ const dagInShortlist = MemoryStore.dagIri('inShortlist');
 export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | 'fail'> {
   private readonly services: ArchivistServices;
   readonly name = 'has-citations-gate';
+  readonly '@id' = 'urn:noocodec:node:has-citations-gate';
   readonly outputs = ['pass', 'fail'] as const;
   override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
     return {

@@ -13,6 +13,7 @@ import {
 
 // #region resolve-code-node
 export class ResolveCodeNode extends MonadicNode<CartographerState, 'resolved'> {
+  readonly '@id' = 'urn:noocodec:node:resolve-code';
   readonly 'name' = 'resolve-code';
   readonly 'outputs' = ['resolved'] as const;
 

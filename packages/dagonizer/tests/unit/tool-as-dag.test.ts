@@ -2,11 +2,11 @@
  * Tests: ToolRegistry — a tool is an embeddable DAG.
  *
  * Verifies that:
- *   1. `ToolRegistry.register` synthesizes a `tool:<name>` DAG.
- *   2. `resolve` returns the definition and dagName, or null on a miss.
+ *   1. `ToolRegistry.register` synthesizes a `urn:noocodec:tool:<name>` DAG.
+ *   2. `resolve` returns the definition and dagIri, or null on a miss.
  *   3. Duplicate `register` throws `DAGError`.
  *   4. `bundle()` wires all synthesized nodes + DAGs into a dispatcher.
- *   5. A parent DAG can embed `tool:calculator` via the Wave-0 literal-embed
+ *   5. A parent DAG can embed `urn:noocodec:tool:calculator` via the Wave-0 literal-embed
  *      idiom; the tool runs inside the embedded DAG and results map back
  *      to parent state — "a tool is an embeddable DAG" is proven end-to-end.
  */
@@ -25,6 +25,16 @@ import { ToolInvocationState } from '../../src/tool/ToolInvocationState.js';
 import { ToolInvokeNode } from '../../src/tool/ToolInvokeNode.js';
 import { ToolRegistry } from '../../src/tool/ToolRegistry.js';
 import { Validator } from '../../src/validation/Validator.js';
+
+const PARENT_CALCULATOR_DAG_IRI = 'urn:noocodec:dag:tool-parent-calculator';
+const PARENT_CALCULATOR_CALL_IRI = 'urn:noocodec:dag:tool-parent-calculator/node/call-calculator';
+const PARENT_CALCULATOR_END_IRI = 'urn:noocodec:dag:tool-parent-calculator/node/end';
+const PARENT_CALCULATOR_FAIL_IRI = 'urn:noocodec:dag:tool-parent-calculator/node/end-fail';
+
+const PARENT_FAILING_TOOL_DAG_IRI = 'urn:noocodec:dag:tool-parent-failure';
+const PARENT_FAILING_TOOL_CALL_IRI = 'urn:noocodec:dag:tool-parent-failure/node/call-tool';
+const PARENT_FAILING_TOOL_END_IRI = 'urn:noocodec:dag:tool-parent-failure/node/end';
+const PARENT_FAILING_TOOL_FAIL_IRI = 'urn:noocodec:dag:tool-parent-failure/node/end-fail';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -96,14 +106,14 @@ class ParentState extends NodeStateBase {
 // ── ToolRegistry.resolve ──────────────────────────────────────────────────────
 
 void describe('ToolRegistry: resolve', () => {
-  void it('resolve returns definition and dagName for a registered tool', () => {
+  void it('resolve returns definition and dagIri for a registered tool', () => {
     const registry = new ToolRegistry();
     registry.register(new CalculatorTool());
 
     const resolved = registry.resolve('calculator');
 
     assert.ok(resolved !== null, 'should resolve a registered tool');
-    assert.equal(resolved['dagName'], 'tool:calculator');
+    assert.equal(resolved['dagIri'], 'urn:noocodec:tool:calculator');
     assert.equal(resolved['definition']['name'], 'calculator');
   });
 
@@ -166,25 +176,29 @@ void describe('ToolInvocationState: snapshot / restore', () => {
 // ── End-to-end: a tool is an embeddable DAG ───────────────────────────────────
 
 void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
-  void it('embeds tool:calculator in a parent DAG, tool runs, result maps back to parent state', async () => {
+  void it('embeds urn:noocodec:tool:calculator in a parent DAG, tool runs, result maps back to parent state', async () => {
     const registry = new ToolRegistry();
     registry.register(new CalculatorTool());
 
-    // Parent DAG: one embeddedDAG placement targeting 'tool:calculator'.
+    // Parent DAG: one embedded-DAG placement targeting 'urn:noocodec:tool:calculator'.
     // inputs:  seed child `input` from parent's `toolInput`.
     // outputs: copy child `output` back to parent's `toolOutput`.
-    const parentDag = new DAGBuilder('parent-calc', '1')
-      .embeddedDAG<ToolInvocationState, ParentState>(
-        'call-calc',
-        'tool:calculator',
-        { 'success': 'end', 'error': 'end-fail' },
+    const parentDag = new DAGBuilder(PARENT_CALCULATOR_DAG_IRI, '1', { 'name': 'parent-calc' })
+      .embed<ToolInvocationState, ParentState>(
+        PARENT_CALCULATOR_CALL_IRI,
+        'urn:noocodec:tool:calculator',
         {
+          'success': PARENT_CALCULATOR_END_IRI,
+          'error': PARENT_CALCULATOR_FAIL_IRI,
+        },
+        {
+          'name': 'call-calc',
           'inputs':  { 'input': 'toolInput' },
           'outputs': { 'toolOutput': 'output' },
         },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(PARENT_CALCULATOR_END_IRI, { 'name': 'end' })
+      .terminal(PARENT_CALCULATOR_FAIL_IRI, { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     // Dispatcher: register the tool bundle first, then the parent DAG.
@@ -196,7 +210,7 @@ void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
     dispatcher.registerDAG(parentDag);
 
     const state  = new ParentState();
-    const result = await dispatcher.execute('parent-calc', state);
+    const result = await dispatcher.execute(PARENT_CALCULATOR_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     // Tool ran: 3 + 7 = 10.
@@ -213,17 +227,21 @@ void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
     const registry = new ToolRegistry();
     registry.register(new AlwaysFailTool());
 
-    const parentDag = new DAGBuilder('parent-fail', '1')
-      .embeddedDAG<ToolInvocationState, ParentState>(
-        'call-fail',
-        'tool:alwaysFail',
-        { 'success': 'end', 'error': 'end-fail' },
+    const parentDag = new DAGBuilder(PARENT_FAILING_TOOL_DAG_IRI, '1', { 'name': 'parent-fail' })
+      .embed<ToolInvocationState, ParentState>(
+        PARENT_FAILING_TOOL_CALL_IRI,
+        'urn:noocodec:tool:alwaysFail',
         {
+          'success': PARENT_FAILING_TOOL_END_IRI,
+          'error': PARENT_FAILING_TOOL_FAIL_IRI,
+        },
+        {
+          'name': 'call-fail',
           'inputs': { 'input': 'toolInput' },
         },
       )
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(PARENT_FAILING_TOOL_END_IRI, { 'name': 'end' })
+      .terminal(PARENT_FAILING_TOOL_FAIL_IRI, { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<ParentState>();
@@ -231,7 +249,7 @@ void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
     dispatcher.registerDAG(parentDag);
 
     const state  = new ParentState();
-    const result = await dispatcher.execute('parent-fail', state);
+    const result = await dispatcher.execute(PARENT_FAILING_TOOL_DAG_IRI, state);
 
     // ToolInvokeNode routes to 'error' → 'end-fail' terminal → failed outcome.
     assert.equal(result.terminalOutcome, 'failed');
@@ -268,6 +286,7 @@ void describe('ToolInvokeNode: batch execution', () => {
 
     const tool = new GateTool();
     const node = new ToolInvokeNode(
+      'urn:noocodec:node:gate',
       'gate',
       tool,
       Validator.compile(tool.definition.inputSchema),
@@ -326,6 +345,7 @@ void describe('ToolInvokeNode: batch execution', () => {
 
     const tool = new TimedTool();
     const node = new ToolInvokeNode(
+      'urn:noocodec:node:timed',
       'timed',
       tool,
       Validator.compile(tool.definition.inputSchema),

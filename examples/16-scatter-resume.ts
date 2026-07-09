@@ -78,7 +78,7 @@ const state = new ResumeState();
 state.jobs  = [...JOBS];
 
 // await execution directly; the scatter yields once (for the scatter placement).
-const partial = await dispatcher.execute('scatter-resume', state, { "signal": ctl.signal });
+const partial = await dispatcher.execute('urn:noocodec:dag:scatter-resume', state, { "signal": ctl.signal });
 
 process.stdout.write(`  cursor: "${partial.cursor}"  (scatter placement awaits resume)\n`);
 process.stdout.write(`  completed after run-1: ${JSON.stringify(state.completed)}\n`);
@@ -97,7 +97,7 @@ process.stdout.write(`  scatter progress stored in metadata: ${rawProgress !== u
 process.stdout.write('\n--- Checkpoint capture + restore ---\n');
 
 // Snapshot the state (scatter progress is in metadata and captured automatically).
-const ckpt      = await Checkpoint.capture('scatter-resume', partial);
+const ckpt      = await Checkpoint.capture('urn:noocodec:dag:scatter-resume', partial);
 const persisted  = ckpt.toJson();
 
 // Simulate process restart: parse the JSON and restore typed state.
@@ -123,7 +123,7 @@ observable.run        = 2;
 observable.abortAfter = 0;       // no abort in run 2
 observable.controller = null;    // clear controller
 
-await dispatcher.resume('scatter-resume', resumedState, cursor);
+await dispatcher.resume('urn:noocodec:dag:scatter-resume', resumedState, cursor);
 
 process.stdout.write(`  completed after resume: ${JSON.stringify(resumedState.completed)}\n`);
 process.stdout.write(`  bodies run in run-2: ${JSON.stringify(observable.execLog.filter((e) => e.includes('run-2')))}\n`);

@@ -14,13 +14,13 @@ seeAlso:
 
 ## What It Is
 
-IRI Identity and Prefix Isolation explains how independently authored plugins can share local names without registry collisions. Two plugins can both ship a node named `classify`; `@context` prefix expansion turns each one into a different absolute IRI before registration.
+IRI Identity and Prefix Isolation explains how independently authored plugins can share local names without registry collisions. Two plugins can both ship a node named `classify`; `@context` prefix expansion turns each one into a different absolute IRI before registration. Names remain display and observability text only.
 
 This is a registry and JSON-LD identity page. The proof lives in unit tests and small JSON-LD snippets rather than a browser DAG demo.
 
 ## How It Works
 
-Registration expands node names, DAG names, placement names, and references through the active `@context` before storing them. The registry key is the expanded absolute IRI. Bare names still work by expanding into the default namespace, while prefixed names expand into plugin-owned namespaces.
+Registration stores node identifiers, DAG identifiers, placement identifiers, and references as canonical IRIs. Absolute IRIs pass through unchanged; declared `prefix:local` CURIEs expand through the active `@context`. Bare identifiers and undeclared prefixes are invalid. The `name` field remains display text for humans.
 
 The application authoring rule is practical: plugin-owned names should carry plugin-owned prefixes, and every DAG that references them should declare the same prefix in `@context`.
 
@@ -28,10 +28,10 @@ The application authoring rule is practical: plugin-owned names should carry plu
 
 This page has JSON-LD snippets instead of a Mermaid graph because the interesting behavior is registry identity, not route topology.
 
-1. Two nodes with the same bare name under distinct prefix contexts coexist without collision.
+1. Two nodes with the same local name under distinct prefix contexts coexist without collision.
 2. A bare `increment` and a prefixed `pluginA:increment` expand to different IRIs.
 3. Registering the same node instance twice is idempotent (one entry).
-4. Registering two different nodes under the same bare name throws `DAGError`.
+4. Registering two different nodes under the same short name throws `DAGError`.
 5. `ContextResolver.validate` throws on a duplicate-namespace `@context`.
 6. `registerDAG` with a colliding `@context` throws before mutating the registry.
 
@@ -43,9 +43,9 @@ npx litany test unit
 
 ## What It Lets You Do
 
-IRI identity lets applications combine plugins that use the same local node or DAG names without registry collisions. Use it when teams independently ship `classify`, `extract`, `normalize`, or `route` nodes that may later run in one dispatcher.
+IRI identity lets applications combine plugins that use the same local node or DAG labels without registry collisions. Use it when teams independently ship `classify`, `extract`, `normalize`, or `route` nodes that may later run in one dispatcher.
 
-Node and DAG registries are keyed by **expanded IRI**, not bare name. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes — each name expands to a different absolute IRI before entering the registry.
+Node and DAG registries are keyed by **expanded IRI**, not raw short names. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes - each name expands to a different absolute IRI before entering the registry.
 
 ## Code Samples
 
@@ -65,7 +65,7 @@ ContextResolver.expand('pluginB:classify', contextB);
 
 // Bare name — no prefix declared:
 ContextResolver.expand('classify', {});
-// → 'https://noocodex.dev/dag/default#classify'
+// throws DAGError
 ```
 
 All three expand to different IRIs. No collision is possible.
@@ -83,30 +83,30 @@ A DAG document that references a prefixed node declares the prefix in its own `@
   "@type":      "DAG",
   "name":       "example-pipeline",
   "version":    "1",
-  "entrypoint": "pluginA:classify",
+  "entrypoints": { "main": "urn:example:pipeline/placement/classify" },
   "nodes": [
     {
-      "@id":   "urn:example:pipeline/node/classify",
+      "@id":   "urn:example:pipeline/placement/classify",
       "@type": "SingleNode",
-      "name":  "pluginA:classify",
+      "name":  "Classify",
       "node":  "pluginA:classify",
-      "outputs": { "done": "end" }
+      "outputs": { "done": "urn:example:pipeline/placement/end" }
     },
     {
-      "@id":   "urn:example:pipeline/node/end",
+      "@id":   "urn:example:pipeline/placement/end",
       "@type": "TerminalNode",
-      "name":  "end",
+      "name":  "End",
       "outcome": "completed"
     }
   ]
 }
 ```
 
-Every `name` and `node` string in the document is expanded through the document's `@context` before the DAG is stored. The entrypoint `pluginA:classify` resolves to `https://plugin-a.dev/dag#classify` — the same IRI under which the node was registered.
+Every node reference is expanded through the document's `@context` before the DAG is stored. The `node` target `pluginA:classify` resolves to `https://plugin-a.dev/dag#classify` — the same IRI under which the node was registered. Placement `@id` values are already explicit IRIs, while `name` stays display-only.
 
 ## Details for Nerds
 
-### The problem: bare-name collision
+### The problem: short-name collision
 
 Without IRI keying, the second `registerNode('classify', ...)` call overwrites the first. The two plugin nodes cannot coexist.
 
@@ -153,13 +153,13 @@ ContextResolver.validate({
 });
 ```
 
-### Rule 4: unknown prefixes are safe
+### Undeclared prefixes are refused
 
-A compound name like `tool:calculator` where `tool` is not declared in any `@context` falls through to Rule 4: it expands to `DEFAULT_NS + 'tool:calculator'`. Existing code that uses colons as separators requires no migration — the name remains unique in the registry at the default namespace.
+A compound reference like `tool:calculator` is valid only when `tool` is declared in the active `@context`. Without that declaration, registration fails before the graph enters the runtime registry.
 
 ### What the unit tests assert
 
-The unit test at `packages/dagonizer/tests/unit/iri-identity.test.ts` asserts the collision and isolation cases listed above.
+The plugin composition examples in `examples/the-cartographer/plugins/NormalizeSourcesPlugin.ts` and `examples/the-cartographer/embedded-dags/IngestSourceDAG.ts` show the same registry seam in runnable code.
 
 ## Related Concepts
 

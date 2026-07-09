@@ -7,7 +7,7 @@
  * spawned processes) call `toRequest()` to snapshot the clone into a
  * wire-safe `ExecutionRequest`.
  *
- * `dagName`       — name of the registered DAG to run.
+ * `dagName`       — canonical DAG IRI of the registered DAG to run.
  * `placementPath` — nesting path of embedded-DAG placement names leading to
  *                   this execution (for instrumentation/observability).
  * `correlationId` — dispatcher-monotonic correlation id; no randomness.

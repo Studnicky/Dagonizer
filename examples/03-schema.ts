@@ -40,22 +40,14 @@ dispatcher.registerNode(new EchoNode());
 dispatcher.registerDAG(dag);
 
 const state = new NodeStateBase();
-await dispatcher.execute('from-json', state);
+await dispatcher.execute('urn:noocodec:dag:from-json', state);
 // #endregion load-and-register
 process.stdout.write(`Executed: metadata.seen = ${String(state.getMetadata('seen'))}\n`);
-
-// ── ofValue: validate an already-parsed object (skips JSON.parse) ──────
-// #region from-value
-// DAGDocument.ofValue() validates an already-parsed value — useful when a
-// YAML parser, database query, or message queue provides a plain object.
-const reparsed = DAGDocument.ofValue(JSON.parse(DAGDocument.serialize(dag)));
-process.stdout.write(`ofValue name: ${reparsed.name}\n`);
-// #endregion from-value
 
 // ── DAGSchema.$id ─────────────────────────────────────────────────────────
 // #region schema-id
 process.stdout.write(`DAGSchema.$id: ${DAGSchema.$id}\n`);
-// → 'https://noocodex.dev/schemas/dagonizer/DAG'
+// → 'https://noocodec.dev/schemas/dagonizer/DAG'
 // #endregion schema-id
 
 // ── Validator.dag ─────────────────────────────────────────────────────────
@@ -86,7 +78,7 @@ process.stdout.write(`is TerminalNode: ${String(isTerminal)}\n`);
 
 // ── Round-trip: serialize → load → equivalent object ─────────────────────
 // #region serialize-roundtrip
-// DAGDocument.serialize(dag) produces pretty-printed JSON (2-space indent).
+// DAGDocument.serialize(dag) produces pretty-printed JSON.
 // DAGDocument.load(json) parses and validates it back to a typed DAG.
 // The result is structurally identical to the original.
 const serialized    = DAGDocument.serialize(dag);
@@ -95,26 +87,19 @@ const isEqual       = JSON.stringify(roundTripped) === JSON.stringify(dag);
 process.stdout.write(`Round-trip equal: ${String(isEqual)}\n`);
 // #endregion serialize-roundtrip
 
-// ── Serialize to file and compact ─────────────────────────────────────────
+// ── Serialize to file ──────────────────────────────────────────────────────
 // #region serialize-file
-// DAGDocument.serialize() writes pretty JSON; pair with node:fs for persistence.
+// DAGDocument.serialize() writes JSON; pair with node:fs for persistence.
 const json = DAGDocument.serialize(dag);
 await fs.writeFile('/tmp/dag-03-example.json', json);
 const loaded = DAGDocument.load(await fs.readFile('/tmp/dag-03-example.json', 'utf8'));
 process.stdout.write(`Loaded from file: ${loaded.name}\n`);
 // #endregion serialize-file
 
-// #region serialize-compact
-// DAGDocument.serializeCompact() produces single-line JSON — suitable for
-// HTTP response bodies (content-type: application/ld+json) or message envelopes.
-const compact = DAGDocument.serializeCompact(dag);
-process.stdout.write(`compact length: ${String(compact.length)} (no whitespace)\n`);
-// #endregion serialize-compact
-
 // ── DAGError (code VALIDATION_ERROR): schema rejects any document missing required JSON-LD fields
 // #region validate
 try {
-  // Missing '@context', '@id', '@type', 'entrypoint', 'nodes': schema rejects it.
+  // Missing '@context', '@id', '@type', 'entrypoints', 'nodes': schema rejects it.
   DAGDocument.load(JSON.stringify({ "name": 'broken', "version": '1' }));
 } catch (error) {
   if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {

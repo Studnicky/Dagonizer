@@ -24,6 +24,9 @@ import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestDag } from '../_support/TestDag.js';
@@ -32,12 +35,14 @@ import { TestDag } from '../_support/TestDag.js';
 // DAG builder helpers
 // ===========================================================================
 
+const placementIri = TestDag.placementIri;
+
 class PlacementFixture {
   private constructor() {}
 
   static singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dag, name),
       '@type': 'SingleNode',
       name,
       node,
@@ -47,7 +52,7 @@ class PlacementFixture {
 
   static terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dag, name),
       '@type': 'TerminalNode',
       name,
       outcome,
@@ -62,7 +67,7 @@ class PlacementFixture {
     stateMapping: { input: Record<string, string>; output: Record<string, string> },
   ): DAGType['nodes'][number] {
     return {
-      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': placementIri(dag, name),
       '@type': 'EmbeddedDAGNode',
       name,
       'dag': childDag,
@@ -128,6 +133,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     // Dispatch node: routes value > 0 → 'high', else → 'low'.
     class DispatchNode extends MonadicNode<ValueState, 'high' | 'low'> {
       readonly name = 'dispatch';
+      readonly '@id' = 'urn:noocodec:node:dispatch';
       readonly outputs = ['high', 'low'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'high': { 'type': 'object' }, 'low': { 'type': 'object' } }; }
 
@@ -151,6 +157,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     // High-branch: adds 100 to value.
     class HighBranchNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'high-branch';
+      readonly '@id' = 'urn:noocodec:node:high-branch';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -168,6 +175,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     // Low-branch: subtracts 100 from value.
     class LowBranchNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'low-branch';
+      readonly '@id' = 'urn:noocodec:node:low-branch';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -186,6 +194,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     const convergeFirings: number[] = [];
     class ConvergeNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'converge';
+      readonly '@id' = 'urn:noocodec:node:converge';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -203,18 +212,18 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
 
     const collected: ValueState[] = [];
 
-    const dag = TestDag.of('bne-converge', 'fan', [
-      PlacementFixture.singleNode('bne-converge', 'fan', 'fanout', { 'out': 'dispatch' }),
-      PlacementFixture.singleNode('bne-converge', 'dispatch', 'dispatch', { 'high': 'high-step', 'low': 'low-step' }),
-      PlacementFixture.singleNode('bne-converge', 'high-step', 'high-branch', { 'done': 'converge-step' }),
-      PlacementFixture.singleNode('bne-converge', 'low-step', 'low-branch', { 'done': 'converge-step' }),
-      PlacementFixture.singleNode('bne-converge', 'converge-step', 'converge', { 'done': 'acc-step' }),
-      PlacementFixture.singleNode('bne-converge', 'acc-step', 'acc', { 'done': 'finish' }),
-      PlacementFixture.terminalNode('bne-converge', 'finish', 'completed'),
+    const dag = TestDag.of('urn:noocodec:dag:bne-converge', placementIri('urn:noocodec:dag:bne-converge', 'fan'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'fan', 'urn:noocodec:node:fanout', { 'out': placementIri('urn:noocodec:dag:bne-converge', 'dispatch') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'dispatch', 'urn:noocodec:node:dispatch', { 'high': placementIri('urn:noocodec:dag:bne-converge', 'high-step'), 'low': placementIri('urn:noocodec:dag:bne-converge', 'low-step') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'high-step', 'urn:noocodec:node:high-branch', { 'done': placementIri('urn:noocodec:dag:bne-converge', 'converge-step') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'low-step', 'urn:noocodec:node:low-branch', { 'done': placementIri('urn:noocodec:dag:bne-converge', 'converge-step') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'converge-step', 'urn:noocodec:node:converge', { 'done': placementIri('urn:noocodec:dag:bne-converge', 'acc-step') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-converge', 'acc-step', 'urn:noocodec:node:acc', { 'done': placementIri('urn:noocodec:dag:bne-converge', 'finish') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-converge', 'finish', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('urn:noocodec:node:fanout', ['out'], (batch) => {
       const source = batch.row(0).state;
       const values = [5, -3, 7];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
@@ -231,7 +240,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     dispatcher.registerNode(new HighBranchNode());
     dispatcher.registerNode(new LowBranchNode());
     dispatcher.registerNode(new ConvergeNode());
-    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('acc', ['done'], (batch) => {
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('urn:noocodec:node:acc', ['done'], (batch) => {
       for (const item of batch) { collected.push(item.state); }
       const r = new Map<'done', Batch<ValueState>>();
       r.set('done', batch);
@@ -239,7 +248,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     }));
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('bne-converge', new ValueState());
+    const result = await dispatcher.execute('urn:noocodec:dag:bne-converge', new ValueState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -281,6 +290,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     // Router node: routes value > 0 → 'success-path', else → 'failure-path'.
     class RouterNode extends MonadicNode<ValueState, 'success-path' | 'failure-path'> {
       readonly name = 'router';
+      readonly '@id' = 'urn:noocodec:node:router';
       readonly outputs = ['success-path', 'failure-path'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success-path': { 'type': 'object' }, 'failure-path': { 'type': 'object' } }; }
 
@@ -301,18 +311,18 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
       }
     }
 
-    const dag = TestDag.of('bne-diverge', 'fan', [
-      PlacementFixture.singleNode('bne-diverge', 'fan', 'fanout', { 'out': 'router-step' }),
-      PlacementFixture.singleNode('bne-diverge', 'router-step', 'router', {
-        'success-path': 'success-term',
-        'failure-path': 'failure-term',
+    const dag = TestDag.of('urn:noocodec:dag:bne-diverge', placementIri('urn:noocodec:dag:bne-diverge', 'fan'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-diverge', 'fan', 'urn:noocodec:node:fanout', { 'out': placementIri('urn:noocodec:dag:bne-diverge', 'router-step') }),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-diverge', 'router-step', 'urn:noocodec:node:router', {
+        'success-path': placementIri('urn:noocodec:dag:bne-diverge', 'success-term'),
+        'failure-path': placementIri('urn:noocodec:dag:bne-diverge', 'failure-term'),
       }),
-      PlacementFixture.terminalNode('bne-diverge', 'success-term', 'completed'),
-      PlacementFixture.terminalNode('bne-diverge', 'failure-term', 'failed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-diverge', 'success-term', 'completed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-diverge', 'failure-term', 'failed'),
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('urn:noocodec:node:fanout', ['out'], (batch) => {
       const source = batch.row(0).state;
       const values = [1, -1];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
@@ -328,7 +338,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     dispatcher.registerNode(new RouterNode());
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('bne-diverge', new ValueState());
+    const result = await dispatcher.execute('urn:noocodec:dag:bne-diverge', new ValueState());
 
     // Any item reaching a 'failed' terminal makes the overall outcome 'failed'.
     assert.equal(result.terminalOutcome, 'failed', 'overall outcome is failed when any item reaches a failed terminal');
@@ -363,6 +373,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
 
     class IncNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'inc';
+      readonly '@id' = 'urn:noocodec:node:inc';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -382,30 +393,31 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       }
     }
 
-    const childDAG = TestDag.of('bne-child', 'inc-step', [
-      PlacementFixture.singleNode('bne-child', 'inc-step', 'inc', { 'done': 'child-end' }),
-      PlacementFixture.terminalNode('bne-child', 'child-end', 'completed'),
+    const childDAG = TestDag.of('urn:noocodec:dag:bne-child', placementIri('urn:noocodec:dag:bne-child', 'inc-step'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-child', 'inc-step', 'urn:noocodec:node:inc', { 'done': placementIri('urn:noocodec:dag:bne-child', 'child-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-child', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     const collected: ValueState[] = [];
+    const store = new InMemoryTopologyStore();
 
-    const parentDAG = TestDag.of('bne-parent', 'fan', [
-      PlacementFixture.singleNode('bne-parent', 'fan', 'fanout', { 'out': 'embed-step' }),
+    const parentDAG = TestDag.of('urn:noocodec:dag:bne-parent', placementIri('urn:noocodec:dag:bne-parent', 'fan'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-parent', 'fan', 'urn:noocodec:node:fanout', { 'out': placementIri('urn:noocodec:dag:bne-parent', 'embed-step') }),
       PlacementFixture.embedNode(
-        'bne-parent',
+        'urn:noocodec:dag:bne-parent',
         'embed-step',
-        'bne-child',
-        { 'success': 'acc-step', 'error': 'finish' },
+        'urn:noocodec:dag:bne-child',
+        { 'success': placementIri('urn:noocodec:dag:bne-parent', 'acc-step'), 'error': placementIri('urn:noocodec:dag:bne-parent', 'finish') },
         valueMapping,
       ),
-      PlacementFixture.singleNode('bne-parent', 'acc-step', 'acc', { 'done': 'finish' }),
-      PlacementFixture.terminalNode('bne-parent', 'finish', 'completed'),
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-parent', 'acc-step', 'urn:noocodec:node:acc', { 'done': placementIri('urn:noocodec:dag:bne-parent', 'finish') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-parent', 'finish', 'completed'),
     ]);
 
-    const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+    const dispatcher = new Dagonizer<ValueState>({ 'executionTopologyStore': store });
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('urn:noocodec:node:fanout', ['out'], (batch) => {
       const source = batch.row(0).state;
       const values = [1, 2, 3];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
@@ -419,7 +431,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       return r;
     }));
     dispatcher.registerNode(new IncNode(childItemsSeen));
-    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('acc', ['done'], (batch) => {
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('urn:noocodec:node:acc', ['done'], (batch) => {
       for (const item of batch) { collected.push(item.state); }
       const r = new Map<'done', Batch<ValueState>>();
       r.set('done', batch);
@@ -428,7 +440,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
-    const result = await dispatcher.execute('bne-parent', new ValueState());
+    const result = await dispatcher.execute('urn:noocodec:dag:bne-parent', new ValueState());
 
     assert.equal(result.terminalOutcome, 'completed');
 
@@ -444,12 +456,20 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     assert.equal(childItemsSeen.length, 3, 'inc node processed exactly 3 items');
     const seenSorted = [...childItemsSeen].sort((a, b) => a - b);
     assert.deepEqual(seenSorted, [1, 2, 3], 'inc node received each item with its original value');
+    assert.deepEqual(
+      DagGraphQueries.selectedDagRows(store),
+      [{
+        'ownerIri': placementIri('urn:noocodec:dag:bne-parent', 'embed-step'),
+        'dagIri':   DagGraphProjector.dagIri(childDAG),
+      }],
+    );
   });
 
   void it('single-item embedded DAG parity: batch-native path matches per-item value (value=42)', async () => {
     // Regression guard: size-1 batch must produce the same result as before.
     class IncNode42 extends MonadicNode<ValueState, 'done'> {
       readonly name = 'inc42';
+      readonly '@id' = 'urn:noocodec:node:inc42';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -463,28 +483,29 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       }
     }
 
-    const childDAG = TestDag.of('bne-child42', 'inc-step', [
-      PlacementFixture.singleNode('bne-child42', 'inc-step', 'inc42', { 'done': 'child-end' }),
-      PlacementFixture.terminalNode('bne-child42', 'child-end', 'completed'),
+    const childDAG = TestDag.of('urn:noocodec:dag:bne-child42', placementIri('urn:noocodec:dag:bne-child42', 'inc-step'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-child42', 'inc-step', 'urn:noocodec:node:inc42', { 'done': placementIri('urn:noocodec:dag:bne-child42', 'child-end') }),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-child42', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-    const parentDAG = TestDag.of('bne-parent42', 'entry', [
-      PlacementFixture.singleNode('bne-parent42', 'entry', 'entry-node', { 'ok': 'embed-step' }),
+    const parentDAG = TestDag.of('urn:noocodec:dag:bne-parent42', placementIri('urn:noocodec:dag:bne-parent42', 'entry'), [
+      PlacementFixture.singleNode('urn:noocodec:dag:bne-parent42', 'entry', 'urn:noocodec:node:entry-node', { 'ok': placementIri('urn:noocodec:dag:bne-parent42', 'embed-step') }),
       PlacementFixture.embedNode(
-        'bne-parent42',
+        'urn:noocodec:dag:bne-parent42',
         'embed-step',
-        'bne-child42',
-        { 'success': 'finish', 'error': 'finish' },
+        'urn:noocodec:dag:bne-child42',
+        { 'success': placementIri('urn:noocodec:dag:bne-parent42', 'finish'), 'error': placementIri('urn:noocodec:dag:bne-parent42', 'finish') },
         valueMapping,
       ),
-      PlacementFixture.terminalNode('bne-parent42', 'finish', 'completed'),
+      PlacementFixture.terminalNode('urn:noocodec:dag:bne-parent42', 'finish', 'completed'),
     ]);
 
     // Passthrough entry node.
     class EntryNode extends MonadicNode<ValueState, 'ok'> {
       readonly name = 'entry-node';
+      readonly '@id' = 'urn:noocodec:node:entry-node';
       readonly outputs = ['ok'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
 
@@ -504,7 +525,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     const initial = new ValueState();
     initial.value = 42;
 
-    const result = await dispatcher.execute('bne-parent42', initial);
+    const result = await dispatcher.execute('urn:noocodec:dag:bne-parent42', initial);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.state.value, 52, 'size-1 embed: value 42 + 10 = 52');

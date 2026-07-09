@@ -32,14 +32,15 @@ A parking node writes correlation metadata and routes to the reserved parked out
 ### Full lifecycle
 
 ```ts
-// 1. Initial execute — parks at 'park-for-operator'
-const firstResult = await dispatcher.execute('support-dispatcher', initialState);
+// 1. Initial execute — parks at urn:noocodec:dag:support-dispatcher/node/park-for-operator
+const supportDispatcherDagIri = 'urn:noocodec:dag:support-dispatcher';
+const firstResult = await dispatcher.execute(supportDispatcherDagIri, initialState);
 // firstResult.state.lifecycle.variant === 'awaiting-input'
 // firstResult.parked.correlationKey  starts with 'escalation:'
-// firstResult.parked.cursor          === 'park-for-operator'
+// firstResult.parked.cursor          === 'urn:noocodec:dag:support-dispatcher/node/park-for-operator'
 
 // 2. Capture checkpoint (persist: DB, queue, etc.)
-const ckpt = await Checkpoint.capture('support-dispatcher', firstResult);
+const ckpt = await Checkpoint.capture(supportDispatcherDagIri, firstResult);
 await db.save(firstResult.parked.correlationKey, ckpt.toJson());
 
 // --- Operator writes the response out of band ---
@@ -105,8 +106,8 @@ The three artifacts the engine surfaces on a parked result:
 | Field | Type | Meaning |
 |-------|------|---------|
 | `result.parked.correlationKey` | `string` | Opaque key set by the node in state metadata; use it to correlate a webhook/callback with the parked run |
-| `result.parked.cursor` | `string` | Placement name to pass to `dispatcher.resume()` |
-| `result.parked.dagName` | `string` | DAG name to pass to `dispatcher.resume()` |
+| `result.parked.cursor` | `string` | Placement IRI to pass to `dispatcher.resume()` |
+| `result.parked.dagName` | `string` | DAG IRI/CURIE string to pass to `dispatcher.resume()` |
 | `result.cursor` | `string \| null` | Same as `parked.cursor`; present for `Checkpoint.capture()` |
 | `result.state.lifecycle.variant` | `'awaiting-input'` | Non-terminal lifecycle variant; the run can resume |
 
@@ -136,8 +137,8 @@ and cursor.
 ```ts
 type ParkedType = {
   correlationKey: string;  // opaque, set by the node
-  cursor: string;          // placement name; pass to dispatcher.resume()
-  dagName: string;         // DAG name; pass to dispatcher.resume()
+  cursor: string;          // placement IRI; pass to dispatcher.resume()
+  dagName: string;         // DAG IRI/CURIE; pass to dispatcher.resume()
 };
 ```
 

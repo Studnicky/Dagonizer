@@ -192,7 +192,7 @@ export class ReservoirBuffer {
     const { keyField, capacity } = this.#reservoir;
     for (const inboxItem of this.#inbox) {
       // A reservoir run always stamps `bufferKey` when it buffers an item, so a
-      // resumed inbox carries it. The fallback recomputes the key from the item
+      // resumed inbox carries it. The default path recomputes the key from the item
       // (defense-in-depth: a checkpoint written by a prior non-reservoir run, or
       // any future pre-scan path) so an inbox item is never silently dropped.
       const key = inboxItem.bufferKey ?? String(this.#resolveKey(inboxItem.item, keyField) ?? '');

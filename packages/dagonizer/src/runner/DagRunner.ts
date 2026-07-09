@@ -64,19 +64,19 @@ export interface DagRunnerInterface<
   registerBundle(bundle: DispatcherBundleType<TState>): void;
 
   /**
-   * Execute the named DAG from its entrypoint with a freshly seeded state.
+   * Execute the DAG IRI from its entrypoint with a freshly seeded state.
    * The input is passed to `seedState` to build the initial state.
    * Never throws — errors are collected in state and the result is always returned.
    */
-  run(dagName: string, input: TInput, options?: ExecuteOptionsType): Promise<TOutput>;
+  run(dagIri: string, input: TInput, options?: ExecuteOptionsType): Promise<TOutput>;
 
   /**
-   * Resume the named DAG from `fromStage` using a rehydrated state.
+   * Resume the DAG IRI from `fromStage` using a rehydrated state.
    * The caller is responsible for rehydrating `state` before the call
    * (typically via `Checkpoint.load(raw).restoreState(fn)`).
    * Never throws — same semantics as `run`.
    */
-  resume(dagName: string, state: TState, fromStage: string, options?: ExecuteOptionsType): Promise<TOutput>;
+  resume(dagIri: string, state: TState, fromStage: string, options?: ExecuteOptionsType): Promise<TOutput>;
 }
 
 /**
@@ -124,31 +124,31 @@ export abstract class DagRunner<
   }
 
   /**
-   * Execute the named DAG with a freshly seeded state built from `input`.
+   * Execute the DAG IRI with a freshly seeded state built from `input`.
    * Never throws — the result is always returned. Caught unexpected errors
    * route through `onRunError`.
    */
-  async run(dagName: string, input: TInput, options: ExecuteOptionsType = {}): Promise<TOutput> {
+  async run(dagIri: string, input: TInput, options: ExecuteOptionsType = {}): Promise<TOutput> {
     try {
       const state = this.seedState(input);
-      const result = await this.dispatcher.execute(dagName, state, options);
+      const result = await this.dispatcher.execute(dagIri, state, options);
       return this.projectResult(result);
     } catch (err) {
-      return this.onRunError(dagName, err instanceof Error ? err : new Error(String(err)));
+      return this.onRunError(dagIri, err instanceof Error ? err : new Error(String(err)));
     }
   }
 
   /**
-   * Resume the named DAG from `fromStage` with a pre-rehydrated state.
+   * Resume the DAG IRI from `fromStage` with a pre-rehydrated state.
    * The caller is responsible for rehydrating state before the call.
    * Never throws — same semantics as `run`.
    */
-  async resume(dagName: string, state: TState, fromStage: string, options: ExecuteOptionsType = {}): Promise<TOutput> {
+  async resume(dagIri: string, state: TState, fromStage: string, options: ExecuteOptionsType = {}): Promise<TOutput> {
     try {
-      const result = await this.dispatcher.resume(dagName, state, fromStage, options);
+      const result = await this.dispatcher.resume(dagIri, state, fromStage, options);
       return this.projectResult(result);
     } catch (err) {
-      return this.onRunError(dagName, err instanceof Error ? err : new Error(String(err)));
+      return this.onRunError(dagIri, err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -173,9 +173,9 @@ export abstract class DagRunner<
   /**
    * Called when an unexpected error escapes the engine (framework bug, not
    * a node error — those are collected in state). Default re-throws. Override
-   * to absorb and return a fallback `TOutput` if callers need continuity.
+   * to absorb and return a caller-defined `TOutput` if callers need continuity.
    */
-  protected onRunError(_dagName: string, error: Error): TOutput {
+  protected onRunError(_dagIri: string, error: Error): TOutput {
     throw error;
   }
 }

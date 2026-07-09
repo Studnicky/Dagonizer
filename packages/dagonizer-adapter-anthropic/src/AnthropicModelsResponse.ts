@@ -19,7 +19,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const AnthropicModelsResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/AnthropicModelsResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/AnthropicModelsResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['data'],

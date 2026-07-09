@@ -17,7 +17,7 @@ import { TokenUsageSchema } from './TokenUsage.js';
  * TypeScript type is asserted.
  */
 export const ChatResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/ChatResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['message', 'finishReason', 'usage'],

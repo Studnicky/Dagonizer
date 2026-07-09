@@ -11,9 +11,9 @@
  *   all routes to 'completed'. The counting gather fold confirms all 8 items
  *   were processed.
  *
- * Suite B — reservoir + DAG body, container loopback (Branch C fallback):
+ * Suite B — reservoir + DAG body, container loopback (Branch C):
  *   Uses a plain DagContainerInterface implementation (not a DagContainerBase
- *   subclass) to exercise the per-item fallback in Branch C. Asserts that
+ *   subclass) to exercise the per-item Branch C path. Asserts that
  *   container.runDag is called once per item and the gather accumulator
  *   reflects all 8 items.
  *
@@ -59,12 +59,15 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -72,9 +75,11 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+
 class ReservoirDispatchState extends NodeStateBase {
   counter: number = 0;
-  items: Array<{ group: string; value: number }> = [];
+  items: Array<{ group: string; value: number; dagIri?: string }> = [];
   /** Per-item output recorded by the recording gather: value → 'success'|'error'. */
   outputByValue: Record<string, string> = {};
 
@@ -91,9 +96,10 @@ class ReservoirDispatchState extends NodeStateBase {
     const items = snap['items'];
     if (Array.isArray(items)) {
       this.items = items.filter(
-        (x): x is { group: string; value: number } =>
+        (x): x is { group: string; value: number; dagIri?: string } =>
           typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['group'] === 'string' && typeof x['value'] === 'number',
+          typeof x['group'] === 'string' && typeof x['value'] === 'number' &&
+          (x['dagIri'] === undefined || typeof x['dagIri'] === 'string'),
       );
     }
     const recorded = snap['outputByValue'];
@@ -116,6 +122,7 @@ class ReservoirDispatchState extends NodeStateBase {
  */
 class ReservoirDispatchGather extends GatherStrategy {
   readonly name = 'counting-test-reservoir';
+  readonly '@id' = 'urn:noocodec:node:counting-test-reservoir';
 
   reduce(
     _config: GatherConfigType,
@@ -150,6 +157,7 @@ class ReservoirRecordGuard {
  */
 class ReservoirRecordingGather extends GatherStrategy {
   readonly name = 'recording-test-reservoir';
+  readonly '@id' = 'urn:noocodec:node:recording-test-reservoir';
 
   reduce(
     _config: GatherConfigType,
@@ -201,6 +209,7 @@ class CurrentItemGuard {
  */
 class RouterNode extends MonadicNode<NodeStateBase, 'even' | 'odd'> {
   override readonly name = 'router';
+  override readonly '@id' = 'urn:noocodec:node:router';
   override readonly outputs = ['even', 'odd'] as const;
 
   override get outputSchema(): Record<'even' | 'odd', SchemaObjectType> {
@@ -224,31 +233,35 @@ class RouterNode extends MonadicNode<NodeStateBase, 'even' | 'odd'> {
 }
 
 // Sub-DAG: router → (even → done-a, odd → done-b) → TerminalNode
+const ROUTE_BODY_DAG_IRI = 'urn:noocodec:dag:route-body';
 const ROUTE_BODY_DAG_NAME = 'route-body';
 
 const routeBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:route-body',
+  '@id': ROUTE_BODY_DAG_IRI,
   '@type': 'DAG',
   'name': ROUTE_BODY_DAG_NAME,
   'version': '1',
-  'entrypoint': 'router',
+  'entrypoints': { 'main': placementIri(ROUTE_BODY_DAG_IRI, 'router') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:route-body/node/router',
+      '@id': 'urn:noocodec:dag:route-body/node/router',
       '@type': 'SingleNode',
       'name': 'router',
-      'node': 'router',
-      'outputs': { 'even': 'done-a', 'odd': 'done-b' },
+      'node': 'urn:noocodec:node:router',
+      'outputs': {
+        'even': placementIri(ROUTE_BODY_DAG_IRI, 'done-a'),
+        'odd': placementIri(ROUTE_BODY_DAG_IRI, 'done-b'),
+      },
     },
     {
-      '@id': 'urn:noocodex:dag:route-body/node/done-a',
+      '@id': 'urn:noocodec:dag:route-body/node/done-a',
       '@type': 'TerminalNode',
       'name': 'done-a',
       'outcome': 'completed',
     },
     {
-      '@id': 'urn:noocodex:dag:route-body/node/done-b',
+      '@id': 'urn:noocodec:dag:route-body/node/done-b',
       '@type': 'TerminalNode',
       'name': 'done-b',
       'outcome': 'completed',
@@ -257,33 +270,193 @@ const routeBodyDag: DAGType = Validator.dag.validate({
 });
 
 // Parent DAG for Suite A (no container)
+const RESERVOIR_DAG_BODY_IRI = 'urn:noocodec:dag:scatter-reservoir-dag';
 const RESERVOIR_DAG_BODY_NAME = 'scatter-reservoir-dag';
 
 const reservoirDagBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:scatter-reservoir-dag',
+  '@id': RESERVOIR_DAG_BODY_IRI,
   '@type': 'DAG',
   'name': RESERVOIR_DAG_BODY_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RESERVOIR_DAG_BODY_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-dag/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': ROUTE_BODY_DAG_NAME },
+      'body': { 'dag': ROUTE_BODY_DAG_IRI },
       'source': 'items',
-      'itemKey': 'currentItem',      'gather': { 'strategy': 'counting-test-reservoir' },
+      'itemKey': 'currentItem',
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 },
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RESERVOIR_DAG_BODY_IRI, 'join'),
+        'partial': placementIri(RESERVOIR_DAG_BODY_IRI, 'join'),
+        'all-error': placementIri(RESERVOIR_DAG_BODY_IRI, 'join'),
+        'empty': placementIri(RESERVOIR_DAG_BODY_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-dag/node/end',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(RESERVOIR_DAG_BODY_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'counting-test-reservoir' },
+      'outputs': {
+        'success': placementIri(RESERVOIR_DAG_BODY_IRI, 'end'),
+        'error': placementIri(RESERVOIR_DAG_BODY_IRI, 'end'),
+        'empty': placementIri(RESERVOIR_DAG_BODY_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+const DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI = 'urn:noocodec:dag:dynamic-reservoir-accept';
+const DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME = 'dynamic-reservoir-accept';
+const DYNAMIC_RESERVOIR_REJECT_DAG_IRI = 'urn:noocodec:dag:dynamic-reservoir-reject';
+const DYNAMIC_RESERVOIR_REJECT_DAG_NAME = 'dynamic-reservoir-reject';
+const DYNAMIC_RESERVOIR_PARENT_DAG_IRI = 'urn:noocodec:dag:dynamic-reservoir-parent';
+const DYNAMIC_RESERVOIR_PARENT_DAG_NAME = 'dynamic-reservoir-parent';
+const DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI = 'urn:noocodec:dag:dynamic-reservoir-container-parent';
+const DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_NAME = 'dynamic-reservoir-container-parent';
+const CONTAINER_ROLE = 'cpu';
+
+const dynamicReservoirAcceptDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI,
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': placementIri(DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI, 'done') },
+  'nodes': [
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-accept/node/done',
+      '@type': 'TerminalNode',
+      'name': 'done',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+const dynamicReservoirRejectDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': DYNAMIC_RESERVOIR_REJECT_DAG_IRI,
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_REJECT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': placementIri(DYNAMIC_RESERVOIR_REJECT_DAG_IRI, 'failed') },
+  'nodes': [
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-reject/node/failed',
+      '@type': 'TerminalNode',
+      'name': 'failed',
+      'outcome': 'failed',
+    },
+  ],
+});
+
+const dynamicReservoirParentDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': DYNAMIC_RESERVOIR_PARENT_DAG_IRI,
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_PARENT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'fan') },
+  'nodes': [
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-parent/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': {
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'item',
+          'path': 'dagIri',
+          'candidates': [DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI, DYNAMIC_RESERVOIR_REJECT_DAG_IRI],
+        },
+      },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 1 },
+      'outputs': {
+        'all-success': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'join'),
+        'partial': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'join'),
+        'all-error': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'join'),
+        'empty': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-parent/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'outputs': {
+        'success': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'end'),
+        'error': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'end'),
+        'empty': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-parent/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+const dynamicReservoirContainerParentDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI,
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'fan') },
+  'nodes': [
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-container-parent/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': {
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'item',
+          'path': 'dagIri',
+          'candidates': [DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI, DYNAMIC_RESERVOIR_REJECT_DAG_IRI],
+        },
+      },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
+      'container': CONTAINER_ROLE,
+      'outputs': {
+        'all-success': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'join'),
+        'partial': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'join'),
+        'all-error': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'join'),
+        'empty': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-container-parent/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'outputs': {
+        'success': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'end'),
+        'error': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'end'),
+        'empty': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:dynamic-reservoir-container-parent/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -292,35 +465,47 @@ const reservoirDagBodyDag: DAGType = Validator.dag.validate({
 });
 
 // Parent DAG for Suite B (with container)
+const RESERVOIR_DAG_BODY_CONTAINER_IRI = 'urn:noocodec:dag:scatter-reservoir-dag-container';
 const RESERVOIR_DAG_BODY_CONTAINER_NAME = 'scatter-reservoir-dag-container';
-const CONTAINER_ROLE = 'cpu';
 
 const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:scatter-reservoir-dag-container',
+  '@id': RESERVOIR_DAG_BODY_CONTAINER_IRI,
   '@type': 'DAG',
   'name': RESERVOIR_DAG_BODY_CONTAINER_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-dag-container/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag-container/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': ROUTE_BODY_DAG_NAME },
+      'body': { 'dag': ROUTE_BODY_DAG_IRI },
       'source': 'items',
-      'itemKey': 'currentItem',      'gather': { 'strategy': 'counting-test-reservoir' },
+      'itemKey': 'currentItem',
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 },
       'container': CONTAINER_ROLE,
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'join'),
+        'partial': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'join'),
+        'all-error': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'join'),
+        'empty': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-dag-container/node/end',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag-container/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'counting-test-reservoir' },
+      'outputs': {
+        'success': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'end'),
+        'error': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'end'),
+        'empty': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-reservoir-dag-container/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -332,6 +517,7 @@ const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
 
 class PassThroughNode extends MonadicNode<ReservoirDispatchState, 'done'> {
   override readonly name = 'pass-through';
+  override readonly '@id' = 'urn:noocodec:node:pass-through';
   override readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -343,33 +529,46 @@ class PassThroughNode extends MonadicNode<ReservoirDispatchState, 'done'> {
   }
 }
 
+const RESERVOIR_NODE_BODY_IRI = 'urn:noocodec:dag:scatter-reservoir-node-body';
 const RESERVOIR_NODE_BODY_NAME = 'scatter-reservoir-node-body';
 
 const reservoirNodeBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:scatter-reservoir-node-body',
+  '@id': RESERVOIR_NODE_BODY_IRI,
   '@type': 'DAG',
   'name': RESERVOIR_NODE_BODY_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RESERVOIR_NODE_BODY_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-node-body/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-node-body/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'node': 'pass-through' },
+      'body': { 'node': 'urn:noocodec:node:pass-through' },
       'source': 'items',
-      'itemKey': 'item',      'gather': { 'strategy': 'counting-test-reservoir' },
+      'itemKey': 'item',
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 3 } },
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RESERVOIR_NODE_BODY_IRI, 'join'),
+        'partial': placementIri(RESERVOIR_NODE_BODY_IRI, 'join'),
+        'all-error': placementIri(RESERVOIR_NODE_BODY_IRI, 'join'),
+        'empty': placementIri(RESERVOIR_NODE_BODY_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-node-body/node/end',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-node-body/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(RESERVOIR_NODE_BODY_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'counting-test-reservoir' },
+      'outputs': {
+        'success': placementIri(RESERVOIR_NODE_BODY_IRI, 'end'),
+        'error': placementIri(RESERVOIR_NODE_BODY_IRI, 'end'),
+        'empty': placementIri(RESERVOIR_NODE_BODY_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-reservoir-node-body/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -398,7 +597,7 @@ void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
       { 'group': 'A', 'value': 7 },
     ];
 
-    const result = await dispatcher.execute(RESERVOIR_DAG_BODY_NAME, state);
+    const result = await dispatcher.execute(RESERVOIR_DAG_BODY_IRI, state);
 
     assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
     assert.strictEqual(
@@ -411,6 +610,43 @@ void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
       8,
       `gather counter must equal 8 (one reduce call per item); got ${result.state.counter}`,
     );
+  });
+
+  void it('partitions a mixed dynamic DagReference reservoir batch by selected DAG', async () => {
+    const store = new InMemoryTopologyStore();
+    const dispatcher = new Dagonizer<ReservoirDispatchState>({ 'executionTopologyStore': store });
+    dispatcher.registerDAG(dynamicReservoirAcceptDag);
+    dispatcher.registerDAG(dynamicReservoirRejectDag);
+    dispatcher.registerDAG(dynamicReservoirParentDag);
+
+    const state = new ReservoirDispatchState();
+    state.items = [
+      { 'group': 'A', 'value': 0, 'dagIri': DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI },
+      { 'group': 'A', 'value': 1, 'dagIri': DYNAMIC_RESERVOIR_REJECT_DAG_IRI },
+      { 'group': 'A', 'value': 2, 'dagIri': DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI },
+      { 'group': 'A', 'value': 3, 'dagIri': DYNAMIC_RESERVOIR_REJECT_DAG_IRI },
+    ];
+
+    const result = await dispatcher.execute(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, state);
+
+    assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
+    assert.deepStrictEqual(result.state.outputByValue, {
+      '0': 'success',
+      '1': 'error',
+      '2': 'success',
+      '3': 'error',
+    });
+
+    const ownerBaseIri = dynamicReservoirParentDag.nodes.find((placement) => placement.name === 'fan')?.['@id'] ?? '';
+    const acceptIri = DagGraphProjector.dagIri(dynamicReservoirAcceptDag);
+    const rejectIri = DagGraphProjector.dagIri(dynamicReservoirRejectDag);
+    const rows = [...DagGraphQueries.selectedDagRows(store)].sort((left, right) => left.ownerIri.localeCompare(right.ownerIri));
+    assert.deepStrictEqual(rows, [
+      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': rejectIri },
+      { 'ownerIri': `${ownerBaseIri}/item/2`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/3`, 'dagIri': rejectIri },
+    ]);
   });
 });
 
@@ -468,7 +704,7 @@ class LoopbackContainer {
   }
 }
 
-void describe('Scatter reservoir: DAGType body with container loopback (Branch C fallback)', () => {
+void describe('Scatter reservoir: DAGType body with container loopback (Branch C)', () => {
   void it('routes each item through container.runDag; runDag called once per item; gather counter equals 8', async () => {
     // Inner dispatcher runs the sub-DAG in-process.
     const innerDispatcher = new Dagonizer<ReservoirDispatchState>();
@@ -497,7 +733,7 @@ void describe('Scatter reservoir: DAGType body with container loopback (Branch C
       { 'group': 'A', 'value': 7 },
     ];
 
-    const result = await dispatcher.execute(RESERVOIR_DAG_BODY_CONTAINER_NAME, state);
+    const result = await dispatcher.execute(RESERVOIR_DAG_BODY_CONTAINER_IRI, state);
 
     assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
     assert.strictEqual(
@@ -510,7 +746,7 @@ void describe('Scatter reservoir: DAGType body with container loopback (Branch C
       8,
       `gather counter must equal 8; got ${result.state.counter}`,
     );
-    // Branch C fallback: plain DagContainerInterface → per-item runDag calls.
+    // Branch C: plain DagContainerInterface → per-item runDag calls.
     assert.strictEqual(
       callCounter.count,
       8,
@@ -538,7 +774,7 @@ void describe('Scatter reservoir: node body regression (Branch A)', () => {
       { 'group': 'B', 'value': 5 },
     ];
 
-    const result = await dispatcher.execute(RESERVOIR_NODE_BODY_NAME, state);
+    const result = await dispatcher.execute(RESERVOIR_NODE_BODY_IRI, state);
 
     assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
     assert.strictEqual(
@@ -560,31 +796,35 @@ void describe('Scatter reservoir: node body regression (Branch A)', () => {
 // The `reject` terminal carries `outcome: 'failed'` so odd items route to the
 // scatter's `error` output, producing a genuine success/error split that the
 // transport must carry back per item.
+const ROUTE_BODY_D_DAG_IRI = 'urn:noocodec:dag:route-body-d';
 const ROUTE_BODY_D_DAG_NAME = 'route-body-d';
 
 const routeBodyDDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:route-body-d',
+  '@id': ROUTE_BODY_D_DAG_IRI,
   '@type': 'DAG',
   'name': ROUTE_BODY_D_DAG_NAME,
   'version': '1',
-  'entrypoint': 'router',
+  'entrypoints': { 'main': placementIri(ROUTE_BODY_D_DAG_IRI, 'router') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:route-body-d/node/router',
+      '@id': 'urn:noocodec:dag:route-body-d/node/router',
       '@type': 'SingleNode',
       'name': 'router',
-      'node': 'router',
-      'outputs': { 'even': 'accept', 'odd': 'reject' },
+      'node': 'urn:noocodec:node:router',
+      'outputs': {
+        'even': placementIri(ROUTE_BODY_D_DAG_IRI, 'accept'),
+        'odd': placementIri(ROUTE_BODY_D_DAG_IRI, 'reject'),
+      },
     },
     {
-      '@id': 'urn:noocodex:dag:route-body-d/node/accept',
+      '@id': 'urn:noocodec:dag:route-body-d/node/accept',
       '@type': 'TerminalNode',
       'name': 'accept',
       'outcome': 'completed',
     },
     {
-      '@id': 'urn:noocodex:dag:route-body-d/node/reject',
+      '@id': 'urn:noocodec:dag:route-body-d/node/reject',
       '@type': 'TerminalNode',
       'name': 'reject',
       'outcome': 'failed',
@@ -593,35 +833,49 @@ const routeBodyDDag: DAGType = Validator.dag.validate({
 });
 
 // Parent DAG dispatched through the container (Branch C runDagBatch).
+const RESERVOIR_D_CONTAINER_IRI = 'urn:noocodec:dag:scatter-reservoir-d-container';
 const RESERVOIR_D_CONTAINER_NAME = 'scatter-reservoir-d-container';
+const RESERVOIR_D_INPROCESS_IRI = 'urn:noocodec:dag:scatter-reservoir-d-inprocess';
 const RESERVOIR_D_INPROCESS_NAME = 'scatter-reservoir-d-inprocess';
 
 const reservoirDContainerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:scatter-reservoir-d-container',
+  '@id': RESERVOIR_D_CONTAINER_IRI,
   '@type': 'DAG',
   'name': RESERVOIR_D_CONTAINER_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RESERVOIR_D_CONTAINER_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-d-container/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-container/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': ROUTE_BODY_D_DAG_NAME },
+      'body': { 'dag': ROUTE_BODY_D_DAG_IRI },
       'source': 'items',
-      'itemKey': 'currentItem',      'gather': { 'strategy': 'recording-test-reservoir' },
+      'itemKey': 'currentItem',
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
       'container': CONTAINER_ROLE,
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RESERVOIR_D_CONTAINER_IRI, 'join'),
+        'partial': placementIri(RESERVOIR_D_CONTAINER_IRI, 'join'),
+        'all-error': placementIri(RESERVOIR_D_CONTAINER_IRI, 'join'),
+        'empty': placementIri(RESERVOIR_D_CONTAINER_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-d-container/node/end',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-container/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(RESERVOIR_D_CONTAINER_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'outputs': {
+        'success': placementIri(RESERVOIR_D_CONTAINER_IRI, 'end'),
+        'error': placementIri(RESERVOIR_D_CONTAINER_IRI, 'end'),
+        'empty': placementIri(RESERVOIR_D_CONTAINER_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-container/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -632,29 +886,41 @@ const reservoirDContainerDag: DAGType = Validator.dag.validate({
 // Identical parent DAG, but no container → Branch B (in-process batch-native).
 const reservoirDInProcessDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess',
+  '@id': RESERVOIR_D_INPROCESS_IRI,
   '@type': 'DAG',
   'name': RESERVOIR_D_INPROCESS_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': placementIri(RESERVOIR_D_INPROCESS_IRI, 'fan') },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess/node/fan',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-inprocess/node/fan',
       '@type': 'ScatterNode',
       'name': 'fan',
-      'body': { 'dag': ROUTE_BODY_D_DAG_NAME },
+      'body': { 'dag': ROUTE_BODY_D_DAG_IRI },
       'source': 'items',
-      'itemKey': 'currentItem',      'gather': { 'strategy': 'recording-test-reservoir' },
+      'itemKey': 'currentItem',
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
       'outputs': {
-        'all-success': 'end',
-        'partial': 'end',
-        'all-error': 'end',
-        'empty': 'end',
+        'all-success': placementIri(RESERVOIR_D_INPROCESS_IRI, 'join'),
+        'partial': placementIri(RESERVOIR_D_INPROCESS_IRI, 'join'),
+        'all-error': placementIri(RESERVOIR_D_INPROCESS_IRI, 'join'),
+        'empty': placementIri(RESERVOIR_D_INPROCESS_IRI, 'end'),
       },
     },
     {
-      '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess/node/end',
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-inprocess/node/join',
+      '@type': 'GatherNode',
+      'name': 'join',
+      'sources': { [placementIri(RESERVOIR_D_INPROCESS_IRI, 'fan')]: {} },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'outputs': {
+        'success': placementIri(RESERVOIR_D_INPROCESS_IRI, 'end'),
+        'error': placementIri(RESERVOIR_D_INPROCESS_IRI, 'end'),
+        'empty': placementIri(RESERVOIR_D_INPROCESS_IRI, 'end'),
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scatter-reservoir-d-inprocess/node/end',
       '@type': 'TerminalNode',
       'name': 'end',
       'outcome': 'completed',
@@ -684,7 +950,7 @@ const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
   // compatible with NodeInterface<NodeStateInterface, string, unknown> —
   // no cast required.
   'nodes': [new RouterNode()],
-  'dags': [routeBodyDDag],
+  'dags': [routeBodyDDag, dynamicReservoirAcceptDag, dynamicReservoirRejectDag],
 };
 
 const suiteDRegistry: RegistryModuleInterface = {
@@ -810,7 +1076,7 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     const state = new ReservoirDispatchState();
     state.items = [...SUITE_D_ITEMS];
 
-    const result = await dispatcher.execute(RESERVOIR_D_CONTAINER_NAME, state);
+    const result = await dispatcher.execute(RESERVOIR_D_CONTAINER_IRI, state);
 
     // (a) Clean completion.
     assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
@@ -859,7 +1125,7 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     const inProcState = new ReservoirDispatchState();
     inProcState.items = [...SUITE_D_ITEMS];
 
-    const inProcResult = await inProcDispatcher.execute(RESERVOIR_D_INPROCESS_NAME, inProcState);
+    const inProcResult = await inProcDispatcher.execute(RESERVOIR_D_INPROCESS_IRI, inProcState);
 
     assert.strictEqual(inProcResult.cursor, null, 'in-process flow must complete cleanly');
     assert.strictEqual(
@@ -874,5 +1140,58 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     );
 
     await inProcDispatcher.destroy();
+  });
+
+  void it('partitions dynamic DagReference reservoir batches before real runDagBatch dispatch', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const countingParent = new ExecuteCountingChannel(parentSide);
+    const host = new DagHost(hostSide, { 'registry': suiteDRegistry });
+    host.start();
+
+    const store = new InMemoryTopologyStore();
+    const container = new SingleChannelContainer(countingParent);
+    const dispatcher = new Dagonizer<ReservoirDispatchState>({
+      'containers': { [CONTAINER_ROLE]: container },
+      'executionTopologyStore': store,
+    });
+    dispatcher.registerDAG(dynamicReservoirAcceptDag);
+    dispatcher.registerDAG(dynamicReservoirRejectDag);
+    dispatcher.registerDAG(dynamicReservoirContainerParentDag);
+
+    const state = new ReservoirDispatchState();
+    state.items = [
+      { 'group': 'A', 'value': 0, 'dagIri': DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI },
+      { 'group': 'A', 'value': 1, 'dagIri': DYNAMIC_RESERVOIR_REJECT_DAG_IRI },
+      { 'group': 'A', 'value': 2, 'dagIri': DYNAMIC_RESERVOIR_ACCEPT_DAG_IRI },
+      { 'group': 'A', 'value': 3, 'dagIri': DYNAMIC_RESERVOIR_REJECT_DAG_IRI },
+    ];
+
+    const result = await dispatcher.execute(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, state);
+
+    assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
+    assert.deepStrictEqual(result.state.outputByValue, {
+      '0': 'success',
+      '1': 'error',
+      '2': 'success',
+      '3': 'error',
+    });
+    assert.strictEqual(
+      countingParent.executeCount,
+      2,
+      `dynamic batch must send one execute message per selected child DAG partition; got ${countingParent.executeCount}`,
+    );
+
+    const ownerBaseIri = dynamicReservoirContainerParentDag.nodes.find((placement) => placement.name === 'fan')?.['@id'] ?? '';
+    const acceptIri = DagGraphProjector.dagIri(dynamicReservoirAcceptDag);
+    const rejectIri = DagGraphProjector.dagIri(dynamicReservoirRejectDag);
+    const rows = [...DagGraphQueries.selectedDagRows(store)].sort((left, right) => left.ownerIri.localeCompare(right.ownerIri));
+    assert.deepStrictEqual(rows, [
+      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': rejectIri },
+      { 'ownerIri': `${ownerBaseIri}/item/2`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/3`, 'dagIri': rejectIri },
+    ]);
+
+    await dispatcher.destroy();
   });
 });

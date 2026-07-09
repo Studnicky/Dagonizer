@@ -27,6 +27,7 @@ export class IntentState extends NodeStateBase {
 // #region pattern-node
 export class IntentClassifier extends DecisionNode<IntentState, Intent, Intent> {
   readonly name = 'classify-intent';
+  readonly '@id' = 'urn:noocodec:node:classify-intent';
   readonly outputs = ['search', 'describe', 'recommend', 'off-topic'] as const;
 
   constructor(llm: LlmClientInterface) {

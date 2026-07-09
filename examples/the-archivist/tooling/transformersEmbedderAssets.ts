@@ -66,7 +66,7 @@ class TransformersEmbedderAssets {
   /**
    * Resolve onnxruntime-web's `dist/` dir, from the caller override, or via
    * `import.meta.resolve` against a stable exports subpath (works regardless
-   * of hoisting), falling back to a `node_modules/.pnpm/onnxruntime-web@*`
+   * of hoisting), then a `node_modules/.pnpm/onnxruntime-web@*`
    * glob when `import.meta.resolve` cannot find it.
    */
   static resolveOrtDistDir(options: TransformersEmbedderAssetsOptionsType): string {

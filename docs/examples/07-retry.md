@@ -67,7 +67,7 @@ This is useful for model-backed products because retry policy becomes debuggable
 
 #### Closing the loop in the DAG
 
-The `retry` output is a self-edge; `salvage` routes to a recovery node that does the deterministic fallback and rejoins the happy path:
+The `retry` output is a self-edge; `salvage` routes to a recovery node that performs the deterministic recovery step and rejoins the happy path:
 
 <<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts#retry-salvage-wiring
 

@@ -37,8 +37,9 @@ One top-level scatter and a tree of per-type embedded pipeline DAGs:
 
 ```
 cartographer (top-level)
-  phase('seed')                              ← pre-phase: build state.sources (array or AsyncIterable)
-  scatter('process-stream', 'sources',       ← STREAMING: one run of stream-event per source payload
+  entrypoints: position-ping | facility-scan | sensor-reading | customs-event | delivery-confirmation
+  gather('intake-gather', source-intake)     ← multi-input source intake; writes merged state.sources stream
+  scatter('process-stream', 'sources',       ← one run of stream-event per source payload
           { dag: 'stream-event' },
           gather: insights-fold,             ← O(1) fold into state.insights / state.journeys / state.sampleRecords
           container: 'cpu',                  ← browser demo: WebWorkerContainer role
@@ -52,7 +53,7 @@ cartographer (top-level)
          └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
                                                                     → confirm-delivery → gdpr-compliance → aggregate)
          Each per-type pipeline embeds:
-           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (score-signals → scatter[resolve-one-signal: route-signal → resolve-coords/-address/-ip/-code/-phone/-locale] → geo-weighted-fusion gather) | apply-geo
+           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (six embedded resolver DAG entrypoints → geo-weighted-fusion GatherNode) | apply-geo
            gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
   embed('summarize-insights', 'insights-summary',
         container: 'io')                     ← browser demo: separate WebWorkerContainer role
@@ -166,31 +167,25 @@ skipped by the `select-source` routing node.
 
 #### Source-model geo-resolution sub-DAG: `geo-source-resolve`
 
-`score-signals` inspects the canonical event body and emits one
-`GeoSignalDescriptor` per present, valid signal modality (coords, address, ip,
-code, phone, locale). Each descriptor carries the modality kind and its base
-weight from `SignalWeight`. The scatter fans out one clone per descriptor and
-runs the `resolve-one-signal` sub-DAG in each: `route-signal` reads the
-descriptor kind and routes it to the dedicated per-concept resolver node —
-`resolve-coords`, `resolve-address`, `resolve-ip`, `resolve-code`,
-`resolve-phone`, or `resolve-locale` (with `resolve-none` for an unrecognised
-signal). Each resolver writes a weighted candidate, and the
-`geo-weighted-fusion` gather folds all resolved candidates by weight into
-`state.resolvedGeo`, `state.geoContext`, and
-`state.routing.{geoConfidence,geoModalities}`. When no signals score, the
-engine short-circuits the scatter and routes to `geo-baseline`, which writes
-the same baseline values directly.
+`geo-source-resolve` has six labeled entrypoints: coords, address, ip, code,
+phone, and locale. Each entrypoint embeds a small resolver DAG. The resolver DAG
+prepares a `GeoSignalDescriptor` when its modality is present, runs the dedicated
+resolver node, and projects `state.candidate` into the parent gather record. The
+parent `geo-weighted-fusion` `GatherNode` waits for all six producer labels and
+folds the candidate records by weight into `state.resolvedGeo`,
+`state.geoContext`, and `state.routing.{geoConfidence,geoModalities}`. When no
+candidate resolves, the gather writes the same baseline values directly.
 
 Coords resolution uses `GeohashTzMap` (a base64-embedded binary
 geohash→timezone table) as the fast offline path, with `CoordTimezone`
 (tz-lookup + `@rapideditor/country-coder`) as the browser-safe border/gap
-fallback. Address resolution calls the injected `AddressGeocoder` transport
+default path. Address resolution calls the injected `AddressGeocoder` transport
 (Nominatim live; deterministic no-answer in the smoke). Both IP and address
 transports are injected per-call so worker threads own independent instances.
 
 <<< ../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts
 
-<<< ../../examples/the-cartographer/nodes/geo/scoreSignals.ts#score-signals-node
+<<< ../../examples/the-cartographer/nodes/geo/prepareGeoSignal.ts#prepare-geo-signal-node
 
 #### GDPR compliance sub-DAG: `gdpr-compliance`
 
@@ -225,15 +220,16 @@ Factory that assembles the `CartographerServices` record for the chosen backend.
 
 ### Key nodes
 
-#### `seedEvents` — pre-phase
+#### `sourceIntake` — multi-entry gather intake
 
-The `pre`-phase node runs before the DAG entrypoint. It calls
-`Sources.buildTypedFeed(state.eventConfig)` (finite path) or sets `state.sources` to an
-`AsyncIterable<SourcePayload>` from `EventStreamSource.streamTyped(state.eventConfig, state.streamCount)`
-(streaming path) and writes the result to `state.sources`. The ingestion scatter then reads
-`state.sources` by path.
+Each data-type entrypoint targets `intake-gather` directly. The scheduler seeds
+one gather record per entrypoint label; the `source-intake` gather opens those
+per-type streams and merges them into `state.sources`. There is no seed
+pre-phase, no pre-node, and no scatter before the gather.
 
-<<< ../../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
+<<< ../../examples/the-cartographer/nodes/sourceIntake.ts#source-intake-helper
+
+<<< ../../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 #### `canonicalizeCore` — timestamp and location normalization
 
@@ -259,7 +255,7 @@ In the streaming path (the browser demo and any caller using `insights-fold`) th
 `state.sampleRecords` incrementally as each clone completes, so `summarizeInsights`
 is a pure pass-through — it detects the pre-populated maps and routes `success`
 immediately. The records-based fold (iterating `state.records`) is retained as a
-fallback for callers that use the array path without the `insights-fold` gather.
+default path for callers that use the array path without the `insights-fold` gather.
 Either way the final state exposes:
 
 - **Per-continent rollup** (`state.insights`): counts, on-time rate, revenue (USD), distance.
@@ -334,7 +330,7 @@ identical in Node 18+ and the browser:
   The primary fast path: a single table scan resolves lat/lng to an IANA timezone
   with no network call.
 - **`CoordTimezone`** — `tz-lookup` + `@rapideditor/country-coder`. The browser-safe
-  fallback for border regions and gaps where the geohash table is ambiguous.
+  default path for border regions and gaps where the geohash table is ambiguous.
   `CoordTimezone` guards the `RangeError` that out-of-range coords would otherwise
   raise: when a coord pair falls outside all known boundaries, resolution degrades
   to an empty timezone/country rather than throwing, and the event continues through
@@ -366,10 +362,10 @@ These numbered examples are the small-form counterparts to Cartographer behavior
 | [Example 04C: Container-Bound Scatter](./04c-scatter-workers) | `process-stream` is a scatter placement with a container role; the example page isolates the worker-bound body shape. |
 | [Example 12: Worker Containers](./12-workers) | The stream-event body DAG runs through the same `DagContainerInterface` seam when container roles are bound. |
 | [Example 13: Multi-Backend Roles](./13-multibackend) | `process-stream` binds to `cpu` and `summarize-insights` binds to `io` in the browser Cartographer runner while the parent DAG stays JSON-LD. |
-| [Example 14: Gather Strategies](./14-gather-strategies) | Cartographer’s `InsightsFoldGather` is the high-level version of declarative gather policy. |
+| [Example 14: Gather Strategies](./14-gather-strategies) | Cartographer’s `InsightsFoldGather` and first-class `geo-weighted-fusion` gather show scatter-local folds and embedded-producer fan-in. |
 | [Example 15: Incremental Gather](./15-incremental-gather) | The insights panel updates through incremental fold semantics rather than waiting for a final batch merge. |
 | [Example 16: Scatter Resume](./16-scatter-resume) | The durable-inbox model is the checkpoint substrate for long-running stream scatters. |
 | [Example 17: Async Scatter Source](./17-scatter-async-source) | `seed` can provide sources as an async stream; bounded scatter pulls only as capacity opens. |
-| [Example 27: Runtime DAG Dispatch](./27-recursion) | Runtime `dagFrom` belongs here if hierarchical route expansion enters the demo. |
+| [Example 27: Runtime DAG Dispatch](./27-recursion) | Dynamic `DagReference` dispatch belongs here if hierarchical route expansion enters the demo. |
 | [Example 33: Plugin-Defined DAGs](./33-plugin) | Plugin packaging belongs here for normalization pipelines (`NormalizeCsvDAG`, `NormalizeJsonDAG`, etc.) so plugins and embedded DAGs stay one interface. |
-| [Examples 34-36: Streaming Substrate](./34-stream-channel) | StreamChannel, resumable fan-in, and DagStreamProducer are the substrate beneath Cartographer’s event stream. |
+| [Examples 34-36: Streaming Substrate](./34-stream-channel) | Intake stream assembly, resumable cursors, and DagStreamProducer are the substrate beneath Cartographer’s event stream. |

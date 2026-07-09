@@ -21,8 +21,11 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region aggregate-event-node
 export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
+  readonly '@id' = 'urn:noocodec:node:aggregate-event';
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
+
+  private static readonly DEFAULT_GEO_LABEL = 'Unmapped';
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return {
@@ -55,10 +58,10 @@ export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
         'timezone':         geo.timezone,
         'jurisdiction':     geo.jurisdiction,
         // Macro continent for the per-region insights rollup (from the real API).
-        'continent':        geo.continent,
-        'region':           geo.region,
-        'country':          geo.country,
-        'hub':              geo.hub,
+        'continent':        geo.continent || AggregateEventNode.DEFAULT_GEO_LABEL,
+        'region':           geo.region || AggregateEventNode.DEFAULT_GEO_LABEL,
+        'country':          geo.country || AggregateEventNode.DEFAULT_GEO_LABEL,
+        'hub':              geo.hub || AggregateEventNode.DEFAULT_GEO_LABEL,
         'geoStatus':        geo.status,
         // Stored coords come from currentEvent, which GDPR coarsened in-place
         // when the jurisdiction is strict or consent is not valid.

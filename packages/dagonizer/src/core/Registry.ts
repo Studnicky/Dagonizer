@@ -66,6 +66,14 @@ export abstract class Registry<TEntry extends { readonly name: string }> {
   }
 
   /**
+   * Return a registered entry without throwing. Use this when a caller needs
+   * optional metadata and must preserve open-string runtime extension points.
+   */
+  get(name: string): TEntry | undefined {
+    return this.registry.get(name);
+  }
+
+  /**
    * Reset the registry to the built-in entries, discarding any
    * consumer-registered entries. Used in test `afterEach` to restore a clean
    * baseline.

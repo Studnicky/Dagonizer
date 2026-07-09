@@ -13,7 +13,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * JSON Schema for `ChatStreamChunk`. Validates a single streamed text delta.
  */
 export const ChatStreamChunkSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatStreamChunk',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/ChatStreamChunk',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['delta'],

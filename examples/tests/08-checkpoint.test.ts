@@ -16,7 +16,7 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
   it('full run: count=3 and log has 3 entries', async () => {
     const dispatcher = Harness.dispatcher();
     const state = new CountingState();
-    const result = await dispatcher.execute('count', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:count', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.count, 3);
@@ -30,7 +30,7 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
     const initial = new CountingState();
 
     // Abort after the first node (a) completes
-    const execution = dispatcher.execute('count', initial, { signal: ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:count', initial, { signal: ctl.signal });
     let stages = 0;
     for await (const _stage of execution) {
       stages++;
@@ -38,12 +38,16 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
     }
     const partial = await execution;
 
-    // cursor should point to 'b'
-    assert.equal(partial.cursor, 'b', `Expected cursor to be "b" but got "${String(partial.cursor)}"`);
+    // cursor points to the next placement IRI.
+    assert.equal(
+      partial.cursor,
+      'urn:noocodec:dag:count/node/b',
+      `Expected cursor to be "urn:noocodec:dag:count/node/b" but got "${String(partial.cursor)}"`,
+    );
     assert.equal(partial.state.count, 1);
 
     // Capture and persist checkpoint
-    const checkpoint = await Checkpoint.capture('count', partial);
+    const checkpoint = await Checkpoint.capture('urn:noocodec:dag:count', partial);
     const persisted = checkpoint.toJson();
 
     // Parse, restore, resume
@@ -52,11 +56,11 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
       CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),
     );
 
-    assert.equal(dagName, 'count');
-    assert.equal(cursor, 'b');
+    assert.equal(dagName, 'urn:noocodec:dag:count');
+    assert.equal(cursor, 'urn:noocodec:dag:count/node/b');
     assert.equal(state.count, 1);
 
-    // Resume from cursor b
+    // Resume from the placement IRI cursor.
     const resumeDispatcher = Harness.dispatcher();
     const resumed = await resumeDispatcher.resume(dagName, state, cursor);
 
@@ -70,7 +74,7 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
     const ctl = new AbortController();
     const state = new CountingState();
 
-    const execution = dispatcher.execute('count', state, { signal: ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:count', state, { signal: ctl.signal });
     let seen = 0;
     for await (const _evt of execution) {
       seen++;
@@ -78,8 +82,8 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
     }
     const partial = await execution;
 
-    // After aborting after the first node the cursor should be 'b'
+    // After aborting after the first node the cursor should be the next placement IRI.
     assert.notEqual(partial.cursor, null, 'cursor should not be null after abort');
-    assert.equal(partial.cursor, 'b');
+    assert.equal(partial.cursor, 'urn:noocodec:dag:count/node/b');
   });
 });

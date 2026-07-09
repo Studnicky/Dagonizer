@@ -14,7 +14,7 @@ type ResolvedMermaidThemeType = MermaidThemeType & {
 };
 
 const props = withDefaults(defineProps<{
-  dag: DAGType;
+  dag?: DAGType;
   title?: string;
   ariaLabel?: string;
   orientation?: 'TB' | 'LR' | 'RL' | 'BT';
@@ -27,8 +27,13 @@ const frameRef = ref<HTMLDivElement | null>(null);
 const mermaidSvg = ref('');
 const renderError = ref<string | null>(null);
 
-const heading = computed(() => props.title ?? `${props.dag.name} v${props.dag.version}`);
-const jsonLd = computed(() => JSON.stringify(props.dag, null, 2));
+const dagName = computed(() => props.dag?.name ?? 'unavailable-dag');
+const dagVersion = computed(() => props.dag?.version ?? 'unknown');
+const placementCount = computed(() => Array.isArray(props.dag?.nodes) ? props.dag.nodes.length : 0);
+const heading = computed(() => props.title ?? `${dagName.value} v${dagVersion.value}`);
+const jsonLd = computed(() => props.dag === undefined ? JSON.stringify({
+  'error': 'DAG unavailable during documentation render.',
+}, null, 2) : JSON.stringify(props.dag, null, 2));
 const renderTheme = computed<ResolvedMermaidThemeType>(() => {
   const theme: ResolvedMermaidThemeType = {
     'nodeSpacing': props.theme?.nodeSpacing ?? 92,
@@ -77,7 +82,7 @@ async function renderMermaid(): Promise<void> {
   renderError.value = null;
   if (typeof window === 'undefined') return;
 
-  const id = `dag-json-mermaid-${props.dag.name.replace(/[^a-zA-Z0-9_-]/gu, '_')}-${Math.random().toString(36).slice(2)}`;
+  const id = `dag-json-mermaid-${dagName.value.replace(/[^a-zA-Z0-9_-]/gu, '_')}-${Math.random().toString(36).slice(2)}`;
   try {
     const result = await mermaid.render(id, mermaidSource.value);
     mermaidSvg.value = result.svg;
@@ -95,7 +100,7 @@ async function renderMermaid(): Promise<void> {
   <section class="dag-json-mermaid" :aria-label="ariaLabel ?? `${heading} JSON-LD and Mermaid`">
     <header class="dag-json-mermaid__header">
       <h3>{{ heading }}</h3>
-      <span>{{ dag.nodes.length }} placements</span>
+      <span>{{ placementCount }} placements</span>
     </header>
 
     <div class="dag-json-mermaid__grid">

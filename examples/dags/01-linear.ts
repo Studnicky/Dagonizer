@@ -27,6 +27,7 @@ export class ChatState extends NodeStateBase {
 // #region node
 export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
+  readonly '@id' = 'urn:noocodec:node:classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
   override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
     return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
@@ -51,6 +52,7 @@ export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic
 
 export class RespondNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'respond';
+  readonly '@id' = 'urn:noocodec:node:respond';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -71,28 +73,31 @@ export class RespondNode extends MonadicNode<ChatState, 'success'> {
 // #region dag
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,                         // JSON-LD 1.1 ontology context
-  '@id':        'urn:noocodex:dag:chat',             // globally unique URN for this DAG
+  '@id': 'urn:noocodec:dag:chat',             // globally unique URN for this DAG
   '@type':      'DAG',                               // RDF class: top-level DAG document
   "name":         'chat',
   "version":      '1',
-  "entrypoint":   'classify',                          // first placement to execute
+  "entrypoints": { "main": 'urn:noocodec:dag:chat/node/classify' },                          // first placement to execute
   "nodes": [
     {
-      '@id':    'urn:noocodex:dag:chat/node/classify',
+      '@id': 'urn:noocodec:dag:chat/node/classify',
       '@type':  'SingleNode',                        // run exactly one registered node
       "name":     'classify',
-      "node":     'classify',                          // refers to the registered node name
-      "outputs":  { "on_topic": 'respond', "off_topic": 'respond' },  // both routes converge
+      "node":     'urn:noocodec:node:classify',        // registered node IRI
+      "outputs":  {
+        "on_topic": 'urn:noocodec:dag:chat/node/respond',
+        "off_topic": 'urn:noocodec:dag:chat/node/respond',
+      },  // both routes converge
     },
     {
-      '@id':    'urn:noocodex:dag:chat/node/respond',
+      '@id': 'urn:noocodec:dag:chat/node/respond',
       '@type':  'SingleNode',
       "name":     'respond',
-      "node":     'respond',
-      "outputs":  { "success": 'end' },               // routes to canonical terminal
+      "node":     'urn:noocodec:node:respond',
+      "outputs":  { "success": 'urn:noocodec:dag:chat/node/end' },               // routes to canonical terminal
     },
     {
-      '@id':    'urn:noocodex:dag:chat/node/end',
+      '@id': 'urn:noocodec:dag:chat/node/end',
       '@type':  'TerminalNode',
       "name":     'end',
       "outcome":  'completed',

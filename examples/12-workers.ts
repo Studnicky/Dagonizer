@@ -110,7 +110,7 @@ state.tasks = Array.from({ length: 30 }, (_, i) => i + 1);
 process.stdout.write(`\nWorker-thread scatter: squaring ${state.tasks.length} items over a pool of 2 workers\n`);
 process.stdout.write(`  input:  ${JSON.stringify(state.tasks)}\n`);
 
-await dispatcher.execute('square-all', state);
+await dispatcher.execute('urn:noocodec:dag:square-all', state);
 
 process.stdout.write(`  output: ${JSON.stringify(state.results)}\n`);
 

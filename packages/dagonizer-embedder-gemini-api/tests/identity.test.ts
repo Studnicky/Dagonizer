@@ -62,7 +62,7 @@ void test('GeminiApiEmbedder.embed extracts embedding.values from response body'
 void test('GeminiModelsResponseSchema has the correct $id', () => {
   assert.equal(
     GeminiModelsResponseSchema['$id'],
-    'https://noocodex.dev/schemas/dagonizer/gemini/GeminiApiEmbedderModelsResponse',
+    'https://noocodec.dev/schemas/dagonizer/gemini/GeminiApiEmbedderModelsResponse',
   );
 });
 

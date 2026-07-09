@@ -14,6 +14,9 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
+const testDagIri = (segment: string): string => `urn:noocodec:dag:${segment}`;
+const testPlacementIri = (dagIri: string, segment: string): string => `${dagIri}/node/${segment}`;
+
 void describe('GatherStrategies registry', () => {
   afterEach(() => { GatherStrategies.reset(); });
 
@@ -37,6 +40,7 @@ void describe('GatherStrategies registry', () => {
   void it('custom strategy class extends and registers', () => {
     class TopOneGather extends GatherStrategy {
       readonly name = 'top-one';
+      readonly '@id' = 'urn:noocodec:node:top-one';
       reduce(): void { /* no-op for registry test */ }
     }
     GatherStrategies.register(new TopOneGather());
@@ -47,6 +51,7 @@ void describe('GatherStrategies registry', () => {
   void it('unregister removes the named strategy; resolve throws afterward', () => {
     class TempGather extends GatherStrategy {
       readonly name = 'temp-gather';
+      readonly '@id' = 'urn:noocodec:node:temp-gather';
       reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new TempGather());
@@ -58,6 +63,7 @@ void describe('GatherStrategies registry', () => {
   void it('reset restores only the built-in strategies', () => {
     class ExtraGather extends GatherStrategy {
       readonly name = 'extra';
+      readonly '@id' = 'urn:noocodec:node:extra';
       reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new ExtraGather());
@@ -70,6 +76,7 @@ void describe('GatherStrategies registry', () => {
   void it('register throws when the name is already registered', () => {
     class DupeGather extends GatherStrategy {
       readonly name = 'dupe-gather';
+      readonly '@id' = 'urn:noocodec:node:dupe-gather';
       reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new DupeGather());
@@ -82,10 +89,12 @@ void describe('GatherStrategies registry', () => {
   void it('replace() overwrites an existing registration without throwing', () => {
     class V1Gather extends GatherStrategy {
       readonly name = 'v-gather';
+      readonly '@id' = 'urn:noocodec:node:v-gather';
       reduce(): void { /* v1 */ }
     }
     class V2Gather extends GatherStrategy {
       readonly name = 'v-gather';
+      readonly '@id' = 'urn:noocodec:node:v-gather';
       reduce(): void { /* v2 */ }
     }
     GatherStrategies.register(new V1Gather());
@@ -178,6 +187,7 @@ void describe('OutcomeReducers registry', () => {
   void it('register installs a custom reducer that resolves by name', () => {
     class ThresholdReducer extends OutcomeReducer {
       readonly name = 'threshold-75';
+      readonly '@id' = 'urn:noocodec:node:threshold-75';
       reduce(records: ReadonlyArray<OutcomeRecordType>): string {
         const successRate = records.filter((r) => r.output === 'success').length / records.length;
         return successRate >= 0.75 ? 'all-success' : 'partial';
@@ -198,6 +208,7 @@ void describe('OutcomeReducers registry', () => {
   void it('unregister removes the named reducer; resolve throws afterward', () => {
     class TempReducer extends OutcomeReducer {
       readonly name = 'temp-reducer';
+      readonly '@id' = 'urn:noocodec:node:temp-reducer';
       reduce(): string { return 'done'; }
     }
     OutcomeReducers.register(new TempReducer());
@@ -209,6 +220,7 @@ void describe('OutcomeReducers registry', () => {
   void it('reset restores only the built-in reducers', () => {
     class ExtraReducer extends OutcomeReducer {
       readonly name = 'extra-reducer';
+      readonly '@id' = 'urn:noocodec:node:extra-reducer';
       reduce(): string { return 'done'; }
     }
     OutcomeReducers.register(new ExtraReducer());
@@ -221,6 +233,7 @@ void describe('OutcomeReducers registry', () => {
   void it('register throws when the name is already registered', () => {
     class DupeReducer extends OutcomeReducer {
       readonly name = 'dupe-reducer';
+      readonly '@id' = 'urn:noocodec:node:dupe-reducer';
       reduce(): string { return 'done'; }
     }
     OutcomeReducers.register(new DupeReducer());
@@ -233,10 +246,12 @@ void describe('OutcomeReducers registry', () => {
   void it('replace() overwrites an existing registration without throwing', () => {
     class V1Reducer extends OutcomeReducer {
       readonly name = 'v-reducer';
+      readonly '@id' = 'urn:noocodec:node:v-reducer';
       reduce(): string { return 'v1'; }
     }
     class V2Reducer extends OutcomeReducer {
       readonly name = 'v-reducer';
+      readonly '@id' = 'urn:noocodec:node:v-reducer';
       reduce(): string { return 'v2'; }
     }
     OutcomeReducers.register(new V1Reducer());
@@ -248,46 +263,53 @@ void describe('OutcomeReducers registry', () => {
 });
 
 void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
-  void it('returns undefined for missing names', () => {
+  void it('returns undefined for missing registry references', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
     assert.equal(dispatcher.getDAG('nope'), undefined);
-    assert.equal(dispatcher.getNode('nope'), undefined);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:nope'), undefined);
     assert.deepEqual(dispatcher.listDAGs(), []);
     assert.deepEqual(dispatcher.listNodes(), []);
   });
 
   void it('snapshots return registered DAGs and nodes', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const node = TestNode.make('greet', ['done'], () => 'done');
+    const node = TestNode.make('urn:noocodec:node:greet', ['done'], () => 'done');
     dispatcher.registerNode(node);
+    const dagIri = testDagIri('demo');
+    const greetIri = testPlacementIri(dagIri, 'greet');
+    const endIri = testPlacementIri(dagIri, 'end');
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:demo',
+      '@id': dagIri,
       '@type':    'DAG',
       'name': 'demo',
       'version': '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': greetIri },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:demo/node/greet',
+        '@id': greetIri,
         '@type': 'SingleNode',
-        'name':  'greet', 'node': 'greet', 'outputs': { 'done': 'end' },
+        'name':  'greet', 'node': 'urn:noocodec:node:greet', 'outputs': { 'done': endIri },
       },
-        { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
 
-    assert.equal(dispatcher.getNode('greet'), node);
-    assert.equal(dispatcher.getDAG('demo'), dag);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:greet'), node);
+    assert.equal(dispatcher.getDAG(dagIri), dag);
     assert.deepEqual(dispatcher.listNodes(), [node]);
     assert.deepEqual(dispatcher.listDAGs(), [dag]);
+    assert.equal(dispatcher.getDAG(dagIri) !== undefined, true);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:greet') !== undefined, true);
+    assert.deepEqual(dispatcher.dagIris(), [dagIri]);
+    assert.deepEqual(dispatcher.nodeIris(), ['urn:noocodec:node:greet']);
   });
 
   void it('list snapshots are independent of the registry', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    dispatcher.registerNode(TestNode.make('a', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['done'], () => 'done'));
     const before = dispatcher.listNodes();
-    dispatcher.registerNode(TestNode.make('b', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:b', ['done'], () => 'done'));
     assert.equal(before.length, 1);
     assert.equal(dispatcher.listNodes().length, 2);
   });
@@ -297,23 +319,86 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
 
 class TestRegistryDag {
   private constructor() {}
+
   static singleNode(dagName: string, nodeName: string): DAGType {
+    const dagIri = testDagIri(dagName);
+    const nodeIri = testPlacementIri(dagIri, nodeName);
+    const endIri = testPlacementIri(dagIri, 'end');
     return {
       '@context': DAG_CONTEXT,
-      '@id': `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': nodeName,
+      'entrypoints': { 'main': nodeIri },
       'nodes': [{
-        '@id': `urn:noocodex:dag:${dagName}/node/${nodeName}`,
+        '@id': nodeIri,
         '@type': 'SingleNode',
         'name': nodeName,
-        'node': nodeName,
-        'outputs': { 'done': 'end' },
+        'node': `urn:noocodec:node:${nodeName}`,
+        'outputs': { 'done': endIri },
       },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
+    };
+  }
+
+  static terminalOnly(dagName: string): DAGType {
+    const dagIri = testDagIri(dagName);
+    const endIri = testPlacementIri(dagIri, 'end');
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': endIri },
+      'nodes': [
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+  }
+
+  static embedded(dagName: string, placementName: string, childDag: string, outputs?: Record<string, string>): DAGType {
+    const dagIri = testDagIri(dagName);
+    const placementIri = testPlacementIri(dagIri, placementName);
+    const endIri = testPlacementIri(dagIri, 'end');
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': placementIri },
+      'nodes': [{
+        '@id': placementIri,
+        '@type': 'EmbeddedDAGNode',
+        'name': placementName,
+        'dag': childDag,
+        'outputs': outputs ?? { 'success': endIri, 'error': endIri },
+      },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+  }
+
+  static recursiveNoExit(dagName: string, placementName: string, childDag: string): DAGType {
+    const dagIri = testDagIri(dagName);
+    const placementIri = testPlacementIri(dagIri, placementName);
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': placementIri },
+      'nodes': [{
+        '@id': placementIri,
+        '@type': 'EmbeddedDAGNode',
+        'name': placementName,
+        'dag': childDag,
+        'outputs': { 'success': placementIri, 'error': placementIri },
+      }],
     };
   }
 }
@@ -321,71 +406,150 @@ class TestRegistryDag {
 void describe('Dagonizer.registerBundle', () => {
   void it('registers every node then every DAG from the bundle', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = TestNode.make('a', ['done'], () => 'done');
-    const nodeB = TestNode.make('b', ['done'], () => 'done');
+    const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');
+    const nodeB = TestNode.make('urn:noocodec:node:b', ['done'], () => 'done');
     const dagA = TestRegistryDag.singleNode('flowA', 'a');
     const dagB = TestRegistryDag.singleNode('flowB', 'b');
 
     dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [dagA, dagB] });
 
-    assert.equal(dispatcher.getNode('a'), nodeA);
-    assert.equal(dispatcher.getNode('b'), nodeB);
-    assert.equal(dispatcher.getDAG('flowA'), dagA);
-    assert.equal(dispatcher.getDAG('flowB'), dagB);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:a'), nodeA);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:b'), nodeB);
+    assert.equal(dispatcher.getDAG(testDagIri('flowA')), dagA);
+    assert.equal(dispatcher.getDAG(testDagIri('flowB')), dagB);
     assert.equal(dispatcher.listNodes().length, 2);
     assert.equal(dispatcher.listDAGs().length, 2);
   });
 
   void it('accepts an empty nodes array when DAGs reference already-registered nodes', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');
     dispatcher.registerNode(nodeA);
     const dagA = TestRegistryDag.singleNode('flowA', 'a');
 
     dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA] });
 
-    assert.equal(dispatcher.getDAG('flowA'), dagA);
+    assert.equal(dispatcher.getDAG(testDagIri('flowA')), dagA);
     assert.equal(dispatcher.listNodes().length, 1);
     assert.equal(dispatcher.listDAGs().length, 1);
   });
 
   void it('accepts an empty dags array and registers nodes only', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = TestNode.make('a', ['done'], () => 'done');
-    const nodeB = TestNode.make('b', ['done'], () => 'done');
+    const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');
+    const nodeB = TestNode.make('urn:noocodec:node:b', ['done'], () => 'done');
 
     dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [] });
 
-    assert.equal(dispatcher.getNode('a'), nodeA);
-    assert.equal(dispatcher.getNode('b'), nodeB);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:a'), nodeA);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:b'), nodeB);
     assert.deepEqual(dispatcher.listDAGs(), []);
   });
 
-  void it('throws on a DAG referencing an unregistered node, with earlier nodes still registered', () => {
+  void it('throws on a DAG referencing an unregistered node and rolls back bundle additions', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');
     const danglingDAG = TestRegistryDag.singleNode('dangling', 'missing');
 
     assert.throws(
       () => dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [danglingDAG] }),
-      /unknown registered node: missing/,
+      /unknown registered node: urn:noocodec:node:missing/,
     );
 
-    // Node registered before the failing DAG is still installed.
-    assert.equal(dispatcher.getNode('a'), nodeA);
-    assert.equal(dispatcher.getDAG('dangling'), undefined);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:a'), undefined);
+    assert.equal(dispatcher.getDAG(testDagIri('dangling')), undefined);
   });
 
   void it('resolves DAG references to nodes defined in the same bundle (nodes register first)', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');
     const dagA = TestRegistryDag.singleNode('flowA', 'a');
 
     // Order in the bundle's `dags` array references a node that only exists
     // in the same bundle's `nodes` array; succeeds because nodes register first.
     dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [dagA] });
 
-    assert.equal(dispatcher.getNode('a'), nodeA);
-    assert.equal(dispatcher.getDAG('flowA'), dagA);
+    assert.equal(dispatcher.getNode('urn:noocodec:node:a'), nodeA);
+    assert.equal(dispatcher.getDAG(testDagIri('flowA')), dagA);
+  });
+
+  void it('resolves DAG references to DAGs defined later in the same bundle', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const parentDag = TestRegistryDag.embedded('parent-flow', 'invoke-child', testDagIri('child-flow'));
+    const childDag = TestRegistryDag.terminalOnly('child-flow');
+
+    dispatcher.registerBundle({ 'nodes': [], 'dags': [parentDag, childDag] });
+
+    assert.equal(dispatcher.getDAG(testDagIri('parent-flow')), parentDag);
+    assert.equal(dispatcher.getDAG(testDagIri('child-flow')), childDag);
+  });
+
+  void it('validates self-recursive dynamic DagReference candidates against the staged DAG registry', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const router = TestNode.make('urn:noocodec:node:self-router', ['done', 'recurse'], () => 'done');
+    const dagIri = testDagIri('self-flow');
+    const routeIri = testPlacementIri(dagIri, 'route');
+    const invokeSelfIri = testPlacementIri(dagIri, 'invoke-self');
+    const endIri = testPlacementIri(dagIri, 'end');
+    const selfDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': 'self-flow',
+      'version': '1',
+      'entrypoints': { 'main': routeIri },
+      'nodes': [{
+        '@id': routeIri,
+        '@type': 'SingleNode',
+        'name': 'route',
+        'node': 'urn:noocodec:node:self-router',
+        'outputs': { 'done': endIri, 'recurse': invokeSelfIri },
+      }, {
+        '@id': invokeSelfIri,
+        '@type': 'EmbeddedDAGNode',
+        'name': 'invoke-self',
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'state',
+          'path': 'nextDag',
+          'candidates': [dagIri],
+        },
+        'outputs': { 'success': endIri, 'error': endIri },
+      },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    dispatcher.registerBundle({ 'nodes': [router], 'dags': [selfDag] });
+
+    assert.equal(dispatcher.getDAG(dagIri), selfDag);
+  });
+
+  void it('rejects recursive components whose only terminal routes happen after recursive calls', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const dagA = TestRegistryDag.embedded('after-call-a', 'invoke-b', testDagIri('after-call-b'));
+    const dagB = TestRegistryDag.embedded('after-call-b', 'invoke-a', testDagIri('after-call-a'));
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA, dagB] }),
+      /no terminal exit path/u,
+    );
+
+    assert.equal(dispatcher.getDAG(testDagIri('after-call-a')), undefined);
+    assert.equal(dispatcher.getDAG(testDagIri('after-call-b')), undefined);
+  });
+
+  void it('rejects recursive components without a reachable terminal exit and rolls back staged DAGs', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const dagA = TestRegistryDag.recursiveNoExit('loop-a', 'invoke-b', testDagIri('loop-b'));
+    const dagB = TestRegistryDag.recursiveNoExit('loop-b', 'invoke-a', testDagIri('loop-a'));
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA, dagB] }),
+      /no terminal exit path/u,
+    );
+
+    assert.equal(dispatcher.getDAG(testDagIri('loop-a')), undefined);
+    assert.equal(dispatcher.getDAG(testDagIri('loop-b')), undefined);
   });
 });

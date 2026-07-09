@@ -53,6 +53,8 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 const REGISTRY_VERSION = '1.0.0';
+const BODY_LAW1_DAG = 'urn:conformance:dag:conformance-body-law1';
+const RUNNER_LAW1_DAG = 'urn:conformance:dag:conformance-runner-law1';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,7 +128,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       parentSide.send({
         'variant': 'execute',
         'request': {
-          'dagName': 'conformance-body-law1',
+          'dagName': BODY_LAW1_DAG,
           'placementPath': ['scatter', 'fan'],
           'items': Array.from({ 'length': N }, (_, i) => ({
             'id': `item-${i}`,
@@ -198,8 +200,8 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       parentSide.send({
         'variant': 'execute',
         'request': {
-          'dagName': 'conformance-body-law1',
-          'placementPath': ['parent'],
+          'dagName': RUNNER_LAW1_DAG,
+          'placementPath': ['run-child'],
           'items': [{ 'id': 'single-1', 'snapshot': initialState.snapshot() }],
           'timeoutMs': 5000,
           'correlationId': 'single-test-1',
@@ -236,7 +238,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       parentSide.send({
         'variant': 'execute',
         'request': {
-          'dagName': 'conformance-body-law1',
+          'dagName': BODY_LAW1_DAG,
           'placementPath': ['scatter', 'fan'],
           'items': Array.from({ 'length': N }, (_, i) => ({
             'id': `large-item-${i}`,
@@ -315,7 +317,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
         parentSide.send({
           'variant': 'execute',
           'request': {
-            'dagName': 'conformance-body-law1',
+            'dagName': BODY_LAW1_DAG,
             'placementPath': ['scatter', 'fan'],
             'items': Array.from({ 'length': BATCH_SIZE }, (_, i) => ({
               'id': `heap-batch-${b}-item-${i}`,

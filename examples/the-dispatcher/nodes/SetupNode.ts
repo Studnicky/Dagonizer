@@ -16,6 +16,7 @@ import type { DispatcherState } from '../DispatcherState.ts';
 
 export class SetupNode extends MonadicNode<DispatcherState, 'ready'> {
   readonly name = 'dispatcher-setup';
+  readonly '@id' = 'urn:noocodec:node:dispatcher-setup';
   readonly outputs = ['ready'] as const;
 
   override get outputSchema(): Record<'ready', SchemaObjectType> {

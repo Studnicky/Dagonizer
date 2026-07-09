@@ -5,7 +5,7 @@
  * constructor injection. The interface contracts are narrow: each node
  * depends only on the operations it actually calls. `intent` is the
  * embedder-backed classification fast path; `null` means no embedder was
- * provisioned for this run and callers fall back to `llm.classify`.
+ * provisioned for this run and callers route to `llm.classify`.
  */
 
 import type { ConversationTurnType } from './DispatcherState.ts';
@@ -33,7 +33,7 @@ export interface DispatcherLlmInterface {
 /**
  * Embedder-backed intent classification contract: cosine-similarity
  * triage without an LLM round-trip. Returns `null` below the confidence
- * floor, signalling the caller to fall back to `DispatcherLlmInterface.classify`.
+ * floor, signalling the caller to route to `DispatcherLlmInterface.classify`.
  */
 export interface DispatcherIntentInterface {
   classify(message: string): Promise<{ readonly intent: 'routine' | 'escalate' | 'off-topic'; readonly score: number } | null>;

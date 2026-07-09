@@ -42,6 +42,7 @@ import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
@@ -67,23 +68,23 @@ class TestHarness {
     output: string,
   ): void {
     dispatcher.registerNode(node);
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': `urn:noocodec:dag:${dagName}`,
       '@type':    'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': 'stage',
+      'entrypoints': { 'main': `urn:noocodec:dag:${dagName}/node/stage` },
       'nodes': [{
-        '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
+        '@id': `urn:noocodec:dag:${dagName}/node/stage`,
         '@type': 'SingleNode',
         'name':  'stage',
-        'node':  node.name,
-        'outputs': { [output]: 'end' },
+        'node':  node['@id'],
+        'outputs': { [output]: `urn:noocodec:dag:${dagName}/node/end` },
       },
-      { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': `urn:noocodec:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
-    });
+    }));
   }
 }
 
@@ -102,6 +103,7 @@ void describe('per-node timeout', () => {
 
     class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
+      readonly '@id' = 'urn:noocodec:node:slow';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(500);
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -123,7 +125,7 @@ void describe('per-node timeout', () => {
     TestHarness.singleNodeDag(dispatcher, slowNode, 'timeout-dag', 'success');
 
     const state = new NodeStateBase();
-    const runPromise = dispatcher.execute('timeout-dag', state);
+    const runPromise = dispatcher.execute('urn:noocodec:dag:timeout-dag', state);
 
     // Advance virtual time concurrently while the execution is awaiting.
     // The execution is lazy; we must start awaiting it BEFORE advancing,
@@ -146,9 +148,9 @@ void describe('per-node timeout', () => {
     // The run must be marked failed (node timeout surfaces as failure).
     assert.equal(result.state.lifecycle.variant, 'failed');
     // Cursor points back at the timed-out stage.
-    assert.equal(result.cursor, 'stage');
+    assert.equal(result.cursor, 'urn:noocodec:dag:timeout-dag/node/stage');
     // Cancellation telemetry records the node + reason.
-    assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'timeout' });
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'urn:noocodec:dag:timeout-dag/node/stage', 'reason': 'timeout' });
   });
 
   void it('fires onError with a DAGError (code NODE_TIMEOUT) when the node times out', async () => {
@@ -165,6 +167,7 @@ void describe('per-node timeout', () => {
 
     class TardyNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'tardy';
+      readonly '@id' = 'urn:noocodec:node:tardy';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(200);
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -182,7 +185,7 @@ void describe('per-node timeout', () => {
     TestHarness.singleNodeDag(dispatcher, slowNode, 'err-dag', 'success');
 
     const state = new NodeStateBase();
-    const runPromise = dispatcher.execute('err-dag', state);
+    const runPromise = dispatcher.execute('urn:noocodec:dag:err-dag', state);
 
     const advancer = (async (): Promise<void> => {
       await Tick.next();
@@ -209,13 +212,13 @@ void describe('per-node timeout', () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    const fastNode = TestNode.make<NodeStateBase>('fast', ['done'], () => 'done');
+    const fastNode = TestNode.make<NodeStateBase>('urn:noocodec:node:fast', ['done'], () => 'done');
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     TestHarness.singleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('fast-dag', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:fast-dag', state);
 
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.equal(result.cursor, null);
@@ -228,6 +231,7 @@ void describe('per-node timeout', () => {
 
     class SlowCancelNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'slow-cancel';
+      readonly '@id' = 'urn:noocodec:node:slow-cancel';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -246,7 +250,7 @@ void describe('per-node timeout', () => {
 
     const state = new NodeStateBase();
     const ctrl = new AbortController();
-    const runPromise = dispatcher.execute('cancel-dag', state, { 'signal': ctrl.signal });
+    const runPromise = dispatcher.execute('urn:noocodec:dag:cancel-dag', state, { 'signal': ctrl.signal });
 
     const advancer = (async (): Promise<void> => {
       await Tick.next(); // let node execute start
@@ -258,6 +262,6 @@ void describe('per-node timeout', () => {
     await advancer;
 
     assert.equal(result.state.lifecycle.variant, 'cancelled');
-    assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'abort' });
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'urn:noocodec:dag:cancel-dag/node/stage', 'reason': 'abort' });
   });
 });

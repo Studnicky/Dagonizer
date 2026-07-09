@@ -12,7 +12,7 @@ describe('19-phase-nodes: pre/post phase nodes bookend the main flow', () => {
     dispatcher.registerDAG(dag);
 
     const state = new PhaseState();
-    const result = await dispatcher.execute('phase-demo', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:phase-demo', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.executionLog, [
@@ -31,7 +31,7 @@ describe('19-phase-nodes: pre/post phase nodes bookend the main flow', () => {
     dispatcher.registerDAG(dag);
 
     const state = new PhaseState();
-    await dispatcher.execute('phase-demo', state);
+    await dispatcher.execute('urn:noocodec:dag:phase-demo', state);
 
     assert.equal(state.result, 'computed:84');
   });
@@ -44,7 +44,7 @@ describe('19-phase-nodes: pre/post phase nodes bookend the main flow', () => {
     dispatcher.registerDAG(dag);
 
     const state = new PhaseState();
-    await dispatcher.execute('phase-demo', state);
+    await dispatcher.execute('urn:noocodec:dag:phase-demo', state);
 
     assert.equal(state.seedValue, 42);
   });
@@ -57,7 +57,7 @@ describe('19-phase-nodes: pre/post phase nodes bookend the main flow', () => {
     dispatcher.registerDAG(dag);
 
     const state = new PhaseState();
-    await dispatcher.execute('phase-demo', state);
+    await dispatcher.execute('urn:noocodec:dag:phase-demo', state);
 
     const preIndex = state.executionLog.indexOf('pre-setup');
     const computeIndex = state.executionLog.indexOf('compute');
@@ -72,7 +72,7 @@ describe('19-phase-nodes: pre/post phase nodes bookend the main flow', () => {
     dispatcher.registerDAG(dag);
 
     const state = new PhaseState();
-    await dispatcher.execute('phase-demo', state);
+    await dispatcher.execute('urn:noocodec:dag:phase-demo', state);
 
     const computeIndex = state.executionLog.indexOf('compute');
     const postIndex = state.executionLog.indexOf('post-audit');

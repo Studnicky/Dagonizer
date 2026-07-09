@@ -313,7 +313,7 @@ void describe('TST-W3-2: Validator.gatherConfig', () => {
   });
 
   void it('accepts a valid custom config', () => {
-    const valid = { 'strategy': 'custom', 'customNode': 'mergeNode' };
+    const valid = { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:mergeNode' };
     assert.ok(Validator.gatherConfig.is(valid),
       'custom config with required customNode must be valid');
   });
@@ -488,26 +488,26 @@ void describe('TST-W3-4: Validator.openAiResponseBody', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TST-W3-5: DAGIdentity.id and DAGIdentity.placementId canonical URN helpers
+// TST-W3-5: DAGIdentity.id and DAGIdentity.placementId explicit IRI helpers
 // ---------------------------------------------------------------------------
 
-void describe('TST-W3-5: DAGIdentity.id and DAGIdentity.placementId URN helpers', () => {
-  void it('DAGIdentity.id produces the canonical DAG URN', () => {
-    assert.equal(DAGIdentity.id('demo'), 'urn:noocodex:dag:demo');
+void describe('TST-W3-5: DAGIdentity.id and DAGIdentity.placementId IRI helpers', () => {
+  void it('DAGIdentity.id validates and returns explicit DAG IRIs', () => {
+    assert.equal(DAGIdentity.id('urn:noocodec:dag:demo'), 'urn:noocodec:dag:demo');
   });
 
-  void it('DAGIdentity.placementId produces the canonical placement URN', () => {
-    assert.equal(DAGIdentity.placementId('demo', 'increment'), 'urn:noocodex:dag:demo/node/increment');
+  void it('DAGIdentity.placementId composes from an explicit DAG IRI', () => {
+    assert.equal(DAGIdentity.placementId('urn:noocodec:dag:demo', 'increment'), 'urn:noocodec:dag:demo/node/increment');
   });
 
-  void it('DAGIdentity.id handles names with hyphens and underscores', () => {
-    assert.equal(DAGIdentity.id('my-workflow_v2'), 'urn:noocodex:dag:my-workflow_v2');
+  void it('DAGIdentity.id rejects display names', () => {
+    assert.throws(() => DAGIdentity.id('my-workflow_v2'), /requires an absolute IRI/u);
   });
 
-  void it('DAGIdentity.placementId handles multi-word placement names', () => {
+  void it('DAGIdentity.placementId handles explicit placement identifiers under an explicit DAG IRI', () => {
     assert.equal(
-      DAGIdentity.placementId('pipeline', 'fetch-data'),
-      'urn:noocodex:dag:pipeline/node/fetch-data',
+      DAGIdentity.placementId('urn:noocodec:dag:pipeline', 'fetch-data'),
+      'urn:noocodec:dag:pipeline/node/fetch-data',
     );
   });
 

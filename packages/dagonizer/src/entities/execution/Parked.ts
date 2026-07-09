@@ -18,7 +18,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ParkedSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/Parked',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/Parked',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['correlationKey', 'cursor', 'dagName'],

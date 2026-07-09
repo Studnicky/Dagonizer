@@ -29,6 +29,7 @@ const TOP_K = 3;
 
 export class PickBestMatchNode extends MonadicNode<ArchivistState, 'picked'> {
   readonly name = 'pick-best-match';
+  readonly '@id' = 'urn:noocodec:node:pick-best-match';
   readonly outputs = ['picked'] as const;
   override get outputSchema(): Record<'picked', SchemaObjectType> {
     return {

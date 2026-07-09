@@ -32,7 +32,7 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
@@ -41,6 +41,8 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -61,19 +63,20 @@ class BoundState extends NodeStateBase {
 
 // ── Inner nodes for the 3-node sequential sub-DAG body ────────────────────────
 
-const bodyNodeA = TestNode.make<BoundState>('body-a', ['next'], (state) => {
+const bodyNodeA = TestNode.make<BoundState>('urn:noocodec:node:body-a', ['next'], (state) => {
   state.counter += 1;
   return 'next';
 });
 
-const bodyNodeB = TestNode.make<BoundState>('body-b', ['next']);
+const bodyNodeB = TestNode.make<BoundState>('urn:noocodec:node:body-b', ['next']);
 
-const bodyNodeC = TestNode.make<BoundState>('body-c', ['done']);
+const bodyNodeC = TestNode.make<BoundState>('urn:noocodec:node:body-c', ['done']);
 
 // ── Gather strategy: compactable (folds per-clone into parent via reduce) ─────
 
 class BoundGather extends GatherStrategy {
   readonly name = 'bound-memory-gather';
+  readonly '@id' = 'urn:noocodec:node:bound-memory-gather';
 
   reduce(
     _config: GatherConfigType,
@@ -99,38 +102,39 @@ GatherStrategies.register(new BoundGather());
 // ── 3-node sub-DAG body: body-a → body-b → body-c → body-end ─────────────────
 
 const BODY_DAG_NAME = 'bound-memory-body';
+const BODY_DAG_IRI = 'urn:noocodec:dag:bound-memory-body';
 
 const bodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${BODY_DAG_NAME}`,
+  '@id': BODY_DAG_IRI,
   '@type':    'DAG',
   'name':     BODY_DAG_NAME,
   'version':  '1',
-  'entrypoint': 'body-a',
+  'entrypoints': { 'main': placementIri(BODY_DAG_IRI, 'body-a') },
   'nodes': [
     {
-      '@id':    `urn:noocodex:dag:${BODY_DAG_NAME}/node/body-a`,
+      '@id': placementIri(BODY_DAG_IRI, 'body-a'),
       '@type':  'SingleNode',
       'name':   'body-a',
-      'node':   'body-a',
-      'outputs': { 'next': 'body-b' },
+      'node':   'urn:noocodec:node:body-a',
+      'outputs': { 'next': placementIri(BODY_DAG_IRI, 'body-b') },
     },
     {
-      '@id':    `urn:noocodex:dag:${BODY_DAG_NAME}/node/body-b`,
+      '@id': placementIri(BODY_DAG_IRI, 'body-b'),
       '@type':  'SingleNode',
       'name':   'body-b',
-      'node':   'body-b',
-      'outputs': { 'next': 'body-c' },
+      'node':   'urn:noocodec:node:body-b',
+      'outputs': { 'next': placementIri(BODY_DAG_IRI, 'body-c') },
     },
     {
-      '@id':    `urn:noocodex:dag:${BODY_DAG_NAME}/node/body-c`,
+      '@id': placementIri(BODY_DAG_IRI, 'body-c'),
       '@type':  'SingleNode',
       'name':   'body-c',
-      'node':   'body-c',
-      'outputs': { 'done': 'body-end' },
+      'node':   'urn:noocodec:node:body-c',
+      'outputs': { 'done': placementIri(BODY_DAG_IRI, 'body-end') },
     },
     {
-      '@id':     `urn:noocodex:dag:${BODY_DAG_NAME}/node/body-end`,
+      '@id': placementIri(BODY_DAG_IRI, 'body-end'),
       '@type':   'TerminalNode',
       'name':    'body-end',
       'outcome': 'completed',
@@ -142,33 +146,44 @@ const bodyDag: DAGType = Validator.dag.validate({
 
 class TestScatterDag {
   private constructor() {}
-  static bound(name: string, concurrency: number): DAGType {
+  static bound(dagIri: string, name: string, concurrency: number): DAGType {
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'dag': BODY_DAG_NAME },
+          'body':        { 'dag': BODY_DAG_IRI },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':      { 'strategy': 'bound-memory-gather' },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'join'),
+            'partial': placementIri(dagIri, 'join'),
+            'all-error': placementIri(dagIri, 'join'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
         {
-          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@id': placementIri(dagIri, 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [placementIri(dagIri, 'fan')]: {} },
+          'gather': { 'strategy': 'bound-memory-gather' },
+          'outputs': {
+            'success': placementIri(dagIri, 'end'),
+            'error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
+          },
+        },
+        {
+          '@id': placementIri(dagIri, 'end'),
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -211,12 +226,12 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(bodyNodeB);
     dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(TestScatterDag.bound('bound-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('urn:noocodec:dag:bound-N3000', 'bound-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const execution = dispatcher.execute('bound-N3000', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:bound-N3000', state);
     let yieldedStageCount = 0;
 
     for await (const _stage of execution) {
@@ -263,12 +278,12 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(bodyNodeB);
     dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(TestScatterDag.bound('bound-hooks-N500', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('urn:noocodec:dag:bound-hooks-N500', 'bound-hooks-N500', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const execution = dispatcher.execute('bound-hooks-N500', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:bound-hooks-N500', state);
     let yieldedStageCount = 0;
 
     for await (const _stage of execution) {
@@ -308,12 +323,12 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(bodyNodeB);
     dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(TestScatterDag.bound('bound-intermediates-N200', 2));
+    dispatcher.registerDAG(TestScatterDag.bound('urn:noocodec:dag:bound-intermediates-N200', 'bound-intermediates-N200', 2));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const execution = dispatcher.execute('bound-intermediates-N200', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:bound-intermediates-N200', state);
     // Iteration yields heterogeneous per-node results typed `NodeStateInterface`
     // (a child embedded node runs on its own isolation state); this test reads
     // only `nodeName` and `intermediateResults`, both on the base interface.
@@ -356,7 +371,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(bodyNodeB);
     dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(TestScatterDag.bound('bound-heap-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('urn:noocodec:dag:bound-heap-N3000', 'bound-heap-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -364,7 +379,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     gc();
     const baseline = process.memoryUsage().heapUsed;
 
-    const execution = dispatcher.execute('bound-heap-N3000', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:bound-heap-N3000', state);
     let peak = baseline;
     for await (const _stage of execution) {
       const cur = process.memoryUsage().heapUsed;

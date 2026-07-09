@@ -54,7 +54,7 @@ fanInState.source = StreamChannel.fanIn([
   WikipediaScoutProducer.of(),
 ]);
 
-const fanInResult = await fanInDispatcher.execute('fan-in-candidates', fanInState);
+const fanInResult = await fanInDispatcher.execute('urn:noocodec:dag:fan-in-candidates', fanInState);
 
 process.stdout.write(`fanIn outcome: ${fanInResult.terminalOutcome}\n`);
 process.stdout.write(`fanIn collected: ${fanInState.collectedCandidates.length} candidates\n`);
@@ -92,7 +92,7 @@ streamState.source = StreamChannel.driven(
   { 'capacity': 2 },
 );
 
-const streamResult = await streamDispatcher.execute('stream-producer-candidates', streamState);
+const streamResult = await streamDispatcher.execute('urn:noocodec:dag:stream-producer-candidates', streamState);
 
 process.stdout.write(`DagStreamProducer outcome: ${streamResult.terminalOutcome}\n`);
 process.stdout.write(`DagStreamProducer collected: ${streamState.collectedCandidates.length} candidates\n`);

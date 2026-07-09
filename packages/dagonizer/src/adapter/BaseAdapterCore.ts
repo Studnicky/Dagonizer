@@ -22,7 +22,7 @@ import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
 /** Options for model selection in `selectChatModel` and `selectEmbeddingModel`. */
 export type SelectModelOptionsType = {
-  /** Prefer this model name from the catalogue; falls back to the cheapest available if absent. */
+  /** Prefer this model name from the catalogue; selects the cheapest available if absent. */
   readonly preferred?: string;
 }
 
@@ -39,7 +39,7 @@ export type BaseAdapterCoreOptionsResolvedType = {
 
 /**
  * Caller-facing options. Subclasses expose this (or an extension of it)
- * to their own callers; every field falls back to `defaultOptions()`
+ * to their own callers; every omitted field uses `defaultOptions()`
  * when omitted, so the base materialises a complete value in one place.
  */
 export type BaseAdapterCoreOptionsType = {
@@ -128,7 +128,7 @@ export abstract class BaseAdapterCore {
    * carries its classification, and an abort/timeout `Error` message maps to
    * `TIMEOUT`. Provider-specific subclasses add only their own branch (e.g.
    * `MODEL_NOT_FOUND`) and then delegate to `super.classify` for these shared
-   * cases and the `UNKNOWN` fallback.
+   * cases and the `UNKNOWN` default.
    */
   protected classify(error: unknown): ErrorClassificationType {
     if (error instanceof LlmError) return error.classification;

@@ -20,9 +20,9 @@ Use this page when loading external JSON, accepting plugin DAG documents, valida
 
 ## How It Works
 
-Structural validation happens at ingest boundaries: `DAGDocument.load`, `DAGDocument.ofValue`, checkpoint loading, and explicit `Validator.*` calls. Semantic validation happens later when a dispatcher registers a DAG against its node and DAG registries.
+Structural validation happens at ingest boundaries: `DAGDocument.load(json)`, checkpoint loading, and explicit `Validator.*` calls. Semantic validation happens later when a dispatcher registers a DAG against its node and DAG registries.
 
-That split matters: schema validation proves the document shape is legal; registration proves the named runtime pieces exist and routes are coherent.
+That split matters: schema validation proves the document shape is legal; registration proves registry bindings exist and placement-IRI routes are coherent.
 
 ## Diagrams, Examples, and Outputs
 
@@ -64,7 +64,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 
 Type: `EntityValidatorInterface<DAG>`
 
-Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dagonizer.load`, `DAGDocument.ofValue`, and `Dagonizer.registerDAG`.
+Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `DAGDocument.load(json)` and DAG registration validation paths.
 
 ##### `Validator.dag.validate(value)`
 
@@ -132,6 +132,7 @@ Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `Enti
 | `Validator.dag` | `DAG` | `DAGSchema` |
 | `Validator.singleNode` | `SingleNode` | `SingleNodeSchema` |
 | `Validator.scatterNode` | `ScatterNode` | `ScatterNodeSchema` |
+| `Validator.gatherNode` | `GatherNode` | `GatherNodeSchema` |
 | `Validator.embeddedDAGNode` | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` |
 | `Validator.terminalNode` | `TerminalNode` | `TerminalNodeSchema` |
 | `Validator.phaseNode` | `PhaseNode` | `PhaseNodeSchema` |
@@ -170,7 +171,7 @@ declare const _v: EntityValidatorInterface<unknown>;
 
 `validate(value)` returns the typed value or throws `ValidationError`. `is(value)` is a predicate for control flow. `errors(value)` gives formatted messages without throwing.
 
-Schema validation cannot prove names resolve in a dispatcher. Use validation for document shape, then `registerDAG` for semantic checks against registered nodes, DAGs, state factories, containers, and channels.
+Schema validation cannot prove registry references resolve in a dispatcher. Use validation for document shape, then `registerDAG` for semantic checks against registered nodes, DAGs, state factories, containers, channels, and placement-IRI topology.
 
 ## Related Concepts
 

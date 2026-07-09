@@ -26,7 +26,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const WebLlmEmbedderEngineSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-web-llm/WebLlmEmbedderEngine',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-embedder-web-llm/WebLlmEmbedderEngine',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['embeddings'],
@@ -37,7 +37,7 @@ export const WebLlmEmbedderEngineSchema = {
 } as const;
 
 export const WebLlmEmbedderModuleSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-web-llm/WebLlmEmbedderModule',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-embedder-web-llm/WebLlmEmbedderModule',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['CreateMLCEngine'],

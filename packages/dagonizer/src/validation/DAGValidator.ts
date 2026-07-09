@@ -1,14 +1,25 @@
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
+import { GatherStrategies } from '../core/GatherStrategies.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import { DagReference } from '../entities/dag/DagReference.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import { DAGError } from '../errors/index.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../graph/DagGraphQueries.js';
+import { DagReferenceGraph } from '../graph/DagReferenceGraph.js';
+import type { DagReferenceEdgeType } from '../graph/DagReferenceGraph.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { JsonSchemaCompatibility } from '../schema/JsonSchemaCompatibility.js';
+import { SchemaRegistry } from '../schema/SchemaRegistry.js';
 
 export class DAGValidator {
   private constructor() { /* static class */ }
@@ -20,52 +31,56 @@ export class DAGValidator {
     dags: Map<string, DAGType>,
   ): void {
     const errors: string[] = [];
-    const nodeNames = new Set<string>();
-
     for (const node of dag.nodes) {
-      if (nodeNames.has(node.name)) {
-        errors.push(`Duplicate node name: ${node.name}`);
-      }
-      nodeNames.add(node.name);
+      DAGValidator.validateDAGNode(dag, node, context, nodes, dags, errors);
     }
-
-    if (!nodeNames.has(dag.entrypoint)) {
-      errors.push(`Entrypoint '${dag.entrypoint}' does not exist in nodes`);
-    }
-
-    for (const node of dag.nodes) {
-      DAGValidator.validateDAGNode(node, context, nodes, dags, nodeNames, errors);
-    }
-
-    // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
-    // duplicate name throws), and every EmbeddedDAGNode/ScatterNode body must
-    // reference an already-registered DAG (validated above). Sub-DAG references
-    // are therefore backward-only, so the reference graph is necessarily
-    // acyclic — a cycle cannot be constructed through the public registry.
+    DAGValidator.validateRouteSchemas(dag, nodes, errors);
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
     }
   }
 
+  static validateReferenceGraph(dags: ReadonlyMap<string, DAGType>): void {
+    const errors: string[] = [];
+    const edges = DagReferenceGraph.referenceEdges(dags);
+
+    for (const edge of edges) {
+      if (!dags.has(edge.targetDagIri)) {
+        errors.push(`DAG '${edge.sourceDagIri}' placement '${edge.sourcePlacement}' references unknown DAG '${edge.targetDagIri}'`);
+      }
+    }
+
+    for (const component of DagReferenceGraph.stronglyConnectedComponents(dags.keys(), edges)) {
+      if (component.length === 1 && !DagReferenceGraph.hasSelfEdge(component[0] ?? '', edges)) continue;
+      DAGValidator.validateRecursiveComponent(component, dags, edges, errors);
+    }
+
+    if (errors.length > 0) {
+      throw new DAGError(`Invalid DAG registry graph:\n  - ${errors.join('\n  - ')}`);
+    }
+  }
+
   private static validateDAGNode<TState extends NodeStateInterface>(
+    dag: DAGType,
     entry: DAGNodeType,
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     if (Placement.isEmbeddedDAG(entry)) {
-      DAGValidator.validateEmbeddedDAGNode(entry, context, dags, nodeNames, errors);
+      DAGValidator.validateEmbeddedDAGNode(entry, context, nodes, dags, errors);
     } else if (Placement.isScatter(entry)) {
-      DAGValidator.validateScatterNode(entry, context, nodes, dags, nodeNames, errors);
+      DAGValidator.validateScatterNode(entry, context, nodes, dags, errors);
     } else if (Placement.isSingle(entry)) {
-      DAGValidator.validateSingleNode(entry, context, nodes, nodeNames, errors);
+      DAGValidator.validateSingleNode(entry, context, nodes, errors);
+    } else if (Placement.isGather(entry)) {
+      DAGValidator.validateGatherNode(dag, entry, context, nodes, dags, errors);
     } else if (Placement.isPhase(entry)) {
       DAGValidator.validatePhaseNode(entry, context, nodes, errors);
     }
-    // TerminalNode: no outputs to validate; schema pass is sufficient.
+    // TerminalNode: no registry-relative references to validate.
   }
 
   private static validatePhaseNode<TState extends NodeStateInterface>(
@@ -84,7 +99,6 @@ export class DAGValidator {
     nodeConfig: SingleNodePlacementType,
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     const nodeIri = ContextResolver.expand(nodeConfig.node, context);
@@ -103,42 +117,45 @@ export class DAGValidator {
         errors.push(`Node '${nodeConfig.name}': registered node '${dagNode.name}' declares output '${output}' but no routing is defined`);
       }
     }
-
-    for (const [output, target] of Object.entries(nodeConfig.outputs)) {
-      // target is a placement name (intra-DAG identifier), not an IRI — nodeNames are bare.
-      if (!nodeNames.has(target)) {
-        errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
   }
 
   private static validateEmbeddedDAGNode(
     placement: EmbeddedDAGNodeType,
     context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<NodeStateInterface, string>>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
-    // Exactly one of `dag` (build-time literal) or `dagFrom` (runtime path) must be set.
-    if (placement.dag !== undefined && placement.dagFrom !== undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom, not both`);
-    } else if (placement.dag === undefined && placement.dagFrom === undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom`);
-    }
-
-    // `dag` is the build-time literal name; validate it against the registry using IRI expansion.
-    // `dagFrom` resolves at runtime from state — no static validation is possible.
     if (placement.dag !== undefined) {
-      const dagIri = ContextResolver.expand(placement.dag, context);
-      if (!dags.has(dagIri)) {
-        errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
-      }
-    }
-
-    for (const [output, target] of Object.entries(placement.outputs)) {
-      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
-      if (!nodeNames.has(target)) {
-        errors.push(`EmbeddedDAGNode '${placement.name}': output '${output}' routes to unknown node '${target}'`);
+      DAGValidator.validateDagReference(placement.dag, context, dags, `EmbeddedDAGNode '${placement.name}'`, errors);
+      DAGValidator.validateChildInputMapping(
+        `EmbeddedDAGNode '${placement.name}'`,
+        placement.dag,
+        placement.stateMapping?.input ?? {},
+        context,
+        nodes,
+        dags,
+        errors,
+      );
+      DAGValidator.validateChildOutputMapping(
+        `EmbeddedDAGNode '${placement.name}'`,
+        placement.dag,
+        placement.stateMapping?.output ?? {},
+        context,
+        nodes,
+        dags,
+        errors,
+      );
+      if (placement.gatherResult !== undefined) {
+        DAGValidator.validateDagResultField(
+          `EmbeddedDAGNode '${placement.name}' gatherResult.resultField`,
+          placement.dag,
+          placement.gatherResult.resultField,
+          context,
+          nodes,
+          dags,
+          errors,
+        );
       }
     }
   }
@@ -148,70 +165,447 @@ export class DAGValidator {
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     if ('node' in scatter.body) {
-      // A node body with a container key is invalid: a node body is one node, not a DAG.
-      // Container is only valid for dag bodies. Throw immediately — this is a structural
-      // error that must surface before any execution.
-      if (scatter.container !== undefined) {
-        throw new DAGError(
-          `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
-          { 'code': 'VALIDATION_ERROR' },
+      const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);
+      const bodyNode = nodes.get(bodyNodeIri);
+      if (bodyNode === undefined) {
+        errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
+      } else {
+        DAGValidator.validateRequiredFieldsSeeded(
+          `ScatterNode '${scatter.name}' body node '${scatter.body.node}'`,
+          bodyNode.inputSchema,
+          {
+            ...scatter.stateMapping?.input,
+            [scatter.itemKey ?? 'currentItem']: scatter.source,
+          },
+          errors,
         );
       }
-      const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);
-      if (!nodes.has(bodyNodeIri)) {
-        errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
-      }
     } else if ('dag' in scatter.body) {
-      const bodyDagIri = ContextResolver.expand(scatter.body.dag, context);
-      if (!dags.has(bodyDagIri)) {
-        errors.push(`ScatterNode '${scatter.name}': unknown registered DAG '${scatter.body.dag}'`);
-      }
+      DAGValidator.validateDagReference(scatter.body.dag, context, dags, `ScatterNode '${scatter.name}'`, errors);
+      DAGValidator.validateChildInputMapping(
+        `ScatterNode '${scatter.name}' DAG body`,
+        scatter.body.dag,
+        {
+          ...scatter.stateMapping?.input,
+          [scatter.itemKey ?? 'currentItem']: scatter.source,
+        },
+        context,
+        nodes,
+        dags,
+        errors,
+      );
     }
-    // 'dagFrom' bodies reference a runtime-resolved DAG name; not validated at registration time.
+  }
 
-    const gather = scatter.gather;
+  private static validateGatherNode<TState extends NodeStateInterface>(
+    dag: DAGType,
+    gatherNode: GatherNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+    errors: string[],
+  ): void {
+    DAGValidator.validateGatherConfig(gatherNode.name, gatherNode.gather, context, nodes, errors);
+    const producerResult = DAGValidator.resultSchemasForGatherNode(dag, gatherNode, context, nodes, dags);
+    DAGValidator.validateGatherStrategyResultSchema(
+      gatherNode.name,
+      gatherNode.gather,
+      producerResult.producerSchemas,
+      producerResult.missingProducers,
+      errors,
+    );
+  }
+
+  private static validateGatherConfig<TState extends NodeStateInterface>(
+    ownerName: string,
+    gather: GatherConfigType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    errors: string[],
+  ): void {
     if (gather.strategy === 'custom' && gather.customNode !== undefined) {
       const customNodeIri = ContextResolver.expand(gather.customNode, context);
       if (!nodes.has(customNodeIri)) {
-        errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
+        errors.push(`Gather '${ownerName}': custom gather node '${gather.customNode}' not found`);
       }
-    }
-
-    for (const [output, target] of Object.entries(scatter.outputs)) {
-      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
-      if (!nodeNames.has(target)) {
-        errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
-
-    if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
-      DAGValidator.validateReservoir(scatter, scatter.execution.reservoir, errors);
     }
   }
 
-  private static validateReservoir(
-    scatter: ScatterNodeType,
-    reservoir: { keyField: string; capacity: number; idleMs?: number },
+  private static validateDagReference(
+    reference: DagReferenceType,
+    context: Record<string, unknown>,
+    dags: Map<string, DAGType>,
+    owner: string,
     errors: string[],
   ): void {
-    // keyField: schema enforces minLength:1 but surface a clear semantic message.
-    if (reservoir.keyField.trim().length === 0) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.keyField must be a non-empty accessor path`);
+    for (const candidate of DagReference.candidates(reference)) {
+      const dagIri = ContextResolver.expand(candidate, context);
+      if (!dags.has(dagIri)) {
+        errors.push(`${owner}: unknown registered DAG '${candidate}'`);
+      }
     }
-
-    // capacity: schema enforces minimum:1 but surface a clear semantic message.
-    if (reservoir.capacity < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
-    }
-
-    // idleMs: schema enforces minimum:1 but surface a clear semantic message.
-    if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
-    }
-
   }
+
+  private static validateRouteSchemas<TState extends NodeStateInterface>(
+    dag: DAGType,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    errors: string[],
+  ): void {
+    const store = DagGraphProjector.store(dag);
+    const schemas = new SchemaRegistry();
+    DagGraphProjector.projectNodeSchemas({ dag, nodes, schemas, store });
+
+    for (const placement of dag.nodes) {
+      if (!('outputs' in placement)) continue;
+      const sourceIri = placement['@id'];
+      for (const [output, target] of Object.entries(placement.outputs)) {
+        const producedIri = DagGraphQueries.placementOutputSchemaIri(store, sourceIri, output);
+        if (producedIri === undefined) continue;
+        const requiredIri = DagGraphQueries.placementInputSchemaIri(store, target);
+        if (requiredIri === undefined) continue;
+        const produced = schemas.get(producedIri);
+        const required = schemas.get(requiredIri);
+        if (produced === undefined || required === undefined) continue;
+
+        const compatibility = JsonSchemaCompatibility.produces(produced, required);
+        if (compatibility.status === 'incompatible') {
+          errors.push(
+            `Route '${placement.name}.${output}' -> '${target}' does not satisfy target input schema: ${compatibility.reason}`,
+          );
+        }
+      }
+    }
+  }
+
+  private static validateChildInputMapping<TState extends NodeStateInterface>(
+    owner: string,
+    reference: DagReferenceType,
+    inputMapping: Readonly<Record<string, string>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+    errors: string[],
+  ): void {
+    for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+      const childContext = ContextResolver.contextOf(childDag['@context']);
+      for (const [label, placementIri] of Object.entries(childDag.entrypoints)) {
+        const placement = DAGValidator.placementByIri(childDag, placementIri);
+        if (placement === undefined) continue;
+        const inputSchema = DAGValidator.inputSchemaForPlacement(placement, childContext, nodes);
+        if (inputSchema === undefined) continue;
+        DAGValidator.validateRequiredFieldsSeeded(
+          `${owner} -> child DAG '${childDag.name}' entrypoint '${label}'`,
+          inputSchema,
+          inputMapping,
+          errors,
+        );
+      }
+    }
+  }
+
+  private static validateRequiredFieldsSeeded(
+    owner: string,
+    inputSchema: NodeInterface['inputSchema'],
+    inputMapping: Readonly<Record<string, string>>,
+    errors: string[],
+  ): void {
+    for (const field of DAGValidator.requiredFields(inputSchema)) {
+      if (inputMapping[field] !== undefined) continue;
+      errors.push(`${owner} does not seed required input field '${field}'`);
+    }
+  }
+
+  private static validateDagResultField<TState extends NodeStateInterface>(
+    owner: string,
+    reference: DagReferenceType,
+    resultField: string,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+    errors: string[],
+  ): void {
+    for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+      const producedSchemas = DAGValidator.terminalProducerSchemas(childDag, nodes)
+        .filter((schema) => DAGValidator.schemaDeclaresProperties(schema));
+      if (producedSchemas.length === 0) continue;
+      if (producedSchemas.some((schema) => DAGValidator.schemaHasPath(schema, resultField))) continue;
+      errors.push(`${owner} '${resultField}' is not produced by child DAG '${childDag.name}' terminal routes`);
+    }
+  }
+
+  private static validateChildOutputMapping<TState extends NodeStateInterface>(
+    owner: string,
+    reference: DagReferenceType,
+    outputMapping: Readonly<Record<string, string>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+    errors: string[],
+  ): void {
+    for (const [parentPath, childPath] of Object.entries(outputMapping)) {
+      for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+        const producedSchemas = DAGValidator.terminalProducerSchemas(childDag, nodes)
+          .filter((schema) => DAGValidator.schemaDeclaresProperties(schema));
+        if (producedSchemas.length === 0) continue;
+        if (producedSchemas.some((schema) => DAGValidator.schemaHasPath(schema, childPath))) continue;
+        errors.push(`${owner} stateMapping.output '${parentPath}' reads child path '${childPath}' that is not produced by child DAG '${childDag.name}' terminal routes`);
+      }
+    }
+  }
+
+  private static validateGatherStrategyResultSchema(
+    ownerName: string,
+    gather: GatherConfigType,
+    producerSchemas: readonly SchemaObjectType[],
+    missingProducers: readonly string[],
+    errors: string[],
+  ): void {
+    const strategy = GatherStrategies.get(gather.strategy);
+    if (strategy?.resultSchema === undefined) return;
+    for (const producer of missingProducers) {
+      errors.push(`Gather '${ownerName}' strategy '${gather.strategy}' declares resultSchema but ${producer} does not declare a producer result schema`);
+    }
+    for (const produced of producerSchemas) {
+      const compatibility = JsonSchemaCompatibility.produces(produced, strategy.resultSchema);
+      if (compatibility.status !== 'incompatible') continue;
+      errors.push(
+        `Gather '${ownerName}' producer result schema does not satisfy strategy '${gather.strategy}' result schema: ${compatibility.reason}`,
+      );
+    }
+  }
+
+  private static resultSchemasForGatherNode<TState extends NodeStateInterface>(
+    dag: DAGType,
+    gatherNode: GatherNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): { readonly producerSchemas: readonly SchemaObjectType[]; readonly missingProducers: readonly string[] } {
+    const producerSchemas: SchemaObjectType[] = [];
+    const missingProducers: string[] = [];
+    for (const [source, binding] of Object.entries(gatherNode.sources)) {
+      const placement = DAGValidator.placementByIri(dag, source);
+      if (placement === undefined) continue;
+      const sourceSchemas = DAGValidator.resultSchemasForPlacementProducer(
+        placement,
+        binding.resultField,
+        context,
+        nodes,
+        dags,
+      );
+      if (sourceSchemas.length === 0) {
+        missingProducers.push(`source '${source}'`);
+      } else {
+        producerSchemas.push(...sourceSchemas);
+      }
+    }
+    return { producerSchemas, missingProducers };
+  }
+
+  private static resultSchemasForPlacementProducer<TState extends NodeStateInterface>(
+    placement: DAGNodeType,
+    resultField: string | undefined,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): readonly SchemaObjectType[] {
+    if (resultField === undefined) return [];
+    if (Placement.isScatter(placement)) {
+      if ('node' in placement.body) {
+        const bodyNode = nodes.get(ContextResolver.expand(placement.body.node, context));
+        return bodyNode === undefined
+          ? []
+          : DAGValidator.resultSchemasFromNode(bodyNode, resultField);
+      }
+      return DAGValidator.resultSchemasFromDagTerminalRoutes(placement.body.dag, resultField, context, nodes, dags);
+    }
+    if (Placement.isEmbeddedDAG(placement) && placement.dag !== undefined) {
+      return DAGValidator.resultSchemasFromDagTerminalRoutes(placement.dag, resultField, context, nodes, dags);
+    }
+    return [];
+  }
+
+  private static resultSchemasFromDagTerminalRoutes<TState extends NodeStateInterface>(
+    reference: DagReferenceType,
+    resultField: string,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): readonly SchemaObjectType[] {
+    const result: SchemaObjectType[] = [];
+    for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+      result.push(...DAGValidator.resultSchemasFromOutputSchemas(
+        DAGValidator.terminalProducerSchemas(childDag, nodes),
+        resultField,
+      ));
+    }
+    return result;
+  }
+
+  private static resultSchemasFromNode<TState extends NodeStateInterface>(
+    node: NodeInterface<TState, string>,
+    resultField: string,
+  ): readonly SchemaObjectType[] {
+    return DAGValidator.resultSchemasFromOutputSchemas(Object.values(node.outputSchema), resultField);
+  }
+
+  private static resultSchemasFromOutputSchemas(
+    outputSchemas: Iterable<SchemaObjectType>,
+    resultField: string,
+  ): readonly SchemaObjectType[] {
+    const result: SchemaObjectType[] = [];
+    for (const schema of outputSchemas) {
+      const resultSchema = DAGValidator.schemaAtPath(schema, resultField);
+      if (resultSchema !== undefined) result.push(resultSchema);
+    }
+    return result;
+  }
+
+  private static terminalProducerSchemas<TState extends NodeStateInterface>(
+    dag: DAGType,
+    nodes: Map<string, NodeInterface<TState, string>>,
+  ): readonly NodeInterface['inputSchema'][] {
+    const context = ContextResolver.contextOf(dag['@context']);
+    const placements = new Map<string, DAGNodeType>();
+    const schemas: NodeInterface['inputSchema'][] = [];
+    for (const placement of dag.nodes) placements.set(placement['@id'], placement);
+    for (const placement of dag.nodes) {
+      if (!('outputs' in placement)) continue;
+      for (const [output, target] of Object.entries(placement.outputs)) {
+        const targetPlacement = placements.get(target);
+        if (targetPlacement === undefined || !Placement.isTerminal(targetPlacement)) continue;
+        const outputSchema = DAGValidator.outputSchemaForPlacement(placement, output, context, nodes);
+        if (outputSchema !== undefined) schemas.push(outputSchema);
+      }
+    }
+    return schemas;
+  }
+
+  private static inputSchemaForPlacement<TState extends NodeStateInterface>(
+    placement: DAGNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+  ): NodeInterface['inputSchema'] | undefined {
+    const nodeRef = DAGValidator.registeredNodeRef(placement);
+    if (nodeRef === null) return undefined;
+    return nodes.get(ContextResolver.expand(nodeRef, context))?.inputSchema;
+  }
+
+  private static outputSchemaForPlacement<TState extends NodeStateInterface>(
+    placement: DAGNodeType,
+    output: string,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+  ): NodeInterface['inputSchema'] | undefined {
+    const nodeRef = DAGValidator.registeredNodeRef(placement);
+    if (nodeRef === null) return undefined;
+    return nodes.get(ContextResolver.expand(nodeRef, context))?.outputSchema[output];
+  }
+
+  private static registeredNodeRef(placement: DAGNodeType): string | null {
+    if (Placement.isSingle(placement)) return placement.node;
+    if (Placement.isPhase(placement)) return placement.node;
+    return null;
+  }
+
+  private static candidateDags(
+    reference: DagReferenceType,
+    context: Record<string, unknown>,
+    dags: Map<string, DAGType>,
+  ): readonly DAGType[] {
+    const result: DAGType[] = [];
+    for (const candidate of DagReference.candidates(reference)) {
+      const dag = dags.get(ContextResolver.expand(candidate, context));
+      if (dag !== undefined) result.push(dag);
+    }
+    return result;
+  }
+
+  private static placementByIri(dag: DAGType, iri: string): DAGNodeType | undefined {
+    return dag.nodes.find((placement) => placement['@id'] === iri);
+  }
+
+  private static requiredFields(schema: NodeInterface['inputSchema']): readonly string[] {
+    const value = Reflect.get(schema, 'required');
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+  }
+
+  private static schemaHasPath(schema: NodeInterface['inputSchema'], path: string): boolean {
+    return DAGValidator.schemaAtPath(schema, path) !== undefined;
+  }
+
+  private static schemaAtPath(schema: NodeInterface['inputSchema'], path: string): NodeInterface['inputSchema'] | undefined {
+    let cursor: NodeInterface['inputSchema'] | undefined = schema;
+    for (const segment of path.split('.')) {
+      if (segment.length === 0 || cursor === undefined) return undefined;
+      cursor = DAGValidator.propertySchema(cursor, segment);
+    }
+    return cursor;
+  }
+
+  private static propertySchema(schema: NodeInterface['inputSchema'], property: string): NodeInterface['inputSchema'] | undefined {
+    const properties = Reflect.get(schema, 'properties');
+    if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) return undefined;
+    const value = Reflect.get(properties, property);
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? value
+      : undefined;
+  }
+
+  private static schemaDeclaresProperties(schema: NodeInterface['inputSchema']): boolean {
+    const properties = Reflect.get(schema, 'properties');
+    return typeof properties === 'object' && properties !== null && !Array.isArray(properties);
+  }
+
+  private static validateRecursiveComponent(
+    component: readonly string[],
+    dags: ReadonlyMap<string, DAGType>,
+    edges: readonly DagReferenceEdgeType[],
+    errors: string[],
+  ): void {
+    const recursiveDagIris = new Set(component);
+    for (const dagIri of component) {
+      const dag = dags.get(dagIri);
+      if (dag !== undefined && !DAGValidator.hasReachableTerminalEscape(dag, dagIri, recursiveDagIris, edges)) {
+        errors.push(`Recursive DAG component containing '${dagIri}' has no terminal exit path`);
+      }
+    }
+  }
+
+  private static hasReachableTerminalEscape(
+    dag: DAGType,
+    dagIri: string,
+    recursiveDagIris: ReadonlySet<string>,
+    edges: readonly DagReferenceEdgeType[],
+  ): boolean {
+    const placements = new Map<string, DAGNodeType>();
+    for (const placement of dag.nodes) placements.set(placement['@id'], placement);
+
+    const recursivePlacements = new Set<string>();
+    for (const edge of edges) {
+      if (edge.sourceDagIri === dagIri && recursiveDagIris.has(edge.targetDagIri)) {
+        recursivePlacements.add(edge.sourcePlacement);
+      }
+    }
+
+    const visited = new Set<string>();
+    const queue = Object.values(dag.entrypoints);
+    while (queue.length > 0) {
+      const placementIri = queue.shift();
+      if (placementIri === undefined || visited.has(placementIri)) continue;
+      visited.add(placementIri);
+      const placement = placements.get(placementIri);
+      if (placement === undefined) continue;
+      if (Placement.isTerminal(placement)) return true;
+      if (recursivePlacements.has(placement['@id'])) continue;
+      if ('outputs' in placement) queue.push(...Object.values(placement.outputs));
+    }
+    return false;
+  }
+
 }

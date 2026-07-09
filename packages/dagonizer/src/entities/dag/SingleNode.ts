@@ -2,12 +2,12 @@
  * SingleNode: single-node placement in JSON-LD canonical form.
  *
  * Uses `@type: 'SingleNode'` as the discriminator (replacing the flat `type`
- * key). `@id` is the placement URN: `urn:noocodex:dag:<dagName>/node/<name>`.
+ * key). `@id` is the placement URN: `urn:noocodec:dag:<dagName>/node/<name>`.
  *
  * Compile-time consumers may use `SingleNodePlacementType<TOutput>` for
  * exhaustiveness-checked output routing. The schema itself is necessarily
  * generic-free: `outputs` is a `Record<string, string>` at the JSON boundary.
- * All output routes must target named placements; null routes are not permitted.
+ * All output routes must target canonical placement IRIs; null routes are not permitted.
  *
  * Naming: the placement interface is distinct from `NodeInterface` (the adapter
  * contract consumers implement). A "node" is the registered unit of work; a
@@ -19,7 +19,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import type { RetryPolicyOptionsType } from '../../contracts/RetryPolicyOptionsType.js';
 
 export const SingleNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/SingleNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/SingleNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'node', 'outputs'],
@@ -73,10 +73,10 @@ export const NO_RETRY: RetryPolicyOptionsType = { 'maxAttempts': 1 };
  */
 export type SingleNodePlacementType<TOutput extends string = string> = Omit<SingleNodeType, 'outputs' | 'retry'> & {
   /**
-   * Output routing - maps node outputs to next placement names.
+   * Output routing - maps node outputs to next placement IRIs.
    * Key: output name from node (e.g., 'success', 'error', 'retry')
-   * Value: next placement name — must target a named placement in the DAG.
-   *        To end a branch, route to a named TerminalNode placement.
+   * Value: next placement IRI — must target a placement in the DAG.
+   *        To end a branch, route to a TerminalNode placement IRI.
    *
    * All node outputs must be wired (validated at registration).
    * When `TOutput` is narrowed, TypeScript will compile-fail any missing

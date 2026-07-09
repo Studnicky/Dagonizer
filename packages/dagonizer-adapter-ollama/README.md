@@ -34,7 +34,7 @@ const response = await llm.chat(ChatRequest.create({
 
 | Option | Default | Notes |
 |---|---|---|
-| `model` | `llama3.2:latest` | Fallback only — pass a model you have actually pulled (`ollama list`). The default is not guaranteed to be installed; to pick one at runtime, query `GET /api/tags` and pass an installed name. |
+| `model` | `llama3.2:latest` | Default only — pass a model you have actually pulled (`ollama list`). The default is not guaranteed to be installed; to pick one at runtime, query `GET /api/tags` and pass an installed name. |
 | `baseUrl` | `http://127.0.0.1:11434` | Override for remote Ollama or proxy |
 | `apiKey` | `ollama` (placeholder) | Override only when proxying behind a gateway that enforces auth |
 | `maxAttempts` | 3 | Retry budget for transient failures |

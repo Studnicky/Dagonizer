@@ -9,6 +9,7 @@ import {
   Batch,
   DAGBuilder,
   DAG_CONTEXT,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -42,6 +43,7 @@ export class PipelineState extends NodeStateBase {
  */
 export class NormalizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'normalize';
+  readonly '@id' = 'urn:noocodec:node:normalize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { done: { type: 'object' } };
@@ -61,6 +63,7 @@ export class NormalizeNode extends MonadicNode<PipelineState, 'done'> {
  */
 export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'summarize';
+  readonly '@id' = 'urn:noocodec:node:summarize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { done: { type: 'object' } };
@@ -79,32 +82,36 @@ export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
 // Sub-DAG (registered by the plugin bundle as an embedded DAG body)
 // ---------------------------------------------------------------------------
 
+export const pluginDAGIri = 'urn:noocodec:dag:plugin-normalize' as const;
+export const parentDAGIri = 'urn:noocodec:dag:pipeline' as const;
+const placement = (dagIri: string, placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 // #region plugin-dag
 /** Sub-DAG that the plugin registers. Entry point of the plugin's functionality. */
 export const pluginDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:plugin-normalize',
+  '@id': pluginDAGIri,
   '@type':     'DAG',
   name:        'plugin-normalize',
   version:     '1',
-  entrypoint:  'normalize',
+  entrypoints: { main: placement(pluginDAGIri, 'normalize') },
   nodes: [
     {
-      '@id':    'urn:noocodex:dag:plugin-normalize/node/normalize',
+      '@id': placement(pluginDAGIri, 'normalize'),
       '@type':  'SingleNode',
       name:     'normalize',
-      node:     'normalize',
-      outputs:  { done: 'summarize' },
+      node:     'urn:noocodec:node:normalize',
+      outputs:  { done: placement(pluginDAGIri, 'summarize') },
     },
     {
-      '@id':    'urn:noocodex:dag:plugin-normalize/node/summarize',
+      '@id': placement(pluginDAGIri, 'summarize'),
       '@type':  'SingleNode',
       name:     'summarize',
-      node:     'summarize',
-      outputs:  { done: 'end' },
+      node:     'urn:noocodec:node:summarize',
+      outputs:  { done: placement(pluginDAGIri, 'end') },
     },
     {
-      '@id':    'urn:noocodex:dag:plugin-normalize/node/end',
+      '@id': placement(pluginDAGIri, 'end'),
       '@type':  'TerminalNode',
       name:     'end',
       outcome:  'completed',
@@ -123,13 +130,14 @@ export const pluginDag: DAGType = {
  * any dispatcher via a single `registerPlugin(normalizePlugin)` call.
  */
 export const normalizePlugin = defineDagonizerPlugin({
+  id: '@studnicky/dagonizer-example-normalize',
   context: {
-    plugin: 'https://noocodex.dev/plugins/normalize#',
+    plugin: 'https://noocodec.dev/plugins/normalize#',
   },
   nodes: [new NormalizeNode(), new SummarizeNode()],
   dags: [pluginDag],
   exports: {
-    normalize: 'plugin-normalize',
+    normalize: pluginDAGIri,
   },
 });
 // #endregion plugin
@@ -140,12 +148,15 @@ export const normalizePlugin = defineDagonizerPlugin({
 
 // #region parent-dag
 /** Top-level DAG that embeds the plugin's sub-DAG. */
-const parentBuilder = new DAGBuilder('pipeline', '1');
-parentBuilder.embed('normalize-step', normalizePlugin.exports.normalize, { success: 'end', error: 'end' }, {
+const parentBuilder = new DAGBuilder(parentDAGIri, '1');
+parentBuilder.embed(placement(parentDAGIri, 'normalize-step'), normalizePlugin.exports.normalize, {
+  success: placement(parentDAGIri, 'end'),
+  error: placement(parentDAGIri, 'end'),
+}, {
   inputs: { phrase: 'phrase' },
   outputs: { normalized: 'normalized', status: 'status' },
 });
-parentBuilder.terminal('end');
+parentBuilder.terminal(placement(parentDAGIri, 'end'));
 
 export const parentDag: DAGType = parentBuilder.build();
 // #endregion parent-dag

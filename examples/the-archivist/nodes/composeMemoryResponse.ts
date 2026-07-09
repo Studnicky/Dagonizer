@@ -25,6 +25,7 @@ const RETRY_BUDGET = 3;
 
 export class ComposeMemoryResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   readonly name = 'compose-memory-response';
+  readonly '@id' = 'urn:noocodec:node:compose-memory-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
   private readonly services: ArchivistServices;

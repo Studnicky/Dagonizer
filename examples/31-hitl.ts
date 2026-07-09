@@ -49,7 +49,7 @@ dispatcher.registerDAG(dag);
 // ---------------------------------------------------------------------------
 
 const initialState = new HitlState();
-const parkedResult = await dispatcher.execute('hitl', initialState);
+const parkedResult = await dispatcher.execute('urn:noocodec:dag:hitl', initialState);
 
 process.stdout.write('\n=== HITL park-and-correlate example ===\n\n');
 process.stdout.write(`Step 1 — Initial run:\n`);
@@ -69,7 +69,7 @@ if (parkedResult.state.lifecycle.variant !== 'awaiting-input') {
 // Step 2: Capture checkpoint (persists state + cursor for resume)
 // ---------------------------------------------------------------------------
 
-const ckpt = await Checkpoint.capture('hitl', parkedResult);
+const ckpt = await Checkpoint.capture('urn:noocodec:dag:hitl', parkedResult);
 const persisted = ckpt.toJson(); // In a real app: store in DB or message queue
 
 process.stdout.write(`Step 2 — Checkpoint captured:\n`);

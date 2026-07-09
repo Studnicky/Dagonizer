@@ -20,6 +20,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region parse-json-node
 export class ParseJsonNode extends MonadicNode<CartographerState, 'normalized' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:parse-json';
   readonly 'name' = 'parse-json';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 

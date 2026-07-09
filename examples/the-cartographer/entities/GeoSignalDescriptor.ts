@@ -15,7 +15,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 export const GeoSignalDescriptorSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/GeoSignalDescriptor',
+  '$id': 'https://noocodec.dev/schemas/cartographer/GeoSignalDescriptor',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['kind', 'weight', 'lat', 'lng', 'ipAddress', 'address', 'localeTag', 'countryCode', 'phone'],

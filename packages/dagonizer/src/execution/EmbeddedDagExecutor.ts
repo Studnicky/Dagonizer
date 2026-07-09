@@ -1,5 +1,6 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
@@ -7,6 +8,8 @@ import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
+import { DagReferenceResolver } from './DagReferenceResolver.js';
+import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
 
@@ -24,12 +27,14 @@ export type EmbeddedDagExecutorSourceType = {
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
     mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
   };
-  /** State path accessor — used to resolve `dagFrom` paths at execution time. */
+  /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
   readonly accessor: StateAccessorInterface;
-  /** Registered DAGs — used to validate that a `dagFrom`-resolved name is registered. */
+  /** Registered DAGs — used to validate that a resolved DAG reference is registered. */
   readonly dags: ReadonlyMap<string, DAGType>;
   /** Per-DAG child-state factories — used to spawn isolated child state when registered. */
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  /** Runtime topology graph sink for selected embedded-DAG bindings. */
+  readonly executionTopologyStore: TripleStoreInterface;
 };
 
 /**
@@ -58,9 +63,29 @@ export class EmbeddedDagExecutor {
     this.#bodyExecutor = bodyExecutor;
   }
 
+  #withGatherRecord(
+    placement: EmbeddedDAGNodeType,
+    run: RunNodeResultType,
+    cloneState: NodeStateInterface,
+    terminalOutcome: 'completed' | 'failed' | null,
+  ): RunNodeResultType {
+    if (placement.gatherResult === undefined) return run;
+    const output = run.result.output ?? 'error';
+    const gatherRecord = GatherRecordProjector.project({
+      'source': placement['@id'],
+      output,
+      terminalOutcome,
+      'state': cloneState,
+      'accessor': this.#source.accessor,
+      'resultField': placement.gatherResult.resultField,
+    });
+    return { ...run, 'gatherRecords': [gatherRecord] };
+  }
+
   async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
+    parentDagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
@@ -68,22 +93,29 @@ export class EmbeddedDagExecutor {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
 
-    // Resolve the sub-DAG name: `dag` is a build-time literal; `dagFrom` is
-    // resolved from state at execution time. A null result means the path did
-    // not resolve to a string — route to the error output via a null body run.
-    const dagName = EmbeddedDAGNodeDefaults.resolveDagName(placement, state, this.#source.accessor);
+    const parentDag = this.#source.dags.get(parentDagName);
+    const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
+    const dagIri = placement.dag !== undefined
+      ? DagReferenceResolver.resolve({
+        'reference': placement.dag,
+        'source': 'state',
+        'value': state,
+        'context': parentContext,
+        'dags': this.#source.dags,
+        'accessor': this.#source.accessor,
+      })
+      : null;
 
-    // Produce the child state. Use the DAG's isolation factory when registered,
-    // otherwise fall back to cloneChild (clone-parent semantics). The factory
-    // lookup uses the resolved dagName; if dagName is null the assembly below
-    // routes to error without touching the child state meaningfully.
-    const factory = dagName !== null ? this.#source.stateFactories.get(dagName) : undefined;
+    // Produce the child state. Use the DAG's isolation factory when the
+    // resolver returns a registered DAG IRI; invalid selections route to error
+    // without touching the child state meaningfully.
+    const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
     const cloneState = factory !== undefined
       ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
       : this.#source.stateMapper.cloneChild(state, inputMapping);
 
-    if (dagName === null) {
-      return PlacementRouter.assemble(
+    if (dagIri === null) {
+      return this.#withGatherRecord(placement, PlacementRouter.assemble(
         placement.name,
         placement.outputs,
         null,
@@ -92,32 +124,20 @@ export class EmbeddedDagExecutor {
         outputMapping,
         [],
         this.#source.stateMapper,
-      );
+      ), cloneState, null);
     }
 
-    // Validate that the resolved dag name is registered. An unregistered name
-    // means the runtime path resolved to a string that does not correspond to
-    // any known DAG — route to error without throwing.
-    // dags is IRI-keyed: expand the bare/short dagName to its registry key.
-    const dagIri = ContextResolver.expand(dagName, {});
-    if (!this.#source.dags.has(dagIri)) {
-      return PlacementRouter.assemble(
-        placement.name,
-        placement.outputs,
-        null,
-        cloneState,
-        state,
-        outputMapping,
-        [],
-        this.#source.stateMapper,
-      );
-    }
+    DagReferenceResolver.bindSelectedDag({
+      'store': this.#source.executionTopologyStore,
+      'ownerPlacementIri': placement['@id'],
+      'selectedDagIri': dagIri,
+    });
 
     // Run the sub-DAG body in-process or through a bound container. The
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
     // and the container error/snapshot collection all live in BodyExecutor.
     const body = await this.#bodyExecutor.run(
-      dagName,
+      dagIri,
       placement.name,
       cloneState,
       state,
@@ -129,7 +149,7 @@ export class EmbeddedDagExecutor {
 
     // Propagate child→parent errors/warnings, apply output-state mapping, derive
     // the route token, resolve the next stage, and assemble the envelope.
-    return PlacementRouter.assemble(
+    return this.#withGatherRecord(placement, PlacementRouter.assemble(
       placement.name,
       placement.outputs,
       body.terminalOutcome,
@@ -138,6 +158,6 @@ export class EmbeddedDagExecutor {
       outputMapping,
       body.intermediates,
       this.#source.stateMapper,
-    );
+    ), cloneState, body.terminalOutcome);
   }
 }

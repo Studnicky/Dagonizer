@@ -24,13 +24,15 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -52,39 +54,50 @@ class BoundedState extends NodeStateBase {
 
 // ── worker node ──────────────────────────────────────────────────────────────
 
-const boundedWorkerNode = TestNode.make<BoundedState>('worker', ['success']);
+const boundedWorkerNode = TestNode.make<BoundedState>('urn:noocodec:node:worker', ['success']);
 
 // ── minimal scatter DAG ──────────────────────────────────────────────────────
 
 class TestScatterDag {
   private constructor() {}
-  static ofConcurrency(name: string, concurrency: number): DAGType {
+  static ofConcurrency(dagIri: string, name: string, concurrency: number): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': placementIri(dagIri, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': placementIri(dagIri, 'fan'),
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'node': 'worker' },
+          'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'items',
           'itemKey':     'item',
           'execution': { 'mode': 'item', 'concurrency': concurrency },
-          'gather':      { 'strategy': 'append', 'target': 'processed' },
           'outputs':     {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': placementIri(dagIri, 'join'),
+            'partial': placementIri(dagIri, 'join'),
+            'all-error': placementIri(dagIri, 'join'),
+            'empty': placementIri(dagIri, 'end'),
           },
         },
         {
-          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@id': placementIri(dagIri, 'join'),
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [placementIri(dagIri, 'fan')]: {} },
+          'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': placementIri(dagIri, 'end'),
+            'error': placementIri(dagIri, 'end'),
+            'empty': placementIri(dagIri, 'end'),
+          },
+        },
+        {
+          '@id': placementIri(dagIri, 'end'),
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -102,6 +115,7 @@ class ProgressCapture {
   /** Extract all bounded-mode ScatterProgressType snapshots from metadata writes. */
   static install(
     state: BoundedState,
+    dagIri: string,
   ): Array<Extract<ScatterProgressType, { mode: 'bounded' }>> {
     const snapshots: Array<Extract<ScatterProgressType, { mode: 'bounded' }>> = [];
     const orig = state.setMetadata.bind(state);
@@ -111,7 +125,7 @@ class ProgressCapture {
         const isStoredProgress = (v: unknown): v is Record<string, ScatterProgressType> =>
           typeof v === 'object' && v !== null;
         if (isStoredProgress(value)) {
-          const entry = value['fan'];
+          const entry = value[placementIri(dagIri, 'fan')];
           if (entry?.mode === 'bounded') {
             snapshots.push({ ...entry });
           }
@@ -139,6 +153,7 @@ class CheckpointSizer {
 
     class SizeWorkerNode extends MonadicNode<BoundedState, 'success'> {
       override readonly name = 'worker';
+      override readonly '@id' = 'urn:noocodec:node:worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<BoundedState>, context: NodeContextType): Promise<Map<'success', Batch<BoundedState>>> {
@@ -161,19 +176,19 @@ class CheckpointSizer {
     }
     dispatcher.registerNode(new SizeWorkerNode());
 
-    const dagName = `size-bound-n${n}`;
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency(dagName, 2));
+    const dagIri = `urn:noocodec:dag:size-bound-n${n}`;
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency(dagIri, `size-bound-n${n}`, 2));
 
     const st = new BoundedState();
     st.items = Array.from({ 'length': n }, (_, i) => i + 1);
 
-    const result = await dispatcher.execute(dagName, st, { 'signal': ctl.signal });
+    const result = await dispatcher.execute(dagIri, st, { 'signal': ctl.signal });
 
     const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.ok(storedRaw !== undefined, `checkpoint must be present after abort (n=${n})`);
     const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
-    const entry = stored['fan'];
-    assert.ok(entry !== undefined, `expected progress entry for "fan" (n=${n})`);
+    const entry = stored[placementIri(dagIri, 'fan')];
+    assert.ok(entry !== undefined, `expected progress entry for "${placementIri(dagIri, 'fan')}" (n=${n})`);
     // Narrow to bounded mode — no casts.
     assert.ok(entry.mode === 'bounded', `expected bounded mode checkpoint (n=${n}); got ${entry.mode}`);
 
@@ -190,13 +205,13 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(boundedWorkerNode);
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-ahead-cap', CONCURRENCY));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:bounded-ahead-cap', 'bounded-ahead-cap', CONCURRENCY));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);
-    const snapshots = ProgressCapture.install(state);
+    const snapshots = ProgressCapture.install(state, 'urn:noocodec:dag:bounded-ahead-cap');
 
-    await dispatcher.execute('bounded-ahead-cap', state);
+    await dispatcher.execute('urn:noocodec:dag:bounded-ahead-cap', state);
 
     assert.ok(snapshots.length > 0, 'expected checkpoint writes to have occurred');
 
@@ -215,13 +230,13 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(boundedWorkerNode);
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-watermark-mono', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:bounded-watermark-mono', 'bounded-watermark-mono', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => (i + 1) * 10);
-    const snapshots = ProgressCapture.install(state);
+    const snapshots = ProgressCapture.install(state, 'urn:noocodec:dag:bounded-watermark-mono');
 
-    await dispatcher.execute('bounded-watermark-mono', state);
+    await dispatcher.execute('urn:noocodec:dag:bounded-watermark-mono', state);
 
     for (let i = 1; i < snapshots.length; i++) {
       const prev = snapshots[i - 1];
@@ -239,13 +254,13 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(boundedWorkerNode);
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-tally', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:bounded-tally', 'bounded-tally', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i);
-    const snapshots = ProgressCapture.install(state);
+    const snapshots = ProgressCapture.install(state, 'urn:noocodec:dag:bounded-tally');
 
-    await dispatcher.execute('bounded-tally', state);
+    await dispatcher.execute('urn:noocodec:dag:bounded-tally', state);
 
     for (let i = 0; i < snapshots.length; i++) {
       const snap = snapshots[i];
@@ -266,12 +281,12 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const processedItems: number[] = [];
 
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<BoundedState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item', -1);
       processedItems.push(item);
       return 'success';
     }));
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-resume', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:bounded-resume', 'bounded-resume', 2));
 
     const state = new BoundedState();
     state.items = [10, 20, 30, 40, 50];
@@ -280,10 +295,11 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     // Pre-seed a bounded checkpoint: items 0 and 1 acked (watermark=2),
     // item 2 in inbox (in-flight at crash time).
+    const fanIri = placementIri('urn:noocodec:dag:bounded-resume', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
+      [fanIri]: {
         'mode':          'bounded' as const,
-        'placementName': 'fan',
+        'placementName': fanIri,
         'inbox':         [{ 'index': 2, 'item': 30 }],
         'watermark':     2,
         'aheadAcked':    [],
@@ -291,7 +307,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       },
     });
 
-    const result = await dispatcher.resume('bounded-resume', state, 'fan');
+    const result = await dispatcher.resume('urn:noocodec:dag:bounded-resume', state, fanIri);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly on resume');
 
@@ -329,20 +345,20 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const baselineDispatcher = new Dagonizer<BoundedState>();
     baselineDispatcher.registerNode(boundedWorkerNode);
-    baselineDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
+    baselineDispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:byte-identity-baseline', 'byte-identity-baseline', 2));
 
     const baselineDispatcher2 = new Dagonizer<BoundedState>();
-    baselineDispatcher2.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+    baselineDispatcher2.registerNode(TestNode.make<BoundedState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item', -1);
       state.processed.push(item);
       return 'success';
     }));
-    baselineDispatcher2.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
+    baselineDispatcher2.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:byte-identity-baseline', 'byte-identity-baseline', 2));
 
     const baselineState = new BoundedState();
     baselineState.items = Array.from({ 'length': N }, (_, i) => i + 1);
 
-    const baselineResult = await baselineDispatcher2.execute('byte-identity-baseline', baselineState);
+    const baselineResult = await baselineDispatcher2.execute('urn:noocodec:dag:byte-identity-baseline', baselineState);
     const baseline = [...baselineResult.state.processed].sort((a, b) => a - b);
 
     // ── interrupted run: abort after K completions ───────────────────────────
@@ -354,6 +370,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     class InterruptedWorkerNode extends MonadicNode<BoundedState, 'success'> {
       override readonly name = 'worker';
+      override readonly '@id' = 'urn:noocodec:node:worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<BoundedState>, context: NodeContextType): Promise<Map<'success', Batch<BoundedState>>> {
@@ -375,29 +392,30 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       }
     }
     interruptedDispatcher.registerNode(new InterruptedWorkerNode());
-    interruptedDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
+    interruptedDispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:byte-identity-interrupted', 'byte-identity-interrupted', 2));
 
     const interruptedState = new BoundedState();
     interruptedState.items = Array.from({ 'length': N }, (_, i) => i + 1);
 
     const partial = await interruptedDispatcher.execute(
-      'byte-identity-interrupted',
+      'urn:noocodec:dag:byte-identity-interrupted',
       interruptedState,
       { 'signal': controller.signal },
     );
 
-    assert.equal(partial.cursor, 'fan', 'interrupted run must pause at fan');
+    assert.equal(partial.cursor, placementIri('urn:noocodec:dag:byte-identity-interrupted', 'fan'),
+      'interrupted run must pause at fan');
 
     // ── resume: fresh dispatcher + fresh worker (no abort) ───────────────────
 
     const resumeDispatcher = new Dagonizer<BoundedState>();
 
-    resumeDispatcher.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+    resumeDispatcher.registerNode(TestNode.make<BoundedState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item', -1);
       state.processed.push(item);
       return 'success';
     }));
-    resumeDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
+    resumeDispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:byte-identity-interrupted', 'byte-identity-interrupted', 2));
 
     const resumeState = new BoundedState();
     // Carry the bounded checkpoint metadata from the partial run.
@@ -410,7 +428,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     // Full index-stable array source so the engine skips already-acked indices.
     resumeState.items = Array.from({ 'length': N }, (_, i) => i + 1);
 
-    const resumeResult = await resumeDispatcher.resume('byte-identity-interrupted', resumeState, 'fan');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:byte-identity-interrupted', resumeState, placementIri('urn:noocodec:dag:byte-identity-interrupted', 'fan'));
 
     assert.equal(resumeResult.cursor, null, 'resume must complete cleanly');
 
@@ -449,13 +467,13 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const TOTAL = 5;
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(boundedWorkerNode);
-    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-final', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('urn:noocodec:dag:bounded-final', 'bounded-final', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);
-    const snapshots = ProgressCapture.install(state);
+    const snapshots = ProgressCapture.install(state, 'urn:noocodec:dag:bounded-final');
 
-    await dispatcher.execute('bounded-final', state);
+    await dispatcher.execute('urn:noocodec:dag:bounded-final', state);
 
     assert.ok(snapshots.length === TOTAL,
       `expected ${TOTAL} checkpoint writes (one per ack), got ${snapshots.length}`);
