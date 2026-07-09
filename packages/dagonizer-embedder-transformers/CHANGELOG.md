@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-embedder-transformers
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [63a6261]
+  - @studnicky/dagonizer@2.0.0
+
 ## 1.0.1
 
 ## 1.0.0
