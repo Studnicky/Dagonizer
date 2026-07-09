@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CARTOGRAPHER_IRIS } from '../../cartographerIds.ts';
-import { cartographerBundle, cartographerDAG } from '../../dag.ts';
+import { cartographerBundle, cartographerDAG, cartographerResumeDAG } from '../../dag.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
 import { GeoSourceResolveDAG } from '../../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
@@ -91,36 +91,78 @@ describe('Cartographer DAG end-to-end', () => {
     assert.equal(state.lifecycle.variant, 'completed');
   });
 
-  it('declares data-type entrypoints that feed the intake gather directly', () => {
+  it('declares source-specific feed DAG entrypoints that converge on the open intake gather', () => {
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
-    const sourceIris = CARTOGRAPHER_IRIS.intakeEventTypes.map((source) => CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source));
+    const feedSources = CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer);
 
-    assert.deepEqual(cartographerDAG.entrypoints, {
-      'position-ping':         intakeGatherIri,
-      'facility-scan':         intakeGatherIri,
-      'sensor-reading':        intakeGatherIri,
-      'customs-event':         intakeGatherIri,
-      'delivery-confirmation': intakeGatherIri,
-    });
+    assert.deepEqual(cartographerDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographer));
     assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'cartographer must not use a pre-phase intake node');
-    assert.ok(!cartographerDAG.nodes.some((node) => node.name.endsWith('-intake')), 'cartographer must not use pre-gather intake placements');
+
+    for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
+      const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, source);
+      const feedPlacementNode = cartographerDAG.nodes.find((node) => node['@id'] === feedPlacement);
+      assert.ok(feedPlacementNode, `feed placement for '${source}' must exist`);
+      assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
+      if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`feed placement '${source}' must be an EmbeddedDAGNode`);
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
+      assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
+    }
 
     const gather = cartographerDAG.nodes.find((node) => node['@id'] === intakeGatherIri);
     assert.ok(gather, 'intake-gather placement must exist');
     assert.equal(gather['@type'], 'GatherNode');
     if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-    assert.deepEqual(Object.keys(gather.sources), sourceIris);
-    assert.equal(gather.gather.strategy, 'source-intake');
+    assert.deepEqual(gather.sources, feedSources);
+    assert.equal(gather.gather.strategy, 'canonical-feed');
 
     const gatherIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === intakeGatherIri);
     const scatterIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
     assert.ok(gatherIndex >= 0, 'intake-gather placement must be present');
     assert.ok(scatterIndex > gatherIndex, 'process-stream scatter must come after intake-gather');
 
-    for (const [source, placementName] of Object.entries(cartographerDAG.entrypoints)) {
-      assert.ok(Object.hasOwn(gather.sources, CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source)), `entrypoint '${source}' must be declared as a gather source`);
-      assert.equal(placementName, intakeGatherIri);
+    const scatter = cartographerDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
+    assert.ok(scatter, 'process-stream placement must exist');
+    assert.equal(scatter['@type'], 'ScatterNode');
+    if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
+    assert.equal(scatter.source, 'canonicalEvents');
+    assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
+    assert.equal(scatter.itemKey, 'canonical-event');
+  });
+
+  it('declares the same producer feed topology for resume with item-mode processing', () => {
+    const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'intake-gather');
+
+    assert.deepEqual(cartographerResumeDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographerResume));
+
+    for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
+      const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, source);
+      const feedPlacementNode = cartographerResumeDAG.nodes.find((node) => node['@id'] === feedPlacement);
+      assert.ok(feedPlacementNode, `resume feed placement for '${source}' must exist`);
+      assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
+      if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`resume feed placement '${source}' must be an EmbeddedDAGNode`);
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
+      assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
     }
+
+    const gather = cartographerResumeDAG.nodes.find((node) => node['@id'] === intakeGatherIri);
+    assert.ok(gather, 'resume intake-gather placement must exist');
+    assert.equal(gather['@type'], 'GatherNode');
+    if (gather['@type'] !== 'GatherNode') assert.fail('resume intake-gather must be a GatherNode');
+    assert.deepEqual(gather.sources, CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographerResume));
+    assert.equal(gather.gather.strategy, 'canonical-feed');
+
+    const scatter = cartographerResumeDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'process-stream'));
+    assert.ok(scatter, 'resume process-stream placement must exist');
+    assert.equal(scatter['@type'], 'ScatterNode');
+    if (scatter['@type'] !== 'ScatterNode') assert.fail('resume process-stream must be a ScatterNode');
+    assert.equal(scatter.source, 'canonicalEvents');
+    assert.ok('dag' in scatter.body, 'resume process-stream must use a DAG body');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
+    assert.equal(scatter.itemKey, 'canonical-event');
+    assert.deepEqual(scatter.execution, { 'mode': 'item', 'concurrency': 16 });
   });
 
   it('populates state.insights with at least one continent', () => {

@@ -26,7 +26,7 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { Dagonizer } from '@studnicky/dagonizer';
+import { Dagonizer, type DAGNodeType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CARTOGRAPHER_IRIS } from '../../cartographerIds.ts';
 import { CartographerWorkersDag } from '../../dag.ts';
@@ -123,29 +123,37 @@ describe('Cartographer workers-bundle registration', () => {
     assert.ok(dag, 'cartographer DAG must be registered');
 
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
-    const sourceIris = CARTOGRAPHER_IRIS.intakeEventTypes.map((source) => CARTOGRAPHER_IRIS.entrypointIri(CARTOGRAPHER_IRIS.dag.cartographer, source));
+    const feedSources = CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer);
 
-    assert.deepEqual(dag.entrypoints, {
-      'position-ping':         intakeGatherIri,
-      'facility-scan':         intakeGatherIri,
-      'sensor-reading':        intakeGatherIri,
-      'customs-event':         intakeGatherIri,
-      'delivery-confirmation': intakeGatherIri,
-    });
+    assert.deepEqual(dag.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographer));
     assert.ok(!dag.nodes.some((node) => node['@type'] === 'PhaseNode'), 'workers cartographer must not use a pre-phase intake node');
-    assert.ok(!dag.nodes.some((node) => node.name.endsWith('-intake')), 'workers cartographer must not use pre-gather intake placements');
+
+    for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
+      const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, source);
+      const feedPlacementNode: DAGNodeType | undefined = dag.nodes.find((node) => node['@id'] === feedPlacement);
+      assert.ok(feedPlacementNode, `feed placement for '${source}' must exist`);
+      assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
+      if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`feed placement '${source}' must be an EmbeddedDAGNode`);
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
+      assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
+    }
 
     const gather = dag.nodes.find((node) => node['@id'] === intakeGatherIri);
     assert.ok(gather, 'intake-gather placement must exist');
     assert.equal(gather['@type'], 'GatherNode');
     if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-    assert.deepEqual(Object.keys(gather.sources), sourceIris);
-    assert.equal(gather.gather.strategy, 'source-intake');
+    assert.deepEqual(gather.sources, feedSources);
+    assert.equal(gather.gather.strategy, 'canonical-feed');
 
     const scatter = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
     assert.ok(scatter, 'process-stream placement must exist');
     assert.equal(scatter['@type'], 'ScatterNode');
     if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
+    assert.equal(scatter.source, 'canonicalEvents');
+    assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
+    assert.equal(scatter.itemKey, 'canonical-event');
     assert.equal(scatter.container, 'cpu');
 
     const summary = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'summarize-insights'));

@@ -7,9 +7,9 @@
  * record is encoded per-format via Sources.buildPayloadFromScan and yielded as a
  * SourcePayload, so peak memory is O(numTypes) regardless of total count.
  *
- * The engine's scatter natively accepts AsyncIterable as the source value, so
- * assigning the result of EventStreamSource.streamTyped to state.sources wires it
- * transparently with no DAG changes needed.
+ * Producer feed nodes use streamProducer to open one event-type source stream;
+ * compatibility flows can still use streamTyped for the merged SourcePayload
+ * stream shape.
  *
  * Format distribution: each EventTypeConfig entry's formatMix weights determine
  * the proportional threshold split for that entry's scan budget. Because scans are
@@ -222,6 +222,45 @@ class ScaledCycleIterator implements AsyncIterator<SourcePayload, undefined> {
 // #region event-stream-source
 export class EventStreamSource {
   private constructor() { /* static-only */ }
+
+  private static producerConfig(
+    config: EventTypeConfig,
+    eventType: SourcePayload['eventType'],
+    totalCount?: number,
+  ): EventTypeConfig {
+    const originalSum = EventTypeConfigMath.total(config);
+    if (originalSum <= 0) return [];
+
+    const effectiveConfig = totalCount !== undefined && totalCount > 0
+      ? EventTypeConfigMath.scale(config, originalSum, EventTypeConfigMath.clampCount(totalCount))
+      : config;
+
+    return effectiveConfig
+      .filter((entry) => entry.eventType === eventType && entry.count > 0)
+      .map((entry) => ({
+        'eventType': entry.eventType,
+        'count': entry.count,
+        'formatMix': entry.formatMix,
+      }));
+  }
+
+  private static async *empty(): AsyncIterable<SourcePayload> {
+    return;
+  }
+
+  static hasProducer(config: EventTypeConfig, eventType: SourcePayload['eventType'], totalCount?: number): boolean {
+    return EventStreamSource.producerConfig(config, eventType, totalCount).length > 0;
+  }
+
+  static streamProducer(
+    config: EventTypeConfig,
+    eventType: SourcePayload['eventType'],
+    totalCount?: number,
+  ): AsyncIterable<SourcePayload> {
+    const producerConfig = EventStreamSource.producerConfig(config, eventType, totalCount);
+    if (producerConfig.length === 0) return EventStreamSource.empty();
+    return EventStreamSource.streamTyped(producerConfig, EventTypeConfigMath.total(producerConfig));
+  }
 
   /**
    * Return an AsyncIterable<SourcePayload> for a typed feed. Yields payloads

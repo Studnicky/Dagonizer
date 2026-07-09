@@ -31,6 +31,7 @@ import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
   GeminiNanoAvailabilityType,
+  LanguageModelLanguageOptionsType,
   LanguageModelStaticInterface,
   PromptOptionsType,
 } from './LanguageModelHost.js';
@@ -44,9 +45,8 @@ import {
 const GEMINI_NANO_MODEL_ID = 'gemini-nano';
 
 /**
- * Output-language codes Chrome's Prompt API accepts for `outputLanguage`.
- * A `LanguageModel.create()` call carrying any other code is rejected;
- * `OutputLanguage.narrow` folds every unsupported code down to `en`.
+ * Language codes Chrome's Prompt API accepts in `expectedInputs` and
+ * `expectedOutputs`. Unsupported tags are folded down to `en`.
  */
 const SUPPORTED_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set(['de', 'en', 'es', 'fr', 'ja']);
 
@@ -54,7 +54,7 @@ const SUPPORTED_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set(['de', 'en', 'es
 const DEFAULT_OUTPUT_LANGUAGE = 'en';
 
 /**
- * Resolves the BCP-47 output-language code passed to `LanguageModel.create()`.
+ * Resolves the BCP-47 language code used for Prompt API language expectations.
  * Precedence: an explicit `GeminiNanoAdapterOptionsType.outputLanguage` wins;
  * otherwise the browser's `navigator.language` is read and narrowed; otherwise
  * `DEFAULT_OUTPUT_LANGUAGE`. Resolution happens once, at construction time —
@@ -99,15 +99,16 @@ export type GeminiNanoAdapterOptionsType = {
    */
   readonly timeoutMs?: number;
   /**
-   * BCP-47 output-language code attested to `LanguageModel.create()` (`de`,
-   * `en`, `es`, `fr`, or `ja`). Omitted values use the browser's
-   * `navigator.language`, narrowed to a supported code, then to `en`.
+   * BCP-47 language code used in Prompt API `expectedInputs` and
+   * `expectedOutputs` (`de`, `en`, `es`, `fr`, or `ja`). Omitted values use
+   * the browser's `navigator.language`, narrowed to a supported code, then to
+   * `en`.
    */
   readonly outputLanguage?: string;
 };
 
 export class GeminiNanoAdapter extends BaseAdapter {
-  /** Resolved BCP-47 output-language code passed to every `LanguageModel.create()` call. */
+  /** Resolved BCP-47 language code used for every Prompt API request. */
   readonly #outputLanguage: string;
 
   /**
@@ -128,14 +129,21 @@ export class GeminiNanoAdapter extends BaseAdapter {
   }
 
   /** Public probe. Used by the provider matrix to pick the best backend. */
-  static async detect(): Promise<GeminiNanoAvailabilityType> {
+  static async detect(outputLanguage = OutputLanguage.resolve(undefined)): Promise<GeminiNanoAvailabilityType> {
     const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) return 'unavailable';
     try {
-      return await lm.availability();
+      return await lm.availability(GeminiNanoAdapter.languageOptions(outputLanguage));
     } catch {
       return 'unavailable';
     }
+  }
+
+  private static languageOptions(outputLanguage: string): LanguageModelLanguageOptionsType {
+    return {
+      'expectedInputs':  [{ 'type': 'text', 'languages': [outputLanguage] }],
+      'expectedOutputs': [{ 'type': 'text', 'languages': [outputLanguage] }],
+    };
   }
 
   constructor(options: GeminiNanoAdapterOptionsType = {}) {
@@ -162,7 +170,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
    * adapter while the on-device weights warm up. Never throws.
    */
   override async probe(): Promise<boolean> {
-    return (await GeminiNanoAdapter.detect()) === 'available';
+    return (await GeminiNanoAdapter.detect(this.#outputLanguage)) === 'available';
   }
 
   /**
@@ -189,12 +197,13 @@ export class GeminiNanoAdapter extends BaseAdapter {
     // one leading system prompt so the constraint holds for any consumer message
     // shape; user turns go to `prompt()` below. No system turn → no
     // `initialPrompts` (a user-only session is valid).
-    // `request.signal` carries the base's composed deadline+caller signal, so
-    // forwarding it to both `lm.create()` and `session.prompt()` is sufficient
-    // for abort and timeout enforcement.
+    // `request.signal` carries the base's composed deadline+caller signal.
+    // Language expectations are sent at both the session and prompt boundary
+    // so Chrome can apply the matching on-device safety and quality policy.
+    const languageOptions = GeminiNanoAdapter.languageOptions(this.#outputLanguage);
     const createOptions = systemPrompt === ''
-      ? { 'outputLanguage': this.#outputLanguage, 'signal': request.signal }
-      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'outputLanguage': this.#outputLanguage, 'signal': request.signal };
+      ? { ...languageOptions, 'signal': request.signal }
+      : { ...languageOptions, 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'signal': request.signal };
 
     let rawSession: unknown;
     try {
@@ -204,7 +213,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
     const session = languageModelSessionValidator.validate(rawSession);
     try {
-      const options: PromptOptionsType = { 'signal': request.signal };
+      const options: PromptOptionsType = { ...languageOptions, 'signal': request.signal };
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.variant === 'schema') {
@@ -247,9 +256,10 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const systemPrompt = this.#collapseSystemMessages(request);
     const userPrompt = this.#collapseUserMessages(request);
 
+    const languageOptions = GeminiNanoAdapter.languageOptions(this.#outputLanguage);
     const createOptions = systemPrompt === ''
-      ? { 'outputLanguage': this.#outputLanguage, 'signal': request.signal }
-      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'outputLanguage': this.#outputLanguage, 'signal': request.signal };
+      ? { ...languageOptions, 'signal': request.signal }
+      : { ...languageOptions, 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'signal': request.signal };
 
     let rawSession: unknown;
     try {
@@ -271,7 +281,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       // consistently for the rest of the stream.
       let mode: 'cumulative' | 'incremental' | undefined;
       try {
-        const stream = session.promptStreaming(userPrompt, { 'signal': request.signal });
+        const stream = session.promptStreaming(userPrompt, { ...languageOptions, 'signal': request.signal });
         for await (const chunk of stream) {
           if (request.signal.aborted) {
             throw new LlmError('stream aborted', Classifications['TIMEOUT']);

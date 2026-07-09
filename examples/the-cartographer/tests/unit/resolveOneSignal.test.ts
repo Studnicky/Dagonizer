@@ -167,6 +167,26 @@ describe('ResolveCodeNode — code kind', () => {
     assert.ok(state.candidate.timezone.length > 0, 'timezone should be non-empty for DE');
   });
 
+  it('normalizes ISO-3 and display-name country codes before resolving', async () => {
+    const node = new ResolveCodeNode();
+
+    const iso3State = new CartographerState();
+    iso3State.setMetadata('geo-signal', GeoSignalDescriptorBuilder.from({
+      'kind': 'code', 'weight': 0.8, 'countryCode': 'GBR',
+    }));
+    await executeSingle(node, iso3State);
+    assert.equal(iso3State.candidate.country, 'GB');
+    assert.equal(iso3State.candidate.weight, 0.8);
+
+    const nameState = new CartographerState();
+    nameState.setMetadata('geo-signal', GeoSignalDescriptorBuilder.from({
+      'kind': 'code', 'weight': 0.8, 'countryCode': 'United States',
+    }));
+    await executeSingle(node, nameState);
+    assert.equal(nameState.candidate.country, 'US');
+    assert.equal(nameState.candidate.weight, 0.8);
+  });
+
   it('yields weight:0 for an unrecognised country code', async () => {
     const state = new CartographerState();
     const descriptor = GeoSignalDescriptorBuilder.from({
@@ -332,5 +352,21 @@ describe('ResolveCoordsNode — coords kind', () => {
     assert.equal(state.candidate.source, 'coords');
     // Weight is non-zero: the table or secondary resolver produced a result.
     assert.ok(state.candidate.weight > 0, 'weight should be positive for a resolvable coordinate');
+  });
+
+  it('resolves valid ocean coordinates as water instead of land with empty country', async () => {
+    const state = new CartographerState();
+    const descriptor = GeoSignalDescriptorBuilder.from({
+      'kind': 'coords', 'weight': 1.0, 'lat': 7.5, 'lng': -21.5,
+    });
+    state.setMetadata('geo-signal', descriptor);
+    const node = new ResolveCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
+    assert.equal(state.candidate.source, 'coords');
+    assert.equal(state.candidate.status, 'water');
+    assert.equal(state.candidate.country, '');
+    assert.ok(state.candidate.locality.length > 0, 'water candidate locality should name a water body');
+    assert.equal(state.candidate.weight, 1.0);
   });
 });

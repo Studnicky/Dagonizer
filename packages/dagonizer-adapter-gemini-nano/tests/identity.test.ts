@@ -27,6 +27,13 @@ class TestSink {
   }
 }
 
+function assertLanguageOptions(options: Record<string, unknown> | undefined, language: string): void {
+  assert.ok(options !== undefined);
+  assert.deepEqual(options['expectedInputs'], [{ 'type': 'text', 'languages': [language] }]);
+  assert.deepEqual(options['expectedOutputs'], [{ 'type': 'text', 'languages': [language] }]);
+  assert.equal(options['outputLanguage'], undefined);
+}
+
 void test('GeminiNanoAdapter identity', () => {
   const a = new GeminiNanoAdapter();
   assert.equal(a.id, 'gemini-nano');
@@ -45,8 +52,12 @@ void test('GeminiNanoAdapter.probe returns false when window.LanguageModel is ab
 });
 
 void test('GeminiNanoAdapter.probe returns true when availability() reports "available"', async () => {
+  let availabilityOptions: Record<string, unknown> | undefined;
   LanguageModelStub.install({
-    "availability": async () => Promise.resolve('available'),
+    "availability": async (options: Record<string, unknown>) => {
+      availabilityOptions = options;
+      return Promise.resolve('available');
+    },
     "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
   const a = new GeminiNanoAdapter();
@@ -55,6 +66,7 @@ void test('GeminiNanoAdapter.probe returns true when availability() reports "ava
   } finally {
     LanguageModelStub.remove();
   }
+  assertLanguageOptions(availabilityOptions, 'en');
 });
 
 void test('GeminiNanoAdapter.probe returns true when the host is a callable function (real Chrome shape)', async () => {
@@ -492,17 +504,23 @@ void test('performChat resolves outputLanguage to "en" when no option is set and
       Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor);
     }
   }
-  assert.ok(createOptions !== undefined);
-  assert.equal(createOptions['outputLanguage'], 'en');
+  assertLanguageOptions(createOptions, 'en');
 });
 
-void test('performChat forwards an explicitly configured outputLanguage to LanguageModel.create()', async () => {
+void test('performChat forwards an explicitly configured outputLanguage through Prompt API language expectations', async () => {
   let createOptions: Record<string, unknown> | undefined;
+  let promptOptions: Record<string, unknown> | undefined;
   LanguageModelStub.install({
     'availability': async () => Promise.resolve('available'),
     'create':       async (options: Record<string, unknown>) => {
       createOptions = options;
-      return Promise.resolve({ 'prompt': async () => Promise.resolve('ok'), 'destroy': () => {} });
+      return Promise.resolve({
+        'prompt':  async (_input: unknown, options: Record<string, unknown> = {}) => {
+          promptOptions = options;
+          return Promise.resolve('ok');
+        },
+        'destroy': () => {},
+      });
     },
   });
   const a = new GeminiNanoAdapter({ 'outputLanguage': 'fr' });
@@ -511,8 +529,8 @@ void test('performChat forwards an explicitly configured outputLanguage to Langu
   } finally {
     LanguageModelStub.remove();
   }
-  assert.ok(createOptions !== undefined);
-  assert.equal(createOptions['outputLanguage'], 'fr');
+  assertLanguageOptions(createOptions, 'fr');
+  assertLanguageOptions(promptOptions, 'fr');
 });
 
 void test('performChat narrows an unsupported explicit outputLanguage down to "en"', async () => {
@@ -531,8 +549,7 @@ void test('performChat narrows an unsupported explicit outputLanguage down to "e
   } finally {
     LanguageModelStub.remove();
   }
-  assert.ok(createOptions !== undefined);
-  assert.equal(createOptions['outputLanguage'], 'en');
+  assertLanguageOptions(createOptions, 'en');
 });
 
 void test('performChat detects and narrows navigator.language when no explicit outputLanguage is configured', async () => {
@@ -567,23 +584,26 @@ void test('performChat detects and narrows navigator.language when no explicit o
       Reflect.deleteProperty(globalThis, 'navigator');
     }
   }
-  assert.ok(createOptions !== undefined);
-  assert.equal(createOptions['outputLanguage'], 'es');
+  assertLanguageOptions(createOptions, 'es');
 });
 
-void test('performChatStream forwards the resolved outputLanguage to LanguageModel.create()', async () => {
+void test('performChatStream forwards the resolved outputLanguage through Prompt API language expectations', async () => {
   let createOptions: Record<string, unknown> | undefined;
+  let promptStreamingOptions: Record<string, unknown> | undefined;
   LanguageModelStub.install({
     'availability': async () => Promise.resolve('available'),
     'create':       async (options: Record<string, unknown>) => {
       createOptions = options;
       return Promise.resolve({
-        'promptStreaming': () => new ReadableStream<string>({
-          start(controller) {
-            controller.enqueue('Hi');
-            controller.close();
-          },
-        }),
+        'promptStreaming': (_input: unknown, options: Record<string, unknown> = {}) => {
+          promptStreamingOptions = options;
+          return new ReadableStream<string>({
+            start(controller) {
+              controller.enqueue('Hi');
+              controller.close();
+            },
+          });
+        },
         'prompt':  async () => Promise.resolve(''),
         'destroy': () => {},
       });
@@ -596,8 +616,8 @@ void test('performChatStream forwards the resolved outputLanguage to LanguageMod
   } finally {
     LanguageModelStub.remove();
   }
-  assert.ok(createOptions !== undefined);
-  assert.equal(createOptions['outputLanguage'], 'ja');
+  assertLanguageOptions(createOptions, 'ja');
+  assertLanguageOptions(promptStreamingOptions, 'ja');
 });
 
 void test('performChatStream uses the buffered default for a tool-bearing request', async () => {

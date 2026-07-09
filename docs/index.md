@@ -100,7 +100,7 @@ Three demos, one engine — each a different role the dispatcher can run, all li
 
 **[The Dispatcher](/examples/the-dispatcher)** — *the router.* LLM agents with a human in the loop. A warm-handoff support pipeline: a classifier routes each message, the AI either composes a reply instantly or the flow parks and waits for a human operator, then resumes from checkpoint on their response. A deterministic "trolley switch" can force human routing on top of the LLM decision. Demonstrates HITL Park-and-Correlate and checkpoint/resume.
 
-**[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Multiple source entrypoints feed a first-class intake gather, then scatter through typed event pipelines into geo-resolution, GDPR redaction, and continent-level insights. It demonstrates open intake, explicit gather barriers, worker/container roles, and plugin-shaped DAG parts. No LLM. Runs entirely in the browser.
+**[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Multiple source entrypoints each run their own feed/unpack/normalize DAG, converge through a canonical open gather, then scatter through typed event pipelines into geo-resolution, GDPR redaction, and continent-level insights. It demonstrates open intake, explicit gather barriers, worker/container roles, and plugin-shaped DAG parts. No LLM. Runs entirely in the browser.
 
 ## ⦿ Why "Dagonizer"
 

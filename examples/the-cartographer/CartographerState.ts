@@ -2,7 +2,9 @@
  * CartographerState: the mutable clipboard threaded through every node.
  *
  * Top-level (cartographer DAG):
- *   - `sources`     – source stream assembled by the intake gather; scatter reads it
+ *   - `sourceFeed`      – producer-local stream opened by one feed node
+ *   - `canonicalEvents` – open-gather result consumed by process-stream
+ *   - `sources`         – source-intake helper output used by compatibility flows
  *   - `eventCount`  – display/run scale hint for host tooling
  *   - `records`     – gathered from scatter clones via the 'append' gather strategy
  *   - `insights`    – fixed-size regional aggregate produced by summarizeInsights
@@ -20,18 +22,18 @@
  *                          the parent gather appends this to state.records
  *
  * Checkpoint/resume: snapshotData/restoreData round-trip durable state only.
- * Durable: eventCount, eventConfig, useStreamingSource, streamCount, sources,
+ * Durable: eventCount, eventConfig, useStreamingSource, streamCount,
  * ingestBuckets, canonicalEvents, records, sampleRecords, enriched, insights,
  * journeyAccumulators, errorRollup.
- * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
- * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
- * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
+ * Per-event scratch (sourceFeed, currentSource, decodedText, parsedRecords,
+ * mappedRecords, ingestedEvents, canonical, canonicalVariant, raw, normalized,
+ * currentEvent, geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
  * coldChainBreach, customsDwellHours,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
- * The `sources` AsyncIterable is not checkpointable (snapshots as empty array);
- * resume rebuilds it through CartographerSourceIntake using eventConfig,
- * streamCount, and the scatter cursor.
+ * AsyncIterable feed fields are not checkpointable. Resume restores
+ * canonicalEvents and relies on the scatter checkpoint for exactly-once
+ * process-stream continuation.
  * The scatter durable-inbox handles exactly-once delivery; un-acked items are
  * reprocessed from the inbox, not re-read from source.
  */
@@ -149,35 +151,38 @@ export class CartographerState extends NodeStateBase {
   ];
 
   /**
-   * When true, host tooling reports the Cartographer run as streaming. The DAG
-   * always assembles source streams through its multi-entry intake gather; this
-   * flag remains a UI/CLI display knob.
+   * When true, host tooling reports the Cartographer run as streaming. The feed
+   * DAGs always open lazy producer streams; this flag remains a UI/CLI display
+   * knob.
    */
   useStreamingSource: boolean = false;
 
   /**
-   * Override for the total source-payload count. When > 0, the source-intake
-   * gather scales eventConfig before opening per-type streams.
+   * Override for the total source-payload count. When > 0, producer feed nodes
+   * scale eventConfig before opening their per-type streams.
    */
   streamCount: number = 0;
 
   /**
-   * StreamChannel buffer capacity for the streaming source channel.
-   * When 0 (default), the channel uses its built-in default capacity (256).
-   * Set to 1 to enable genuine per-item backpressure (useful for abort-and-resume
-   * scenarios where the producer must not pre-fill the buffer).
+   * Reserved stream-channel capacity knob for compatibility source helpers.
+   * The current producer feed DAGs use pull-based AsyncIterable streams.
    */
   streamChannelCapacity: number = 0;
 
   /**
-   * The multi-format source feeds, assembled by intake-gather. Each is a
+   * Producer-local source stream emitted by one concrete feed node. The owning
+   * producer feed DAG scatters this stream through ingest-source, then emits the
+   * resulting canonicalEvents array to the top-level open gather.
+   */
+  sourceFeed: SourcePayload[] | AsyncIterable<SourcePayload> = [];
+
+  /**
+   * Compatibility source stream assembled by SourceIntakeGather. Each item is a
    * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
    *
-   * This field normally holds the merged `AsyncIterable<SourcePayload>` built
-   * from five per-type source streams. The engine's scatter accepts that stream
-   * directly. Snapshot/restore serialises the array path only; resume rebuilds
-   * the async iterable from eventConfig and the scatter cursor.
+   * Snapshot/restore serialises the array path only. The current Cartographer
+   * DAG reads canonicalEvents after the producer feed DAGs converge.
    */
   sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
@@ -197,7 +202,7 @@ export class CartographerState extends NodeStateBase {
   canonicalEvents: CanonicalEventVariant[] = [];
 
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
-  /** The source feed currently being ingested (set from `sources` by select). */
+  /** The source payload currently being ingested from the producer feed scatter. */
   currentSource: SourcePayload = {
     'sourceId':     '',
     'format':       'json',
@@ -522,6 +527,11 @@ export class CartographerState extends NodeStateBase {
       // AsyncIterable — shared by reference
       copy.sources = this.sources;
     }
+    if (Array.isArray(this.sourceFeed)) {
+      copy.sourceFeed = this.sourceFeed.map((s) => ({ ...s }));
+    } else {
+      copy.sourceFeed = this.sourceFeed;
+    }
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
     copy.streamChannelCapacity = this.streamChannelCapacity;
@@ -530,8 +540,8 @@ export class CartographerState extends NodeStateBase {
     // ingestBuckets, canonicalEvents, records, sampleRecords, insights, and
     // journeys are scatter-gather accumulators written by the parent DAG's
     // gather strategy (InsightsFoldGather) or by post-scatter summary nodes.
-    // Scatter body clones (stream-event, ingestion) never read these fields —
-    // they only read the item placed on metadata by the engine. Copying them
+    // Scatter body clones (event-pipeline-typed, ingestion) never read these
+    // fields — they only read the item placed on metadata by the engine. Copying them
     // into clones would send up to 200 EnrichedShipment JSON objects per clone
     // over the worker channel (60 KB × 16,000 in-flight clones = ~960 MB at
     // concurrencyLimit=16 / capacity=1000), producing the O(peak-concurrency)
@@ -621,9 +631,8 @@ export class CartographerState extends NodeStateBase {
     return {
       'eventCount': this.eventCount,
       'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
-      // AsyncIterable sources are not checkpointable. Resume rebuilds them via
-      // CartographerSourceIntake using eventConfig + streamCount + cursor.
-      // Snapshot as an empty array so restoreData leaves sources = [].
+      // AsyncIterable sources are not checkpointable. Snapshot as an empty array
+      // so restoreData leaves the compatibility source stream empty.
       'sources':    Array.isArray(this.sources)
         ? this.sources.map((s) => CartographerState.sourceToJson(s))
         : [],
@@ -1310,6 +1319,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': false,
       'geoConfidence':     0,
       'geoModalities':     [],
+      'geoFlaggedForReview': false,
       'geoSourceModel':    '',
       'geoSecondaryLookupUsed': false,
       'redactionRun':      false,
@@ -1340,6 +1350,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': r.ipGeolocateSkipped,
       'geoConfidence':     r.geoConfidence,
       'geoModalities':     [...r.geoModalities],
+      'geoFlaggedForReview': r.geoFlaggedForReview,
       'geoSourceModel':    r.geoSourceModel,
       'geoSecondaryLookupUsed': r.geoSecondaryLookupUsed,
       'redactionRun':      r.redactionRun,
@@ -1369,6 +1380,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': CartographerState.bool(o['ipGeolocateSkipped']),
       'geoConfidence':     CartographerState.num(o['geoConfidence']),
       'geoModalities':     CartographerState.strArr(o['geoModalities']),
+      'geoFlaggedForReview': CartographerState.bool(o['geoFlaggedForReview']),
       'geoSourceModel':    CartographerState.str(o['geoSourceModel']),
       'geoSecondaryLookupUsed': CartographerState.bool(o['geoSecondaryLookupUsed']),
       'redactionRun':      CartographerState.bool(o['redactionRun']),

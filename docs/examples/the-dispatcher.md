@@ -27,6 +27,14 @@ The Dispatcher is a runnable demo: a real browser-executed DAG application, not 
 
 Use it to see human review without losing DAG state or auditability. The customer flow parks with a cursor, the operator flow resumes from that cursor, and the same graph records both halves.
 
+## Runnable Demo
+
+<ClientOnly>
+  <DispatcherRunner />
+</ClientOnly>
+
+Type a customer message and click **Send**. The **DAG** pane lights nodes as the flow executes and dims the branches it skips; the **Config** tab flips the trolley switch and the classification-mode toggle; the **Trace** tab lists every lifecycle event in order. When the flow parks, the right pane auto-switches to **Operator** — type a response and click **Send response** to checkpoint-and-resume the suspended execution.
+
 ## How It Works
 
 The runner wires real node classes, real DAG documents, and browser UI observers together. The visual panes listen to dispatcher lifecycle events, so the page shows execution rather than replaying a canned animation.
@@ -97,17 +105,7 @@ and [The Cartographer](./the-cartographer). What changes is the domain primitive
 this demo exercises the **HITL Park-and-Correlate** lifecycle — `state.park()` →
 `awaiting-input` lifecycle state → `Checkpoint.capture` → `dispatcher.resume()`.
 
-Try it live below. Type a customer message and click **Send**. Switch to the
-**Config** tab to flip the trolley switch and see how routing changes.
-
-<ClientOnly>
-  <DispatcherRunner />
-</ClientOnly>
-
-Watch the **DAG** pane while the flow executes: nodes light cyan while running,
-edges flash on traversal, and skipped branches remain dim. When the flow parks,
-the **Operator** tab activates automatically — type a response and click **Send
-response** to checkpoint-and-resume the suspended execution.
+Switch to the **Config** tab to flip the trolley switch and see how routing changes.
 
 ## What It Lets You Do
 

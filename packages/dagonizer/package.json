@@ -239,7 +239,7 @@
     }
   },
   "devDependencies": {
-    "@cosmos.gl/graph": "^3.1.0",
+    "@cosmos.gl/graph": "^3.2.0",
     "@dagrejs/dagre": "^3.0.0",
     "@types/cytoscape-dagre": "^2.3.4",
     "@types/n3": "^1.26.1",

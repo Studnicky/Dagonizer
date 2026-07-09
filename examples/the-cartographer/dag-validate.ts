@@ -19,6 +19,7 @@ import { pipelineSensorReadingDAG } from './embedded-dags/PipelineSensorReadingD
 import { pipelineCustomsEventDAG } from './embedded-dags/PipelineCustomsEventDAG.ts';
 import { pipelineFacilityScanDAG } from './embedded-dags/PipelineFacilityScanDAG.ts';
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
+import { producerFeedDAGs } from './embedded-dags/ProducerFeedDAG.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 
 // Build the geo-source-resolve DAG with recorded (offline) resolvers for validation.
@@ -28,6 +29,7 @@ const geoSourceResolveDAG = geoSourceResolveBundle.dags[0];
 
 const dags = [
   { 'label': 'cartographer',      'dag': cartographerDAG },
+  ...producerFeedDAGs.map((dag) => ({ 'label': dag.name, 'dag': dag })),
   { 'label': 'ingest-source',     'dag': ingestSourceDAG },
   { 'label': 'geo-source-resolve', 'dag': geoSourceResolveDAG },
   { 'label': 'order-enrichment',  'dag': orderEnrichmentDAG },

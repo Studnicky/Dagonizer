@@ -6,8 +6,8 @@
  * `throttle.concurrencyLimit` is a SECOND concurrency window wrapping
  * `driver.executeItem`. With `concurrency` wide enough to admit every item at
  * once, a tight `throttle.concurrencyLimit` (1) still forces items to run one
- * at a time — a strictly longer wall-clock time than the same DAG with no
- * throttle set, which runs every item in one wave.
+ * at a time. The test observes in-flight item bodies directly instead of
+ * relying on wall-clock elapsed time.
  */
 
 import assert from 'node:assert/strict';
@@ -26,6 +26,12 @@ const THROTTLE_ON_DAG_IRI = 'urn:noocodec:dag:throttle-on';
 const THROTTLE_ABSENT_DAG_IRI = 'urn:noocodec:dag:throttle-absent';
 
 const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+
+interface ConcurrencyProbe {
+  active: number;
+  maxActive: number;
+  starts: number;
+}
 
 class ItemsState extends NodeStateBase {
   items: number[] = [];
@@ -46,13 +52,27 @@ class ItemsState extends NodeStateBase {
   }
 }
 
-// Each item body sleeps a fixed delay — the delay is what makes serialization
-// vs. parallelism observable in wall time. Completion is folded into parent
+function createProbe(): ConcurrencyProbe {
+  return { 'active': 0, 'maxActive': 0, 'starts': 0 };
+}
+
+// Each item body sleeps a fixed delay so overlapping executions remain
+// observable through the in-flight counter. Completion is folded into parent
 // state via the scatter's `append` gather (see `ThrottleTestDag.of`).
-const delayedNode = TestNode.make<ItemsState>('urn:noocodec:node:delayed', ['done'], async () => {
-  await new Promise<void>((resolve) => { setTimeout(resolve, ITEM_DELAY_MS); });
-  return 'done';
-});
+function delayedNode(probe: ConcurrencyProbe) {
+  return TestNode.make<ItemsState>('urn:noocodec:node:delayed', ['done'], async () => {
+    probe.active += 1;
+    probe.starts += 1;
+    probe.maxActive = Math.max(probe.maxActive, probe.active);
+    try {
+      await new Promise<void>((resolve) => { setTimeout(resolve, ITEM_DELAY_MS); });
+      return 'done';
+    } finally {
+      probe.active -= 1;
+    }
+  });
+}
+
 
 class ThrottleTestDag {
   private constructor() {}
@@ -111,47 +131,42 @@ class ThrottleTestDag {
 }
 
 void describe('Scatter: throttle option gates item dispatch through @studnicky/throttle', () => {
-  void it('a tight throttle.concurrencyLimit forces items to serialize, taking measurably longer than the same DAG with no throttle', async () => {
+  void it('a tight throttle.concurrencyLimit serializes item body execution independently of scatter concurrency', async () => {
     const N = 5;
 
+    const unthrottledProbe = createProbe();
     const unthrottledDispatcher = new Dagonizer<ItemsState>();
-    unthrottledDispatcher.registerNode(delayedNode);
+    unthrottledDispatcher.registerNode(delayedNode(unthrottledProbe));
     unthrottledDispatcher.registerDAG(ThrottleTestDag.of(THROTTLE_OFF_DAG_IRI, 'throttle-off', N, null));
 
     const unthrottledState = new ItemsState();
     unthrottledState.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const unthrottledStart = Date.now();
     const unthrottledResult = await unthrottledDispatcher.execute(THROTTLE_OFF_DAG_IRI, unthrottledState);
-    const unthrottledElapsed = Date.now() - unthrottledStart;
 
     assert.equal(unthrottledResult.state.itemResults.length, N, 'all items must complete without throttle');
 
+    const throttledProbe = createProbe();
     const throttledDispatcher = new Dagonizer<ItemsState>();
-    throttledDispatcher.registerNode(delayedNode);
+    throttledDispatcher.registerNode(delayedNode(throttledProbe));
     throttledDispatcher.registerDAG(ThrottleTestDag.of(THROTTLE_ON_DAG_IRI, 'throttle-on', N, { 'concurrencyLimit': 1 }));
 
     const throttledState = new ItemsState();
     throttledState.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const throttledStart = Date.now();
     const throttledResult = await throttledDispatcher.execute(THROTTLE_ON_DAG_IRI, throttledState);
-    const throttledElapsed = Date.now() - throttledStart;
 
     assert.equal(throttledResult.state.itemResults.length, N, 'all items must complete under throttle');
-
-    // Unthrottled: concurrency=N admits every item in one wave — elapsed time
-    // is close to one ITEM_DELAY_MS, not N * ITEM_DELAY_MS.
-    // Throttled (concurrencyLimit=1): items serialize through the throttle
-    // despite concurrency=N — elapsed time is close to N * ITEM_DELAY_MS.
-    const serialFloor = (N - 1) * ITEM_DELAY_MS; // allow one item's slack
+    assert.equal(unthrottledProbe.starts, N, 'unthrottled run must start every item body');
+    assert.equal(throttledProbe.starts, N, 'throttled run must start every item body');
     assert.ok(
-      throttledElapsed >= serialFloor,
-      `throttled run must take at least ${serialFloor}ms (serialized through throttle.concurrencyLimit=1); took ${throttledElapsed}ms`,
+      unthrottledProbe.maxActive > 1,
+      `unthrottled run should execute multiple item bodies concurrently; max active was ${unthrottledProbe.maxActive}`,
     );
-    assert.ok(
-      throttledElapsed > unthrottledElapsed,
-      `throttled run (${throttledElapsed}ms) must take measurably longer than the unthrottled run (${unthrottledElapsed}ms)`,
+    assert.equal(
+      throttledProbe.maxActive,
+      1,
+      `throttle.concurrencyLimit=1 should serialize item body execution; max active was ${throttledProbe.maxActive}`,
     );
   });
 
@@ -159,7 +174,7 @@ void describe('Scatter: throttle option gates item dispatch through @studnicky/t
     const N = 4;
 
     const dispatcher = new Dagonizer<ItemsState>();
-    dispatcher.registerNode(delayedNode);
+    dispatcher.registerNode(delayedNode(createProbe()));
     dispatcher.registerDAG(ThrottleTestDag.of(THROTTLE_ABSENT_DAG_IRI, 'throttle-absent', N, null));
 
     const state = new ItemsState();

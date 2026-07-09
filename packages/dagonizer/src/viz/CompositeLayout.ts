@@ -20,12 +20,13 @@
  */
 
 import type DagreDefault from '@dagrejs/dagre';
+import type { EdgeConfig, GraphLabel } from '@dagrejs/dagre';
 
 type DagreModule = typeof DagreDefault;
 
 import type { DAGType } from '../entities/dag/DAG.js';
 
-import { PlacementUtils } from './internal.js';
+import { PlacementUtils, type CytoscapeIdModeType } from './internal.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -49,6 +50,8 @@ export type LayoutResultType = {
 
 /** Layout tuning knobs (all optional; sensible defaults apply). */
 export type CompositeLayoutOptionsType = {
+  /** Cytoscape id strategy. Default 'path' preserves call-site scoped embedded nodes. */
+  idMode?: CytoscapeIdModeType;
   /** Vertical gap between ranks (dagre ranksep). Default 80. */
   rankSep?: number;
   /** Horizontal gap between sibling nodes (dagre nodesep). Default 60. */
@@ -57,6 +60,16 @@ export type CompositeLayoutOptionsType = {
   nodeWidth?: number;
   /** Default node render height for leaf nodes. Default 50. */
   nodeHeight?: number;
+  /** Extra dagre reservation around embedded-DAG compounds. Default 80. */
+  compoundPadding?: number;
+  /** Outer dagre graph margin. Default 40. */
+  margin?: number;
+  /** Dagre ranking algorithm. Default 'network-simplex'. */
+  ranker?: GraphLabel['ranker'];
+  /** Minimum rank distance for every causal edge. Default 1. */
+  edgeMinLen?: EdgeConfig['minlen'];
+  /** Causal edge weight used during rank/crossing optimisation. Default 1. */
+  edgeWeight?: EdgeConfig['weight'];
 }
 
 // ---------------------------------------------------------------------------
@@ -105,23 +118,19 @@ export class CompositeLayout {
   private static readonly DEFAULT_NODE_SEP = 120;
   private static readonly DEFAULT_NODE_WIDTH = 220;
   private static readonly DEFAULT_NODE_HEIGHT = 60;
-  private static readonly MARGIN = 60;
+  private static readonly DEFAULT_MARGIN = 40;
+  private static readonly DEFAULT_EDGE_MIN_LEN = 1;
+  private static readonly DEFAULT_EDGE_WEIGHT = 1;
 
   /**
-   * Extra padding added to each compound node's dagre size beyond the
+   * Extra reservation added to each compound node's dagre size beyond the
    * sub-layout bounding box. Cytoscape renders a compound container border
    * that extends OUTSIDE the children's positions by the compound's CSS
    * `padding` (defaulting to 14 px in the stylesheet). Without adding this
    * buffer, sibling nodes abut the compound's visual border and overlap it
    * when dagre spaces nodes using only the raw sub-layout dimensions.
-   *
-   * The value is intentionally generous (50 px per side → 100 px total per
-   * axis) to account for:
-   *   - cytoscape compound padding (14–22 px per side in the stylesheet)
-   *   - edge arrowheads and label pills that extend outside the node body
-   *   - deep nesting where the compound's border-width adds up
    */
-  private static readonly COMPOUND_PADDING = 100;
+  private static readonly DEFAULT_COMPOUND_PADDING = 80;
 
   /**
    * Compute positions for every node in `dag`, expanding embedded-DAGs
@@ -178,6 +187,11 @@ export class CompositeLayout {
     const nodeSep    = opts.nodeSep    ?? CompositeLayout.DEFAULT_NODE_SEP;
     const nodeWidth  = opts.nodeWidth  ?? CompositeLayout.DEFAULT_NODE_WIDTH;
     const nodeHeight = opts.nodeHeight ?? CompositeLayout.DEFAULT_NODE_HEIGHT;
+    const margin     = opts.margin     ?? CompositeLayout.DEFAULT_MARGIN;
+    const compoundPadding = opts.compoundPadding ?? CompositeLayout.DEFAULT_COMPOUND_PADDING;
+    const edgeMinLen = opts.edgeMinLen ?? CompositeLayout.DEFAULT_EDGE_MIN_LEN;
+    const edgeWeight = opts.edgeWeight ?? CompositeLayout.DEFAULT_EDGE_WEIGHT;
+    const idMode     = opts.idMode     ?? 'path';
 
     // ── Step 1: identify embedded-DAG sub-layouts ───────────────────────────
 
@@ -193,7 +207,7 @@ export class CompositeLayout {
 
       const innerVisited = new Set(visited);
       innerVisited.add(dagName);
-      const innerPrefix = PlacementUtils.idIn(prefix, placement['@id']);
+      const innerPrefix = PlacementUtils.idIn(prefix, placement['@id'], idMode);
 
       const sub = CompositeLayout.layoutFlat(
         dagreLib,
@@ -213,10 +227,14 @@ export class CompositeLayout {
       "rankdir":  'TB',
       "ranksep":  rankSep,
       "nodesep":  nodeSep,
-      "marginx":  CompositeLayout.MARGIN,
-      "marginy":  CompositeLayout.MARGIN,
+      "marginx":  margin,
+      "marginy":  margin,
+      ...(opts.ranker !== undefined ? { "ranker": opts.ranker } : {}),
     });
-    g.setDefaultEdgeLabel(() => ({}));
+    g.setDefaultEdgeLabel(() => ({
+      "minlen": edgeMinLen,
+      "weight": edgeWeight,
+    }));
 
     // Determine node sizes and register with dagre.
     // • embedded-DAG nodes take the size of their sub-layout BB.
@@ -230,11 +248,11 @@ export class CompositeLayout {
       if (PlacementUtils.embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement['@id']);
         if (sub !== undefined) {
-          // Add COMPOUND_PADDING to each side so dagre reserves space for the
+          // Add compoundPadding so dagre reserves space for the
           // cytoscape compound border that extends outside the sub-layout BB,
           // preventing sibling nodes from overlapping the compound's visual box.
-          w = sub.bb.width  + CompositeLayout.COMPOUND_PADDING;
-          h = sub.bb.height + CompositeLayout.COMPOUND_PADDING;
+          w = sub.bb.width  + compoundPadding;
+          h = sub.bb.height + compoundPadding;
         } else {
           w = nodeWidth;
           h = nodeHeight;
@@ -245,7 +263,7 @@ export class CompositeLayout {
       }
 
       nodeSizes.set(placement['@id'], { "width": w, "height": h });
-      const nodeId = PlacementUtils.idIn(prefix, placement['@id']);
+      const nodeId = PlacementUtils.idIn(prefix, placement['@id'], idMode);
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
@@ -253,11 +271,16 @@ export class CompositeLayout {
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       if (!('outputs' in placement)) continue;
 
-      const fromId = PlacementUtils.idIn(prefix, placement['@id']);
+      const fromId = PlacementUtils.idIn(prefix, placement['@id'], idMode);
 
       for (const target of Object.values(placement.outputs)) {
-        const toId = PlacementUtils.idIn(prefix, target);
-        if (g.hasNode(toId)) g.setEdge(fromId, toId);
+        const toId = PlacementUtils.idIn(prefix, target, idMode);
+        if (g.hasNode(toId)) {
+          g.setEdge(fromId, toId, {
+            "minlen": edgeMinLen,
+            "weight": edgeWeight,
+          });
+        }
       }
     }
 
@@ -269,7 +292,7 @@ export class CompositeLayout {
     const positions = new Map<string, NodePositionType>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
-      const nodeId = PlacementUtils.idIn(prefix, placement['@id']);
+      const nodeId = PlacementUtils.idIn(prefix, placement['@id'], idMode);
       // dagre's graphlib types `g.node()` as `Label` (no geometry properties).
       // After `dagreLib.layout(g)` the runtime value carries `{x, y}`; the
       // `hasPosition` guard narrows it cast-free (and rejects missing ids).
@@ -284,6 +307,7 @@ export class CompositeLayout {
           const dx = dagrePos.x - sub.bb.centerX;
           const dy = dagrePos.y - sub.bb.centerY;
           for (const [childId, childPos] of sub.positions) {
+            if (idMode === 'iri' && positions.has(childId)) continue;
             positions.set(childId, { "x": childPos.x + dx, "y": childPos.y + dy });
           }
           // The compound node itself sits at the dagre center.
@@ -299,7 +323,7 @@ export class CompositeLayout {
 
     // ── Step 4: compute bounding box ────────────────────────────────────
 
-    const bb = CompositeLayout.boundingBox(positions, nodeSizes, nodeWidth, nodeHeight, prefix);
+    const bb = CompositeLayout.boundingBox(positions, nodeSizes, nodeWidth, nodeHeight, prefix, idMode);
 
     return { positions, bb };
   }
@@ -314,6 +338,7 @@ export class CompositeLayout {
     defaultW: number,
     defaultH: number,
     prefix: string,
+    idMode: CytoscapeIdModeType,
   ): BoundingBox {
     if (positions.size === 0) {
       return { "minX": 0, "minY": 0, "maxX": defaultW, "maxY": defaultH, "centerX": defaultW / 2, "centerY": defaultH / 2, "width": defaultW, "height": defaultH };
@@ -326,7 +351,9 @@ export class CompositeLayout {
 
     for (const [id, pos] of positions) {
       // Try to look up node size by un-prefixing the last segment.
-      const localName = prefix === '' ? id : id.slice(prefix.length + 1);
+      const localName = idMode === 'iri'
+        ? id
+        : prefix === '' ? id : id.slice(prefix.length + 1);
       const size = nodeSizes.get(localName);
       const hw = (size?.width  ?? defaultW) / 2;
       const hh = (size?.height ?? defaultH) / 2;

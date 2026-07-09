@@ -201,7 +201,7 @@ export class DagHost {
       } else {
         // Dynamic import is the module ingest boundary: the loaded module is
         // unknown at compile time. A typed declaration narrows it without a cast.
-        const mod: { default?: unknown } = await import(registryModule);
+        const mod: { default?: unknown } = await import(/* @vite-ignore */ registryModule);
 
         // `DagHost.#isRegistryModule` is a type-guard predicate that confirms the
         // default export implements `RegistryModuleInterface` (object with an

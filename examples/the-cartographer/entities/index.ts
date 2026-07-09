@@ -64,3 +64,9 @@ export type { GeoResolution } from './GeoResolution.ts';
 
 export { GeoSignalDescriptorSchema, DEFAULT_GEO_SIGNAL_DESCRIPTOR, GeoSignalDescriptorBuilder, GeoSignalDescriptorGuard } from './GeoSignalDescriptor.ts';
 export type { GeoSignalDescriptor } from './GeoSignalDescriptor.ts';
+
+export { GeoConsensusSchema, DEFAULT_GEO_CONSENSUS, GeoConsensusBuilder, GeoConsensusGuard } from './GeoConsensus.ts';
+export type { GeoConsensus } from './GeoConsensus.ts';
+
+export { GeoPositionSchema, DEFAULT_GEO_POSITION, GeoPositionBuilder, GeoPositionGuard } from './GeoPosition.ts';
+export type { GeoPosition } from './GeoPosition.ts';

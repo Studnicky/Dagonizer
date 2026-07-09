@@ -70,6 +70,14 @@ const READABLE_IDLE_ZOOM = 0.2;
  * close inspection is always available regardless of graph size.
  */
 const MAX_ABSOLUTE_ZOOM = 4;
+const FIT_PADDING = 24;
+
+/**
+ * At full-fit zooms below this threshold the graph is a topology overview:
+ * edge labels and leaf-node text become visual noise, while compound labels
+ * still identify the major DAG bodies.
+ */
+const OVERVIEW_ZOOM_MAX = 0.11;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -106,6 +114,11 @@ export interface AnimatedDagGraphOptions extends Partial<CytoscapeGraphOptionsTy
    * Called after every zoom change with the new zoom level.
    */
   readonly onZoomChange?: (level: number) => void;
+  /**
+   * Initial fit behavior. `readable` zooms in after fitting huge graphs so
+   * labels are legible; `fit` leaves the entire graph visible.
+   */
+  readonly initialView?: 'fit' | 'readable';
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +135,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   readonly #nodeVariants: Readonly<Record<string, string>>;
   readonly #onNodeClick: ((name: string) => void) | null;
   readonly #onZoomChange: ((level: number) => void) | null;
+  readonly #initialView: 'fit' | 'readable';
 
   /** The mutable set of currently-expanded embedded-DAG names. */
   #expandedDags: Set<string>;
@@ -139,6 +153,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   /** True when the visitor has grabbed the camera. Released by applyFit(). */
   #userInteracted: boolean = false;
+  #overviewApplied: boolean = false;
 
   // ── Cleanup refs ─────────────────────────────────────────────────────────
 
@@ -159,11 +174,13 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     super(container, dag, {
       ...(options.embeddedDAGs !== undefined ? { 'embeddedDAGs': options.embeddedDAGs } : {}),
       ...(options.layoutOptions !== undefined ? { 'layoutOptions': options.layoutOptions } : {}),
+      ...(options.idMode        !== undefined ? { 'idMode':        options.idMode        } : {}),
     });
 
     this.#nodeVariants  = options.nodeVariants  ?? {};
     this.#onNodeClick = options.onNodeClick ?? null;
     this.#onZoomChange = options.onZoomChange ?? null;
+    this.#initialView = options.initialView ?? 'readable';
 
     // Seed the expanded set.
     if (options.expandAll === true && this.embeddedDAGs.size > 0) {
@@ -193,7 +210,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   protected override composeElements(): ReadonlyArray<CytoscapeElementType> {
     const filtered = this.#filteredRegistry();
-    const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered });
+    const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered, idMode: this.idMode });
 
     // Enrich each node element with data.variant from nodeVariants map.
     return raw.map((el) => {
@@ -277,9 +294,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   #makeNodeAdapter(cy: Core, id: string): NodeVizAdapter {
     const target = () => {
-      const exact = cy.$id(id);
-      if (exact.length > 0) return exact;
-      return cy.nodes().filter((n: NodeSingular) => n.id().endsWith(`/${id}`));
+      return this.resolveNode(id) ?? cy.collection();
     };
     return {
       addClass(name: string)    { target()?.addClass(name); },
@@ -335,7 +350,57 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   #markUserGesture(): void { this.#userInteracted = true; }
 
   #pollZoom(cy: Core): void {
+    this.#applyZoomPresentation(cy);
     if (this.#onZoomChange !== null) this.#onZoomChange(cy.zoom());
+  }
+
+  #applyZoomPresentation(cy: Core): void {
+    const overview = cy.zoom() < OVERVIEW_ZOOM_MAX;
+    if (overview === this.#overviewApplied) return;
+    this.#overviewApplied = overview;
+    const elements = cy.elements();
+    if (overview) {
+      elements.addClass('dag-overview');
+      this.#applyOverviewStyleBypass(cy);
+    } else {
+      elements.removeClass('dag-overview');
+      this.#clearOverviewStyleBypass(cy);
+    }
+  }
+
+  #applyOverviewStyleBypass(cy: Core): void {
+    cy.nodes().not(':parent').style({
+      'background-color': '#16dff5',
+      'border-color': '#9af8ff',
+      'border-width': 1.4,
+    });
+    cy.nodes('[variant = "non-deterministic"]').not(':parent').style({
+      'background-color': '#8f6dff',
+      'border-color': '#c8b8ff',
+      'border-width': 1.4,
+    });
+    cy.nodes('[type = "terminal"]').not(':parent').style({
+      'background-color': '#d4a649',
+      'border-color': '#f5c76a',
+      'border-width': 1.2,
+    });
+    cy.nodes('.dag-contained').not(':parent').forEach((node: NodeSingular) => {
+      const stroke = node.data('containerStroke');
+      const text = node.data('containerText');
+      node.style({
+        'background-color': typeof stroke === 'string' ? stroke : '#16dff5',
+        'border-color': typeof text === 'string' ? text : '#9af8ff',
+      });
+    });
+    cy.nodes(':parent').style({
+      'background-color': '#071018',
+      'border-color': '#22e8ff',
+      'border-width': 0.8,
+    });
+  }
+
+  #clearOverviewStyleBypass(cy: Core): void {
+    cy.nodes().removeStyle('background-color border-color border-width');
   }
 
   // ── Public: node resolution ───────────────────────────────────────────────
@@ -346,6 +411,12 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
     const exact = cy.$id(id);
     if (exact.length > 0) return exact;
+
+    const alias = cy.nodes().filter((n: NodeSingular) => {
+      const aliases = n.data('aliases');
+      return Array.isArray(aliases) && aliases.includes(id);
+    });
+    if (alias.length > 0) return alias;
 
     const suffix = cy.nodes().filter((n: NodeSingular) => n.id().endsWith(`/${id}`));
     if (suffix.length > 0) {
@@ -363,6 +434,28 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     }
 
     return cy.collection();
+  }
+
+  #resolveGraphNodeId(id: string): string {
+    const nodes = this.resolveNode(id);
+    if (nodes !== null && nodes.length > 0) {
+      const first = nodes[0];
+      if (first !== undefined) return first.id();
+    }
+    return id;
+  }
+
+  #resolveDagVizEvent(event: DagVizEvent): DagVizEvent {
+    switch (event.type) {
+      case 'NODE_START':
+      case 'NODE_END':
+      case 'NODE_ERROR':
+        return { ...event, 'node': this.#resolveGraphNodeId(event.node) };
+      case 'EDGE_TRAVERSE':
+        return { ...event, 'source': this.#resolveGraphNodeId(event.source) };
+      case 'RESET':
+        return event;
+    }
   }
 
   // ── Public: camera follow ─────────────────────────────────────────────────
@@ -403,29 +496,32 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   // ── Public: dispatch surface ─────────────────────────────────────────────
 
   dispatch(event: DagVizEvent): void {
-    this.#machine?.dispatch(event);
+    this.#machine?.dispatch(this.#resolveDagVizEvent(event));
   }
 
   setActive(node: string): void {
-    this.dispatch({ type: 'NODE_START', node });
-    this.#activeNodeIds.add(node);
+    const resolved = this.#resolveGraphNodeId(node);
+    this.dispatch({ type: 'NODE_START', 'node': resolved });
+    this.#activeNodeIds.add(resolved);
     this.#followActiveSet();
   }
 
   setCompleted(node: string): void {
-    this.dispatch({ type: 'NODE_END', node });
-    this.#activeNodeIds.delete(node);
+    const resolved = this.#resolveGraphNodeId(node);
+    this.dispatch({ type: 'NODE_END', 'node': resolved });
+    this.#activeNodeIds.delete(resolved);
     if (this.#activeNodeIds.size > 0) this.#followActiveSet();
   }
 
   setErrored(node: string): void {
-    this.dispatch({ type: 'NODE_ERROR', node });
-    this.#activeNodeIds.delete(node);
+    const resolved = this.#resolveGraphNodeId(node);
+    this.dispatch({ type: 'NODE_ERROR', 'node': resolved });
+    this.#activeNodeIds.delete(resolved);
     if (this.#activeNodeIds.size > 0) this.#followActiveSet();
   }
 
   markEdgeTraversed(source: string, route: string): void {
-    this.dispatch({ type: 'EDGE_TRAVERSE', source, route });
+    this.dispatch({ type: 'EDGE_TRAVERSE', 'source': this.#resolveGraphNodeId(source), route });
   }
 
   /**
@@ -475,7 +571,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     // shrank (collapsed) since the last clamp; re-clamp around the new fit.
     cy.minZoom(1e-50);
     cy.maxZoom(1e50);
-    cy.fit(undefined, 40);
+    cy.fit(undefined, FIT_PADDING);
     const fitZoom = cy.zoom();
     cy.minZoom(fitZoom);
     cy.maxZoom(Math.max(fitZoom * 8, MAX_ABSOLUTE_ZOOM));
@@ -483,7 +579,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     // than the whole-graph speck. minZoom still equals the whole-graph fit, so
     // zooming out to the overview remains available.
     const readable = Math.min(READABLE_IDLE_ZOOM, cy.maxZoom());
-    if (fitZoom < readable) {
+    if (this.#initialView === 'readable' && fitZoom < readable) {
       cy.zoom(readable);
       const bb = cy.elements().boundingBox();
       cy.pan({
@@ -502,7 +598,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     const layout = cy.layout({
       name:    'preset',
       fit:     true,
-      padding: 60,
+      padding: FIT_PADDING,
       animate: false,
     });
     // `preset` runs synchronously, so layoutstop has already fired here — fit
@@ -551,12 +647,24 @@ export class AnimatedDagGraph extends CytoscapeGraph {
    * Toggle the expansion state of `dagName`, then re-render and re-layout.
    */
   async toggleExpand(dagName: string): Promise<void> {
-    if (this.#expandedDags.has(dagName)) {
-      this.#expandedDags.delete(dagName);
+    const aliases = this.#dagAliasKeys(dagName);
+    const isExpanded = aliases.some((key) => this.#expandedDags.has(key));
+    if (isExpanded) {
+      for (const key of aliases) this.#expandedDags.delete(key);
     } else {
-      this.#expandedDags.add(dagName);
+      for (const key of aliases) this.#expandedDags.add(key);
     }
     await this.rebuild();
+  }
+
+  #dagAliasKeys(dagName: string): readonly string[] {
+    const dag = this.embeddedDAGs.get(dagName);
+    if (dag === undefined) return [dagName];
+    const aliases: string[] = [];
+    for (const [key, candidate] of this.embeddedDAGs) {
+      if (candidate === dag) aliases.push(key);
+    }
+    return aliases.length > 0 ? aliases : [dagName];
   }
 
   /**
@@ -569,6 +677,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     const positioned = await this.applyLayout(this.composeElements());
     cy.elements().remove();
     cy.add(positioned as Parameters<Core['add']>[0]);
+    this.#overviewApplied = false;
     this.rerunLayout();
     this.enforceVisibility(cy);
     this.applyFit();

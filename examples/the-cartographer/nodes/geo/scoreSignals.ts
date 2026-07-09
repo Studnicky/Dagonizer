@@ -28,7 +28,8 @@ import {
 } from '../../entities/GeoSignalDescriptor.ts';
 import type { GeoSignalDescriptor } from '../../entities/GeoSignalDescriptor.ts';
 import { SignalWeight } from '../../entities/SignalWeight.ts';
-import { CallingCode } from '../../geo/CallingCode.ts';
+import { CallingCode } from '@studnicky/geo-resolver';
+import { CountryCodes } from '../../services.ts';
 
 import {
   MonadicNode,
@@ -62,7 +63,11 @@ export class ScoreSignalsNode extends MonadicNode<CartographerState, 'scored'> {
     const lng = body.longitude;
     const ipAddress   = body.ipAddress;
     const localeTag   = body.localeTag;
-    const countryCode = body.countryCode;
+    // recipientCountry is destination/billing data, not where this event
+    // happened — this is a travel log, so the code signal reflects only the
+    // event's own countryCode, never a fallback to the shipment's eventual
+    // destination.
+    const countryCode = CountryCodes.toIso2(body.countryCode);
     const address     = body.address;
     const phone       = body.phone;
 

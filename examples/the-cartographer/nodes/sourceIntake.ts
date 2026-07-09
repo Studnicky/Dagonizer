@@ -1,9 +1,9 @@
 /**
- * sourceIntake: stream construction helpers for Cartographer's open intake gather.
+ * sourceIntake: stream construction helpers for source-payload compatibility flows.
  *
- * The intake gather is entrypoint-driven: each data-type entrypoint is a
- * canonical entrypoint IRI, and the gather/source helpers open the matching
- * typed source stream directly.
+ * The current runnable Cartographer topology uses producer feed DAGs. These
+ * helpers remain for source-payload stream examples and compatibility DAGs that
+ * rebuild a deterministic merged SourcePayload stream.
  */
 
 import type { CartographerState } from '../CartographerState.ts';
@@ -64,10 +64,7 @@ export class CartographerSourceIntake {
 
   static streamFor(state: CartographerIntakeState, eventType: CartographerEventType): AsyncIterable<SourcePayload> {
     const totalCount = state.streamCount > 0 ? state.streamCount : undefined;
-    return CartographerSourceIntake.filterType(
-      EventStreamSource.streamTyped(state.eventConfig, totalCount),
-      eventType,
-    );
+    return EventStreamSource.streamProducer(state.eventConfig, eventType, totalCount);
   }
 
   static mergedFor(state: CartographerState, resumeAfter: number = 0): AsyncIterable<SourcePayload> {
@@ -87,27 +84,47 @@ export class CartographerSourceIntake {
     for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
       const record = records.find((candidate) => CartographerSourceIntake.sourceType(candidate.source) === source);
       if (record === undefined) continue;
-      streams.push(CartographerSourceIntake.streamFor(state, source));
+      streams.push(CartographerSourceIntake.recordFeed(record) ?? CartographerSourceIntake.streamFor(state, source));
     }
     return SourcePayloadStream.roundRobin(streams);
   }
 
+  private static recordFeed(record: GatherRecordType): AsyncIterable<SourcePayload> | null {
+    if (CartographerSourceIntake.isSourcePayloadIterable(record.result)) return record.result;
+    const sourceFeed = Reflect.get(record.cloneState, 'sourceFeed');
+    return CartographerSourceIntake.isSourcePayloadIterable(sourceFeed) ? sourceFeed : null;
+  }
+
+  private static isSourcePayloadIterable(value: unknown): value is AsyncIterable<SourcePayload> {
+    return value !== null
+      && typeof value === 'object'
+      && Symbol.asyncIterator in value
+      && typeof Reflect.get(value, Symbol.asyncIterator) === 'function';
+  }
+
   private static sourceType(source: string): CartographerEventType | null {
-    const marker = '/entrypoint/';
-    const index = source.indexOf(marker);
-    if (index < 0) return null;
-    const label = decodeURIComponent(source.slice(index + marker.length));
+    const entrypointMarker = '/entrypoint/';
+    const entrypointIndex = source.indexOf(entrypointMarker);
+    if (entrypointIndex >= 0) {
+      return CartographerSourceIntake.eventTypeFromLabel(
+        decodeURIComponent(source.slice(entrypointIndex + entrypointMarker.length)),
+      );
+    }
+
+    const nodeMarker = '/node/dag-feed-';
+    const nodeIndex = source.indexOf(nodeMarker);
+    if (nodeIndex >= 0) {
+      return CartographerSourceIntake.eventTypeFromLabel(
+        decodeURIComponent(source.slice(nodeIndex + nodeMarker.length)),
+      );
+    }
+
+    return null;
+  }
+
+  private static eventTypeFromLabel(label: string): CartographerEventType | null {
     return CARTOGRAPHER_IRIS.intakeEventTypes.includes(label as CartographerEventType)
       ? (label as CartographerEventType)
       : null;
-  }
-
-  private static async *filterType(
-    stream: AsyncIterable<SourcePayload>,
-    eventType: CartographerEventType,
-  ): AsyncIterable<SourcePayload> {
-    for await (const item of stream) {
-      if (item.eventType === eventType) yield item;
-    }
   }
 }

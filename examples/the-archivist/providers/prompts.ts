@@ -58,8 +58,11 @@ export const directives = {
 
   // ── Slot labels ──────────────────────────────────────────────────────
   "visitorQuestionLabel":   'Visitor question:',
+  "archivistGreetingLabel": 'Archivist greeting:',
   "recentContextLabel":     'Recent context:',
   "conversationContextLabel":'Conversation context:',
+  "conversationTranscriptInstruction": 'Transcript context from the RDF memory graph. These lines are prior messages only; use them for continuity and answer the active Visitor question line in this prompt.',
+  "conversationTranscriptEnd": 'End transcript context.',
   "searchNotesLabel":       'Search notes:',
   "shortlistedTitlesLabel": 'Catalog records returned:',
   "draftLabel":             'Draft:',
@@ -639,7 +642,7 @@ export const prompts = {
   suggestVisitorReplyTo(language: string, greeting: string): string {
     const body = [
       directives.visitorReplyContextLine,
-      `"${greeting}"`,
+      `${directives.archivistGreetingLabel} ${greeting}`,
       directives.visitorReplyInterest,
       directives.visitorReplyInstruction,
       directives.visitorReplyContent,
@@ -742,14 +745,12 @@ export class PromptFormat {
   /** Format prior conversation turns as a terse "Conversation so far" block. */
   static formatConversationBlock(turns: readonly ConversationTurn[]): string {
     if (turns.length === 0) return '';
-    // Attribute each line to its speaker explicitly. "Visitor" is the person
-    // the Archivist is helping; "You" is the Archivist's own earlier words. A
-    // weak model otherwise reads its own prior `archivist:` line and echoes the
-    // title back as "you mentioned <title>", misattributing the source of data.
+    // Attribute each line to its speaker explicitly so weak models do not
+    // collapse a prior Archivist answer into the active Visitor request.
     const lines = turns
-      .map((t) => (t.role === 'visitor' ? `  Visitor said: ${t.text}` : `  You (the Archivist) said: ${t.text}`))
+      .map((t) => (t.role === 'visitor' ? `  Visitor: ${t.text}` : `  Archivist: ${t.text}`))
       .join('\n');
-    return `\nConversation so far (most recent last); attribute each line to its speaker:\n${lines}`;
+    return `\n${directives.conversationTranscriptInstruction}\n${lines}\n${directives.conversationTranscriptEnd}`;
   }
 
   static formatCandidateRow(n: number, c: CandidateType): string {

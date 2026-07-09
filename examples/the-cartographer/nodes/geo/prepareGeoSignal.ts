@@ -2,8 +2,9 @@ import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import { GeoSignalDescriptorBuilder } from '../../entities/GeoSignalDescriptor.ts';
 import type { GeoSignalDescriptor } from '../../entities/GeoSignalDescriptor.ts';
-import { CallingCode } from '../../geo/CallingCode.ts';
+import { CallingCode } from '@studnicky/geo-resolver';
 import { SignalWeight } from '../../entities/SignalWeight.ts';
+import { CountryCodes } from '../../services.ts';
 import {
   Batch,
   MonadicNode,
@@ -97,11 +98,16 @@ export class PrepareGeoSignalNode extends MonadicNode<CartographerState, Prepare
           })
           : null;
       case 'code':
-        return body.countryCode.length > 0
+        // recipientCountry is destination/billing data, not where this event
+        // happened — this is a travel log, so the code signal reflects only
+        // the event's own countryCode, never a fallback to the shipment's
+        // eventual destination.
+        const countryCode = CountryCodes.toIso2(body.countryCode);
+        return countryCode.length > 0
           ? GeoSignalDescriptorBuilder.from({
             'kind': 'code',
             'weight': SignalWeight.for('code'),
-            'countryCode': body.countryCode,
+            'countryCode': countryCode,
           })
           : null;
       case 'phone':

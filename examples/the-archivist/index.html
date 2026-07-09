@@ -9,12 +9,14 @@
         color-scheme: dark;
         --bg:      #0e1116;
         --panel:   #161b22;
+        --panel-2: #0f141b;
         --border:  #30363d;
         --fg:      #e6edf3;
         --muted:   #8b949e;
         --accent:  #58a6ff;
         --warn:    #f0883e;
         --result:  #56d364;
+        --error:   #f85149;
       }
       * { box-sizing: border-box; }
       html, body {
@@ -47,14 +49,65 @@
         display: flex;
         overflow: hidden;
       }
-      /* ── Left pane: conversation ─────────────────────────────────── */
+      /* ── Shared tabs ──────────────────────────────────────────────── */
+      .tab-strip {
+        flex-shrink: 0;
+        display: flex;
+        gap: 0;
+        min-height: 36px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel-2);
+        overflow-x: auto;
+      }
+      .tab-button {
+        appearance: none;
+        border: 0;
+        border-right: 1px solid var(--border);
+        border-radius: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 9px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .tab-button[aria-selected="true"] {
+        background: var(--panel);
+        color: var(--fg);
+        box-shadow: inset 0 -2px 0 var(--accent);
+      }
+      .tab-panel,
+      .wide-panel {
+        min-height: 0;
+      }
+      .tab-panel[hidden],
+      .wide-panel[hidden] {
+        display: none !important;
+      }
+      /* ── Left pane: chat + trace ─────────────────────────────────── */
       #left-pane {
         display: flex;
         flex-direction: column;
-        width: 400px;
-        min-width: 260px;
+        width: 430px;
+        min-width: 300px;
         border-right: 1px solid var(--border);
         overflow: hidden;
+      }
+      #left-pane .tab-button {
+        flex: 0 1 auto;
+        min-width: 0;
+        padding-inline: 8px;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #conversation-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
       }
       #conversation {
         flex: 1;
@@ -95,7 +148,10 @@
         gap: 8px;
       }
       form { display: flex; gap: 8px; }
-      input[type="text"] {
+      input[type="text"],
+      input[type="password"],
+      input[type="number"],
+      select {
         flex: 1;
         padding: 8px 12px;
         background: var(--panel);
@@ -103,6 +159,9 @@
         border: 1px solid var(--border);
         border-radius: 6px;
         font-size: 14px;
+      }
+      input[type="range"] {
+        width: 100%;
       }
       button {
         padding: 8px 16px;
@@ -114,6 +173,15 @@
         cursor: pointer;
       }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.secondary {
+        background: var(--panel);
+        color: var(--fg);
+        border: 1px solid var(--border);
+      }
+      button.compact {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
       #hitl-banner {
         display: none;
         flex-direction: column;
@@ -124,60 +192,221 @@
         border-radius: 0 0 6px 6px;
       }
       #hitl-banner .hitl-row { display: flex; gap: 8px; }
-      /* ── Right pane: DAG + debug log ─────────────────────────────── */
+      #trace-panel {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+      }
+      .panel-section {
+        border-bottom: 1px solid var(--border);
+        padding: 12px 0;
+      }
+      .panel-section:first-child { padding-top: 0; }
+      .section-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .section-title {
+        flex: 1;
+        margin: 0;
+        font-size: 12px;
+        color: var(--fg);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .status-line {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .choice-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 0;
+      }
+      .choice-row label {
+        flex: 1;
+        font-size: 13px;
+      }
+      .backend-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .backend-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .backend-group-title {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .backend-row {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-2);
+        overflow: hidden;
+      }
+      .backend-row summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        cursor: pointer;
+        list-style: none;
+      }
+      .backend-row summary::-webkit-details-marker { display: none; }
+      .backend-title {
+        flex: 1;
+        min-width: 0;
+        color: var(--fg);
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .backend-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 0 10px 10px;
+      }
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: var(--muted);
+      }
+      .status-dot.ready { background: var(--result); }
+      .status-dot.action { background: var(--warn); }
+      .status-dot.unavailable { background: var(--error); }
+      .control-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .control-field label,
+      .control-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .control-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .trace-entry {
+        border-bottom: 1px solid var(--border);
+        padding: 8px 0;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .trace-entry .trace-node {
+        color: var(--fg);
+        font-weight: 700;
+      }
+      .trace-entry .trace-meta {
+        color: var(--muted);
+      }
+      /* ── Right pane: DAG, memory graph, LLM, config ──────────────── */
       #right-pane {
         flex: 1;
         display: flex;
         flex-direction: column;
         overflow: hidden;
       }
-      #dag-label {
-        flex-shrink: 0;
-        padding: 6px 12px;
-        font-size: 11px;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        border-bottom: 1px solid var(--border);
+      #dag-panel,
+      #memory-panel,
+      #llm-select-panel,
+      #config-panel {
+        flex: 1;
+      }
+      #right-pane .tab-panel {
+        overflow-y: auto;
+        padding: 12px;
       }
       #dag-container {
-        flex: 1;
+        width: 100%;
+        height: 100%;
         position: relative;
         overflow: hidden;
       }
-      /* ── Collapsible debug log ───────────────────────────────────── */
-      #log-section {
+      #memory-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        height: 100%;
+        padding: 12px;
+        overflow: hidden;
+      }
+      #memory-stats {
         flex-shrink: 0;
-        border-top: 1px solid var(--border);
-      }
-      #log-section details summary {
-        padding: 5px 12px;
-        font-size: 11px;
         color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        cursor: pointer;
-        user-select: none;
-        list-style: none;
+        font-size: 12px;
       }
-      #log-section details summary::-webkit-details-marker { display: none; }
-      #log-section details summary::before { content: '▶  '; font-size: 9px; }
-      #log-section details[open] summary::before { content: '▼  '; font-size: 9px; }
+      #memory-graph {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-2);
+      }
+      #memory-graph svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+      }
+      .memory-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--muted);
+        font-size: 13px;
+      }
       #archivist-log {
-        margin: 0;
-        padding: 8px 12px;
+        margin: 12px 0 0;
+        padding: 10px;
         background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
         font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
         font-size: 11px;
         line-height: 1.5;
         white-space: pre-wrap;
         overflow-y: auto;
-        max-height: 160px;
+        min-height: 220px;
+        max-height: 45vh;
       }
       #archivist-log .info   { color: var(--muted); }
       #archivist-log .warn   { color: var(--warn); }
       #archivist-log .result { color: var(--result); font-weight: 600; }
-      #archivist-log .error  { color: #f85149; }
+      #archivist-log .error  { color: var(--error); }
+      @media (max-width: 920px) {
+        #main { flex-direction: column; }
+        #left-pane {
+          width: 100%;
+          min-width: 0;
+          height: 48vh;
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 3px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -188,34 +417,92 @@
       </header>
 
       <div id="main">
-        <!-- Left pane: conversation -->
         <div id="left-pane">
-          <div id="conversation" aria-live="polite" aria-label="Conversation"></div>
-          <div id="ask-area">
-            <form id="ask-form">
-              <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
-              <button id="ask-button" type="submit">Ask</button>
-            </form>
-            <div id="hitl-banner">
-              <span style="color:var(--warn); font-size:13px;">The Archivist is waiting for your input to continue.</span>
-              <div class="hitl-row">
-                <input id="hitl-input" type="text" placeholder="Your answer..." />
-                <button id="hitl-resume" type="button" style="background:#238636; color:#fff;">Resume</button>
+          <div class="tab-strip" role="tablist" aria-label="Archivist controls">
+            <button class="tab-button" type="button" data-tab-target="conversation-panel" aria-controls="conversation-panel" aria-selected="true">Conversation</button>
+            <button class="tab-button" type="button" data-tab-target="trace-panel" aria-controls="trace-panel" aria-selected="false">Trace</button>
+          </div>
+
+          <section id="conversation-panel" class="tab-panel" role="tabpanel">
+            <div id="conversation" aria-live="polite" aria-label="Conversation"></div>
+            <div id="ask-area">
+              <form id="ask-form">
+                <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
+                <button id="ask-button" type="submit">Ask</button>
+              </form>
+              <div id="hitl-banner">
+                <span style="color:var(--warn); font-size:13px;">The Archivist is waiting for your input to continue.</span>
+                <div class="hitl-row">
+                  <input id="hitl-input" type="text" placeholder="Your answer..." />
+                  <button id="hitl-resume" type="button" style="background:#238636; color:#fff;">Resume</button>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
+
+          <section id="trace-panel" class="tab-panel" role="tabpanel" hidden>
+            <h2 class="section-title">Trace</h2>
+            <div id="trace-list" aria-live="polite"></div>
+            <pre id="archivist-log" aria-live="polite"></pre>
+          </section>
         </div>
 
-        <!-- Right pane: DAG topology + debug log -->
         <div id="right-pane">
-          <div id="dag-label">DAG Topology — The Archivist v6.0</div>
-          <div id="dag-container"></div>
-          <div id="log-section">
-            <details>
-              <summary>Debug log</summary>
-              <pre id="archivist-log" aria-live="polite"></pre>
-            </details>
+          <div class="tab-strip" role="tablist" aria-label="Graph views">
+            <button class="tab-button" type="button" data-tab-target="dag-panel" aria-controls="dag-panel" aria-selected="true">DAG Topology</button>
+            <button class="tab-button" type="button" data-tab-target="memory-panel" aria-controls="memory-panel" aria-selected="false">Memory Graph</button>
+            <button class="tab-button" type="button" data-tab-target="llm-select-panel" aria-controls="llm-select-panel" aria-selected="false">LLM Select</button>
+            <button class="tab-button" type="button" data-tab-target="config-panel" aria-controls="config-panel" aria-selected="false">Configuration</button>
           </div>
+          <section id="dag-panel" class="wide-panel" role="tabpanel">
+            <div id="dag-container"></div>
+          </section>
+          <section id="memory-panel" class="wide-panel" role="tabpanel" hidden>
+            <div id="memory-container">
+              <div id="memory-stats" aria-live="polite"></div>
+              <div id="memory-graph"></div>
+            </div>
+          </section>
+          <section id="llm-select-panel" class="tab-panel" role="tabpanel" hidden>
+            <div class="panel-section">
+              <div class="section-row">
+                <h2 class="section-title">LLM Backend</h2>
+                <button id="backend-refresh" class="secondary compact" type="button">Recheck</button>
+              </div>
+              <div id="backend-summary" class="status-line" aria-live="polite">Detecting backends...</div>
+              <div class="choice-row">
+                <input id="backend-auto" type="radio" name="backend-choice" value="auto" />
+                <label for="backend-auto">Auto-select best available</label>
+              </div>
+            </div>
+            <div id="backend-list" class="backend-list"></div>
+          </section>
+          <section id="config-panel" class="tab-panel" role="tabpanel" hidden>
+            <div class="panel-section">
+              <h2 class="section-title">Conversation History</h2>
+              <div class="control-field">
+                <label for="conversation-window">RDF transcript turns sent to prompts: <span id="conversation-window-value">6</span></label>
+                <input id="conversation-window" type="range" min="0" max="24" step="1" value="6" />
+              </div>
+            </div>
+            <div class="panel-section">
+              <h2 class="section-title">Timeouts</h2>
+              <div class="control-grid">
+                <div class="control-field">
+                  <label for="timeout-compose">Compose seconds</label>
+                  <input id="timeout-compose" type="number" min="5" max="300" step="5" value="60" />
+                </div>
+                <div class="control-field">
+                  <label for="timeout-search">Search seconds</label>
+                  <input id="timeout-search" type="number" min="5" max="300" step="5" value="60" />
+                </div>
+                <div class="control-field">
+                  <label for="timeout-rank">Rank seconds</label>
+                  <input id="timeout-rank" type="number" min="5" max="300" step="5" value="30" />
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>

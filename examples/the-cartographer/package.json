@@ -16,6 +16,7 @@
     "@studnicky/clock": "^5.0.0",
     "@studnicky/concurrency": "^5.0.0",
     "@studnicky/dagonizer": "workspace:^",
+    "@studnicky/geo-resolver": "^0.1.0",
     "@studnicky/signal": "^5.0.0",
     "@studnicky/types": "^5.0.0",
     "countries-and-timezones": "^3.9.0",

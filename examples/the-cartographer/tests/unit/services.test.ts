@@ -126,6 +126,11 @@ describe('Jurisdictions', () => {
     assert.equal(j.jurisdiction, 'CCPA');
   });
 
+  it('resolves ISO-3 and country-name aliases before jurisdiction lookup', () => {
+    assert.equal(Jurisdictions.forIso2('USA').jurisdiction, 'CCPA');
+    assert.equal(Jurisdictions.forIso2('United States').jurisdiction, 'CCPA');
+  });
+
   it('resolves BR to LGPD jurisdiction', () => {
     const j = Jurisdictions.forIso2('BR');
     assert.equal(j.jurisdiction, 'LGPD');
@@ -271,6 +276,22 @@ describe('CountryCodes', () => {
 
   it('converts full name to ISO-3', () => {
     assert.equal(CountryCodes.toIso3('Germany'), 'DEU');
+  });
+
+  it('converts alpha-3 and full names to ISO-2 for geo signals', () => {
+    assert.equal(CountryCodes.toIso2('USA'), 'US');
+    assert.equal(CountryCodes.toIso2('United States'), 'US');
+    assert.equal(CountryCodes.toIso2('GBR'), 'GB');
+    assert.equal(CountryCodes.toIso2('United Kingdom'), 'GB');
+  });
+
+  it('uses recipientCountry as the geo signal fallback when countryCode is blank', () => {
+    assert.equal(CountryCodes.toGeoSignalIso2('', 'United Arab Emirates'), 'AE');
+    assert.equal(CountryCodes.toGeoSignalIso2('GBR', 'United States'), 'GB');
+  });
+
+  it('returns an empty ISO-2 value for unrecognised geo country values', () => {
+    assert.equal(CountryCodes.toIso2('not-a-country'), '');
   });
 
   it('passes through an already ISO-3 code that is known', () => {
@@ -629,6 +650,20 @@ describe('GeoLookup', () => {
     assert.notEqual(ctx.jurisdiction, 'international-waters');
   });
 
+  it('fromResolved normalizes ISO-3 and display-name countries', () => {
+    const iso3 = GeoLookup.fromResolved('GBR', '', 'London', 51.5, -0.1);
+    assert.equal(iso3.status, 'land');
+    assert.equal(iso3.country, 'GB');
+    assert.equal(iso3.continent, 'Europe');
+    assert.equal(iso3.jurisdiction, 'UK-GDPR');
+
+    const name = GeoLookup.fromResolved('United States', '', 'New York', 40.7, -74.0);
+    assert.equal(name.status, 'land');
+    assert.equal(name.country, 'US');
+    assert.equal(name.continent, 'North America');
+    assert.equal(name.jurisdiction, 'CCPA');
+  });
+
   it('fromResolved with INTL country produces maritime context', () => {
     const ctx = GeoLookup.fromResolved('INTL', 'International Waters / Maritime', 'Atlantic', 20.0, -30.0);
     assert.equal(ctx.status, 'water');
@@ -639,6 +674,14 @@ describe('GeoLookup', () => {
   it('fromResolved with empty country also produces maritime context', () => {
     const ctx = GeoLookup.fromResolved('', '', '', 0.0, 0.0);
     assert.equal(ctx.jurisdiction, 'international-waters');
+  });
+
+  it('fromResolved keeps unknown non-empty country values unmapped', () => {
+    const ctx = GeoLookup.fromResolved('not-a-country', '', '', 0, 0);
+    assert.equal(ctx.country, 'UNK');
+    assert.equal(ctx.continent, 'Unmapped');
+    assert.equal(ctx.status, 'unmapped');
+    assert.equal(ctx.jurisdiction, 'baseline');
   });
 
   it('derives jurisdiction for UK (GB ISO-2) as UK-GDPR', () => {

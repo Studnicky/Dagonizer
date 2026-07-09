@@ -16,15 +16,14 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerWorkersDAG } from '../../examples/the-cartographer/dag.ts';
-import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/StreamEventDAG.ts';
+import { cartographerWorkersDAG, eventPipelineTypedDAG } from '../../examples/the-cartographer/dag.ts';
 </script>
 
 # Example 04C: Container-Bound Scatter
 
 ## What It Is
 
-Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each stream-event clone can run behind the `cpu` container role.
+Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each canonical event pipeline clone can run behind the `cpu` container role.
 
 That role is late-bound. In the browser demo it maps to a `WebWorkerContainer`; in CLI worker mode it maps to a `WorkerThreadContainer`.
 
@@ -42,7 +41,7 @@ This makes the container role an assembly concern, not a business-logic concern.
 
 <DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
 
-<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Cartographer stream-event body JSON-LD DAG beside Mermaid generated from it." />
+<DagJsonMermaid :dag="eventPipelineTypedDAG" title="event-pipeline-typed worker body DAG" aria-label="Cartographer typed event pipeline JSON-LD DAG beside Mermaid generated from it." />
 
 A `ScatterNode` placement that declares `container: "cpu"` runs each clone's sub-DAG in the bound backend. In the browser demo, the backend is a `WebWorkerContainer` pool; in CLI worker mode it is a `WorkerThreadContainer` pool. The DAG document stays the same.
 
@@ -54,7 +53,7 @@ The parent DAG and the body DAG above are exactly what the Cartographer page ren
 npm run docs:dev
 ```
 
-Open [The Cartographer](./the-cartographer), click **Run**, and watch the DAG pane expand `process-stream` into the `stream-event` body.
+Open [The Cartographer](./the-cartographer), click **Run**, and watch the DAG pane expand `process-stream` into the `event-pipeline-typed` body.
 
 ## What It Lets You Do
 

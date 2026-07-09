@@ -36,6 +36,8 @@ const CUSTOM_FAN_DAG_IRI = 'urn:noocodex:dag:customfan';
 const APPEND_FAN_DAG_IRI = 'urn:noocodex:dag:appendfan';
 const MAP_FAN_DAG_IRI = 'urn:noocodex:dag:mapfan';
 const CONC_DAG_IRI = 'urn:noocodex:dag:conc';
+const EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI = 'urn:noocodex:dag:embedded-multi-entry-child';
+const EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI = 'urn:noocodex:dag:embedded-multi-entry-parent';
 
 void describe('GatherBuffers', () => {
   void it('preserves multiple scalar records from the same producer source', () => {
@@ -170,6 +172,68 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.seenSources, ['urn:noocodex:dag:main-source-gather/entrypoint/main']);
+  });
+
+  void it('embedded child DAGs seed every declared entrypoint before gathering', async () => {
+    class EmbeddedMultiEntryState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<EmbeddedMultiEntryState>();
+    const left = TestNode.make<EmbeddedMultiEntryState>('urn:noocodec:node:embedded-left', ['success']);
+    const right = TestNode.make<EmbeddedMultiEntryState>('urn:noocodec:node:embedded-right', ['success']);
+    const merge = TestNode.make<EmbeddedMultiEntryState>('urn:noocodec:node:embedded-merge', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+    dispatcher.registerNode(merge);
+
+    const childDag = new DAGBuilder(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, '1', { 'name': 'embedded-multi-entry-child' })
+      .node(placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'left'), left, { 'success': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'join') }, { 'name': 'left' })
+      .node(placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'right'), right, { 'success': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'join') }, { 'name': 'right' })
+      .gather(placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'join'), {
+        [placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'left')]: {},
+        [placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'right')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:embedded-merge' }, {
+        'success': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'end'),
+        'error': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'left': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'left'),
+        'right': placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'right'),
+      })
+      .build();
+
+    const parentDag = new DAGBuilder(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, '1', { 'name': 'embedded-multi-entry-parent' })
+      .embed<EmbeddedMultiEntryState, EmbeddedMultiEntryState>(placementIri(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, 'invoke'), EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, {
+        'success': placementIri(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, 'end'),
+        'error': placementIri(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, 'failed'),
+      }, {
+        'outputs': { 'seenSources': 'seenSources' },
+        'name': 'invoke',
+      })
+      .terminal(placementIri(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .build();
+
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const state = new EmbeddedMultiEntryState();
+    const result = await dispatcher.execute(EMBEDDED_MULTI_ENTRY_PARENT_DAG_IRI, state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, [
+      placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'left'),
+      placementIri(EMBEDDED_MULTI_ENTRY_CHILD_DAG_IRI, 'right'),
+    ]);
   });
 
   void it('first-class gather any policy keeps only the first arrived source', async () => {

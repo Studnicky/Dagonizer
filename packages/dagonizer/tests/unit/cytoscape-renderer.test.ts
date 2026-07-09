@@ -204,6 +204,75 @@ void describe('CytoscapeRenderer.render', () => {
     assert.equal(stepNode.data['parent'], nodeIri('outer', 'embed'));
   });
 
+  void it('can render repeated embedded DAG placements as one canonical IRI node', () => {
+    const sharedDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:shared',
+      '@type':    'DAG',
+      'name':     'shared',
+      'version':  '1',
+      'entrypoints': { 'main': placementIri('urn:noocodex:dag:shared', 'step') },
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:shared/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'urn:noocodec:node:step',
+          'outputs': { 'done': placementIri('urn:noocodex:dag:shared', 'end') },
+        },
+        { '@id': 'urn:noocodex:dag:shared/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const outerDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:outer-shared',
+      '@type':    'DAG',
+      'name':     'outer-shared',
+      'version':  '1',
+      'entrypoints': {
+        'left': placementIri('urn:noocodex:dag:outer-shared', 'left'),
+        'right': placementIri('urn:noocodex:dag:outer-shared', 'right'),
+      },
+      'nodes': [
+        {
+          '@id':     placementIri('urn:noocodex:dag:outer-shared', 'left'),
+          '@type':   'EmbeddedDAGNode',
+          'name':    'left',
+          'dag':     'urn:noocodex:dag:shared',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:outer-shared', 'done'), 'error': placementIri('urn:noocodex:dag:outer-shared', 'done') },
+        },
+        {
+          '@id':     placementIri('urn:noocodex:dag:outer-shared', 'right'),
+          '@type':   'EmbeddedDAGNode',
+          'name':    'right',
+          'dag':     'urn:noocodex:dag:shared',
+          'outputs': { 'success': placementIri('urn:noocodex:dag:outer-shared', 'done'), 'error': placementIri('urn:noocodex:dag:outer-shared', 'done') },
+        },
+        { '@id': placementIri('urn:noocodex:dag:outer-shared', 'done'), '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+    const embeddedDAGs = new Map<string, DAGType>([['urn:noocodex:dag:shared', sharedDAG]]);
+    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs, 'idMode': 'iri' });
+
+    const sharedSteps = elements.filter(
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id === nodeIri('shared', 'step'),
+    );
+    assert.equal(sharedSteps.length, 1, 'same shared placement IRI must render once');
+    assert.deepEqual(
+      [...(sharedSteps[0]?.data.aliases ?? [])].sort(),
+      [
+        scopedNodeIri(nodeIri('outer-shared', 'left'), 'shared', 'step'),
+        scopedNodeIri(nodeIri('outer-shared', 'right'), 'shared', 'step'),
+      ].sort(),
+      'canonical shared node must retain both call-site aliases',
+    );
+
+    const scopedSteps = elements.filter(
+      (el): el is CytoscapeNodeElementType => CytoscapeRendererGuard.isNode(el) && el.data.id.endsWith(`/urn:noocodex:dag:shared/node/step`),
+    );
+    assert.equal(scopedSteps.length, 0, 'IRI mode must not emit path-scoped shared clones');
+  });
+
   void it('rewrites incoming embedded-DAG edges to every child entrypoint', () => {
     const innerDAG: DAGType = {
       '@context': DAG_CONTEXT,

@@ -1,8 +1,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts';
-import { LocaleTimezone } from '../../geo/LocaleTimezone.ts';
-import { CountryLocale } from '../../geo/CountryLocale.ts';
+import { CountryLocale, LocaleTimezone } from '@studnicky/geo-resolver';
 import {
   MonadicNode,
   RoutedBatch,

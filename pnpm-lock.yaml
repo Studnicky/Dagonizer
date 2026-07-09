@@ -257,6 +257,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
+      '@studnicky/geo-resolver':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@studnicky/signal':
         specifier: ^5.0.0
         version: 5.0.0
@@ -338,8 +341,8 @@ importers:
         version: 3.1.1
     devDependencies:
       '@cosmos.gl/graph':
-        specifier: ^3.1.0
-        version: 3.1.0
+        specifier: ^3.2.0
+        version: 3.2.0
       '@dagrejs/dagre':
         specifier: ^3.0.0
         version: 3.0.0
@@ -914,8 +917,8 @@ packages:
   '@chevrotain/types@11.1.2':
     resolution: {integrity: sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==}
 
-  '@cosmos.gl/graph@3.1.0':
-    resolution: {integrity: sha512-pVRM5+eT3a3chfEF8Z+X+8wDx+hhLh76b3WF4tvwgcP1on/xCWQXOqA2v7M8IMq+Bm9MeO53zU7Xk9xATOQolg==}
+  '@cosmos.gl/graph@3.2.0':
+    resolution: {integrity: sha512-z381HFTiWJyvQmfhdA6xuJC/4pkeN2mFDeUdXrxX7y7OwD9E/Los2x6NlJObW99oc714ktVYwpzzHU1Abfaq4g==}
     engines: {node: '>=18.0.0', npm: '>=7.0.0'}
 
   '@dagrejs/dagre@3.0.0':
@@ -1924,6 +1927,10 @@ packages:
     resolution: {integrity: sha512-gTNCCDG0p4U3tSaL+421scBb4o7EgygfehmkJz054NkFKErHkz8M82n5Ll06NO9jStYJzKiYqZRrcFlf5e0+zg==, tarball: https://npm.pkg.github.com/download/@studnicky/cache/5.0.0/45cd4ee5713c77258484947ce532aea36c8fcbb1}
     engines: {node: '>=24.0.0'}
 
+  '@studnicky/cache@5.1.1':
+    resolution: {integrity: sha512-mpAq7RStOQJCs3ub0Q8kwl5pcyXh4ZUqW6qwYHzZZdKI47SELa3tx4KM+SOoSAF4zbVWXU6DtkuTvY31wFU5ew==, tarball: https://npm.pkg.github.com/download/@studnicky/cache/5.1.1/df21208a8574dbe0ff84be72df0192bece0717c3}
+    engines: {node: '>=24.0.0'}
+
   '@studnicky/circular-buffer@5.0.0':
     resolution: {integrity: sha512-JtcezMQ+36pj2qJBY8UE4VAQ4dsWv2LDk1m/Fm/HYQJi6d9PckFwWwvzJJWmDItvkvzF+YrSsmP8GFHKit/X1Q==, tarball: https://npm.pkg.github.com/download/@studnicky/circular-buffer/5.0.0/bec916950b4178b7bfab59ddd7229e94a7ca32ed}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
@@ -1936,12 +1943,20 @@ packages:
     resolution: {integrity: sha512-VPr7aS72c/nHHxUbvYyucYTMdifidg7e53OTpmK6r+HAXjJKafUD1cmWnkMCAiB4QehAmy0MQReFPVxzZT/hHg==, tarball: https://npm.pkg.github.com/download/@studnicky/concurrency/5.0.0/654712794747808de813d6fbfe13a1bf365a6ff7}
     engines: {node: '>=24.0.0'}
 
+  '@studnicky/concurrency@5.1.1':
+    resolution: {integrity: sha512-XCq9UBinUKuPwrFyFN7g1eRbT1Qi0ow/hlie+y7SS2/KNEWWxiBvTgcWneBsx/TIr1VuuNje6nzsZT9vEvQsYQ==, tarball: https://npm.pkg.github.com/download/@studnicky/concurrency/5.1.1/f32c553f485f989776b01aa0f3344832a9d7fcb2}
+    engines: {node: '>=24.0.0'}
+
   '@studnicky/config@5.0.0':
     resolution: {integrity: sha512-PbyQ2qLoSRZ2PBpTojq9GsR2vsc4bHkFB0+Z8vHFSK/yGsiNyOLfN+RJqEDIBsnfhaUTvzUWMf2fH+NEYA/8rg==, tarball: https://npm.pkg.github.com/download/@studnicky/config/5.0.0/321d2d0e811f6c631cfc3333f4a582bcb2f1ac67}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
 
   '@studnicky/errors@5.0.0':
     resolution: {integrity: sha512-NgIgQoWd58N7fyoOP4V3loaxZmTBplu5KMIVN7HZ38GGcDQr71lPOcm+BMVEW9EJGXMCE2iy5XyBrhLhbPaErw==, tarball: https://npm.pkg.github.com/download/@studnicky/errors/5.0.0/c76b3d2465faa52875d73ed6b0daac6533d0dba9}
+    engines: {node: '>=24.12.0', npm: '>=11.0.0'}
+
+  '@studnicky/errors@5.1.1':
+    resolution: {integrity: sha512-7YkU8hPdEsRwNdjOHyg5JoBANFO87qfL0lz51C9RpAWnsDGRWJiaQR9FhGL/3n1PsuhdIaHvO4unIyg5Qh/61g==, tarball: https://npm.pkg.github.com/download/@studnicky/errors/5.1.1/7d76e6adee58d1650f9e1c003dddcc81815cba7a}
     engines: {node: '>=24.12.0', npm: '>=11.0.0'}
 
   '@studnicky/event-bus@5.0.0':
@@ -1952,8 +1967,20 @@ packages:
     resolution: {integrity: sha512-dzgxYIsrsIoMeXzGqiE7HdhayhrblKJ/Es8Tq7cEeCN3sQXcQMe4Fjq5WPg6aBcuKwMgFC+lcZB5zrs0VCN0Tg==, tarball: https://npm.pkg.github.com/download/@studnicky/fsm/5.0.0/862bb72da32f980bc2bfc3cfe8e17324992df80e}
     engines: {node: '>=24.0.0'}
 
+  '@studnicky/geo-resolver@0.1.0':
+    resolution: {integrity: sha512-q/9KKOqjl9Xy+NSJKbgaX13nk0B4PQYX0i08A/Ujgg41asRSGOVq8aAfQ5gpgQmQas5H5JAesaXDph0GnBN5ng==, tarball: https://npm.pkg.github.com/download/@studnicky/geo-resolver/0.1.0/8d8873478361d34d1e98702c15e268ae8dc97a8b}
+    engines: {node: '>=24.12.0', npm: '>=11.0.0'}
+
+  '@studnicky/grid-schemes@0.1.0':
+    resolution: {integrity: sha512-Ea1Njzhm7ybRlpHZ517iP8fZ69pi+I9GJgQtpMueMUT5+5RcuYa19abaPHxRtY5VOdxRcLtN09Nz0jMi6kamJA==, tarball: https://npm.pkg.github.com/download/@studnicky/grid-schemes/0.1.0/952c03b1746162352cfae31f6c698169397dccb5}
+    engines: {node: '>=24.12.0', npm: '>=11.0.0'}
+
   '@studnicky/json@5.0.0':
     resolution: {integrity: sha512-QMq7781UM0aV+hVjWV13+r/w1CH24cZonsPWDlyak1L23t9floMy9cEZO8BgIoZJpbalhLeVuLVHm5W6+pGV9w==, tarball: https://npm.pkg.github.com/download/@studnicky/json/5.0.0/1b42e37e64d8a045d8b399de99bdd177cc7868f6}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/json@5.1.1':
+    resolution: {integrity: sha512-1xBPghwdcfC06uAFQ3ogtIgzjfLvMQKieYgzbeD89jG2TMS/iW3AEBMIOsbnQSkIkox4JmVmMT1Msa8z7MpJTg==, tarball: https://npm.pkg.github.com/download/@studnicky/json/5.1.1/1ded1311b434f65341fd471b5f0cbea7997dd0d3}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
 
   '@studnicky/logger@5.0.0':
@@ -1987,6 +2014,10 @@ packages:
     resolution: {integrity: sha512-C5/tIhm68fEwF54KQTw2XcgtPudLfKeo9zo2UXDRUG4c8ydnsi1nqZxBdjKTIwPDmBe4xhXpFulMWHEfhcDc7Q==, tarball: https://npm.pkg.github.com/download/@studnicky/signal/5.0.0/9d9da05cbbb71d0d473dbf63b89a746161972237}
     engines: {node: '>=24.0.0'}
 
+  '@studnicky/spatial@0.1.0':
+    resolution: {integrity: sha512-okYZ2pV8gERDyljWvtJHXnKi39uP8eO6JoOX8o21MlEcfinV8IIE+iXD7lRPTj2Nh2Vp7bH1s1Qh6QHFza8bDg==, tarball: https://npm.pkg.github.com/download/@studnicky/spatial/0.1.0/5bfab3571772223af2fce838f73aa64e18bc9750}
+    engines: {node: '>=24.12.0', npm: '>=11.0.0'}
+
   '@studnicky/throttle@5.0.0':
     resolution: {integrity: sha512-bdsQp63wevFSTR7CuCneEXwO4VbEfH5iv/ob7GaReHS7+zdtpqmpUP7IsyLczXEPPv06WlC1K5lx9TBpQFGzzQ==, tarball: https://npm.pkg.github.com/download/@studnicky/throttle/5.0.0/b63ba0091b710db11cc12000686d5385c9954d3f}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
@@ -1997,6 +2028,10 @@ packages:
 
   '@studnicky/types@5.0.0':
     resolution: {integrity: sha512-/XHqHJr35Y1iK56Fo5mYoxHYBZjehGOSaKasRr4DOj7eACi5xG+x9QFIG6C2G4RHFPVLdaIkg9yUNFUor8KaEA==, tarball: https://npm.pkg.github.com/download/@studnicky/types/5.0.0/17208e67ee4dc971ec3e6604484ee4ca6608b397}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/types@5.1.1':
+    resolution: {integrity: sha512-L3h6VMzzyBIhOUrnS6pg5xo5ZiPAKLmFOkPK6Vkv3rL3wLxZMMDoxb7SIEhMYTg7xY9RqZiY9lSdioQk7kcTDA==, tarball: https://npm.pkg.github.com/download/@studnicky/types/5.1.1/0f431d1ee6238db1df7ed2fde1ad2c752e995df2}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
 
   '@tensorflow-models/universal-sentence-encoder@1.3.3':
@@ -2711,6 +2746,9 @@ packages:
     resolution: {integrity: sha512-pbnl5XzGBdrFU/wT4jqmJVPn2B6UHPBOhzMQkY/SPUPB6QtUXtmBHBIwCbXJol93mOpGMnQyP/+BB19q04xj7g==}
     engines: {node: '>=4'}
 
+  bigfloat@0.1.1:
+    resolution: {integrity: sha512-kKEqZxc86qgQ6xe8+sN1qQ4XzgksND5QKn6CPrFyQcq/oih+Xk7CaqOD0PKjqar8oO7v4ont5bOHox+LYxD6sQ==}
+
   birpc@2.9.0:
     resolution: {integrity: sha512-KrayHS5pBi69Xi9JmvoqrIgYGDkD6mcSe/i6YKi3w5kekCLzrX4+nawcXqrj2tIp50Kw/mT/s3p+GVK0A0sKxw==}
 
@@ -3317,6 +3355,10 @@ packages:
   guid-typescript@1.0.9:
     resolution: {integrity: sha512-Y8T4vYhEfwJOTbouREvG+3XDsjr8E3kIr7uf+JZ0BYloFsttiHU0WfvANVsR7TxNUJa/WpCnw/Ino/p+DeBhBQ==}
 
+  h3-js@4.5.0:
+    resolution: {integrity: sha512-uKmdPc+DuarnR+XqZxEuWOMw7KzzKROrx3MLeJpFnMOs78S9M5eZ+X5RieS9UcSFQqbeXzbfWuX/W9Pyajinqw==}
+    engines: {node: '>=4', npm: '>=3', yarn: '>=1.3.0'}
+
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
@@ -3661,6 +3703,9 @@ packages:
 
   mermaid@11.16.0:
     resolution: {integrity: sha512-Zvm3kbstgdpvIJPPItlL7fppIZ3kibvc1oZIGxdvk9t6UFz6flv+Jw7FtRGKwfcI8OckmH04LqG6LlS6X4B1pA==}
+
+  mgrs@2.1.0:
+    resolution: {integrity: sha512-/pjuM02PUAhp4dazfccTSKBGTGPFkRz9LKwGJKusc/B20apcGG/CYnRHx0kXmLXy4m5O3p6y6nOVxEnErPpFvQ==}
 
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
@@ -4023,6 +4068,9 @@ packages:
 
   rw@1.3.3:
     resolution: {integrity: sha512-PdhdWy89SiZogBLaw42zdeqtRJ//zFd2PgQavcICDUgJT5oW10QCRKbJ6bg4r0/UY2M6BWd5tkxuGFRvCkgfHQ==}
+
+  s2js@1.44.0:
+    resolution: {integrity: sha512-EbdfCD1hu1zPOWpS5PMq5tA5kJnreRoggkahXyBfJHJyOvOQtath60tuBLkyooOa+V0dtkPz8WQkQ1THriIXyQ==}
 
   safe-buffer@5.2.1:
     resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
@@ -4707,7 +4755,7 @@ snapshots:
 
   '@chevrotain/types@11.1.2': {}
 
-  '@cosmos.gl/graph@3.1.0':
+  '@cosmos.gl/graph@3.2.0':
     dependencies:
       '@luma.gl/core': 9.2.6
       '@luma.gl/engine': 9.2.6(@luma.gl/core@9.2.6)(@luma.gl/shadertools@9.2.6(@luma.gl/core@9.2.6))
@@ -5483,6 +5531,12 @@ snapshots:
       '@studnicky/json': 5.0.0
       '@studnicky/types': 5.0.0
 
+  '@studnicky/cache@5.1.1':
+    dependencies:
+      '@studnicky/errors': 5.1.1
+      '@studnicky/json': 5.1.1
+      '@studnicky/types': 5.1.1
+
   '@studnicky/circular-buffer@5.0.0':
     dependencies:
       '@studnicky/errors': 5.0.0
@@ -5501,6 +5555,12 @@ snapshots:
       '@studnicky/json': 5.0.0
       '@studnicky/types': 5.0.0
 
+  '@studnicky/concurrency@5.1.1':
+    dependencies:
+      '@studnicky/errors': 5.1.1
+      '@studnicky/json': 5.1.1
+      '@studnicky/types': 5.1.1
+
   '@studnicky/config@5.0.0':
     dependencies:
       '@studnicky/errors': 5.0.0
@@ -5509,6 +5569,10 @@ snapshots:
   '@studnicky/errors@5.0.0':
     dependencies:
       '@studnicky/types': 5.0.0
+
+  '@studnicky/errors@5.1.1':
+    dependencies:
+      '@studnicky/types': 5.1.1
 
   '@studnicky/event-bus@5.0.0':
     dependencies:
@@ -5520,10 +5584,35 @@ snapshots:
     dependencies:
       '@studnicky/errors': 5.0.0
 
+  '@studnicky/geo-resolver@0.1.0':
+    dependencies:
+      '@rapideditor/country-coder': 5.6.1
+      '@studnicky/cache': 5.1.1
+      '@studnicky/concurrency': 5.1.1
+      '@studnicky/errors': 5.1.1
+      '@studnicky/grid-schemes': 0.1.0
+      countries-and-timezones: 3.9.0
+      tz-lookup: 6.1.25
+
+  '@studnicky/grid-schemes@0.1.0':
+    dependencies:
+      '@studnicky/errors': 5.1.1
+      '@studnicky/spatial': 0.1.0
+      h3-js: 4.5.0
+      mgrs: 2.1.0
+      s2js: 1.44.0
+
   '@studnicky/json@5.0.0':
     dependencies:
       '@studnicky/errors': 5.0.0
       '@studnicky/types': 5.0.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+
+  '@studnicky/json@5.1.1':
+    dependencies:
+      '@studnicky/errors': 5.1.1
+      '@studnicky/types': 5.1.1
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
 
@@ -5567,6 +5656,8 @@ snapshots:
     dependencies:
       '@studnicky/errors': 5.0.0
 
+  '@studnicky/spatial@0.1.0': {}
+
   '@studnicky/throttle@5.0.0':
     dependencies:
       '@studnicky/circular-buffer': 5.0.0
@@ -5584,6 +5675,10 @@ snapshots:
       '@studnicky/types': 5.0.0
 
   '@studnicky/types@5.0.0':
+    dependencies:
+      json-schema-to-ts: 3.1.1
+
+  '@studnicky/types@5.1.1':
     dependencies:
       json-schema-to-ts: 3.1.1
 
@@ -6319,6 +6414,8 @@ snapshots:
     dependencies:
       is-windows: 1.0.2
 
+  bigfloat@0.1.1: {}
+
   birpc@2.9.0: {}
 
   boolean@3.2.0: {}
@@ -7000,6 +7097,8 @@ snapshots:
 
   guid-typescript@1.0.9: {}
 
+  h3-js@4.5.0: {}
+
   hachure-fill@0.5.2: {}
 
   has-flag@4.0.0: {}
@@ -7398,6 +7497,8 @@ snapshots:
       stylis: 4.4.0
       ts-dedent: 2.3.0
       uuid: 14.0.1
+
+  mgrs@2.1.0: {}
 
   micromark-core-commonmark@2.0.3:
     dependencies:
@@ -7840,6 +7941,10 @@ snapshots:
       queue-microtask: 1.2.3
 
   rw@1.3.3: {}
+
+  s2js@1.44.0:
+    dependencies:
+      bigfloat: 0.1.1
 
   safe-buffer@5.2.1: {}
 

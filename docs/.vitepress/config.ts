@@ -286,6 +286,7 @@ export default withMermaid(defineConfig({
     ['meta', { 'name': 'msapplication-TileColor',                    'content': SITE_THEME_COLOR }],
     ['meta', { 'name': 'msapplication-TileImage',                    'content': `${SITE_BASE}dagonizer-icon-512.png` }],
     ['meta', { 'name': 'apple-mobile-web-app-capable',               'content': 'yes' }],
+    ['meta', { 'name': 'mobile-web-app-capable',                     'content': 'yes' }],
     ['meta', { 'name': 'apple-mobile-web-app-title',                 'content': SITE_TITLE }],
     ['meta', { 'name': 'apple-mobile-web-app-status-bar-style',      'content': 'black-translucent' }],
 

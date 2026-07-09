@@ -24,7 +24,7 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 
 import { BaseLlmClient } from '../../providers/BaseLlmClient.ts';
-import { prompts } from '../../providers/prompts.ts';
+import { PromptFormat, prompts } from '../../providers/prompts.ts';
 
 const CAPS: AdapterCapabilitiesType = { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false };
 
@@ -78,4 +78,23 @@ void test('suggestGreeting still runs under the Archivist persona', async () => 
 
   // No system message in the request → BaseAdapter injects the Archivist directive.
   assert.equal(systemContentOf(adapter.lastMessages), prompts.systemPrompt());
+});
+
+void test('suggestVisitorReplyTo prompt does not quote the greeting message', () => {
+  const prompt = prompts.suggestVisitorReplyTo('en', 'Welcome to the shop. What brings you in?');
+
+  assert.match(prompt, /Archivist greeting: Welcome to the shop\. What brings you in\?/u);
+  assert.doesNotMatch(prompt, /"Welcome to the shop\. What brings you in\?"/u);
+});
+
+void test('conversation block is marked as transcript context from the RDF graph', () => {
+  const block = PromptFormat.formatConversationBlock([
+    { 'role': 'archivist', 'text': 'Welcome to the shop.', 'ts': 1 },
+    { 'role': 'visitor', 'text': 'Tell me about Sir Thursday', 'ts': 2 },
+  ]);
+
+  assert.match(block, /Transcript context from the RDF memory graph/u);
+  assert.match(block, /Archivist: Welcome to the shop\./u);
+  assert.match(block, /Visitor: Tell me about Sir Thursday/u);
+  assert.doesNotMatch(block, /said:/u);
 });

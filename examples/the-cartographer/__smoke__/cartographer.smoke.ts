@@ -1,7 +1,7 @@
 /**
  * cartographer.smoke.ts: end-to-end smoke test for the Cartographer pipeline.
  *
- * Runs a small N (20 events) through the single streaming scatter topology and
+ * Runs a small N (20 events) through the producer feed topology and
  * asserts correctness across three bounded accumulators:
  *
  *   state.insights      — EXACT per-region (continent) rollup. shipmentCount,
@@ -19,15 +19,15 @@
  *                         geoModalities, etc).
  *
  * Topology (cartographer DAG):
- *   five data-type entrypoints → gather('intake-gather', source-intake)
- *     → scatter('process-stream', 'sources', { dag: 'stream-event' }, concurrency: 16)
+ *   five data-type entrypoints → five producer feed DAGs
+ *     → gather('intake-gather', canonical-feed)
+ *     → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' }, concurrency: 16)
  *     → gather('fold-insights', strategy: insights-fold)
  *     → summarize → done
  *
- * state.sources is a materialised SourcePayload[] by default (useStreamingSource=false).
+ * Each producer feed DAG emits validated canonical events.
  * The insights-fold gather folds each clone's state.enriched into the three bounded
  * accumulators as clones complete. state.records stays empty in this topology.
- * state.canonicalEvents is not populated (no ingest/merge stage).
  *
  * Run: npx tsx examples/the-cartographer/__smoke__/cartographer.smoke.ts
  */
@@ -35,6 +35,7 @@
 import { strict as assert } from 'node:assert';
 
 import { CartographerState } from '../CartographerState.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import { cartographerBundle, cartographerDAG, eventPipelineBundle } from '../dag.ts';
 import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
@@ -86,23 +87,30 @@ await SmokeRunner.check(`pipeline runs ${EVENT_COUNT} events end-to-end`, async 
   assert.ok(state.insights.size > 0, `Expected pipeline to complete with insights, got 0`);
 });
 
-await SmokeRunner.check('cartographer intake is a multi-entry gather with no pre-gather scatter', async () => {
+await SmokeRunner.check('cartographer intake is fed by source-specific feed DAGs', async () => {
   const entrypoints = Object.entries(cartographerDAG.entrypoints);
   assert.equal(entrypoints.length, 5, `Expected five data-type entrypoints, got ${entrypoints.length}`);
   assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'Cartographer DAG must not use a seed pre-phase');
-  assert.ok(!cartographerDAG.nodes.some((node) => node.name.endsWith('-intake')), 'Cartographer DAG must not use pre-gather intake nodes');
-  const gather = cartographerDAG.nodes.find((node) => node.name === 'intake-gather');
+
+  for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
+    const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, source);
+    assert.equal(cartographerDAG.entrypoints[source], feedPlacement);
+    const feedNode = cartographerDAG.nodes.find((node) => node['@id'] === feedPlacement);
+    assert.ok(feedNode, `Expected feed placement for ${source}`);
+    assert.equal(feedNode['@type'], 'EmbeddedDAGNode');
+    if (feedNode['@type'] !== 'EmbeddedDAGNode') assert.fail('feed placement must be an EmbeddedDAGNode');
+    assert.equal(feedNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+  }
+
+  const gather = cartographerDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather'));
   assert.ok(gather, 'Expected intake-gather placement');
   assert.equal(gather['@type'], 'GatherNode');
   if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-  assert.deepEqual(gather.sources, ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation']);
-  const gatherIndex = cartographerDAG.nodes.findIndex((node) => node.name === 'intake-gather');
-  const scatterIndex = cartographerDAG.nodes.findIndex((node) => node.name === 'process-stream');
+  assert.deepEqual(gather.sources, CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer));
+  assert.equal(gather.gather.strategy, 'canonical-feed');
+  const gatherIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather'));
+  const scatterIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
   assert.ok(gatherIndex >= 0 && scatterIndex > gatherIndex, 'process-stream scatter must run after intake-gather');
-  for (const [source, placement] of entrypoints) {
-    assert.ok(gather.sources.includes(source), `Entrypoint '${source}' must be declared as a gather source`);
-    assert.equal(placement, 'intake-gather');
-  }
 });
 
 await SmokeRunner.check('source streams fan in from all event kinds', async () => {
@@ -337,7 +345,7 @@ await SmokeRunner.check('each per-event-type enrichment lane is exercised', asyn
 
 await SmokeRunner.check('journeys deliver — delivery-confirmation lane produces delivered journeys', async () => {
   const state = await SmokeRunner.runPipeline(STAT_COUNT);
-  // In the streaming topology each event-type batch uses an independently-seeded
+  // In the producer feed topology each event-type batch uses an independently-seeded
   // buildRawScans call, so the same shipmentId string can appear across batches
   // (e.g. SHP-000021 in both position-ping and delivery-confirmation batches). A
   // per-scan "no duplicate DELIVERED" invariant would flag these cross-batch

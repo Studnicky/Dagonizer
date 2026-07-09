@@ -33,7 +33,7 @@ export class ResolveCodeNode extends MonadicNode<CartographerState, 'resolved'> 
         continue;
       }
 
-      item.state.candidate = CountryCodeResolution.forIso2(raw.countryCode, 'code', raw.weight);
+      item.state.candidate = CountryCodeResolution.forCountryCode(raw.countryCode, 'code', raw.weight);
     }
     return RoutedBatch.create('resolved', batch);
   }

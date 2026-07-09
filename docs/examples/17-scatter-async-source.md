@@ -21,7 +21,7 @@ import { cartographerDAG } from '../../examples/the-cartographer/dag.ts';
 
 ## What It Is
 
-Async Scatter Source lets a DAG process input that arrives over time instead of forcing the application to build a complete array before execution starts. The Cartographer uses this for generated event streams: the scatter pulls from an `AsyncIterable` only when worker capacity is available.
+Async Scatter Source lets a DAG process input that arrives over time instead of forcing the application to build a complete array before execution starts. The Cartographer uses this inside each producer feed DAG: the feed scatter pulls from an `AsyncIterable` only when worker capacity is available.
 
 The runtime normalises `Array`, `Iterable`, and `AsyncIterable` sources to one pull interface. Your DAG still declares a normal scatter; the source value determines whether items are already available or produced lazily.
 
@@ -35,13 +35,13 @@ For application authors, the important knob is still scatter concurrency. With `
 
 ### DAG registration and diagram
 
-The DAG shape is standard scatter; the source path resolves to an `AsyncIterable` at runtime. [The Cartographer](./the-cartographer) is the in-browser runnable for this principle: five intake entrypoints feed `intake-gather`, the gather writes a merged async stream to `state.sources`, and `process-stream` pulls only as worker capacity opens.
+The DAG shape is standard scatter; the source path resolves to an `AsyncIterable` at runtime. [The Cartographer](./the-cartographer) is the in-browser runnable for this principle: five entrypoints target five producer feed DAGs, each feed DAG scatters its producer-local `sourceFeed` through `ingest-source`, and the top-level `canonical-feed` gather converges the outputs before `process-stream`.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer async-source scatter DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
 The scatter `source` field accepts `Array`, `Iterable`, or `AsyncIterable`. The engine normalises all three to the same `AsyncIterator` interface internally. The pull loop only calls `iterator.next()` when a worker slot is free — giving true backpressure: the generator yields no more than `concurrency` items ahead of the slowest worker.
 
-The browser runner executes the same JSON-LD DAG. Data-type entrypoint labels target `intake-gather` directly; `source-intake` opens those per-type async streams and the scatter consumes the merged stream at bounded concurrency.
+The browser runner executes the same JSON-LD DAG. Data-type entrypoint labels target `dag-feed-*` placements directly; each feed node opens one per-type async stream and the feed DAG consumes it at bounded concurrency.
 
 ### Run
 
@@ -57,11 +57,11 @@ The benefit is memory and pacing control. A large import, telemetry stream, or m
 
 ## Code Samples
 
-`CartographerSourceIntake` creates one async stream per event type. `SourceIntakeGather` receives entrypoint-label records and merges the matching streams into `state.sources`. The DAG snippet shows that the gather is the intake point and the scatter placement does not need a separate streaming-specific node type.
+Producer feed nodes create one async stream per event type. Each producer feed DAG scatters that stream through the shared ingestion DAG, and the top-level canonical gather receives the normalized outputs. The DAG snippet shows that async sources remain ordinary scatter inputs.
 
-<<< @/../examples/the-cartographer/nodes/sourceIntake.ts#source-intake-helper
+<<< @/../examples/the-cartographer/nodes/producerFeeds.ts#producer-feed-nodes
 
-<<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
+<<< @/../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts#producer-feed-dags
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-dag
 
@@ -69,7 +69,7 @@ The benefit is memory and pacing control. A large import, telemetry stream, or m
 
 - **`AsyncIterable` as scatter source.** Any async generator or async-iterable value is a valid scatter source. The engine calls `.next()` lazily on each tick of the concurrency pool.
 - **Bounded-concurrency backpressure.** With `concurrency=2`, at most two clones run simultaneously. The pull loop does not call `iterator.next()` until a slot frees, capping how far ahead the generator runs. Array sources follow the same discipline — "eagerly available" only affects when data is produced, not the concurrency semantics.
-- **Resumability note.** An `AsyncIterable` on state is not captured by `Checkpoint.capture()` — generators are not JSON-serialisable. After an abort with an async source, the resume call must re-provide the generator at the continuation position. Cartographer does that through `CartographerSourceIntake.mergedFor(state, cursor)`.
+- **Resumability note.** An `AsyncIterable` on state is not captured by `Checkpoint.capture()` — generators are not JSON-serialisable. Cartographer resumes the enrichment scatter after the producer feed DAGs have emitted a checkpointable `canonicalEvents` array.
 - **Runnable source.** The Cartographer **Stream** panel is fed by the same async source path as the DAG.
 
 ## Related Concepts

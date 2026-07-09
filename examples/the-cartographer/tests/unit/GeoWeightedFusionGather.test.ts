@@ -1,5 +1,12 @@
 /**
- * Unit tests: GeoWeightedFusionGather fusion rules.
+ * Unit tests: GeoWeightedFusionGather accumulation + empty-case baseline.
+ *
+ * The gather's job is now limited to accumulating weight>0 candidates into
+ * `state.geoCandidates` (reduce) and writing the baseline ResolvedGeo/GeoContext
+ * when zero candidates accumulated (finalize). The layered-consensus algorithm
+ * that used to live in `finalize` now runs in the downstream node chain
+ * (`resolve-country-consensus` → `verify-point-containment` →
+ * `assemble-resolved-geo`, tested in `GeoConsensusChain.test.ts`).
  *
  * Test architecture:
  *  - DirectAccessor: implements StateAccessorInterface using Reflect to read/write
@@ -146,114 +153,32 @@ describe('GeoWeightedFusionGather', () => {
     assert.ok(strategy instanceof GeoWeightedFusionGather, 'must be GeoWeightedFusionGather instance');
   });
 
-  // ── Test 1: coords (weight 1.0, empty region) + ip (weight 0.55, with region)
-  it('coords wins; region back-filled from ip; provenance and modalities correct', async () => {
+  // ── reduce: accumulates weight>0 candidates into state.geoCandidates ──────
+  it('accumulates every weight>0 candidate into state.geoCandidates, in gather-record order', async () => {
     const strategy = GatherStrategies.resolve('geo-weighted-fusion');
     assert.ok(strategy instanceof GeoWeightedFusionGather);
 
-    const coordsCandidate = FixtureCandidate.of({
-      'source':      'coords',
-      'weight':      1.0,
-      'country':     'DE',
-      'countryName': 'Germany',
-      'region':      '',          // empty — should be back-filled from ip
-      'locality':    'Berlin',
-      'timezone':    'Europe/Berlin',
-      'status':      'land',
-      'lat':         52.5,
-      'lng':         13.4,
-    });
+    const coordsCandidate = FixtureCandidate.of({ 'source': 'coords', 'weight': 1.0, 'country': 'DE' });
+    const ipCandidate     = FixtureCandidate.of({ 'source': 'ip',     'weight': 0.55, 'country': 'DE' });
+    const zeroCandidate   = FixtureCandidate.of({ 'source': 'phone',  'weight': 0 });
 
-    const ipCandidate = FixtureCandidate.of({
-      'source':      'ip',
-      'weight':      0.55,
-      'country':     'DE',
-      'countryName': 'Germany',
-      'region':      'Berlin State',
-      'locality':    'Berlin',
-      'timezone':    'Europe/Berlin',
-      'status':      'land',
-    });
+    const state = await GeoFusionHarness.run(strategy, [coordsCandidate, ipCandidate, zeroCandidate]);
 
-    const state = await GeoFusionHarness.run(strategy, [coordsCandidate, ipCandidate]);
-    const resolved = state.resolvedGeo;
-
-    assert.ok(ResolvedGeoGuard.is(resolved), 'resolvedGeo must be set');
-
-    // Winner is coords (weight 1.0)
-    assert.equal(resolved.confidence, 1.0, 'confidence must be winner weight 1.0');
-
-    // region back-filled from ip
-    assert.equal(resolved.region, 'Berlin State', 'region must be back-filled from ip candidate');
-
-    // Provenance: coords first (highest weight), then ip
-    assert.deepEqual(resolved.provenance, ['coords', 'ip'], 'provenance must be ordered by weight, de-duplicated');
-
-    // Modalities: 'gps' from coords, 'ip' from ip
-    assert.ok(resolved.modalities.includes('gps'), 'modalities must include gps');
-    assert.ok(resolved.modalities.includes('ip'),  'modalities must include ip');
+    assert.equal(state.geoCandidates.length, 2, 'only weight>0 candidates accumulate');
+    assert.deepEqual(state.geoCandidates.map((c) => c.source), ['coords', 'ip']);
   });
 
-  // ── Test 2: code (0.35, country 'DE') + locale (0.2, country 'DE') → composite
-  it('code + locale agree on country → confidence is composite 0.45', async () => {
+  it('leaves resolvedGeo/geoContext untouched when candidates accumulated (downstream node chain owns fusion)', async () => {
     const strategy = GatherStrategies.resolve('geo-weighted-fusion');
     assert.ok(strategy instanceof GeoWeightedFusionGather);
 
-    const codeCandidate = FixtureCandidate.of({
-      'source':  'code',
-      'weight':  0.35,
-      'country': 'DE',
-      'status':  'land',
-    });
+    const coordsCandidate = FixtureCandidate.of({ 'source': 'coords', 'weight': 1.0, 'country': 'DE' });
+    const state = await GeoFusionHarness.run(strategy, [coordsCandidate]);
 
-    const localeCandidate = FixtureCandidate.of({
-      'source':  'locale',
-      'weight':  0.2,
-      'country': 'DE',
-      'status':  'land',
-    });
-
-    const state = await GeoFusionHarness.run(strategy, [codeCandidate, localeCandidate]);
-    const resolved = state.resolvedGeo;
-
-    assert.ok(ResolvedGeoGuard.is(resolved), 'resolvedGeo must be set');
-
-    // Winner is code (weight 0.35), but composite override applies
-    assert.equal(resolved.confidence, 0.45, 'confidence must be composite 0.45 when code+locale agree');
-
-    // Provenance contains both sources
-    assert.ok(resolved.provenance.includes('code'),   'provenance must include code');
-    assert.ok(resolved.provenance.includes('locale'), 'provenance must include locale');
-    // code is first (higher weight)
-    assert.equal(resolved.provenance[0], 'code', 'code must appear before locale in provenance');
-  });
-
-  // ── Test 3: code 'DE' + locale 'FR' disagree → no composite, confidence stays 0.35
-  it('code + locale disagree on country → no composite, confidence stays at winner weight', async () => {
-    const strategy = GatherStrategies.resolve('geo-weighted-fusion');
-    assert.ok(strategy instanceof GeoWeightedFusionGather);
-
-    const codeCandidate = FixtureCandidate.of({
-      'source':  'code',
-      'weight':  0.35,
-      'country': 'DE',
-      'status':  'land',
-    });
-
-    const localeCandidate = FixtureCandidate.of({
-      'source':  'locale',
-      'weight':  0.2,
-      'country': 'FR',
-      'status':  'land',
-    });
-
-    const state = await GeoFusionHarness.run(strategy, [codeCandidate, localeCandidate]);
-    const resolved = state.resolvedGeo;
-
-    assert.ok(ResolvedGeoGuard.is(resolved), 'resolvedGeo must be set');
-
-    // No composite override: confidence = winner weight
-    assert.equal(resolved.confidence, 0.35, 'confidence must stay at winner weight 0.35 when code+locale disagree');
+    // finalize() no longer computes resolvedGeo for the non-empty case — it is
+    // still the CartographerState construction default (baseline shape).
+    assert.equal(state.resolvedGeo.confidence, 0);
+    assert.deepEqual(state.resolvedGeo.provenance, []);
   });
 
   // ── Test 4: zero weight>0 candidates → baseline resolvedGeo

@@ -1,9 +1,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts';
-import { GeohashTzMap } from '../../geo/GeohashTzMap.ts';
-import { CoordTimezone } from '../../geo/CoordTimezone.ts';
-import { CountryLocale } from '../../geo/CountryLocale.ts';
+import { CoordTimezoneResolver, CountryLocale, GeohashTzMap } from '@studnicky/geo-resolver';
 import {
   MonadicNode,
   RoutedBatch,
@@ -13,7 +11,7 @@ import {
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
-const GEO_TABLE = new GeohashTzMap();
+const GEO_TABLE = GeohashTzMap.default();
 
 // #region resolve-coords-node
 export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'> {
@@ -60,9 +58,10 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
         continue;
       }
 
-      const { timezone, country } = CoordTimezone.resolve(raw.lat, raw.lng);
+      const { timezone, country } = CoordTimezoneResolver.resolve(raw.lat, raw.lng);
       const locale = country.length > 0 ? CountryLocale.forIso2(country) : '';
       const secondaryLookupResolved = timezone.length > 0 || country.length > 0;
+      const secondaryWater = timezone.length > 0 && country.length === 0;
 
       item.state.candidate = GeoResolutionBuilder.from({
         'source':       'coords',
@@ -72,10 +71,10 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
         'countryName':  '',
         'locale':       locale,
         'region':       '',
-        'locality':     '',
+        'locality':     secondaryWater ? 'International Waters' : '',
         'lat':          raw.lat,
         'lng':          raw.lng,
-        'status':       'land',
+        'status':       secondaryWater ? 'water' : 'land',
         'weight':       secondaryLookupResolved ? raw.weight : 0,
       });
     }

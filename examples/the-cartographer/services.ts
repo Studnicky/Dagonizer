@@ -3,13 +3,13 @@
  *
  * GeoLookup        — lat/lng → grid zone → GeoContext (country/region/hub/tz/jurisdiction)
  * TimeZoneResolver — coords → IANA zone (tz-lookup); UTC epoch → local ISO + offset
- * Jurisdictions    — ISO-3 country → privacy regime + strictness + retention
+ * Jurisdictions    — country code/name → privacy regime + strictness + retention
  * GdprRedactor     — location + consent driven PII redaction; coords-as-PII coarsening
  * GeoCoarsener     — precise lat/lng → grid-zone centroid (location-PII coarsening)
  * ShipmentEvents   — deterministic synthetic journey/scan generator (seeded LCG)
  * TimeNormalizer   — multi-format timestamp → epoch ms + ISO-8601
  * CarrierRegistry  — carrier label → canonical carrierId/carrierName
- * CountryCodes     — alpha-2/alpha-3/name → ISO-3
+ * CountryCodes     — alpha-2/alpha-3/name → normalized country codes
  * Units            — weight unit conversion to grams
  * EventClassifier  — free-text status → eventType; carrier/weight → service/size tiers
  * FxRates          — currency minor units → USD cents (FX normalisation)
@@ -22,11 +22,11 @@
  */
 
 import tzLookupDefault from 'tz-lookup';
+import { CoordTimezoneResolver, CountryLocale, Geo, JurisdictionResolver, OfflineGeoResolver } from '@studnicky/geo-resolver';
 
 import CATALOG_RAW from './data/product-catalog.json' with { type: 'json' };
 import CARRIER_RATES_RAW from './data/carrier-rates.json' with { type: 'json' };
 import FX_RATES_RAW from './data/fx-rates.json' with { type: 'json' };
-import JURISDICTION_TABLE_RAW from './data/jurisdictions.json' with { type: 'json' };
 
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
 import type { GdprResult } from './entities/GdprResult.ts';
@@ -38,9 +38,6 @@ import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { CanonicalEventVariant } from './entities/index.ts';
-import { OfflineGeo } from './services/OfflineGeo.ts';
-import { CoordTimezone } from './geo/CoordTimezone.ts';
-import { CountryLocale } from './geo/CountryLocale.ts';
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 
 export type FormatMix = ReadonlyArray<{
@@ -91,21 +88,9 @@ export interface JurisdictionEntry {
   readonly 'baseRetentionDays': number;
 }
 
-/** Raw shape as inferred by TypeScript from the JSON import (string not narrowed to union). */
-interface RawJurisdictionEntry {
-  readonly 'jurisdiction': string;
-  readonly 'strictness': string;
-  readonly 'baseRetentionDays': number;
-}
-interface RawJurisdictionTable {
-  readonly 'byCountry': Record<string, RawJurisdictionEntry>;
-  readonly 'default': RawJurisdictionEntry;
-}
-
 const CATALOG: ReadonlyArray<CatalogEntry> = CATALOG_RAW satisfies ReadonlyArray<CatalogEntry>;
 const CARRIER_RATES: Record<string, CarrierRate> = CARRIER_RATES_RAW satisfies Record<string, CarrierRate>;
 const FX_TABLE: Record<string, number> = FX_RATES_RAW satisfies Record<string, number>;
-const JURISDICTION_TABLE_RAW_TYPED: RawJurisdictionTable = JURISDICTION_TABLE_RAW satisfies RawJurisdictionTable;
 
 // #region timezone-resolver-service
 /**
@@ -175,78 +160,36 @@ const ISO2_TO_ISO3: Record<string, string> = {
   'KZ': 'KAZ', 'UZ': 'UZB', 'IR': 'IRN', 'IQ': 'IRQ', 'IL': 'ISR', 'JO': 'JOR',
 };
 
+const ISO3_TO_ISO2: Record<string, string> = Object.fromEntries(
+  Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [iso3, iso2]),
+);
+
 export class Jurisdictions {
-  private static narrowJurisdiction(value: string): GeoContext['jurisdiction'] {
-    return value === 'GDPR' || value === 'UK-GDPR' || value === 'CCPA'
-      || value === 'LGPD' || value === 'APPI' || value === 'baseline'
-      || value === 'international-waters'
-      ? value
-      : 'baseline';
-  }
-
-  private static narrowStrictness(value: string): GdprResult['strictness'] {
-    return value === 'strict' || value === 'moderate' || value === 'light' ? value : 'light';
-  }
-
-  private static parseEntry(raw: RawJurisdictionEntry): JurisdictionEntry {
-    return {
-      'jurisdiction':     Jurisdictions.narrowJurisdiction(raw.jurisdiction),
-      'strictness':       Jurisdictions.narrowStrictness(raw.strictness),
-      'baseRetentionDays': raw.baseRetentionDays,
-    };
-  }
-
+  /** Resolve the privacy regime from an ISO-3166-1 alpha-3 country code. */
   static forCountry(countryIso3: string): JurisdictionEntry {
-    const raw = JURISDICTION_TABLE_RAW_TYPED.byCountry[countryIso3] ?? JURISDICTION_TABLE_RAW_TYPED.default;
-    return Jurisdictions.parseEntry(raw);
+    const iso2 = ISO3_TO_ISO2[countryIso3] ?? '';
+    return JurisdictionResolver.forIso2(iso2);
   }
 
-  /** Resolve the privacy regime from an ISO-2 country code (the geo API format). */
+  /** Resolve the privacy regime from a country code or display name. */
   static forIso2(countryIso2: string): JurisdictionEntry {
-    const iso3 = ISO2_TO_ISO3[countryIso2.toUpperCase()] ?? countryIso2;
-    return Jurisdictions.forCountry(iso3);
+    const iso2 = CountryCodes.toIso2(countryIso2);
+    return JurisdictionResolver.forIso2(iso2);
   }
 }
 // #endregion jurisdictions-service
 
 // #region continents-service
 /**
- * Continents: ISO-2 country code → continent name.
- *
- * A compact lookup for the insights rollup. Unknown codes return 'Unmapped'.
- * Accepts ISO-2 (the geo API format).
+ * Continents: country code/name → continent name, backed by
+ * @studnicky/geo-resolver's global ISO-3166-1 continent table. Unknown
+ * codes return 'Unmapped'.
  */
-const ISO2_TO_CONTINENT: Record<string, string> = {
-  'US': 'North America', 'CA': 'North America', 'MX': 'North America',
-  'GB': 'Europe', 'DE': 'Europe', 'FR': 'Europe', 'NL': 'Europe',
-  'IT': 'Europe', 'ES': 'Europe', 'PL': 'Europe', 'SE': 'Europe',
-  'NO': 'Europe', 'DK': 'Europe', 'FI': 'Europe', 'BE': 'Europe',
-  'AT': 'Europe', 'CZ': 'Europe', 'HU': 'Europe', 'PT': 'Europe',
-  'RO': 'Europe', 'BG': 'Europe', 'GR': 'Europe', 'CH': 'Europe',
-  'IE': 'Europe', 'HR': 'Europe', 'SK': 'Europe', 'SI': 'Europe',
-  'LT': 'Europe', 'LV': 'Europe', 'EE': 'Europe', 'LU': 'Europe',
-  'CY': 'Europe', 'MT': 'Europe', 'IS': 'Europe', 'LI': 'Europe',
-  'RU': 'Europe', 'UA': 'Europe', 'TR': 'Europe',
-  'CN': 'Asia', 'JP': 'Asia', 'KR': 'Asia', 'IN': 'Asia',
-  'SG': 'Asia', 'TH': 'Asia', 'VN': 'Asia', 'MY': 'Asia',
-  'ID': 'Asia', 'PH': 'Asia', 'BD': 'Asia', 'PK': 'Asia',
-  'LK': 'Asia', 'KZ': 'Asia', 'UZ': 'Asia', 'IR': 'Asia',
-  'IQ': 'Asia', 'IL': 'Asia', 'JO': 'Asia',
-  'AU': 'Oceania', 'NZ': 'Oceania',
-  'BR': 'South America', 'AR': 'South America', 'CO': 'South America',
-  'CL': 'South America', 'PE': 'South America', 'VE': 'South America',
-  'EC': 'South America', 'BO': 'South America', 'PY': 'South America',
-  'UY': 'South America', 'GY': 'South America', 'SR': 'South America',
-  'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa',
-  'MA': 'Africa', 'DZ': 'Africa', 'TN': 'Africa', 'ET': 'Africa',
-  'GH': 'Africa', 'TZ': 'Africa',
-  'SA': 'Asia', 'AE': 'Asia',
-};
-
 export class Continents {
-  /** Resolve a continent name from an ISO-2 country code. Unknown codes → 'Unmapped'. */
+  /** Resolve a continent name from a country code or display name. Unknown codes → 'Unmapped'. */
   static forIso2(countryIso2: string): string {
-    return ISO2_TO_CONTINENT[countryIso2.toUpperCase()] ?? 'Unmapped';
+    const iso2 = CountryCodes.toIso2(countryIso2);
+    return iso2.length > 0 ? Geo.continentForCountry(iso2) : 'Unmapped';
   }
 }
 // #endregion continents-service
@@ -284,6 +227,7 @@ export class GeoCoarsener {
 export class GeoLookup {
   static fromResolved(country: string, continent: string, region: string, lat: number, lng: number): GeoContext {
     const timezone = TimeZoneResolver.zoneFor(lat, lng);
+    const iso2 = CountryCodes.toIso2(country);
     // A pre-resolved MARITIME marker → maritime context (high-seas, no regime).
     if (country === 'INTL' || country.length === 0) {
       return {
@@ -299,14 +243,28 @@ export class GeoLookup {
         'jurisdiction': 'international-waters',
       };
     }
-    const jurisdiction = Jurisdictions.forIso2(country).jurisdiction;
+    if (iso2.length === 0) {
+      return {
+        'gridZone':     'API',
+        'country':      'UNK',
+        'continent':    'Unmapped',
+        'countries':    [],
+        'region':       region || 'Unmapped',
+        'hub':          region || country,
+        'status':       'unmapped',
+        'waterBodies':  [],
+        'timezone':     timezone,
+        'jurisdiction': 'baseline',
+      };
+    }
+    const jurisdiction = Jurisdictions.forIso2(iso2).jurisdiction;
     return {
       'gridZone':     'API',
-      'country':      country,
-      'continent':    continent || 'Unmapped',
-      'countries':    [country],
+      'country':      iso2,
+      'continent':    continent || Continents.forIso2(iso2),
+      'countries':    [iso2],
       'region':       region,
-      'hub':          region || country,
+      'hub':          region || iso2,
       'status':       'land',
       'waterBodies':  [],
       'timezone':     timezone,
@@ -535,7 +493,8 @@ export class CarrierRegistry {
 
 // #region country-codes-service
 /**
- * CountryCodes: resolves alpha-2, alpha-3, and full country names to ISO-3.
+ * CountryCodes: resolves alpha-2, alpha-3, and full country names to normalized
+ * ISO country codes for canonical shipment and geo-resolution paths.
  */
 const COUNTRY_CODE_MAP: Record<string, string> = {
   // Alpha-2 → ISO-3
@@ -570,16 +529,39 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
 };
 
 export class CountryCodes {
+  private static key(raw: string): string {
+    return raw.trim().toUpperCase();
+  }
+
+  private static knownIso3(key: string): string {
+    const fromIso2 = ISO2_TO_ISO3[key];
+    if (fromIso2 !== undefined) return fromIso2;
+    if (ISO3_TO_ISO2[key] !== undefined) return key;
+    return COUNTRY_CODE_MAP[key] ?? '';
+  }
+
   static toIso3(raw: string): string {
-    const key = raw.trim().toUpperCase();
-    // Already ISO-3 (3 uppercase letters in our known set)
-    if (key.length === 3 && /^[A-Z]{3}$/.test(key)) {
-      // Validate it's a known ISO-3 code; if so, return directly
-      const known = Object.values(COUNTRY_CODE_MAP).includes(key) || COUNTRY_CODE_MAP[key] !== undefined;
-      if (known) return COUNTRY_CODE_MAP[key] ?? key;
-      return key; // pass through unknown 3-letter codes
-    }
-    return COUNTRY_CODE_MAP[key] ?? raw.slice(0, 3).toUpperCase();
+    const key = CountryCodes.key(raw);
+    if (key.length === 0) return '';
+    const iso3 = CountryCodes.knownIso3(key);
+    if (iso3.length > 0) return iso3;
+    return key.length === 3 && /^[A-Z]{3}$/.test(key) ? key : raw.slice(0, 3).toUpperCase();
+  }
+
+  static toIso2(raw: string): string {
+    const direct = Geo.normalizeCountryCode(raw);
+    if (direct !== null) return direct;
+    // Ingest-side normalization: raw event data carries colloquial country
+    // names (e.g. "United States", "Great Britain") geo-resolver's global
+    // lookup doesn't recognize. Resolve to the canonical ISO-3 form first,
+    // then defer to geo-resolver for the actual code resolution.
+    const canonicalIso3 = COUNTRY_CODE_MAP[CountryCodes.key(raw)];
+    return canonicalIso3 !== undefined ? Geo.normalizeCountryCode(canonicalIso3) ?? '' : '';
+  }
+
+  static toGeoSignalIso2(countryCode: string, recipientCountry: string): string {
+    const direct = CountryCodes.toIso2(countryCode);
+    return direct.length > 0 ? direct : CountryCodes.toIso2(recipientCountry);
   }
 }
 // #endregion country-codes-service
@@ -1455,10 +1437,10 @@ export class ShipmentEvents {
       if (slot.eventType === 'position-ping') {
         geoTyped = { ...typed, 'ipAddress': '' };
       } else if (slot.eventType === 'customs-event') {
-        const { country } = CoordTimezone.resolve(typed.latitude, typed.longitude);
+        const { country } = CoordTimezoneResolver.resolve(typed.latitude, typed.longitude);
         geoTyped = { ...typed, 'countryCode': country, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
       } else if (slot.eventType === 'delivery-confirmation') {
-        const { country } = CoordTimezone.resolve(typed.latitude, typed.longitude);
+        const { country } = CoordTimezoneResolver.resolve(typed.latitude, typed.longitude);
         const locale = CountryLocale.forIso2(country);
         geoTyped = { ...typed, 'localeTag': locale, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
       }
@@ -1747,7 +1729,7 @@ export class Sources {
     if (withGeo) {
       // RICH source pre-resolves geo via the offline country-coder (sync, universal).
       // No fixture dependency — country-coder is deterministic across environments.
-      const cand = OfflineGeo.resolve(scan.latitude, scan.longitude).candidate;
+      const cand = OfflineGeoResolver.resolve(scan.latitude, scan.longitude).candidate;
       if (cand.resolved && !cand.water && cand.country.length > 0) {
         record['geoCountry']   = cand.country;
         record['geoContinent'] = cand.continent;
@@ -1822,8 +1804,8 @@ export class Sources {
     const encoded = new TextEncoder().encode(text);
     const cs = new CompressionStream('gzip');
     const writer = cs.writable.getWriter();
-    void writer.write(encoded);
-    void writer.close();
+    const write = writer.write(encoded);
+    const close = writer.close();
 
     const chunks: Uint8Array[] = [];
     const reader = cs.readable.getReader();
@@ -1832,6 +1814,8 @@ export class Sources {
       if (done) break;
       chunks.push(value);
     }
+    await write;
+    await close;
 
     let totalLen = 0;
     for (const c of chunks) totalLen += c.length;
@@ -2091,8 +2075,8 @@ export class TypedPayloadDecoder {
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const ds = new DecompressionStream('gzip');
     const writer = ds.writable.getWriter();
-    void writer.write(bytes);
-    void writer.close();
+    const write = writer.write(bytes);
+    const close = writer.close();
     const chunks: Uint8Array[] = [];
     const reader = ds.readable.getReader();
     for (;;) {
@@ -2100,6 +2084,8 @@ export class TypedPayloadDecoder {
       if (done) break;
       chunks.push(value);
     }
+    await write;
+    await close;
     let total = 0;
     for (const c of chunks) total += c.length;
     const merged = new Uint8Array(total);

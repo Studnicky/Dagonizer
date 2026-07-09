@@ -296,6 +296,7 @@ export class NodeScheduler {
           sources.push(sourceIri);
         }
       }
+      const entrypointEntries = Object.entries(dag.entrypoints);
 
       // Resume: when fromStage is provided and this is a top-level run, check
       // for a persisted work-set blob. If present, rebuild `pending` from it so
@@ -348,31 +349,54 @@ export class NodeScheduler {
         // provided inputBatch when supplied (batch-native embedded path),
         // otherwise seed with the single top-level state.
         if (fromStage === null && !runOptions.embedded && inputBatch === undefined) {
-          const entrypointEntries = Object.entries(dag.entrypoints);
           const seededGather = this.#seedOpenIntakeGather(
             dagIri,
             entrypointEntries,
-            state,
+            Batch.of(state),
             pending,
             gatherBuffers,
             entrypointSourceByState,
             entrypointRootByState,
           );
           if (!seededGather) {
-            for (const [source, placementIri] of entrypointEntries) {
-              const entryState = source === 'main' ? state : state.clone();
-              entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
-              entrypointRootByState.set(entryState, state);
-              pending.add(placementIri, Batch.of(entryState, '0'));
-            }
+            this.#seedEntrypointBatch(
+              dagIri,
+              entrypointEntries,
+              Batch.of(state),
+              pending,
+              entrypointSourceByState,
+              entrypointRootByState,
+            );
           }
         } else {
           const seedBatch = inputBatch ?? Batch.of(state);
-          for (const item of seedBatch) {
-            entrypointSourceByState.set(item.state, this.#entrypointIri(dagIri, 'main'));
-            entrypointRootByState.set(item.state, item.state);
+          if (fromStage === null && entrypointEntries.length > 1) {
+            const seededGather = this.#seedOpenIntakeGather(
+              dagIri,
+              entrypointEntries,
+              seedBatch,
+              pending,
+              gatherBuffers,
+              entrypointSourceByState,
+              entrypointRootByState,
+            );
+            if (!seededGather) {
+              this.#seedEntrypointBatch(
+                dagIri,
+                entrypointEntries,
+                seedBatch,
+                pending,
+                entrypointSourceByState,
+                entrypointRootByState,
+              );
+            }
+          } else {
+            for (const item of seedBatch) {
+              entrypointSourceByState.set(item.state, this.#entrypointIri(dagIri, 'main'));
+              entrypointRootByState.set(item.state, item.state);
+            }
+            pending.add(cursor, seedBatch);
           }
-          pending.add(cursor, seedBatch);
         }
       }
 
@@ -1364,7 +1388,7 @@ export class NodeScheduler {
   #seedOpenIntakeGather(
     dagIri: string,
     entrypoints: readonly (readonly [string, string])[],
-    state: NodeStateInterface,
+    seedBatch: Batch<NodeStateInterface>,
     pending: WorkSet<NodeStateInterface>,
     gatherBuffers: GatherBuffers,
     entrypointSourceByState: WeakMap<NodeStateInterface, string>,
@@ -1377,28 +1401,48 @@ export class NodeScheduler {
     if (gatherTarget === undefined) return false;
     if (!entrypoints.every((entrypoint) => entrypoint[1] === gatherTarget['@id'])) return false;
 
-    for (const [source] of entrypoints) {
-      const entryState = source === 'main' ? state : state.clone();
-      entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
-      entrypointRootByState.set(entryState, state);
-      const gatherKey = this.#gatherBufferKey(gatherTarget, '0');
-      const sourceIri = this.#entrypointIri(dagIri, source);
-      gatherBuffers.add(gatherKey, {
-        'source': sourceIri,
-        'index': null,
-        'item': undefined,
-        'output': 'success',
-        'terminalOutcome': null,
-        'result': this.#projectGatherResult(gatherTarget, sourceIri, entryState),
-        'cloneState': entryState,
-      });
-    }
+    for (const item of seedBatch) {
+      for (const [source] of entrypoints) {
+        const entryState = source === 'main' ? item.state : item.state.clone();
+        entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
+        entrypointRootByState.set(entryState, item.state);
+        const gatherKey = this.#gatherBufferKey(gatherTarget, item.id);
+        const sourceIri = this.#entrypointIri(dagIri, source);
+        gatherBuffers.add(gatherKey, {
+          'source': sourceIri,
+          'index': null,
+          'item': undefined,
+          'output': 'success',
+          'terminalOutcome': null,
+          'result': this.#projectGatherResult(gatherTarget, sourceIri, entryState),
+          'cloneState': entryState,
+        });
+      }
 
-    const gatherKey = this.#gatherBufferKey(gatherTarget, '0');
-    if (gatherBuffers.ready(gatherTarget, gatherKey)) {
-      pending.add(gatherTarget['@id'], Batch.of(state));
+      const gatherKey = this.#gatherBufferKey(gatherTarget, item.id);
+      if (gatherBuffers.ready(gatherTarget, gatherKey)) {
+        pending.add(gatherTarget['@id'], Batch.of(item.state, item.id));
+      }
     }
     return true;
+  }
+
+  #seedEntrypointBatch(
+    dagIri: string,
+    entrypoints: readonly (readonly [string, string])[],
+    seedBatch: Batch<NodeStateInterface>,
+    pending: WorkSet<NodeStateInterface>,
+    entrypointSourceByState: WeakMap<NodeStateInterface, string>,
+    entrypointRootByState: WeakMap<NodeStateInterface, NodeStateInterface>,
+  ): void {
+    for (const item of seedBatch) {
+      for (const [source, placementIri] of entrypoints) {
+        const entryState = source === 'main' ? item.state : item.state.clone();
+        entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
+        entrypointRootByState.set(entryState, item.state);
+        pending.add(placementIri, Batch.of(entryState, item.id));
+      }
+    }
   }
 
   #gatherStateFor(

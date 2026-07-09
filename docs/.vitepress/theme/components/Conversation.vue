@@ -30,6 +30,22 @@ const listRef = ref<HTMLOListElement | null>(null);
 /** Pixels from the bottom within which we consider the user "at the bottom". */
 const STICK_THRESHOLD_PX = 80;
 
+function cleanTurnText(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if (
+    (first === '"' && last === '"') ||
+    (first === "'" && last === "'") ||
+    (first === '\u201c' && last === '\u201d') ||
+    (first === '\u2018' && last === '\u2019')
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 watch(
   () => props.turns.length,
   async () => {
@@ -62,7 +78,7 @@ watch(
         :class="['turn', `turn-${turn.role}`]"
       >
         <span class="turn-role">{{ turn.role === 'visitor' ? 'You' : 'The Archivist' }}</span>
-        <p class="turn-text">{{ turn.text }}</p>
+        <p class="turn-text">{{ cleanTurnText(turn.text) }}</p>
       </li>
     </ol>
 
@@ -125,15 +141,28 @@ watch(
 .conversation-list::-webkit-scrollbar-thumb { background: var(--vp-c-divider); border-radius: 3px; }
 
 .turn {
+  width: fit-content;
+  max-width: min(82%, 38rem);
   padding: 0.5rem 0.65rem;
   border-radius: 4px;
   border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
   background: var(--vp-c-bg-alt);
   animation: turn-in 0.25s ease-out;
 }
 
-.turn-visitor   { border-left-color: var(--dagonizer-brand3); }
-.turn-archivist { border-left-color: var(--dagonizer-brand); }
+.turn-visitor {
+  align-self: flex-end;
+  border-left-color: transparent;
+  border-right-color: var(--dagonizer-brand3);
+  text-align: right;
+}
+
+.turn-archivist {
+  align-self: flex-start;
+  border-left-color: var(--dagonizer-brand);
+  text-align: left;
+}
 
 .turn-role {
   display: block;

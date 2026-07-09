@@ -12,8 +12,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { CoordTimezone } from '../../geo/CoordTimezone.ts';
-import { CountryLocale } from '../../geo/CountryLocale.ts';
+import { CoordTimezoneResolver, CountryLocale } from '@studnicky/geo-resolver';
 import { Continents } from '../../services.ts';
 import { GeoSignalBuilder } from '../../entities/GeoSignal.ts';
 import { GeoResolutionBuilder, DEFAULT_GEO_RESOLUTION } from '../../entities/GeoResolution.ts';
@@ -30,25 +29,25 @@ import type { GeoLookupOutcomeType } from '../../errors/GeoLookupOutcome.ts';
 
 describe('CoordTimezone', () => {
   it('NYC (40.7128, -74.006) → America/New_York, US', () => {
-    const result = CoordTimezone.resolve(40.7128, -74.006);
+    const result = CoordTimezoneResolver.resolve(40.7128, -74.006);
     assert.equal(result.timezone, 'America/New_York');
     assert.equal(result.country, 'US');
   });
 
   it('London (51.5074, -0.1278) → Europe/London, GB', () => {
-    const result = CoordTimezone.resolve(51.5074, -0.1278);
+    const result = CoordTimezoneResolver.resolve(51.5074, -0.1278);
     assert.equal(result.timezone, 'Europe/London');
     assert.equal(result.country, 'GB');
   });
 
   it('Tokyo (35.68, 139.69) → Asia/Tokyo, JP', () => {
-    const result = CoordTimezone.resolve(35.68, 139.69);
+    const result = CoordTimezoneResolver.resolve(35.68, 139.69);
     assert.equal(result.timezone, 'Asia/Tokyo');
     assert.equal(result.country, 'JP');
   });
 
   it('invalid coords (NaN, NaN) → empty strings, no throw', () => {
-    const result = CoordTimezone.resolve(NaN, NaN);
+    const result = CoordTimezoneResolver.resolve(NaN, NaN);
     assert.equal(typeof result.timezone, 'string');
     assert.equal(typeof result.country, 'string');
   });
@@ -155,6 +154,13 @@ describe('GeoSignalBuilder.from', () => {
 describe('Continents', () => {
   it('forIso2("US") → "North America"', () => {
     assert.equal(Continents.forIso2('US'), 'North America');
+  });
+
+  it('forIso2 accepts ISO-3 and display-name country aliases', () => {
+    assert.equal(Continents.forIso2('USA'), 'North America');
+    assert.equal(Continents.forIso2('United States'), 'North America');
+    assert.equal(Continents.forIso2('GBR'), 'Europe');
+    assert.equal(Continents.forIso2('United Kingdom'), 'Europe');
   });
 
   it('forIso2("JP") → "Asia"', () => {
