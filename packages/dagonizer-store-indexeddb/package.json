@@ -36,16 +36,12 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:^2.0.0"
+    "@studnicky/dagonizer": "workspace:^"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^26.0.0",
-    "eslint": "^10.5.0",
-    "eslint-plugin-import-x": "^4.17.0",
-    "fake-indexeddb": "^6.0.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.0"
+    "@types/node": "^26.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "^7.0.2"
   },
   "repository": {
     "type": "git",

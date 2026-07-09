@@ -11,16 +11,16 @@
   },
   "dependencies": {
     "@rapideditor/country-coder": "^5.6.1",
-    "@studnicky/cache": "^4.0.0",
-    "@studnicky/concurrency": "^4.0.0",
-    "@studnicky/circular-buffer": "^4.0.0",
-    "@studnicky/clock": "^4.0.0",
+    "@studnicky/cache": "^5.0.0",
+    "@studnicky/circular-buffer": "^5.0.0",
+    "@studnicky/clock": "^5.0.0",
+    "@studnicky/concurrency": "^5.0.0",
     "@studnicky/dagonizer": "workspace:^",
-    "@studnicky/signal": "^4.0.0",
-    "@studnicky/types": "^4.0.0",
+    "@studnicky/signal": "^5.0.0",
+    "@studnicky/types": "^5.0.0",
     "countries-and-timezones": "^3.9.0",
     "tz-lookup": "^6.1.25",
-    "yaml": "^2.7.1"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "json-schema-to-ts": "^3.1.1"

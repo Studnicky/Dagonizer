@@ -44,6 +44,8 @@ Every DAG carries `@context`, `@id`, and `@type`, so the same file can be consum
 
 Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or projection layer. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that round-trips through `DAGDocument.serialize` and `DAGDocument.load`. Every DAG carries `@context`, `@id`, and `@type` so RDF stores, schema validators, and generic JSON-LD processors read the shape natively without an adapter.
 
+RDF 1.2 annotations use a separate semantic boundary. `DAGDocument.load()` validates canonical DAG topology; JSON-LD-star documents with `rdf:reifies` embedded triple terms or `@annotation` shorthand go through the Archivist `Rdf12JsonLd.parse(...)` helper, which returns RDF/JS quads for statement metadata. See [RDF 1.2](../reference/rdf-12) for the parser-backed path.
+
 ## Diagrams, Examples, and Outputs
 
 Example 03 starts from a JSON-LD string, loads it through `DAGDocument.load`, and executes the resulting DAG. The diagram is generated from that loaded object:
@@ -193,6 +195,8 @@ Because every field carries a canonical IRI through `@context`, a Dagonizer DAG 
 ```
 
 This is the same data the engine consumes. No separate ontology model, no projection. Applications that want to query DAGs as RDF (SHACL validation, SPARQL queries over a fleet of stored DAGs) get it for free by treating the JSON document as JSON-LD.
+
+JSON-LD-star annotation documents are parsed through the RDF 1.2 helper instead of `DAGDocument.load()`. That path is for statement metadata, such as confidence on a route claim or provenance on a composition edge, and returns RDF/JS quads that can be loaded into RDF-aware stores. New graph composition data should prefer the RDF 1.2 `rdf:reifies` form.
 
 ## Related Concepts
 

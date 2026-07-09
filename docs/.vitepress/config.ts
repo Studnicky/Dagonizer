@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve }                               from 'node:path';
 import { defineConfig, type HeadConfig }          from 'vitepress';
 import { transformerTwoslash }                    from '@shikijs/vitepress-twoslash';
+import { createFileSystemTypesCache }             from '@shikijs/vitepress-twoslash/cache-fs';
 import { withMermaid }                           from 'vitepress-plugin-mermaid';
 import { transformersEmbedderAssets }             from '../../examples/the-archivist/tooling/transformersEmbedderAssets.ts';
 import type { MermaidConfig }                    from 'mermaid';
@@ -199,6 +200,7 @@ const sidebar = [
       { text: 'Validation', link: '/reference/validation' },
       { text: 'Checkpoint', link: '/reference/checkpoint' },
       { text: 'Store',      link: '/reference/store' },
+      { text: 'RDF 1.2',    link: '/reference/rdf-12' },
       { text: 'Entities',   link: '/reference/entities' },
       { text: 'Testing',    link: '/reference/testing' },
       { text: 'Container', link: '/reference/container' },
@@ -579,6 +581,7 @@ export default withMermaid(defineConfig({
     // (`@studnicky/dagonizer/contracts`, `/entities`, …) resolve.
     codeTransformers: [
       transformerTwoslash({
+        typesCache: createFileSystemTypesCache({ dir: resolve(REPO_ROOT, 'docs/.vitepress/cache/twoslash') }),
         twoslashOptions: {
           compilerOptions: {
             target: 99,            // ES2022+

@@ -79,7 +79,7 @@ as subsections.
 Validation commands pass for the current docs state:
 
 - `pnpm run check:docs` - all 224 twoslash blocks type-check.
-- `pnpm run typecheck:docs` - `vue-tsc --noEmit -p docs/tsconfig.json` passes.
+- `pnpm run typecheck:docs` - isolated `vue-tsc@3.3.7` with `typescript@6.0.3` passes.
 - `pnpm run docs:build` - VitePress builds, renders pages, and generates the sitemap. The existing Rollup chunk-size warning remains informational.
 
 ## Editorial Invariants
