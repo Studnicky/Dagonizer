@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-adapter-web-llm",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "LLM adapter plugin for @studnicky/dagonizer: WebLlmAdapter.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -35,7 +35,7 @@
     "json-schema-to-ts": "^3.1.1"
   },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:^1.0.0"
+    "@studnicky/dagonizer": "workspace:^2.0.0"
   },
   "dependencies": {
     "@studnicky/signal": "^4.0.0"

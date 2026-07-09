@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-patterns-flow",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Pattern plugin for @studnicky/dagonizer: Pure flow node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -33,7 +33,7 @@
     "@types/node": "^26.0.0"
   },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:^1.0.0"
+    "@studnicky/dagonizer": "workspace:^2.0.0"
   },
   "engines": {
     "node": ">=24"
