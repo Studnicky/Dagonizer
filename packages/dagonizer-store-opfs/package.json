@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-opfs",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "OPFS-backed Store for @studnicky/dagonizer — async file-per-entry, streaming-native, browser-durable.",
   "private": false,
   "license": "MIT",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@studnicky/concurrency": "^4.0.0",
-    "@studnicky/dagonizer": "workspace:^1.0.1"
+    "@studnicky/dagonizer": "workspace:^2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

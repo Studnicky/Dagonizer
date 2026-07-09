@@ -362,7 +362,7 @@ importers:
   packages/dagonizer-adapter-anthropic:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -378,7 +378,7 @@ importers:
   packages/dagonizer-adapter-gemini-api:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -394,7 +394,7 @@ importers:
   packages/dagonizer-adapter-gemini-nano:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -407,7 +407,7 @@ importers:
   packages/dagonizer-adapter-ollama:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -420,7 +420,7 @@ importers:
   packages/dagonizer-adapter-web-llm:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -446,7 +446,7 @@ importers:
   packages/dagonizer-embedder-gemini-api:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -462,7 +462,7 @@ importers:
   packages/dagonizer-embedder-mistral:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -478,7 +478,7 @@ importers:
   packages/dagonizer-embedder-ollama:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/signal':
         specifier: ^4.0.0
@@ -494,7 +494,7 @@ importers:
   packages/dagonizer-embedder-tensorflow:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@tensorflow-models/universal-sentence-encoder':
         specifier: ^1.3.3
@@ -516,7 +516,7 @@ importers:
         specifier: ^4.2.0
         version: 4.2.0
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -532,7 +532,7 @@ importers:
         specifier: ^0.2.84
         version: 0.2.84
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -545,7 +545,7 @@ importers:
   packages/dagonizer-executor-node:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -570,7 +570,7 @@ importers:
   packages/dagonizer-executor-web:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -595,7 +595,7 @@ importers:
   packages/dagonizer-patterns-flow:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -605,7 +605,7 @@ importers:
   packages/dagonizer-patterns-graph:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -615,7 +615,7 @@ importers:
   packages/dagonizer-patterns-rag:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -631,7 +631,7 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@types/node':
@@ -641,7 +641,7 @@ importers:
   packages/dagonizer-store-indexeddb:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -672,7 +672,7 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -697,7 +697,7 @@ importers:
   packages/dagonizer-store-sqlite:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -722,7 +722,7 @@ importers:
   packages/dagonizer-store-webstorage:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -747,10 +747,10 @@ importers:
   packages/dagonizer-tool-googlebooks:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -763,10 +763,10 @@ importers:
   packages/dagonizer-tool-openlibrary:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -779,10 +779,10 @@ importers:
   packages/dagonizer-tool-wikipedia:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:^1.0.0
+        specifier: workspace:^2.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:^1.0.1
+        specifier: workspace:^2.0.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
