@@ -2,9 +2,9 @@
 title: 'Example 35: Stream Resume Cursor'
 description: 'The Cartographer resume scenario aborts a streaming scatter, reads StreamCursor.resumeAfter, and resumes from the durable cursor without duplicate processing.'
 seeAlso:
-  - text: 'Example 34: StreamChannel source'
+  - text: 'Example 34: Intake stream source'
     link: './34-stream-channel'
-    description: 'Cartographer StreamChannel source seeding'
+    description: 'Cartographer source-intake gather stream assembly'
   - text: 'Example 16: Scatter resume'
     link: './16-scatter-resume'
     description: 'the same Cartographer resume DAG from the scatter perspective'
@@ -35,7 +35,7 @@ This divides responsibility cleanly: the scatter records what it has safely pull
 
 ### DAG registration and diagram
 
-The [Cartographer](./the-cartographer) resume DAG uses the same streaming topology as the main DAG, but the scatter runs in item mode so abort can land between pulls. `StreamCursor.resumeAfter(state, 'process-stream')` reads the durable pull count from checkpoint state and feeds that cursor back into `StreamChannel.resumable(...)`.
+The [Cartographer](./the-cartographer) resume DAG uses the same streaming topology as the main DAG, but the scatter runs in item mode so abort can land between pulls. `StreamCursor.resumeAfter(state, 'process-stream')` reads the durable pull count from checkpoint state and feeds that cursor back into `CartographerSourceIntake.mergedFor(state, cursor)`.
 
 <DagJsonMermaid :dag="cartographerResumeDAG" title="Cartographer resumable stream DAG" aria-label="Cartographer resumable stream JSON-LD DAG beside Mermaid generated from it." />
 
@@ -55,13 +55,13 @@ This fits file cursors, event feeds, generated datasets, and model-produced work
 
 ## Code Samples
 
-The pre-phase node wires cursor-aware channel creation:
+The intake helper rebuilds the same ordered stream and skips the acknowledged prefix:
 
-<<< @/../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
+<<< @/../examples/the-cartographer/nodes/sourceIntake.ts#source-intake-helper
 
-The stream producer skips already-consumed items after resume:
+The intake gather is the DAG-visible convergence point before the resumable scatter:
 
-<<< @/../examples/the-cartographer/services/EventStreamSource.ts#cartographer-stream-producer
+<<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 The CLI scenario aborts, resumes, and compares fingerprints:
 
@@ -76,6 +76,6 @@ The CLI scenario aborts, resumes, and compares fingerprints:
 
 ## Related Concepts
 
-- [Example 34: StreamChannel source](./34-stream-channel) - Cartographer StreamChannel source seeding
+- [Example 34: Intake stream source](./34-stream-channel) - Cartographer source-intake gather stream assembly
 - [Example 16: Scatter resume](./16-scatter-resume) - the same Cartographer resume DAG from the scatter perspective
 - [Streaming Producers](../guide/streaming-producers) - full streaming API: driven, fanIn, resumable, DagStreamProducer

@@ -34,20 +34,20 @@ Dagonizer is domain-agnostic. The Archivist uses these concepts for an LLM-agent
 
 ### DAG
 
-A **DAG** is a JSON-LD document that declares one or more labeled `entrypoints` and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service. Parse a JSON string via `DAGDocument.load(json)` or validate an already-decoded value via `DAGDocument.ofValue(value)` — both validate against `DAGSchema` at the ingest boundary. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed.
+A **DAG** is a JSON-LD document that declares one or more labeled `entrypoints` and a list of placement IRIs with their routing. It is plain data: store it in a file, a database row, or a configuration service. Load it through `DAGDocument.load(json)`; that is the DAG document ingest boundary and it validates against `DAGSchema` before the dispatcher sees the graph. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed and keyed by absolute IRI.
 
-The Archivist DAG spans dozens of placements covering intent classification, tool-registry scatter, embedded search sub-DAGs, compose retry loops, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
+The Archivist DAG spans dozens of placements covering intent classification, tool-registry DAG references, embedded search sub-DAGs, compose retry loops, and persistence. Its `@context`, `@id`, and `@type` discriminator make it both a runtime artifact and a Linked Data document. The IRI is the binding rune; `name` is the label humans read in logs, diagrams, and observability output.
 
 ### Placement
 
-A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement. Flows terminate at an explicit `TerminalNode` placement.
+A **placement** is one vertex in the DAG. Each placement has a canonical `@id` IRI, a display `name`, a `@type` discriminator that selects the kind, and usually an `outputs` map that routes named outputs to the next placement IRI. Flows terminate at an explicit `TerminalNode` placement.
 
 Six kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
-- **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
+- **`scatter`**: isolates one state clone per item in a source array or stream, runs a registered node or DAG body in each clone, records per-item outcomes, and routes by aggregate reducer. Scatter is the fork; it does not secretly own the join.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
-- **`gather`**: buffers records from named producers, applies a gather strategy, and routes once its policy is satisfied. Use `GatherNode` for multi-entry fan-in or for producers that are not owned by a scatter placement.
+- **`gather`**: buffers records from producer placement IRIs or entrypoint IRIs, applies a gather strategy, and routes once its policy is satisfied. Use `GatherNode` for scatter fan-in, multi-entry intake, or any join that deserves to appear in the graph rather than lurking in the reeds.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: a single placement that wraps one registered node with a lifecycle attachment. `phase: 'pre'` runs the node before the DAG entrypoint; `phase: 'post'` runs the node after the main loop drains on every exit path. Pre-phase errors abort the run; post-phase errors are collected as warnings and do not change the already-set lifecycle. Phase placements carry no `outputs` and cannot route to other placements.
 
@@ -56,7 +56,8 @@ Six kinds:
 | Need | Kind |
 |------|------|
 | Sequential steps with conditional branching | `single` |
-| Process every item in a collection, then aggregate | `scatter` |
+| Process every item in a collection or stream | `scatter` |
+| Aggregate records from one or more producers | `gather` |
 | Invoke a registered sub-DAG exactly once and route on its outcome | `embedded` |
 | Join multiple producers at a first-class fan-in barrier | `gather` |
 | Distinguish multiple terminal semantics | `terminal` |
@@ -100,7 +101,7 @@ When `cursor` is non-null, the execution stopped early. Pass it to `dispatcher.r
 
 ### Route
 
-A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement. The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
+A **route** is the directed edge in the DAG: an output name on one placement mapped to the IRI of the next placement. The Archivist's classify-intent placement has several routes, one per typed output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
 
 ### Streaming and backpressure
 
@@ -116,7 +117,7 @@ The Cartographer demo exercises this pattern: multi-format satellite tracking fe
 
 ### Scatter outcome reducers
 
-After gather, an outcome reducer maps the set of per-clone records to one routing output for the scatter placement. The reducer name comes from `ScatterNode.reducer`.
+After a scatter body emits per-item records, an outcome reducer maps that set to one routing output for the scatter placement. The reducer name comes from `ScatterNode.reducer`. If downstream state needs to be folded, a first-class `GatherNode` declares the producer source and strategy explicitly.
 
 **`aggregate`** (default) counts records where `output === 'success'`. Returns `all-success`, `partial`, `all-error`, or `empty`.
 
@@ -238,9 +239,9 @@ When the signal fires between nodes, the dispatcher stops without starting the n
 
 After early termination: `result.cursor` holds the next node that would have run, and `result.state.lifecycle.variant` is `cancelled` or `timed_out`.
 
-### Scatter gather strategies
+### Gather strategies
 
-After all clones finish, a gather strategy merges clone state back into the parent. The strategy is declared in `GatherConfig.strategy`.
+Gather strategies are declared on `GatherNode.gather.strategy`. They fold records from declared producer IRIs into parent state. A scatter can feed a gather, but so can multiple DAG entrypoints, embedded DAG placements, or any producer that writes gather records.
 
 **`map`** copies fields from each clone into the parent. One clone writes a scalar; N clones produce an index-ordered array append. This is the generate-collect pattern: each clone writes a produced artifact and all artifacts land in one parent array.
 
@@ -262,7 +263,7 @@ After all clones finish, a gather strategy merges clone state back into the pare
 
 <<< @/../examples/dags/04-scatter.ts#gather-discard
 
-**`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
+**`custom`** requires `customNode: string`. The dispatcher stages the producer records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's merge steps use custom gather logic to deduplicate scout results by canonical book id.
 
 <<< @/../examples/dags/04-scatter.ts#gather-custom
 
@@ -280,7 +281,7 @@ There is no `apply` / `applyIncremental` split and no `IncrementalGatherStrategy
 
 <<< @/../examples/dags/02-builder.topology.ts#scatter-inputs
 
-Authored via the `inputs` option on `.scatter()` (or `.embed()` for embedded-DAG placements). Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
+Authored via the `inputs` option on `.scatter()` or `.embed()` for embedded-DAG placements. Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies. Gather does not clone; it folds records already produced by placement IRIs.
 
 ## Details for Nerds
 
@@ -310,7 +311,7 @@ BullMQ owns the distributed work surface: cross-process scheduling, rate limitin
 
 Shared: typed jobs, retry semantics, structured failures.
 
-Pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` when `Checkpoint.capture()` persisted it.
+Pattern: a BullMQ job's payload contains the DAG IRI and initial state; the worker hydrates state and calls `dispatcher.execute(dagIri, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` when `Checkpoint.capture()` persisted it.
 
 #### What Dagonizer carries on its own
 

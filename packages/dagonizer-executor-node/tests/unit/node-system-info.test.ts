@@ -38,7 +38,7 @@ class WorkerCountConfig {
     return {
       'maximumWorkers': 8,
       'mainThreadReservation': 1,
-      'fallbackWorkerCount': 1,
+      'minimumWorkerCount': 1,
       'memoryPerWorkerBytes': null,
       ...overrides,
     };
@@ -60,15 +60,15 @@ void describe('NodeSystemInfo.recommendedWorkerCount — clamp math', () => {
     assert.strictEqual(info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 4 })), 4);
   });
 
-  void it('clamps to fallbackWorkerCount when parallelism ≤ mainThreadReservation', () => {
+  void it('clamps to minimumWorkerCount when parallelism ≤ mainThreadReservation', () => {
     const info = new NodeSystemInfo({ 'os': FakeOs.of(1) });
-    assert.strictEqual(info.recommendedWorkerCount(WorkerCountConfig.of({ 'fallbackWorkerCount': 1 })), 1);
+    assert.strictEqual(info.recommendedWorkerCount(WorkerCountConfig.of({ 'minimumWorkerCount': 1 })), 1);
   });
 
-  void it('uses fallbackWorkerCount = 2 when base is negative', () => {
+  void it('uses minimumWorkerCount = 2 when base is negative', () => {
     const info = new NodeSystemInfo({ 'os': FakeOs.of(0) });
     assert.strictEqual(
-      info.recommendedWorkerCount(WorkerCountConfig.of({ 'fallbackWorkerCount': 2 })),
+      info.recommendedWorkerCount(WorkerCountConfig.of({ 'minimumWorkerCount': 2 })),
       2,
     );
   });
@@ -97,14 +97,14 @@ void describe('NodeSystemInfo.recommendedWorkerCount — memory clamping', () =>
     assert.strictEqual(result, 4);
   });
 
-  void it('does not reduce below fallbackWorkerCount from memory clamping', () => {
-    // only 100 MB free, 500 MB per worker → floor(100/500) = 0, clamped to fallback=1
+  void it('does not reduce below minimumWorkerCount from memory clamping', () => {
+    // only 100 MB free, 500 MB per worker → floor(100/500) = 0, clamped to minimum=1
     const freemem = 100 * 1024 * 1024;
     const perWorker = 500 * 1024 * 1024;
     const info = new NodeSystemInfo({ 'os': FakeOs.of(4, freemem) });
     const result = info.recommendedWorkerCount(WorkerCountConfig.of({
       'memoryPerWorkerBytes': perWorker,
-      'fallbackWorkerCount': 1,
+      'minimumWorkerCount': 1,
     }));
     assert.strictEqual(result, 1);
   });

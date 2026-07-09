@@ -38,21 +38,21 @@ class FixedIntentLlm implements LlmClientInterface {
 
 const dag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:intent-demo',
+  '@id': 'urn:noocodec:dag:intent-demo',
   '@type': 'DAG',
   name: 'intent-demo',
   version: '1',
-  entrypoints: { main: 'classify-intent' },
+  entrypoints: { main: 'urn:noocodec:dag:intent-demo/node/classify-intent' },
   nodes: [
     {
-      '@id': 'urn:noocodex:dag:intent-demo/node/classify-intent',
+      '@id': 'urn:noocodec:dag:intent-demo/node/classify-intent',
       '@type': 'SingleNode',
       name: 'classify-intent',
-      node: 'classify-intent',
-      outputs: { search: 'end', describe: 'end', recommend: 'end', 'off-topic': 'end' },
+      node: 'urn:noocodec:node:classify-intent',
+      outputs: { search: 'urn:noocodec:dag:intent-demo/node/end', describe: 'urn:noocodec:dag:intent-demo/node/end', recommend: 'urn:noocodec:dag:intent-demo/node/end', 'off-topic': 'urn:noocodec:dag:intent-demo/node/end' },
     },
     {
-      '@id': 'urn:noocodex:dag:intent-demo/node/end',
+      '@id': 'urn:noocodec:dag:intent-demo/node/end',
       '@type': 'TerminalNode',
       name: 'end',
       outcome: 'completed',
@@ -69,7 +69,7 @@ dispatcher.registerDAG(dag);
 const state = new IntentState();
 state.query = 'find me books about graph theory';
 
-const result = await dispatcher.execute('intent-demo', state);
+const result = await dispatcher.execute('urn:noocodec:dag:intent-demo', state);
 
 process.stdout.write(`[classify] query="${state.query}"\n`);
 process.stdout.write(`[classify] intent="${result.state.intent}"\n\n`);

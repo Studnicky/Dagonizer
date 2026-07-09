@@ -9,6 +9,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ class Logger {
  */
 class UseServicesNode extends MonadicNode<S, 'success'> {
   readonly name = 'use-services';
+  readonly '@id' = 'urn:noocodec:node:use-services';
   readonly outputs = ['success'] as const;
   readonly #logger: Logger;
 
@@ -51,20 +53,20 @@ class UseServicesNode extends MonadicNode<S, 'success'> {
 
 const SVC_DAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:svc',
+  '@id': 'urn:noocodec:dag:svc',
   '@type':    'DAG',
   'name': 'svc',
   'version': '1',
-  'entrypoints': { 'main': 'use-services' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:svc/node/use-services' },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:svc/node/use-services',
+      '@id': 'urn:noocodec:dag:svc/node/use-services',
       '@type': 'SingleNode',
       'name':  'use-services',
-      'node':  'use-services',
-      'outputs': { 'success': 'end' },
+      'node':  'urn:noocodec:node:use-services',
+      'outputs': { 'success': 'urn:noocodec:dag:svc/node/end' },
     },
-    { '@id': 'urn:noocodex:dag:svc/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+    { '@id': 'urn:noocodec:dag:svc/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
   ],
 };
 
@@ -77,12 +79,12 @@ void describe('Dagonizer constructor DI', () => {
 
     const dispatcher = new Dagonizer<S>();
     dispatcher.registerNode(node);
-    dispatcher.registerDAG(SVC_DAG);
+    dispatcher.registerDAG(TestDag.from(SVC_DAG));
 
     const state = new S();
     state.out = 'initial';
 
-    const result = await dispatcher.execute('svc', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:svc', state);
 
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.equal(result.state.out, 'served');
@@ -92,6 +94,7 @@ void describe('Dagonizer constructor DI', () => {
   void it('node without injected dep completes flow cleanly', async () => {
     class NoDepNode extends MonadicNode<S, 'success'> {
       readonly name = 'no-dep';
+      readonly '@id' = 'urn:noocodec:node:no-dep';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
@@ -104,26 +107,26 @@ void describe('Dagonizer constructor DI', () => {
 
     const dispatcher = new Dagonizer<S>();
     dispatcher.registerNode(new NoDepNode());
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:no-dep',
+      '@id': 'urn:noocodec:dag:no-dep',
       '@type':    'DAG',
       'name': 'no-dep',
       'version': '1',
-      'entrypoints': { 'main': 'no-dep' },
+      'entrypoints': { 'main': 'urn:noocodec:dag:no-dep/node/no-dep' },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:no-dep/node/no-dep',
+          '@id': 'urn:noocodec:dag:no-dep/node/no-dep',
           '@type': 'SingleNode',
           'name':  'no-dep',
-          'node':  'no-dep',
-          'outputs': { 'success': 'end' },
+          'node':  'urn:noocodec:node:no-dep',
+          'outputs': { 'success': 'urn:noocodec:dag:no-dep/node/end' },
         },
-        { '@id': 'urn:noocodex:dag:no-dep/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodec:dag:no-dep/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
-    });
+    }));
 
-    const result = await dispatcher.execute('no-dep', new S());
+    const result = await dispatcher.execute('urn:noocodec:dag:no-dep', new S());
 
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.equal(result.state.out, 'done');

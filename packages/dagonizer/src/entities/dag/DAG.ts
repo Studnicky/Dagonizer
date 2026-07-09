@@ -23,7 +23,7 @@ import { TerminalNodeSchema } from './TerminalNode.js';
 // Namespace
 // ---------------------------------------------------------------------------
 
-const NS = 'https://noocodex.dev/ontology/dag/';
+const NS = 'https://noocodec.dev/ontology/dag/';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -59,7 +59,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // scatter properties
   'body':        { '@id': `${NS}body` },
   'source':      { '@id': `${NS}source` },
-  'sources':     { '@id': `${NS}sources`, '@container': '@set' },
+  'sources': { '@id': `${NS}sources`, '@container': '@index' },
   'itemKey':     { '@id': `${NS}itemKey` },
   'execution':   { '@id': `${NS}execution` },
   'concurrency': { '@id': `${NS}concurrency` },
@@ -116,7 +116,7 @@ const DAGNodeEntrySchema = {
 } as const;
 
 export const DAGSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DAG',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/DAG',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@context', '@id', '@type', 'name', 'version', 'entrypoints', 'nodes'],
@@ -157,42 +157,31 @@ export class DAGEntrypoints {
  * Identity helpers for DAG documents.
  *
  * `DAG` is both the wire-shape type (derived from `DAGSchema`) and this
- * frozen value namespace. TypeScript permits a `type` alias and a `const`
+ * frozen value namespace. TypeScript permits a `type` and a `const`
  * with the same identifier because they live in separate declaration spaces.
  *
- * `DAGIdentity.id` and `DAGIdentity.placementId` produce the canonical URN
- * identifiers used in `@id` fields of JSON-LD DAG documents. The value carries a
- * distinct name from the `DAG` entity type so the two never share one identifier.
+ * `DAGIdentity.id` validates caller-supplied DAG IRIs. `DAGIdentity.placementId`
+ * composes a placement IRI from an explicit DAG IRI and an explicit placement
+ * identifier. Display names never participate in identity construction.
  */
 export const DAGIdentity = Object.freeze({
   /**
-   * Returns the canonical URN for a DAG by name.
-   *
-   * @param dagName - The DAG `name` field value.
-   * @returns `urn:noocodex:dag:<dagName>`
-   *
-   * @example
-   * ```ts
-   * DAGIdentity.id('my-workflow'); // 'urn:noocodex:dag:my-workflow'
-   * ```
+   * Validate and return a canonical DAG IRI.
    */
-  id(dagName: string): string {
-    return `urn:noocodex:dag:${dagName}`;
+  id(iri: string): string {
+    if (iri.length === 0 || !(iri.startsWith('urn:') || iri.includes('://'))) {
+      throw new Error(`DAGIdentity.id requires an absolute IRI`);
+    }
+    return iri;
   },
 
   /**
-   * Returns the canonical URN for a node placement within a DAG.
-   *
-   * @param dagName - The DAG `name` field value.
-   * @param placementName - The placement `name` field value.
-   * @returns `urn:noocodex:dag:<dagName>/node/<placementName>`
-   *
-   * @example
-   * ```ts
-   * DAGIdentity.placementId('my-workflow', 'fetchData'); // 'urn:noocodex:dag:my-workflow/node/fetchData'
-   * ```
+   * Compose a placement IRI from a DAG IRI and explicit placement identifier.
    */
-  placementId(dagName: string, placementName: string): string {
-    return `urn:noocodex:dag:${dagName}/node/${placementName}`;
+  placementId(dagIri: string, placementId: string): string {
+    if (placementId.length === 0) {
+      throw new Error(`DAGIdentity.placementId requires a non-empty placement identifier`);
+    }
+    return `${DAGIdentity.id(dagIri)}/node/${placementId}`;
   },
 });

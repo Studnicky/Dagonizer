@@ -159,9 +159,6 @@ class LawDispatcherFactory {
   }
 }
 
-// LazyLoopbackContainer is an alias for LoopbackContainer: the pool-lifecycle
-// base already handles lazy entry creation on first acquire. The type alias
-// keeps the harness sentinel construction readable.
 const LazyLoopbackContainer = LoopbackContainer;
 type LazyLoopbackContainer = LoopbackContainer;
 
@@ -179,10 +176,8 @@ let sentinelContainer: LazyLoopbackContainer | null = null;
 // and the dist/ DagonizerInterface are structurally identical at runtime but are
 // distinct type identities in the dual-compilation build: private fields from the
 // Execution<T> class create a brand divergence that prevents direct structural
-// assignment. The single `as unknown` + `as` here is the minimal bridge between
-// the two compilation units; it cannot be eliminated without making the test
-// import Dagonizer from dist/ (which would lose access to src/ coverage) or
-// without changing the DagConformanceHarnessInterface signature in testing/.
+// assignment. The single `as unknown` + `as` here bridges the two compilation
+// units without changing the harness surface in testing/.
 const harnessRaw = {
   'containerRole': CONFORMANCE_CONTAINER_ROLE,
 
@@ -371,7 +366,8 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     // checkpoint with fewer than all items acked.
     const rawProgress = state.getMetadata(SCATTER_PROGRESS_KEY);
     const progress: StoredScatterProgressType = rawProgress === undefined ? {} : Validator.storedScatterProgress.validate(rawProgress);
-    const fan = progress['fan'];
+    const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
+    const fan = progress[fanIri];
     assert.ok(fan !== undefined, 'checkpoint must survive — ScatterCheckpoint.clear must NOT run on infra failure');
     const ackedCount = fan.mode === 'bounded'
       ? fan.watermark + fan.aheadAcked.length
@@ -388,7 +384,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const freshDispatcher = new Dagonizer<NodeStateInterface>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
-    const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');
+    const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, fanIri);
 
     // All 3 items gathered: no loss, no double-ack (acked item not reprocessed).
     assert.ok(result.state instanceof ConformanceState, 'result.state must be a ConformanceState');

@@ -5,6 +5,7 @@
  * within the viz module only.
  */
 
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -167,7 +168,7 @@ export class PlacementUtils {
   }
 
   /**
-   * Return the sub-DAG name that this placement embeds, or `null` if it does
+   * Return the sub-DAG IRI that this placement embeds, or `null` if it does
    * not embed a DAG.
    *
    * Covers both shapes:
@@ -218,6 +219,11 @@ export class PlacementUtils {
     return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
   }
 
+  /** Return the placement label for UI surfaces: display name or CURIE(@id). */
+  static displayLabel(placement: PlacementEntryType, context: Record<string, unknown> = {}): string {
+    return placement.name.length > 0 ? placement.name : ContextResolver.compact(placement['@id'], context);
+  }
+
   /**
    * Invoke the handler for `placement` in a `PlacementDispatchType` map.
    *
@@ -237,8 +243,8 @@ export class PlacementUtils {
     }
   }
 
-  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
-  static idIn(prefix: string, name: string): string {
-    return prefix === '' ? name : `${prefix}/${name}`;
+  /** Build a placement-IRI id, optionally prefixed by an enclosing scope. */
+  static idIn(prefix: string, placementIri: string): string {
+    return prefix === '' ? placementIri : `${prefix}/${placementIri}`;
   }
 }

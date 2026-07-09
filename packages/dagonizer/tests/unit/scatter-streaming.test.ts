@@ -2,7 +2,7 @@
  * Tests for the unified streaming scatter executor.
  *
  * Covers:
- *   - Array source: result correctness + backward-compat ordering semantics
+ *   - Array source: result correctness + ordering semantics
  *   - Bounded concurrency: max in-flight ≤ N
  *   - AsyncIterable source: same gathered result as the equivalent array
  *   - True backpressure: source is NOT fully drained before processing starts
@@ -24,7 +24,7 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
@@ -34,6 +34,8 @@ import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
+
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
 
 /** Union type for scatter source fields: array (array-mode) or async iterable (streaming mode). */
 type ScatterSource<T> = T[] | AsyncIterable<T>;
@@ -85,24 +87,44 @@ class TestScatterDag {
     gatherStrategy: GatherConfigType,
     options: { concurrency?: number } = {},
   ): DAGType {
+    const dagIri = `urn:noocodec:dag:${dagName}`;
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': fanIri,
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
           ...(options.concurrency !== undefined ? { 'execution': { 'mode': 'item' as const, 'concurrency': options.concurrency } } : {}),
-          'gather': gatherStrategy,
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
         },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': gatherStrategy,
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
   }
@@ -114,13 +136,13 @@ void describe('Scatter: array source', () => {
   void it('produces the gathered result for a plain array', async () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], () => { calls++; return 'success'; }));
-    dispatcher.registerDAG(TestScatterDag.streaming('arr-compat',
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], () => { calls++; return 'success'; }));
+    dispatcher.registerDAG(TestScatterDag.streaming('arr-order',
       { 'strategy': 'append', 'target': 'processed' }));
 
     const state = new StreamState();
     state.items = [1, 2, 3, 4, 5];
-    const result = await dispatcher.execute('arr-compat', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:arr-order', state);
 
     assert.equal(calls, 5);
     assert.equal(result.cursor, null);
@@ -132,7 +154,7 @@ void describe('Scatter: array source', () => {
     let peakConcurrent = 0;
     let current = 0;
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], async () => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], async () => {
       current++;
       if (current > peakConcurrent) peakConcurrent = current;
       // Yield to allow other workers to start before decrementing.
@@ -147,7 +169,7 @@ void describe('Scatter: array source', () => {
 
     const state = new StreamState();
     state.items = [1, 2, 3, 4, 5, 6];
-    await dispatcher.execute('arr-bounded', state);
+    await dispatcher.execute('urn:noocodec:dag:arr-bounded', state);
 
     assert.ok(peakConcurrent <= 2,
       `peak concurrent workers was ${peakConcurrent}, expected ≤ 2`);
@@ -157,7 +179,7 @@ void describe('Scatter: array source', () => {
 void describe('Scatter: AsyncIterable source', () => {
   void it('drains an async-iterable source and produces the same result as an array', async () => {
     const dispatcher = new Dagonizer<StreamState>();
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('async-source',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -173,7 +195,7 @@ void describe('Scatter: AsyncIterable source', () => {
     // Cast to any to set a non-array source value on the state field.
     state.items = makeSource();
 
-    const result = await dispatcher.execute('async-source', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:async-source', state);
     assert.equal(result.cursor, null);
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [10, 20, 30]);
   });
@@ -193,7 +215,7 @@ void describe('Scatter: AsyncIterable source', () => {
       }
     }
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], async (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], async (state) => {
       const item = state.getter.number('item');
       log.push({ 'event': 'process', 'item': item });
       // Yield to the event loop so the pull loop can advance if backpressure
@@ -210,7 +232,7 @@ void describe('Scatter: AsyncIterable source', () => {
     const st = new StreamState();
     st.items = lazySource();
 
-    await dispatcher.execute('bp-test', st);
+    await dispatcher.execute('urn:noocodec:dag:bp-test', st);
 
     // All 5 items pulled and processed.
     const pulls = log.filter((e) => e.event === 'pull').map((e) => e.item);
@@ -240,7 +262,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
     const seenItems: number[] = [];
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       calls++;
       seenItems.push(state.getter.number('item', -1));
       return 'success';
@@ -256,10 +278,11 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     // state.processed during the prior run. A real snapshot carries these values.
     state.processed = [10, 20];
     // Seed checkpoint: items 0 and 1 already acked.
+    const fanIri = placementIri('urn:noocodec:dag:resume-arr', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
+      [fanIri]: {
         'mode':          'bounded' as const,
-        'placementName': 'fan',
+        'placementName': fanIri,
         'inbox':         [],
         'watermark':     2,
         'aheadAcked':    [],
@@ -267,7 +290,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       },
     });
 
-    const result = await dispatcher.resume('resume-arr', state, 'fan');
+    const result = await dispatcher.resume('urn:noocodec:dag:resume-arr', state, fanIri);
 
     assert.equal(calls, 3, `expected 3 fresh calls on resume, got ${calls}`);
     assert.equal(result.cursor, null);
@@ -285,7 +308,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     // Resume must reprocess them; they must appear in the final result.
     const dispatcher = new Dagonizer<StreamState>();
     const processedItems: number[] = [];
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       processedItems.push(state.getter.number('item', -1));
       return 'success';
     }));
@@ -299,10 +322,11 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     // contribution (append strategy, value=1) was already folded into processed.
     // Item 1 was in-flight (in inbox) at crash — not yet gathered.
     state.processed = [1]; // item 0 already gathered
+    const fanIri = placementIri('urn:noocodec:dag:resume-inbox', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
+      [fanIri]: {
         'mode':          'bounded' as const,
-        'placementName': 'fan',
+        'placementName': fanIri,
         'inbox':         [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
         'watermark':     1,
         'aheadAcked':    [],
@@ -310,7 +334,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       },
     });
 
-    const result = await dispatcher.resume('resume-inbox', state, 'fan');
+    const result = await dispatcher.resume('urn:noocodec:dag:resume-inbox', state, fanIri);
 
     assert.equal(result.cursor, null);
     // Item 1 (from inbox) + items 2,3,4 (fresh from source) = 4 calls.
@@ -334,7 +358,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
     const processedValues: number[] = [];
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       calls++;
       processedValues.push(state.getter.number('item', -1));
       return 'success';
@@ -361,10 +385,11 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     st.processed = [10, 20];
 
     // Checkpoint: indices 0,1 acked; index 2 in inbox (value 30).
+    const fanIri = placementIri('urn:noocodec:dag:resume-async', 'fan');
     st.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
+      [fanIri]: {
         'mode':          'bounded' as const,
-        'placementName': 'fan',
+        'placementName': fanIri,
         'inbox':         [{ 'index': 2, 'item': 30 }],
         'watermark':     2,
         'aheadAcked':    [],
@@ -372,7 +397,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
       },
     });
 
-    const result = await dispatcher.resume('resume-async', st, 'fan');
+    const result = await dispatcher.resume('urn:noocodec:dag:resume-async', st, fanIri);
 
     assert.equal(result.cursor, null);
     // 3 calls: inbox item (30) + 2 fresh items (40, 50).
@@ -397,31 +422,48 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const foldsAfterEachItem: number[] = [];
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item');
       state.produced = item * 2;
       return 'success';
     }));
 
     const dagName = 'incr-map';
+    const dagIri = `urn:noocodec:dag:${dagName}`;
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': fanIri,
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': { 'strategy': 'map', 'mapping': { 'produced': 'mappedResults' } },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
         },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': joinIri, '@type': 'GatherNode',
+          'name': 'join', 'sources': { [fanIri]: {} }, 'gather': { 'strategy': 'map', 'mapping': { 'produced': 'mappedResults' } },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          }
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -442,7 +484,7 @@ void describe('Scatter: incremental gather', () => {
       }
     };
 
-    await dispatcher.execute(dagName, st);
+    await dispatcher.execute(dagIri, st);
 
     // 3 items → 3 acks → 3 progress writes; mappedResults grows 1 at a time.
     assert.equal(foldsAfterEachItem.length, 3);
@@ -456,7 +498,7 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const foldsAfterEachAck: number[] = [];
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('incr-append',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -471,7 +513,7 @@ void describe('Scatter: incremental gather', () => {
       }
     };
 
-    await dispatcher.execute('incr-append', st);
+    await dispatcher.execute('urn:noocodec:dag:incr-append', st);
 
     assert.deepEqual(foldsAfterEachAck, [1, 2, 3],
       'processed should grow by 1 after each incremental fold');
@@ -484,33 +526,47 @@ void describe('Scatter: incremental gather', () => {
     const errorFoldsAfterAck: number[] = [];
 
     // Items 1,3,5 → 'success'; items 2,4 → 'error'.
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success', 'error'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success', 'error'], (state) => {
       const item = state.getter.number('item');
       return item % 2 === 1 ? 'success' : 'error';
     }));
 
     const dagName = 'incr-partition';
+    const dagIri = `urn:noocodec:dag:${dagName}`;
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': fanIri,
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': {
-            'strategy': 'partition',
-            'partitions': { 'success': 'partition_success', 'error': 'partition_error' },
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
           },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': joinIri, '@type': 'GatherNode',
+          'name': 'join', 'sources': { [fanIri]: {} }, 'gather': { 'strategy': 'partition', 'partitions': { 'success': 'partition_success', 'error': 'partition_error' } },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          }
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -526,7 +582,7 @@ void describe('Scatter: incremental gather', () => {
       }
     };
 
-    await dispatcher.execute(dagName, st);
+    await dispatcher.execute(dagIri, st);
 
     // 5 items → 5 acks. Items 1,3,5 → success; 2,4 → error.
     assert.equal(successFoldsAfterAck.length, 5);
@@ -539,9 +595,9 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let customNodeCalls = 0;
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success']));
     // Custom gather node: reads gatherResults from metadata.
-    dispatcher.registerNode(TestNode.make<StreamState>('customGather', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:customGather', ['success'], (state) => {
       customNodeCalls++;
       const rawRecords = state.getMetadata('gatherResults');
       const records: Array<Record<string, unknown>> = Array.isArray(rawRecords)
@@ -554,31 +610,48 @@ void describe('Scatter: incremental gather', () => {
     }));
 
     const dagName = 'custom-batch';
+    const dagIri = `urn:noocodec:dag:${dagName}`;
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': fanIri,
           '@type':  'ScatterNode',
           'name':   'fan',
-          'body':   { 'node': 'worker' },
+          'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 2 },
-          'gather': { 'strategy': 'custom', 'customNode': 'customGather' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
         },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': joinIri, '@type': 'GatherNode',
+          'name': 'join', 'sources': { [fanIri]: {} }, 'gather': { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:customGather' },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          }
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
 
     const st = new StreamState();
     st.items = [7, 14, 21];
-    await dispatcher.execute(dagName, st);
+    await dispatcher.execute(dagIri, st);
 
     // Custom gather node called exactly once (batch apply).
     assert.equal(customNodeCalls, 1);
@@ -591,7 +664,6 @@ void describe('Scatter: progress shape (inbox model)', () => {
   void it('persists inbox + ackedResults; clears on clean completion', async () => {
     const dispatcher = new Dagonizer<StreamState>();
     const progressSnapshots: ScatterProgressType[] = [];
-
     const st = new StreamState();
     st.items = [1, 2, 3];
 
@@ -602,18 +674,19 @@ void describe('Scatter: progress shape (inbox model)', () => {
       if (key === SCATTER_PROGRESS_KEY) {
         const isStoredProgress = (v: unknown): v is Record<string, ScatterProgressType> =>
           typeof v === 'object' && v !== null;
-        if (isStoredProgress(value) && value['fan'] !== undefined) {
-          progressSnapshots.push({ ...value['fan'] });
+        const fanIri = placementIri('urn:noocodec:dag:progress-shape', 'fan');
+        if (isStoredProgress(value) && value[fanIri] !== undefined) {
+          progressSnapshots.push({ ...value[fanIri] });
         }
       }
     };
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('progress-shape',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
-    await dispatcher.execute('progress-shape', st);
+    await dispatcher.execute('urn:noocodec:dag:progress-shape', st);
 
     // 3 items → 3 ack writes.
     assert.equal(progressSnapshots.length, 3);
@@ -663,6 +736,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
 
     class WorkerNode extends MonadicNode<StreamState, 'success'> {
       override readonly name = 'worker';
+      override readonly '@id' = 'urn:noocodec:node:worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
@@ -698,11 +772,11 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     }
     state.items = makeSource();
 
-    const result = await dispatcher.execute('abort-async-50', state, { 'signal': controller.signal });
+    const result = await dispatcher.execute('urn:noocodec:dag:abort-async-50', state, { 'signal': controller.signal });
 
     // 1. The run was interrupted — cursor stays on 'fan'.
-    assert.equal(result.cursor, 'fan',
-      `cursor should be 'fan' after abort; got '${result.cursor}'`);
+    assert.equal(result.cursor, placementIri('urn:noocodec:dag:abort-async-50', 'fan'),
+      `cursor should be '${placementIri('urn:noocodec:dag:abort-async-50', 'fan')}' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint survives — progress entry is still present.
     const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
@@ -710,7 +784,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
     const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
 
-    const entry = stored['fan'];
+    const entry = stored[placementIri('urn:noocodec:dag:abort-async-50', 'fan')];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
     // 3. Not all items were acked — fewer than total. If the pull-loop ignored
@@ -726,14 +800,15 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     );
 
     // 4. A subsequent resume processes the remaining items. The resume
-    //    dispatcher gets a fresh array source of the same total size; it skips
-    //    already-acked indices via seenIndices and completes the rest.
+    //    dispatcher gets the same DAG IRI and a fresh array source of the same
+    //    total size; it skips already-acked indices via seenIndices and
+    //    completes the rest.
     const resumeDispatcher = new Dagonizer<StreamState>();
-    resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    resumeDispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
-    resumeDispatcher.registerDAG(TestScatterDag.streaming('abort-async-resume',
+    resumeDispatcher.registerDAG(TestScatterDag.streaming('abort-async-50',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
 
@@ -747,7 +822,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     resumeState.processed = [...result.state.processed];
     resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const resumeResult = await resumeDispatcher.resume('abort-async-resume', resumeState, 'fan');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:abort-async-50', resumeState, placementIri('urn:noocodec:dag:abort-async-50', 'fan'));
 
     // 5. Resume completes (cursor null).
     assert.equal(resumeResult.cursor, null,
@@ -769,7 +844,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<StreamState>();
 
-    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
@@ -788,9 +863,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const ctl = new AbortController();
     ctl.abort(new Error('pre-abort'));
 
-    const result = await dispatcher.execute('pre-aborted', state, { 'signal': ctl.signal });
+    const result = await dispatcher.execute('urn:noocodec:dag:pre-aborted', state, { 'signal': ctl.signal });
 
-    assert.equal(result.cursor, 'fan', 'cursor should be fan after pre-abort');
+    assert.equal(result.cursor, placementIri('urn:noocodec:dag:pre-aborted', 'fan'),
+      `cursor should be ${placementIri('urn:noocodec:dag:pre-aborted', 'fan')} after pre-abort`);
     assert.equal(result.state.processed.length, 0, 'no items should have been processed');
   });
 
@@ -810,6 +886,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const dispatcher = new Dagonizer<StreamState>();
     class ExactlyOnceWorkerNode extends MonadicNode<StreamState, 'success'> {
       override readonly name = 'worker';
+      override readonly '@id' = 'urn:noocodec:node:worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
@@ -840,14 +917,15 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const state = new StreamState();
     state.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const partial = await dispatcher.execute('exactly-once-abort', state, { 'signal': controller.signal });
+    const partial = await dispatcher.execute('urn:noocodec:dag:exactly-once-abort', state, { 'signal': controller.signal });
 
-    assert.equal(partial.cursor, 'fan', 'run must be interrupted');
+    assert.equal(partial.cursor, placementIri('urn:noocodec:dag:exactly-once-abort', 'fan'),
+      'run must be interrupted');
 
     // Resume with a fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<StreamState>();
-    resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+    resumeDispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:worker', ['success'], (state) => {
       const item = state.getter.number('item', -1);
       resumeItems.push(item);
       state.processed.push(item);
@@ -866,7 +944,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     resumeState.processed = [...partial.state.processed];
     resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
-    const resumeResult = await resumeDispatcher.resume('exactly-once-abort', resumeState, 'fan');
+    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:exactly-once-abort', resumeState, placementIri('urn:noocodec:dag:exactly-once-abort', 'fan'));
 
     assert.equal(resumeResult.cursor, null, 'resume must complete');
 

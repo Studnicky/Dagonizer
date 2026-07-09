@@ -20,7 +20,7 @@ Use this page when docs, developer tools, or product UI need to show the graph s
 
 ## How It Works
 
-Renderers read `DAGType` documents. They do not inspect dispatcher internals, node implementations, or live runtime state unless a caller supplies explicit metadata. That keeps visualization tied to the same JSON-LD artifact used for registration.
+Renderers read `DAGType` documents. They do not inspect dispatcher internals, node implementations, or live runtime state unless a caller supplies explicit metadata. That keeps visualization tied to the same JSON-LD artifact used for registration: DAG and placement IRIs define identity, while `name` labels make the graph readable.
 
 Mermaid is the lightweight static format for docs. Cytoscape is the richer element format for browser runners that need expansion, live state, selection, and interaction.
 
@@ -81,11 +81,12 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet["greet"]` |
 | `scatter` | trapezoid     | `scout[/"scout"/]` |
+| `gather` | hexagon | `collect{{"collect"}}` |
 | `embedded-dag` | subroutine | `invoke[["invoke"]]` |
 | `terminal` (completed) | double-circle | `done((("done")))` |
 | `terminal` (failed) | asymmetric flag | `fail>"fail"]` |
 
-Every output route renders as a labeled directed edge: `from -->|outcome| to`. Flows terminate at explicit `TerminalNode` placements, which render as double-circle (completed) or asymmetric-flag (failed) shapes and emit no outbound edges.
+Every output route renders as a labeled directed edge: `from -->|outcome| to`. Route targets are placement IRIs in the DAG document; labels come from placement `name`. Flows terminate at explicit `TerminalNode` placements, which render as double-circle (completed) or asymmetric-flag (failed) shapes and emit no outbound edges.
 
 #### Style and layout options
 
@@ -146,7 +147,7 @@ const doc: DagJsonLdDocumentType = JsonLdRenderer.render(dag);
 
 Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containing the DAG root plus every placement, all typed against the Dagonizer vocabulary (`DAGONIZER_VOCAB`). The output is a plain object; serialize with `JSON.stringify`.
 
-Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ScatterNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`.
+Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ScatterNode`, `dag:GatherNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`, or `dag:PhaseNode`.
 
 ```ts
 <<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render
@@ -157,8 +158,8 @@ Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:Scatter
 ```ts twoslash
 import { DAGONIZER_VOCAB } from '@studnicky/dagonizer/viz';
 // ---cut---
-// DAGONIZER_VOCAB === 'https://noocodex.dev/ontology/dagonizer/'
-const vocab = DAGONIZER_VOCAB; // type: "https://noocodex.dev/ontology/dagonizer/"
+// DAGONIZER_VOCAB === 'https://noocodec.dev/ontology/dagonizer/'
+const vocab = DAGONIZER_VOCAB; // type: "https://noocodec.dev/ontology/dagonizer/"
 export {};
 ```
 
@@ -218,7 +219,7 @@ const graph = new CytoscapeGraph(container, dag, options);
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `embeddedDAGs?` | `ReadonlyMap<string, DAG>` | Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and `CompositeLayout` for recursive expansion. Default: empty `Map`. |
+| `embeddedDAGs?` | `ReadonlyMap<string, DAG>` | Registry of embedded DAGs by DAG IRI, passed to `CytoscapeRenderer` and `CompositeLayout` for recursive expansion. Default: empty `Map`. |
 | `layoutOptions?` | `CompositeLayoutOptionsType` | Layout tuning options forwarded to `CompositeLayout.compute`. Default: `{}` (all tuning delegated to `CompositeLayout`'s own defaults). |
 
 The constructor accepts `Partial<CytoscapeGraphOptionsType>`; both fields are optional at the call site with the defaults noted above.
@@ -251,7 +252,7 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 | `stylesheet` | `() => cytoscape.StylesheetStyle[]` | Override to supply a custom stylesheet. |
 | `presetLayout` | `() => cytoscape.PresetLayoutOptions` | Override to change the preset layout options passed to cytoscape. Default uses `preset` with `fit: true, padding: 60`. |
 | `interactionDefaults` | `() => Record<string, unknown>` | Override to customize pan/zoom/interaction defaults spread into the cytoscape constructor. |
-| `layoutRegistry` | `() => ReadonlyMap<string, DAG>` | Override to return the embedded-DAG subset used for layout. Default returns the full `embeddedDAGs` passed at construction. |
+| `layoutRegistry` | `() => ReadonlyMap<string, DAG>` | Override to return the embedded-DAG subset used for layout. Default returns the `embeddedDAGs` passed at construction. |
 | `applyLayout` | `(elements: ReadonlyArray<cytoscape.ElementDefinition>) => Promise<cytoscape.ElementDefinition[]>` | Override to customize the layout application step. Default calls `CompositeLayout.compute` and attaches positions to each node element. |
 | `enforceVisibility` | `(cy: cytoscape.Core) => void` | Override to replace the self-loop size-cache flush strategy. Default toggles `display` off then on in two `cy.batch()` calls. |
 | `onReady` | `(cy: cytoscape.Core) => void` | Called after mount and visibility sweep complete. Override to wire animation machines or event listeners. Default is a no-op. |
@@ -282,9 +283,9 @@ const elements: readonly CytoscapeElementType[] = CytoscapeRenderer.render(dag);
 Renders a `DAG` as a Cytoscape elements array.
 
 - Every placement becomes a node element with a `type` field (`'single'` | `'scatter'` | `'gather'` | `'embedded-dag'` | `'terminal'` | `'phase'`) for per-type stylesheet selectors.
-- Every output route becomes a labeled edge element.
-- Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
-- Routes to `null` become edges to a synthetic `END` terminal node.
+- Every output route becomes a labeled edge element whose source and target are placement IDs derived from placement IRIs.
+- Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeds`, showing the full inner flow as a compound cluster.
+- `GatherNode` placements render as first-class nodes with their own route edges; scatter fan-out routes to gather fan-in when records need to be folded.
 
 ```ts
 <<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
@@ -395,7 +396,7 @@ const y: number = pos.y;
 
 Mermaid rendering is text-first and static. Cytoscape rendering is element-first and suitable for live browser state. `JsonLdRenderer` preserves semantic graph data for tools that need linked-data output rather than a visual graph.
 
-Renderer options should make style pluggable without changing DAG documents. A style choice must not hide node text, break Mermaid parsing, or alter registry names.
+Renderer options should make style pluggable without changing DAG documents. A style choice must not hide node text, break Mermaid parsing, or alter graph IRIs.
 
 ## Related Concepts
 

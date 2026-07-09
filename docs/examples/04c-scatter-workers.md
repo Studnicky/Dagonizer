@@ -4,10 +4,10 @@ description: 'ScatterNode with a container role declared. Runs in-process when n
 seeAlso:
   - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
-    description: 'scatter mechanics: source, body, gather, reduce'
+    description: 'scatter mechanics: source, body DAG, gather placement, reduce'
   - text: 'Example 04B: Scatter Collect'
     link: './04b-scatter-collect'
-    description: 'map gather: generate-and-select pattern'
+    description: 'first-class gather: generate-and-select pattern'
   - text: 'Example 12: Worker Containers'
     link: './12-workers'
     description: 'full WorkerThreadContainer walkthrough with registry module'
@@ -26,13 +26,13 @@ import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/St
 
 Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each stream-event clone can run behind the `cpu` container role.
 
-That role is late-bound. In the browser demo it maps to a `WebWorkerContainer`; in CLI worker mode it can map to a `WorkerThreadContainer`; without a binding the same DAG runs in-process and emits a contract warning.
+That role is late-bound. In the browser demo it maps to a `WebWorkerContainer`; in CLI worker mode it maps to a `WorkerThreadContainer`.
 
 ## How It Works
 
-The JSON-LD placement declares `container: 'cpu'`. At runtime, the dispatcher looks up the `cpu` backend in its `containers` option. If the role is bound, each scatter clone's body DAG runs through that backend; if it is not bound, the dispatcher runs in-process and emits a contract warning. Gather and outcome reduction are identical in both modes.
+The JSON-LD placement declares `container: 'cpu'`. At runtime, the dispatcher looks up the `cpu` backend in its `containers` option. If the role is bound, each scatter clone's body DAG runs through that backend. First-class gather and outcome reduction are identical in both modes.
 
-This makes the container role an assembly concern, not a business-logic concern. The scatter body, gather strategy, and routes stay in the canonical DAG; hosts decide where the work runs.
+This makes the container role an assembly concern, not a business-logic concern. The scatter body DAG, gather placement, strategy key, and routes stay in the canonical DAG; hosts decide where the work runs.
 
 ## Diagrams, Examples, and Outputs
 
@@ -72,14 +72,13 @@ The parent DAG declares the container role; the browser runner binds it. Those t
 
 ## Details for Nerds
 
-- **`container` key on a scatter placement.** Adding `container: "cpu"` to a `ScatterNode` with a dag body tells the dispatcher to run each clone's sub-DAG in the backend bound to `"cpu"`. The key is ignored (with a `contractWarning`) when no backend is bound.
-- **In-process fallback.** The non-worker `cartographerDAG` omits `container` on the same logical scatter and runs the body in-process.
+- **`container` key on a scatter placement.** Adding `container: "cpu"` to a `ScatterNode` with a dag body tells the dispatcher to run each clone's sub-DAG in the backend bound to `"cpu"`.
 - **No node-body containers.** A scatter whose body is a single node (no `dag` key) cannot be contained — validation rejects `container` on a node-body scatter.
 - **Transition to workers is one config change.** Bind a `WorkerThreadContainer` to `"cpu"` in the dispatcher constructor's `containers` option without touching the DAG document or the node implementations.
 
 ## Related Concepts
 
-- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
-- [Example 04B: Scatter Collect](./04b-scatter-collect) - map gather: generate-and-select pattern
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body DAG, gather placement, reduce
+- [Example 04B: Scatter Collect](./04b-scatter-collect) - first-class gather: generate-and-select pattern
 - [Example 12: Worker Containers](./12-workers) - full WorkerThreadContainer walkthrough with registry module
 - [Reference: Contracts, DagContainerInterface](../reference/contracts)

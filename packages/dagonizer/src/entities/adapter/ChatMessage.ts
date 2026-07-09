@@ -17,7 +17,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * forcing tool-only fields onto non-tool message shapes.
  */
 export const ChatMessageSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatMessage',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/ChatMessage',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {

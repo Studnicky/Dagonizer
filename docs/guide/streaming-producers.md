@@ -114,12 +114,12 @@ class DeterministicProducer implements ResumableStreamProducerInterface<number> 
 
 // First run
 state.source = StreamChannel.resumable(DeterministicProducer.of(20), 0);
-await dispatcher.execute('my-dag', state);
+await dispatcher.execute('urn:noocodec:dag:my-dag', state);
 
 // Resume from where the scatter left off
 const resumeAfter = StreamCursor.resumeAfter(state, 'scatter-node-name');
 state.source = StreamChannel.resumable(DeterministicProducer.of(20), resumeAfter);
-await dispatcher.execute('my-dag', state);
+await dispatcher.execute('urn:noocodec:dag:my-dag', state);
 ```
 
 `StreamCursor.resumeAfter(state, scatterName)` reads the scatter's durable pull count (`nextIndex`) from the state checkpoint. It returns 0 on a fresh run. The cursor is the PULL count — items buffered but not yet pulled at interruption time are re-emitted on resume with no duplicates.
@@ -128,7 +128,7 @@ await dispatcher.execute('my-dag', state);
 
 `DagStreamProducer<T>` is an abstract base class (exported from `@studnicky/dagonizer`) that bridges a running inner DAG's per-node result stream into a push sink. Subclass it and implement:
 
-- `protected abstract executions(): AsyncIterable<NodeResultType<NodeStateInterface>>` — run the inner DAG in streaming mode. `Dagonizer.execute(dagName, state)` returns an `Execution<TState>` which is both `AsyncIterable<NodeResultType<NodeStateInterface>>` and `PromiseLike`.
+- `protected abstract executions(): AsyncIterable<NodeResultType<NodeStateInterface>>` — run the inner DAG in streaming mode. `Dagonizer.execute(dagIri, state)` returns an `Execution<TState>` which is both `AsyncIterable<NodeResultType<NodeStateInterface>>` and `PromiseLike`.
 - `protected abstract select(stage: NodeResultType<NodeStateInterface>): Iterable<T>` — yield zero or more items from each node result. Return an empty array `[]` to skip a stage.
 
 `produce` is already implemented: it iterates `executions()` and awaits `sink.push(item)` for every item yielded by `select`. The inner DAG is therefore back-pressured at the outer scatter's drain rate.
@@ -154,7 +154,7 @@ class LabelStreamProducer extends DagStreamProducer<string> {
     for (const v of this.#values) {
       const state = new InnerState();
       state.value = v;
-      for await (const stage of dispatcher.execute('inner-stream', state)) {
+      for await (const stage of dispatcher.execute('urn:noocodec:dag:inner-stream', state)) {
         yield stage;
       }
     }

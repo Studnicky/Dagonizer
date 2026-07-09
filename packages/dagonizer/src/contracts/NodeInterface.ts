@@ -88,7 +88,10 @@ export interface NodeInterface<
    */
   execute(batch: Batch<TState>, context: NodeContextType): Promise<RoutedBatchType<TOutput, TState>>;
 
-  /** Unique registration name; the dispatcher key and the contract identity. */
+  /** Canonical node IRI. Runtime registry lookup uses this key exclusively. */
+  readonly '@id': string;
+
+  /** Human-readable display name for observability, logs, and diagrams. */
   readonly 'name': string;
 
   /**

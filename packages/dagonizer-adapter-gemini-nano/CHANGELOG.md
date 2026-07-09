@@ -46,7 +46,7 @@
 
 ### Minor Changes
 
-- 4234bc4: `GeminiNanoAdapter` overrides `performChatStream` with real on-device token streaming: drains `session.promptStreaming()`, pushing one `ChatStreamChunkType` per delta on the caller's sink as the on-device model generates. A request carrying tools still falls back to the buffered default.
+- 4234bc4: `GeminiNanoAdapter` overrides `performChatStream` with real on-device token streaming: drains `session.promptStreaming()`, pushing one `ChatStreamChunkType` per delta on the caller's sink as the on-device model generates. A request carrying tools uses the buffered default.
 
 ## 0.29.1
 
@@ -66,7 +66,7 @@
 
 ### Minor Changes
 
-- `GeminiNanoAdapter` overrides `performChatStream` with real on-device token streaming: it opens the session with `LanguageModel.create()` and drains `session.promptStreaming()`, pushing one `ChatStreamChunkType` per delta on the caller's sink as the on-device model generates. A request carrying tools still falls back to the buffered default (`super.performChatStream`) — tool turns need the JSON-coercion (`responseConstraint` + `ToolCallCodec.decode`) shape, which has no streamed variant.
+- `GeminiNanoAdapter` overrides `performChatStream` with real on-device token streaming: it opens the session with `LanguageModel.create()` and drains `session.promptStreaming()`, pushing one `ChatStreamChunkType` per delta on the caller's sink as the on-device model generates. A request carrying tools uses the buffered default (`super.performChatStream`) because tool turns need the JSON-coercion (`responseConstraint` + `ToolCallCodec.decode`) shape, which has no streamed variant.
 - `GeminiNanoAdapter` resolves and attests a Prompt API `outputLanguage` on every `LanguageModel.create()` call, eliminating Chrome's per-request console warning ("No output language was specified"). Resolution precedence: an explicit `GeminiNanoAdapterOptionsType.outputLanguage`, then the browser's `navigator.language` narrowed to Chrome's supported code set (`de`, `en`, `es`, `fr`, `ja`), then `en`.
 
 ### Patch Changes

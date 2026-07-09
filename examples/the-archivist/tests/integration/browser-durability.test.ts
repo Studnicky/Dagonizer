@@ -45,6 +45,8 @@ const STUB_DEFINITION = {
   'strict':       false,
 } satisfies ArchivistServices['webSearch']['definition'];
 
+const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
+
 // ── Never-called null stubs ───────────────────────────────────────────────
 
 class NullTool {
@@ -182,7 +184,7 @@ describe('Browser durability: IndexedDB park / reload / resume', () => {
       const state = new ArchivistState();
       state.query = '';
 
-      const execution = dispatcher.execute('the-archivist', state);
+      const execution = dispatcher.execute('urn:noocodec:dag:the-archivist', state);
       for await (const _stage of execution) { /* drain */ }
       const result = await execution;
 
@@ -198,7 +200,7 @@ describe('Browser durability: IndexedDB park / reload / resume', () => {
       correlationKey = result.parked.correlationKey;
 
       // Capture checkpoint with memory store snapshot.
-      const ckpt = await Checkpoint.capture('the-archivist', result, { 'stores': { 'memory': memory } });
+      const ckpt = await Checkpoint.capture(ARCHIVIST_DAG_IRI, result, { 'stores': { 'memory': memory } });
 
       // Persist to IndexedDB.
       await ckpt.persist(ckptStoreA, correlationKey);

@@ -18,7 +18,7 @@ import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const WikipediaSummaryResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-tool-wikipedia/WikipediaSummaryResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-tool-wikipedia/WikipediaSummaryResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {

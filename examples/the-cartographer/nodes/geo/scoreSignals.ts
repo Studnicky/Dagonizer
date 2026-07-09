@@ -41,6 +41,7 @@ import {
 
 // #region score-signals-node
 export class ScoreSignalsNode extends MonadicNode<CartographerState, 'scored'> {
+  readonly '@id' = 'urn:noocodec:node:score-signals';
   readonly 'name' = 'score-signals';
   readonly 'outputs' = ['scored'] as const;
 

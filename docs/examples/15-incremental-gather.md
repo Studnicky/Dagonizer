@@ -26,7 +26,7 @@ The core distinction is `reduce` versus `finalize`: fold clone results as they a
 
 ## How It Works
 
-The scatter executor calls the strategy's `reduce` hook as clone batches complete. `InsightsFoldGather` reads each clone result, updates bounded parent aggregates, and leaves the final `finalize` hook with little to do. A batch-style strategy can do the opposite: keep `reduce` empty and perform one final merge in `finalize`.
+The scatter executor routes completed clone records into a first-class gather placement. `InsightsFoldGather` reads each clone result, updates bounded parent aggregates in `reduce`, and leaves the final `finalize` hook with little to do. A batch-style strategy can do the opposite: keep `reduce` empty and perform one final merge in `finalize`.
 
 Application code chooses the timing based on product needs. Dashboards and streaming ETL usually want incremental fold; all-at-once ranking or reconciliation may prefer `finalize`.
 
@@ -34,7 +34,7 @@ Application code chooses the timing based on product needs. Dashboards and strea
 
 ### DAG registration and diagram
 
-The in-browser [Cartographer](./the-cartographer) is the real incremental gather example. `process-stream` folds each completed clone into `state.insights`, `state.journeys`, and `state.sampleRecords` as records arrive; the UI reads those evolving aggregates while the stream is running.
+The in-browser [Cartographer](./the-cartographer) is the real incremental gather example. `process-stream` routes completed clones to `fold-insights`, which folds each record into `state.insights`, `state.journeys`, and `state.sampleRecords` as records arrive; the UI reads those evolving aggregates while the stream is running.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer incremental gather DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
@@ -70,7 +70,7 @@ The Cartographer uses the incremental path because the runnable page can stream 
 
 - **Bounded memory.** Parent state holds rollups and samples, not the full event stream.
 - **UI-visible progress.** The browser panels update from the same aggregate state the DAG produces.
-- **Registry by name.** The DAG JSON-LD only says `gather: { strategy: 'insights-fold' }`; the runnable imports the strategy module to register the implementation.
+- **Strategy registry.** The DAG JSON-LD uses the `insights-fold` strategy key on the `fold-insights` gather placement; the runnable imports the strategy module so that implementation is registered before execution.
 
 ## Related Concepts
 

@@ -22,7 +22,7 @@ import type { ReasoningStepType } from './ReasoningStep.js';
  * JSON Schema for `ReasoningTraceItem`: an ordinal-tagged `ReasoningStepType`.
  */
 export const ReasoningTraceItemSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/agent/ReasoningTraceItem',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/agent/ReasoningTraceItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['ordinal', 'step'],

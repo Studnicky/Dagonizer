@@ -8,7 +8,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ToolDefinitionSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ToolDefinition',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/ToolDefinition',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['name', 'description', 'inputSchema', 'outputSchema', 'strict'],

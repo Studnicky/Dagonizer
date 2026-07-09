@@ -7,6 +7,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -29,6 +30,7 @@ export class ProgressState extends NodeStateBase {
 
 export class FetchNode extends MonadicNode<ProgressState, 'done' | 'empty'> {
   readonly name = 'fetch';
+  readonly '@id' = 'urn:noocodec:node:fetch';
   readonly outputs = ['done', 'empty'] as const;
   override get outputSchema(): Record<'done' | 'empty', SchemaObjectType> {
     return {
@@ -50,6 +52,7 @@ export class FetchNode extends MonadicNode<ProgressState, 'done' | 'empty'> {
 
 export class EnrichNode extends MonadicNode<ProgressState, 'done'> {
   readonly name = 'enrich';
+  readonly '@id' = 'urn:noocodec:node:enrich';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -67,12 +70,15 @@ export class EnrichNode extends MonadicNode<ProgressState, 'done'> {
 // DAG
 // ---------------------------------------------------------------------------
 
+export const dagIri = 'urn:noocodec:dag:progress-demo' as const;
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 const fetchNode = new FetchNode();
 const enrichNode = new EnrichNode();
 
-export const dag = new DAGBuilder('progress-demo', '1')
-  .node('fetch', fetchNode, { 'done': 'enrich', 'empty': 'end-empty' })
-  .node('enrich', enrichNode, { 'done': 'end-ok' })
-  .terminal('end-ok')
-  .terminal('end-empty', { outcome: 'failed' })
+export const dag = new DAGBuilder(dagIri, '1')
+  .node(placement('fetch'), fetchNode, { 'done': placement('enrich'), 'empty': placement('end-empty') })
+  .node(placement('enrich'), enrichNode, { 'done': placement('end-ok') })
+  .terminal(placement('end-ok'))
+  .terminal(placement('end-empty'), { outcome: 'failed' })
   .build();

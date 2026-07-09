@@ -32,6 +32,9 @@ import type {
 } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
+export const RESERVOIR_DEMO_DAG_IRI = 'urn:noocodec:dag:reservoir-demo';
+const placement = (placementIdentifier: string): string => `${RESERVOIR_DEMO_DAG_IRI}/node/${encodeURIComponent(placementIdentifier)}`;
+
 // ── Domain state (re-exported so entry can reference the type) ────────────────
 
 export interface ScoredCandidate {
@@ -49,6 +52,7 @@ export class RankingState extends NodeStateBase {
 // Worker node: produces a scored candidate from each scatter item.
 export class ScoreNode extends MonadicNode<RankingState, 'success' | 'error'> {
   readonly name    = 'score';
+  readonly '@id'   = 'urn:noocodec:node:score';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -72,6 +76,7 @@ export class ScoreNode extends MonadicNode<RankingState, 'success' | 'error'> {
 // shared cache, vectorize, or partition by a property across the whole batch).
 export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
   readonly name = 'batch-enrich';
+  readonly '@id' = 'urn:noocodec:node:batch-enrich';
   readonly outputs = ['enriched'] as const;
   override get outputSchema(): Record<'enriched', SchemaObjectType> {
     return { 'enriched': { 'type': 'object' } };
@@ -106,7 +111,7 @@ export class ScoreNodeRunner {
     const node = new ScoreNode();
     const ctx: NodeContextType = {
       signal: new AbortController().signal,
-      dagName: 'test',
+      dagName: RESERVOIR_DEMO_DAG_IRI,
       nodeName: 'score',
       validateOutputs: false,
       outputSchemaValidator: null,
@@ -121,8 +126,8 @@ export class ScoreNodeRunner {
 /**
  * TopNGatherStrategy: collects each clone's `candidate` field, keeps the
  * top-N by score, and writes the result to `topCandidates` on the parent.
- * Registered under 'top-n'. Reference via `gather: { strategy: 'top-n', target: 'topCandidates' }`
- * on a ScatterNode placement to collect and rank clone outputs in one pass.
+ * Registered under 'top-n'. Reference from a GatherNode after scatter to
+ * collect and rank clone outputs in one pass.
  */
 interface ScoredItem {
   readonly score: number;
@@ -130,6 +135,7 @@ interface ScoredItem {
 
 class TopNGatherStrategy extends GatherStrategy {
   readonly name = 'top-n';
+  readonly '@id' = 'urn:noocodec:node:top-n';
 
   override reduce(
     _config: GatherConfigType,
@@ -169,6 +175,7 @@ GatherStrategies.register(new TopNGatherStrategy());
  */
 class ThresholdReducer extends OutcomeReducer {
   readonly name = 'threshold-75';
+  readonly '@id' = 'urn:noocodec:node:threshold-75';
 
   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'empty';
@@ -191,17 +198,17 @@ OutcomeReducers.register(new ThresholdReducer());
  */
 export const reservoirDag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:reservoir-demo',
+  '@id': RESERVOIR_DEMO_DAG_IRI,
   '@type':    'DAG',
   name:       'reservoir-demo',
   version:    '1',
-  entrypoints: { main: 'batch-score' },
+  entrypoints: { main: placement('batch-score') },
   nodes: [
     {
-      '@id':       'urn:noocodex:dag:reservoir-demo/node/batch-score',
+      '@id': placement('batch-score'),
       '@type':     'ScatterNode',
       name:        'batch-score',
-      body:        { node: 'score' },
+      body:        { node: 'urn:noocodec:node:score' },
       source:      'items',
       itemKey:     'item',
       execution: {
@@ -213,19 +220,26 @@ export const reservoirDag: DAGType = {
           idleMs:   500,      // flush partial batches after 500 ms idle
         },
       },
+      outputs: {
+        'all-success': placement('collect-top'),
+        partial: placement('collect-top'),
+        'all-error': placement('collect-top'),
+        empty: placement('end'),
+      },
+    },
+    {
+      '@id': placement('collect-top'),
+      '@type': 'GatherNode',
+      name: 'collect-top',
+      sources: { [placement('batch-score')]: {} },
       gather: {
         strategy: 'top-n',
         target:   'topCandidates',
       },
-      outputs: {
-        'all-success': 'end',
-        partial:       'end',
-        'all-error':   'end',
-        empty:         'end',
-      },
+      outputs: { success: placement('end'), error: placement('end'), empty: placement('end') },
     },
     {
-      '@id':   'urn:noocodex:dag:reservoir-demo/node/end',
+      '@id': placement('end'),
       '@type': 'TerminalNode',
       name:    'end',
       outcome: 'completed',

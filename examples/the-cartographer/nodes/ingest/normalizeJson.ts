@@ -16,6 +16,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region normalize-json-node
 export class NormalizeJsonNode extends MonadicNode<CartographerState, 'normalized'> {
+  readonly '@id' = 'urn:noocodec:node:normalize-json-map';
   readonly 'name' = 'normalize-json-map';
   readonly 'outputs' = ['normalized'] as const;
 

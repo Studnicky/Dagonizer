@@ -19,6 +19,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region normalize-csv-node
 export class NormalizeCsvNode extends MonadicNode<CartographerState, 'normalized'> {
+  readonly '@id' = 'urn:noocodec:node:normalize-csv-map';
   readonly 'name' = 'normalize-csv-map';
   readonly 'outputs' = ['normalized'] as const;
 

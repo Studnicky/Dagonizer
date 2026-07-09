@@ -28,7 +28,7 @@ export type WebLlmInitReportType = {
 };
 
 export const WebLlmEngineSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-web-llm/WebLlmEngine',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-web-llm/WebLlmEngine',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['chat'],
@@ -39,7 +39,7 @@ export const WebLlmEngineSchema = {
 } as const;
 
 export const WebLlmModuleSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-web-llm/WebLlmModule',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-adapter-web-llm/WebLlmModule',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['CreateMLCEngine'],

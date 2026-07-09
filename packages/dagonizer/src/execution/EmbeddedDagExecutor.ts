@@ -5,7 +5,6 @@ import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
-import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
@@ -73,14 +72,14 @@ export class EmbeddedDagExecutor {
     if (placement.gatherResult === undefined) return run;
     const output = run.result.output ?? 'error';
     const gatherRecord = GatherRecordProjector.project({
-      'source': placement.name,
+      'source': placement['@id'],
       output,
       terminalOutcome,
       'state': cloneState,
       'accessor': this.#source.accessor,
-      'producer': placement,
+      'resultField': placement.gatherResult.resultField,
     });
-    return { ...run, gatherRecord };
+    return { ...run, 'gatherRecords': [gatherRecord] };
   }
 
   async executeEmbeddedDAG(
@@ -94,7 +93,7 @@ export class EmbeddedDagExecutor {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
 
-    const parentDag = this.#source.dags.get(ContextResolver.expand(parentDagName, {}));
+    const parentDag = this.#source.dags.get(parentDagName);
     const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
     const dagIri = placement.dag !== undefined
       ? DagReferenceResolver.resolve({
@@ -130,10 +129,7 @@ export class EmbeddedDagExecutor {
 
     DagReferenceResolver.bindSelectedDag({
       'store': this.#source.executionTopologyStore,
-      'ownerPlacementIri': DagGraphProjector.placementIri(
-        parentDag !== undefined ? DagGraphProjector.dagIri(parentDag) : ContextResolver.expand(parentDagName, parentContext),
-        placement.name,
-      ),
+      'ownerPlacementIri': placement['@id'],
       'selectedDagIri': dagIri,
     });
 

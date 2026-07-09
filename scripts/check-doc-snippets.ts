@@ -106,14 +106,14 @@ class MarkdownPolicy {
     const violations: PolicyViolation[] = [];
     for (const mdFile of mdFiles) {
       const lines = readFileSync(mdFile, 'utf8').split('\n');
-      violations.push(...MarkdownPolicy.checkLegacyDagFrom(mdFile, lines));
+      violations.push(...MarkdownPolicy.checkDagFromMentions(mdFile, lines));
       violations.push(...MarkdownPolicy.checkDagReferenceSnippets(mdFile, lines));
       violations.push(...MarkdownPolicy.checkNumberedExampleStructure(mdFile, lines));
     }
     return violations;
   }
 
-  private static checkLegacyDagFrom(mdFile: string, lines: readonly string[]): PolicyViolation[] {
+  private static checkDagFromMentions(mdFile: string, lines: readonly string[]): PolicyViolation[] {
     const violations: PolicyViolation[] = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? '';
@@ -121,7 +121,7 @@ class MarkdownPolicy {
         violations.push({
           mdFile,
           'line': i + 1,
-          'message': "docs must not mention legacy 'dagFrom'; use graph-addressable DagReference candidates",
+          'message': "docs must not mention 'dagFrom'; use graph-addressable DagReference candidates",
         });
       }
     }

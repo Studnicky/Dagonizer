@@ -7,7 +7,7 @@
  * drives a fresh DAG execution per inbound event.
  *
  * Consumers subclass `EventTrigger` and supply a subscription via `subscribe`.
- * The trigger calls `runner.run(dagName, toInput(message))` per message until
+ * The trigger calls `runner.run(dagIri, toInput(message))` per message until
  * `detach` is called.
  *
  * TMessage — the raw message type emitted by the subscription.
@@ -61,11 +61,11 @@ export abstract class EventTrigger<
       this.#attachResolve = resolve;
 
       this.#unsubscribe = this.subscribe((message) => {
-        const dagName = this.selectDag(message);
+        const dagIri = this.selectDag(message);
         const input = this.toInput(message);
         // Run is intentionally not awaited here; each message fires a
         // parallel execution. Errors surface in state, not here.
-        void runner.run(dagName, input, this.#options);
+        void runner.run(dagIri, input, this.#options);
       });
     });
   }
@@ -97,10 +97,10 @@ export abstract class EventTrigger<
   protected abstract toInput(message: TMessage): TInput;
 
   /**
-   * Select the DAG name to run for a given message.
-   * Default returns `'default'`. Override for per-message routing.
+   * Select the DAG IRI to run for a given message.
+   * Default returns `'urn:noocodec:dag:default'`. Override for per-message routing.
    */
   protected selectDag(_message: TMessage): string {
-    return 'default';
+    return 'urn:noocodec:dag:default';
   }
 }

@@ -12,7 +12,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 export const GeoSignalSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/GeoSignal',
+  '$id': 'https://noocodec.dev/schemas/cartographer/GeoSignal',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['primaryModel', 'lat', 'lng', 'ipAddress', 'localeTag', 'countryCode'],

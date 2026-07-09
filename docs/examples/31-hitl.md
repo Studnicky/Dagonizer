@@ -69,7 +69,7 @@ The engine returns a parked result with a correlation key and cursor; the applic
 | Route to park | `return RoutedBatch.create('parked', Batch.from(parked))` |
 | Detect parked result | `result.parked !== null` |
 | Extract cursor | `result.parked.cursor` |
-| Capture checkpoint | `Checkpoint.capture('dag', result)` |
+| Capture checkpoint | `Checkpoint.capture('urn:noocodec:dag:hitl', result)` |
 | Resume with response | `dispatcher.resume(dagName, state, cursor)` |
 
 See [HITL Park-and-Correlate guide](../guide/hitl) for the full design rationale and

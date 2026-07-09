@@ -1,8 +1,8 @@
 /**
  * DAGBuilder: explicit fluent authoring API for `DAG`.
  *
- * Builds a JSON-LD canonical `DAG` document. Each node placement receives
- * `@id` (a URN scoped under the DAG name) and `@type` (the RDF class name).
+ * Builds a JSON-LD canonical `DAG` document. The DAG and every placement use
+ * caller-supplied IRIs for `@id`; placement `name` is display metadata only.
  * The returned object from `build()` satisfies `DAGSchema` and can be passed
  * directly to `dispatcher.registerDAG(dag)`.
  *
@@ -15,12 +15,13 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 import { PlaceholderNode } from '../core/PlaceholderNode.js';
-import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
+import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
-import type { GatherNodeType, GatherPolicyType } from '../entities/dag/GatherNode.js';
+import type { GatherNodeType, GatherPolicyType, GatherSourceConfigType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterExecutionOptionsType, ScatterNodeType } from '../entities/dag/ScatterNode.js';
@@ -34,6 +35,12 @@ import { ScatterOptions } from './ScatterOptions.js';
 /** Co-located defaults for `terminal()` options. */
 const TERMINAL_DEFAULTS = { 'outcome': 'completed' } as const satisfies { readonly outcome: 'completed' | 'failed' };
 
+/** Display metadata shared by builder placement option bags. */
+type PlacementDisplayOptionsType = {
+  /** Human-readable placement name. Defaults to a CURIE compacted from the placement IRI. */
+  readonly name?: string;
+};
+
 /**
  * Progressive path typing: resolves to `PathType<T>` when `T` is a concrete state
  * subtype (the caller passed an explicit state generic), or to `string` when
@@ -46,14 +53,13 @@ type ParentPath<T extends NodeStateInterface> =
 /**
  * Configuration for a scatter node added via `DAGBuilder.scatter`.
  *
- * `gather` declares how clone state merges back into the parent; omitting
- * it defaults to `{ strategy: 'discard' }` (side-effect-only fan-out).
- * Declare it explicitly to merge clone state back into the parent.
- *
- * `TState` narrows `inputs` values and `gather.mapping` values to dotted
- * paths that exist on the state when a concrete subtype is passed.
+ * `TState` narrows `inputs` values to dotted paths that exist on the state
+ * when a concrete subtype is passed. Fan-in is declared by routing scatter
+ * outputs to a first-class `GatherNode`.
  */
 export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInterface> = {
+  /** Human-readable placement name. Defaults to a CURIE compacted from the placement IRI. */
+  name?: string;
   /** Metadata key under which each item is written per clone. Defaults to `currentItem`. */
   itemKey?: string;
   /**
@@ -63,14 +69,6 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
    * `TState` is a concrete subtype).
    */
   inputs?: Record<string, ParentPath<TState>>;
-  /**
-   * Gather config: how produced clone state merges back into the parent.
-   * Defaults to `{ strategy: 'discard' }` (side-effect-only fan-out, no
-   * clone state flows back) when omitted — see `SCATTER_GATHER_DEFAULT`
-   * in `ScatterOptions.ts`. Declare explicitly to merge clone state back
-   * into the parent.
-   */
-  gather?: GatherConfigType;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
   reducer?: string;
   /**
@@ -98,7 +96,7 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
  *
  * @example
  * ```ts
- * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
+ * builder.embed<ChildState, ParentState>('invoke', 'child-dag', routes, {
  *   inputs:  { payload: 'user.name' },   // child key ← parent path
  *   outputs: { 'user.age': 'result' },   // parent path ← child path
  * });
@@ -108,6 +106,8 @@ export type TypedEmbeddedDAGOptionsType<
   TChildState extends NodeStateInterface = NodeStateInterface,
   TParentState extends NodeStateInterface = NodeStateInterface,
 > = {
+  /** Human-readable placement name. Defaults to a CURIE compacted from the placement IRI. */
+  name?: string;
   /** Input mapping: child-state key → parent-state dotted path. Copied into the child before the embedded-DAG runs. A mapping covers only the keys it seeds; omit it entirely when no seeding is needed. */
   inputs?:  Record<string, ParentPath<TParentState>>;
   /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. A mapping covers only the keys it copies back; omit it entirely when none. */
@@ -146,35 +146,54 @@ export type ScatterDAGBodyType = { readonly dag: string | ItemDAGReferenceInputT
  * Explicit fluent API that builds a `DAG` in JSON-LD canonical form.
  *
  * Each node placement is assigned:
- *   - `@id`:   `urn:noocodex:dag:<dagName>/node/<placementName>`
+ *   - `@id`:   the caller-supplied placement IRI
  *   - `@type`: the RDF class name (`'SingleNode'`, `'ScatterNode'`, `'EmbeddedDAGNode'`, etc.)
  *
  * `DAGBuilder` is the single, compile-checked way to construct a DAG.
- * Topology is declared explicitly via `.node()`, `.scatter()`, `.embeddedDAG()`,
+ * Topology is declared explicitly via `.node()`, `.scatter()`, `.embed()`,
  * `.terminal()`, and `.phase()`. If the wiring does not type-check, it does not build.
  *
  * @example
  * ```ts
- * const dag = new DAGBuilder('pipeline', '1.0')
- *   .node('validate', validateNode, { valid: 'process', invalid: 'end-invalid' })
- *   .node('process',  processNode,  { success: 'end', error: 'end-fail' })
- *   .terminal('end')
- *   .terminal('end-invalid')
- *   .terminal('end-fail', { outcome: 'failed' })
+ * const dag = new DAGBuilder('urn:noocodec:dag:pipeline', '1.0', { name: 'pipeline' })
+ *   .node('urn:noocodec:dag:pipeline/node/validate', validateNode, {
+ *     valid: 'urn:noocodec:dag:pipeline/node/process',
+ *     invalid: 'urn:noocodec:dag:pipeline/node/end-invalid',
+ *   })
+ *   .node('urn:noocodec:dag:pipeline/node/process', processNode, {
+ *     success: 'urn:noocodec:dag:pipeline/node/end',
+ *     error: 'urn:noocodec:dag:pipeline/node/end-fail',
+ *   })
+ *   .terminal('urn:noocodec:dag:pipeline/node/end')
+ *   .terminal('urn:noocodec:dag:pipeline/node/end-invalid')
+ *   .terminal('urn:noocodec:dag:pipeline/node/end-fail', { outcome: 'failed' })
  *   .build();
  *
  * dispatcher.registerDAG(dag);
  * ```
  */
 export class DAGBuilder {
+  readonly #iri: string;
   readonly #name: string;
   readonly #version: string;
   readonly #nodes: DAGNodeType[] = [];
   readonly #entrypoints = new Map<string, string>();
 
-  constructor(name: string, version: string) {
-    this.#name = name;
+  constructor(iri: string, version: string, options: { readonly name?: string } = {}) {
+    this.#iri = DAGBuilder.requireIri(iri, 'DAG');
+    this.#name = options.name ?? DAGBuilder.displayName(this.#iri);
     this.#version = version;
+  }
+
+  private static requireIri(iri: string, context: string): string {
+    if (iri.length === 0 || !(iri.startsWith('urn:') || iri.includes('://'))) {
+      throw new DAGError(`DAGBuilder: ${context} IRI must be an absolute IRI`, { 'code': 'CONFIGURATION_ERROR' });
+    }
+    return iri;
+  }
+
+  private static displayName(iri: string): string {
+    return ContextResolver.compact(iri, DAG_CONTEXT);
   }
 
   /** Normalize any embeddable DAG reference into the wire shape. */
@@ -197,7 +216,7 @@ export class DAGBuilder {
         },
       };
     }
-    return { 'dag': dag.name };
+    return { 'dag': dag['@id'] };
   }
 
   private static scatterDagField(body: ScatterDAGBodyType): { dag: DagReferenceType } {
@@ -217,42 +236,118 @@ export class DAGBuilder {
     };
   }
 
-  #defaultEntrypoint(name: string): void {
-    if (this.#entrypoints.size === 0) {
-      this.#entrypoints.set('main', name);
-    }
+  private static entrypointIri(dagIri: string, label: string): string {
+    return `${dagIri}/entrypoint/${encodeURIComponent(label)}`;
   }
 
-  /** Set (or override) the entrypoint node name. */
-  entrypoint(nodeName: string): this {
-    if (nodeName.length === 0) {
-      throw new DAGError(
-        `DAGBuilder('${this.#name}'): entrypoint node name must be non-empty`,
-        { 'code': 'CONFIGURATION_ERROR' },
-      );
+  private static placementByIri(dagName: string, nodes: readonly DAGNodeType[]): ReadonlyMap<string, DAGNodeType> {
+    const placements = new Map<string, DAGNodeType>();
+    const displayNames = new Set<string>();
+    for (const node of nodes) {
+      if (displayNames.has(node.name)) {
+        throw new DAGError(`DAGBuilder('${dagName}'): duplicate placement name '${node.name}'`, { 'code': 'CONFIGURATION_ERROR' });
+      }
+      displayNames.add(node.name);
+      if (placements.has(node['@id'])) {
+        throw new DAGError(`DAGBuilder('${dagName}'): duplicate placement IRI '${node['@id']}'`, { 'code': 'CONFIGURATION_ERROR' });
+      }
+      placements.set(node['@id'], node);
     }
-    this.#entrypoints.clear();
-    this.#entrypoints.set('main', nodeName);
-    return this;
+    return placements;
+  }
+
+  private static routeTargetIri(
+    dagName: string,
+    placementsByIri: ReadonlyMap<string, DAGNodeType>,
+    target: string,
+  ): string {
+    const placement = placementsByIri.get(target);
+    if (placement === undefined) {
+      throw new DAGError(`DAGBuilder('${dagName}'): route target '${target}' does not match a placement IRI`, { 'code': 'CONFIGURATION_ERROR' });
+    }
+    return placement['@id'];
+  }
+
+  private static sourceIri(
+    dagName: string,
+    placementsByIri: ReadonlyMap<string, DAGNodeType>,
+    entrypointIris: ReadonlySet<string>,
+    source: string,
+  ): string {
+    const placement = placementsByIri.get(source);
+    if (placement !== undefined) return placement['@id'];
+    if (entrypointIris.has(source)) return source;
+    throw new DAGError(`DAGBuilder('${dagName}'): gather source '${source}' does not match a placement or entrypoint IRI`, { 'code': 'CONFIGURATION_ERROR' });
+  }
+
+  private static materializeRoutes<TPlacement extends DAGNodeType>(
+    dagIri: string,
+    nodes: readonly TPlacement[],
+    entrypoints: ReadonlyMap<string, string>,
+  ): { readonly nodes: DAGNodeType[]; readonly entrypoints: Record<string, string>; } {
+    const placementsByIri = DAGBuilder.placementByIri(dagIri, nodes);
+    const entrypointIris = new Set([...entrypoints.keys()].map((label) => DAGBuilder.entrypointIri(dagIri, label)));
+    const materialized: DAGNodeType[] = [];
+
+    for (const node of nodes) {
+      if ('outputs' in node) {
+        const outputs = Object.fromEntries(
+          Object.entries(node.outputs).map(([output, target]) => [
+            output,
+            DAGBuilder.routeTargetIri(dagIri, placementsByIri, target),
+          ]),
+        );
+
+        if (node['@type'] === 'GatherNode') {
+          const sources = Object.fromEntries(
+            Object.entries(node.sources).map(([source, config]) => [
+              DAGBuilder.sourceIri(dagIri, placementsByIri, entrypointIris, source),
+              config,
+            ]),
+          );
+          materialized.push({ ...node, sources, outputs } as DAGNodeType);
+        } else {
+          materialized.push({ ...node, outputs } as DAGNodeType);
+        }
+      } else {
+        materialized.push(node);
+      }
+    }
+
+    return {
+      'nodes': materialized,
+      'entrypoints': Object.fromEntries(
+        [...entrypoints].map(([label, target]) => [
+          label,
+          DAGBuilder.routeTargetIri(dagIri, placementsByIri, target),
+        ]),
+      ),
+    };
+  }
+
+  #defaultEntrypoint(placementIri: string): void {
+    if (this.#entrypoints.size === 0) {
+      this.#entrypoints.set('main', placementIri);
+    }
   }
 
   /** Set labeled DAG entrypoints. */
   entrypoints(entries: Readonly<Record<string, string>>): this {
     this.#entrypoints.clear();
-    for (const [label, nodeName] of Object.entries(entries)) {
+    for (const [label, placementIri] of Object.entries(entries)) {
       if (label.length === 0) {
         throw new DAGError(
           `DAGBuilder('${this.#name}'): entrypoint label must be non-empty`,
           { 'code': 'CONFIGURATION_ERROR' },
         );
       }
-      if (nodeName.length === 0) {
+      if (placementIri.length === 0) {
         throw new DAGError(
-          `DAGBuilder('${this.#name}'): entrypoint '${label}' node name must be non-empty`,
+          `DAGBuilder('${this.#name}'): entrypoint '${label}' placement IRI must be non-empty`,
           { 'code': 'CONFIGURATION_ERROR' },
         );
       }
-      this.#entrypoints.set(label, nodeName);
+      this.#entrypoints.set(label, placementIri);
     }
     return this;
   }
@@ -266,23 +361,25 @@ export class DAGBuilder {
    *   signal threaded through. When absent, defaults to `NO_RETRY` (one attempt).
    */
   node<TState extends NodeStateInterface, TOutput extends string>(
-    name: string,
+    iri: string,
     dagNode: NodeInterface<TState, TOutput>,
     routes: Record<TOutput, string>,
-    options: { readonly retry?: RetryPolicyOptionsType } = {},
+    options: PlacementDisplayOptionsType & { readonly retry?: RetryPolicyOptionsType } = {},
   ): this {
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
     const base = {
-      '@id':     DAGIdentity.placementId(this.#name, name),
+      '@id':     placementIri,
       '@type':   'SingleNode' as const,
       name,
-      'node':    dagNode.name,
+      'node':    dagNode['@id'],
       'outputs': routes,
     };
     const placement = options.retry !== undefined
       ? { ...base, 'retry': options.retry }
       : base;
     this.#nodes.push(placement);
-    this.#defaultEntrypoint(name);
+    this.#defaultEntrypoint(placement['@id']);
     return this;
   }
 
@@ -296,25 +393,31 @@ export class DAGBuilder {
    * `{ dag: string }` no impl is registered and the placement emits
    * `body: { dag }`.
    *
-   * Supply `TState` to narrow `options.inputs` values and
-   * `options.gather.mapping` values to dotted paths on the state.
+   * Supply `TState` to narrow `options.inputs` values to dotted paths on the
+   * state.
    *
    * @example
    * ```ts
-   * builder.scatter('generate', 'providers', generateNode,
-   *   { 'all-success': 'select', 'partial': 'select', 'all-error': 'end-fail', 'empty': 'end' },
-   *   { gather: { strategy: 'map', mapping: { candidate: 'candidates' } } },
-   * );
+ * const dagIri = 'urn:noocodec:dag:pipeline';
+ * const p = (placement: string) => `${dagIri}/node/${placement}`;
+ * builder.scatter(p('generate'), 'providers', generateNode,
+ *   { 'all-success': p('collect'), 'partial': p('collect'), 'all-error': p('collect'), 'empty': p('end') },
+ * ).gather(p('collect'), { [p('generate')]: { resultField: 'candidate' } },
+ *   { strategy: 'custom', customNode: 'urn:noocodec:node:collectCandidates' },
+ *   { success: p('select'), error: p('end-fail'), empty: p('end') },
+ * );
    * ```
    */
   scatter<TState extends NodeStateInterface, TOutput extends string>(
-    name: string,
+    iri: string,
     source: string,
     body: NodeInterface<TState, TOutput> | ScatterDAGBodyType,
     outputs: Record<string, string>,
-    options: ScatterOptionsType<TState>,
+    options: ScatterOptionsType<TState> = {},
   ): this {
-    // Materialise static defaults (itemKey, reducer, gather) at build time so the
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
+    // Materialise static defaults (itemKey, reducer) at build time so the
     // produced ScatterNode always carries them. Fields whose defaults are data-dependent
     // at runtime (execution) or whose absence is semantically meaningful (inputs,
     // container) remain optional and are spread only when the caller provides them.
@@ -325,16 +428,15 @@ export class DAGBuilder {
     if ('dag' in body) {
       wireBody = DAGBuilder.scatterDagField(body);
     } else {
-      wireBody = { 'node': body.name };
+      wireBody = { 'node': body['@id'] };
     }
 
     const scatterNode: ScatterNodeType = {
-      '@id':     DAGIdentity.placementId(this.#name, name),
+      '@id':     placementIri,
       '@type':   'ScatterNode',
       name,
       'source':  source,
-      'body':    wireBody,
-      'gather':  resolved.gather,
+      'body': wireBody,
       'outputs': outputs,
       // itemKey and reducer: always present — materialised from resolved defaults.
       'itemKey': resolved.itemKey,
@@ -349,7 +451,7 @@ export class DAGBuilder {
     };
 
     this.#nodes.push(scatterNode);
-    this.#defaultEntrypoint(name);
+    this.#defaultEntrypoint(scatterNode['@id']);
     return this;
   }
 
@@ -360,20 +462,20 @@ export class DAGBuilder {
    * `options.outputs` copies child fields back into the parent after it completes.
    *
    * `dag` is either:
-   * - a `string` (build-time literal dag name, validated at `registerDAG` time), or
+   * - a `string` (build-time literal DAG IRI, validated at `registerDAG` time), or
    * - `{ from: 'state', path, candidates }` (a dotted parent-state path read at
    *   runtime and constrained to the declared candidate DAG set).
    *
    * @example
    * ```ts
    * // Build-time literal:
-   * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
-   *   { success: 'next', error: 'end-fail' },
+   * builder.embed<ChildState, ParentState>(p('invoke'), 'urn:noocodec:dag:child',
+   *   { success: p('next'), error: p('end-fail') },
    *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
    * );
    * // Runtime state path constrained by declared candidates:
-   * builder.embeddedDAG('invoke', { from: 'state', path: 'selectedDag', candidates: ['child'] },
-   *   { success: 'next', error: 'end-fail' },
+   * builder.embed(p('invoke'), { from: 'state', path: 'selectedDag', candidates: ['urn:noocodec:dag:child'] },
+   *   { success: p('next'), error: p('end-fail') },
    * );
    * ```
    */
@@ -381,11 +483,13 @@ export class DAGBuilder {
     TChildState extends NodeStateInterface = NodeStateInterface,
     TParentState extends NodeStateInterface = NodeStateInterface,
   >(
-    name: string,
+    iri: string,
     dag: EmbeddableDAGType,
     outputs: Record<'success' | 'error', string>,
     options: TypedEmbeddedDAGOptionsType<TChildState, TParentState> = {},
   ): this {
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
     // ParentPath<T> is structurally string; FromSchema index-signature requires Record<string,string>.
     const stateMapping: NonNullable<EmbeddedDAGNodeType['stateMapping']> | undefined =
       options.inputs !== undefined || options.outputs !== undefined
@@ -396,11 +500,11 @@ export class DAGBuilder {
         : undefined;
 
     const embeddedNode: EmbeddedDAGNodeType = {
-      '@id':     DAGIdentity.placementId(this.#name, name),
+      '@id':     placementIri,
       '@type':   'EmbeddedDAGNode',
       name,
       'outputs': outputs,
-      // Literal names and dynamic DagReference values share the canonical `dag` field.
+      // Literal DAG IRIs and dynamic DagReference values share the canonical `dag` field.
       ...DAGBuilder.embeddedDagField(dag),
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
@@ -409,26 +513,8 @@ export class DAGBuilder {
     };
 
     this.#nodes.push(embeddedNode);
-    this.#defaultEntrypoint(name);
+    this.#defaultEntrypoint(embeddedNode['@id']);
     return this;
-  }
-
-  /**
-   * Append an embedded-DAG node with the legacy method name.
-   *
-   * `embed()` is the canonical entrypoint; this method remains as the existing
-   * API and delegates to the same normalization path.
-   */
-  embeddedDAG<
-    TChildState extends NodeStateInterface = NodeStateInterface,
-    TParentState extends NodeStateInterface = NodeStateInterface,
-  >(
-    name: string,
-    dag: EmbeddableDAGType,
-    outputs: Record<'success' | 'error', string>,
-    options: TypedEmbeddedDAGOptionsType<TChildState, TParentState> = {},
-  ): this {
-    return this.embed(name, dag, outputs, options);
   }
 
   /**
@@ -441,16 +527,18 @@ export class DAGBuilder {
    *
    * @param options.outcome - Terminal outcome. Defaults to `'completed'`.
    */
-  terminal(name: string, options: { outcome?: 'completed' | 'failed' } = {}): this {
+  terminal(iri: string, options: PlacementDisplayOptionsType & { outcome?: 'completed' | 'failed' } = {}): this {
     const { outcome } = { ...TERMINAL_DEFAULTS, ...options };
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
     const placement: TerminalNodeType = {
-      '@id':   DAGIdentity.placementId(this.#name, name),
+      '@id':   placementIri,
       '@type': 'TerminalNode',
       name,
       outcome,
     };
     this.#nodes.push(placement);
-    this.#defaultEntrypoint(name);
+    this.#defaultEntrypoint(placement['@id']);
     return this;
   }
 
@@ -459,50 +547,56 @@ export class DAGBuilder {
    *
    * The node routes every execution to the first declared output. Use during
    * development to stub unimplemented placements; replace with a concrete node
-   * subclass when ready. The registered node can be retrieved from the dispatcher
-   * by name to swap it out later.
+   * subclass when ready. The registered node uses the placement IRI as its
+   * canonical node IRI.
    *
-   * @param name    - The node name (also the placement name).
+   * @param iri     - The placement IRI. The display name defaults from the compact IRI.
    * @param outputs - Ordered output names; the first is the unconditional route.
    * @param routes  - Route map (same shape as .node() routes).
    */
   placeholder<TOutput extends string>(
-    name: string,
+    iri: string,
     outputs: readonly [TOutput, ...TOutput[]],
     routes: Record<TOutput, string>,
+    options: PlacementDisplayOptionsType = {},
   ): this {
-    const node = new PlaceholderNode<NodeStateInterface, TOutput>(name, outputs);
-    return this.node(name, node, routes);
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
+    const node = new PlaceholderNode<NodeStateInterface, TOutput>(placementIri, outputs, { name });
+    return this.node(placementIri, node, routes, options);
   }
 
   /** Append a first-class gather barrier placement. */
   gather(
-    name: string,
-    sources: readonly [string, ...string[]],
+    iri: string,
+    sources: Readonly<Record<string, GatherSourceConfigType>>,
     gather: GatherConfigType,
     outputs: Record<string, string>,
-    options: { readonly policy?: GatherPolicyType } = {},
+    options: PlacementDisplayOptionsType & { readonly policy?: GatherPolicyType } = {},
   ): this {
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
     DAGBuilder.validateGatherPolicy(name, sources, options.policy);
     const placement: GatherNodeType = {
-      '@id': DAGIdentity.placementId(this.#name, name),
+      '@id': placementIri,
       '@type': 'GatherNode',
       name,
-      'sources': [...sources],
+      'sources': { ...sources },
       gather,
       outputs,
       ...(options.policy !== undefined ? { 'policy': options.policy } : {}),
     };
     this.#nodes.push(placement);
-    this.#defaultEntrypoint(name);
+    this.#defaultEntrypoint(placement['@id']);
     return this;
   }
 
   private static validateGatherPolicy(
     name: string,
-    sources: readonly string[],
+    sources: Readonly<Record<string, GatherSourceConfigType>>,
     policy: GatherPolicyType | undefined,
   ): void {
+    const sourceCount = Object.keys(sources).length;
     if (policy?.quorum === undefined) return;
     if (policy.mode !== 'quorum') {
       throw new DAGError(
@@ -510,9 +604,9 @@ export class DAGBuilder {
         { 'code': 'CONFIGURATION_ERROR' },
       );
     }
-    if (policy.quorum > sources.length) {
+    if (policy.quorum > sourceCount) {
       throw new DAGError(
-        `DAGBuilder.gather('${name}'): policy.quorum ${policy.quorum} exceeds source count ${sources.length}`,
+        `DAGBuilder.gather('${name}'): policy.quorum ${policy.quorum} exceeds source count ${sourceCount}`,
         { 'code': 'CONFIGURATION_ERROR' },
       );
     }
@@ -530,15 +624,18 @@ export class DAGBuilder {
    * main-loop entrypoint, and never route to other placements.
    */
   phase<TState extends NodeStateInterface, TOutput extends string>(
-    name: string,
+    iri: string,
     phase: 'pre' | 'post',
     dagNode: NodeInterface<TState, TOutput>,
+    options: PlacementDisplayOptionsType = {},
   ): this {
+    const placementIri = DAGBuilder.requireIri(iri, 'placement');
+    const name = options.name ?? DAGBuilder.displayName(placementIri);
     const placement: PhaseNodeType = {
-      '@id':   DAGIdentity.placementId(this.#name, name),
+      '@id':   placementIri,
       '@type': 'PhaseNode',
       name,
-      'node':  dagNode.name,
+      'node':  dagNode['@id'],
       phase,
     };
     this.#nodes.push(placement);
@@ -558,16 +655,17 @@ export class DAGBuilder {
    */
   build(): DAGType {
     if (this.#entrypoints.size === 0) {
-      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without entrypoints; call .entrypoint(), .entrypoints(), or add at least one placement first`, { 'code': 'CONFIGURATION_ERROR' });
+      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without entrypoints; call .entrypoints() or add at least one placement first`, { 'code': 'CONFIGURATION_ERROR' });
     }
+    const materialized = DAGBuilder.materializeRoutes(this.#iri, this.#nodes, this.#entrypoints);
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      DAGIdentity.id(this.#name),
+      '@id':      this.#iri,
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
-      'entrypoints': Object.fromEntries(this.#entrypoints),
-      'nodes':      [...this.#nodes],
+      'entrypoints': materialized.entrypoints,
+      'nodes': materialized.nodes,
     };
 
     return dag;

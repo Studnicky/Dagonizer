@@ -77,7 +77,7 @@ export const OpenAiUsageSchema = {
 } as const;
 
 export const OpenAiResponseBodySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/OpenAiResponseBody',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/OpenAiResponseBody',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'properties': {

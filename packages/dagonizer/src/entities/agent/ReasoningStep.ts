@@ -15,7 +15,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * JSON-expressible fields of one step in an agent's reasoning trace.
  */
 export const ReasoningStepSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/agent/ReasoningStep',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/agent/ReasoningStep',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {

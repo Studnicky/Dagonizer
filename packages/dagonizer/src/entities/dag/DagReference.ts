@@ -27,7 +27,7 @@ export const DagReferenceShapeSchema = {
 } as const;
 
 export const DagReferenceSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DagReference',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/DagReference',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   ...DagReferenceShapeSchema,
 } as const;

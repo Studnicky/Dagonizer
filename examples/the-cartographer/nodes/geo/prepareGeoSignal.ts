@@ -17,12 +17,14 @@ type PrepareGeoSignalOutput = 'present' | 'missing';
 
 // #region prepare-geo-signal-node
 export class PrepareGeoSignalNode extends MonadicNode<CartographerState, PrepareGeoSignalOutput> {
+  readonly '@id': string;
   readonly 'outputs' = ['present', 'missing'] as const;
   readonly #kind: GeoSignalKind;
   readonly #name: string;
 
-  constructor(name: string, kind: GeoSignalKind) {
+  constructor(id: string, name: string, kind: GeoSignalKind) {
     super();
+    this['@id'] = id;
     this.#name = name;
     this.#kind = kind;
   }
@@ -122,10 +124,10 @@ export class PrepareGeoSignalNode extends MonadicNode<CartographerState, Prepare
   }
 }
 
-export const prepareGeoCoords = new PrepareGeoSignalNode('prepare-geo-coords', 'coords');
-export const prepareGeoAddress = new PrepareGeoSignalNode('prepare-geo-address', 'address');
-export const prepareGeoIp = new PrepareGeoSignalNode('prepare-geo-ip', 'ip');
-export const prepareGeoCode = new PrepareGeoSignalNode('prepare-geo-code', 'code');
-export const prepareGeoPhone = new PrepareGeoSignalNode('prepare-geo-phone', 'phone');
-export const prepareGeoLocale = new PrepareGeoSignalNode('prepare-geo-locale', 'locale');
+export const prepareGeoCoords = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-coords', 'prepare-geo-coords', 'coords');
+export const prepareGeoAddress = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-address', 'prepare-geo-address', 'address');
+export const prepareGeoIp = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-ip', 'prepare-geo-ip', 'ip');
+export const prepareGeoCode = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-code', 'prepare-geo-code', 'code');
+export const prepareGeoPhone = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-phone', 'prepare-geo-phone', 'phone');
+export const prepareGeoLocale = new PrepareGeoSignalNode('urn:noocodec:node:prepare-geo-locale', 'prepare-geo-locale', 'locale');
 // #endregion prepare-geo-signal-node

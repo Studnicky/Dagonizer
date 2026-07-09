@@ -8,7 +8,7 @@
  * GeoCoarsener     — precise lat/lng → grid-zone centroid (location-PII coarsening)
  * ShipmentEvents   — deterministic synthetic journey/scan generator (seeded LCG)
  * TimeNormalizer   — multi-format timestamp → epoch ms + ISO-8601
- * CarrierRegistry  — carrier alias → canonical carrierId/carrierName
+ * CarrierRegistry  — carrier label → canonical carrierId/carrierName
  * CountryCodes     — alpha-2/alpha-3/name → ISO-3
  * Units            — weight unit conversion to grams
  * EventClassifier  — free-text status → eventType; carrier/weight → service/size tiers
@@ -120,7 +120,7 @@ export class TimeZoneResolver {
     try {
       return tzLookup(lat, lng);
     } catch {
-      // tz-lookup throws for out-of-range coords; fall back to UTC.
+      // tz-lookup throws for out-of-range coords; use UTC.
       return 'UTC';
     }
   }
@@ -502,9 +502,9 @@ export class TimeNormalizer {
 
 // #region carrier-registry-service
 /**
- * CarrierRegistry: resolves carrier aliases to canonical carrierId/carrierName pairs.
+ * CarrierRegistry: resolves carrier labels to canonical carrierId/carrierName pairs.
  */
-const CARRIER_ALIAS_MAP: Record<string, { 'carrierId': string; 'carrierName': string }> = {
+const CARRIER_LABEL_MAP: Record<string, { 'carrierId': string; 'carrierName': string }> = {
   'FEDEX':            { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
   'FEDEX GROUND':     { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
   'FEDEX EXPRESS':    { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
@@ -528,7 +528,7 @@ const CARRIER_ALIAS_MAP: Record<string, { 'carrierId': string; 'carrierName': st
 export class CarrierRegistry {
   static canonical(raw: string): { 'carrierId': string; 'carrierName': string } {
     const key = raw.trim().toUpperCase();
-    return CARRIER_ALIAS_MAP[key] ?? { 'carrierId': 'unknown', 'carrierName': raw };
+    return CARRIER_LABEL_MAP[key] ?? { 'carrierId': 'unknown', 'carrierName': raw };
   }
 }
 // #endregion carrier-registry-service
@@ -1041,18 +1041,18 @@ export class ShipmentEvents {
   ];
 
   // Static lookup tables shared by journeyGenerator and buildRawScans.
-  private static readonly CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
-    { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
-    { 'alias': 'FedEx',                  'carrierId': 'fedex' },
-    { 'alias': 'Federal Express',        'carrierId': 'fedex' },
-    { 'alias': 'fedex ground',           'carrierId': 'fedex' },
-    { 'alias': 'UPS',                    'carrierId': 'ups' },
-    { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
-    { 'alias': 'DHL Express',            'carrierId': 'dhl' },
-    { 'alias': 'DHL',                    'carrierId': 'dhl' },
-    { 'alias': 'USPS',                   'carrierId': 'usps' },
-    { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
-    { 'alias': 'DPD',                    'carrierId': 'dpd' },
+  private static readonly CARRIERS: Array<{ 'label': string; 'carrierId': string }> = [
+    { 'label': 'FEDEX',                  'carrierId': 'fedex' },
+    { 'label': 'FedEx',                  'carrierId': 'fedex' },
+    { 'label': 'Federal Express',        'carrierId': 'fedex' },
+    { 'label': 'fedex ground',           'carrierId': 'fedex' },
+    { 'label': 'UPS',                    'carrierId': 'ups' },
+    { 'label': 'United Parcel Service',  'carrierId': 'ups' },
+    { 'label': 'DHL Express',            'carrierId': 'dhl' },
+    { 'label': 'DHL',                    'carrierId': 'dhl' },
+    { 'label': 'USPS',                   'carrierId': 'usps' },
+    { 'label': 'Royal Mail',             'carrierId': 'royal-mail' },
+    { 'label': 'DPD',                    'carrierId': 'dpd' },
   ];
 
   private static readonly REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
@@ -1147,7 +1147,7 @@ export class ShipmentEvents {
     const originLng = hub.lng + (rand() - 0.5) * 4;
 
     const carrierEntry = pick(ShipmentEvents.CARRIERS);
-    const carrier   = carrierEntry.alias;
+    const carrier   = carrierEntry.label;
     const carrierId = carrierEntry.carrierId;
 
     const name       = pick(ShipmentEvents.NAMES);

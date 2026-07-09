@@ -22,7 +22,7 @@ Use this page when deciding where an application, plugin package, or test should
 
 Dagonizer publishes stable `package.json` `exports` entries. Each entry is a barrel for one seam: builder authoring, runtime primitives, JSON-LD entities, plugin loading, visualization, stores, containers, channels, adapters, patterns, or tools.
 
-That separation mirrors the architecture: JSON-LD documents describe topology, registries bind implementation names, and the dispatcher executes routed outputs. Imports should follow the same boundary.
+That separation mirrors the architecture: JSON-LD documents describe topology by DAG and placement IRI, registries bind implementation references, and the dispatcher executes routed outputs. Imports should follow the same boundary.
 
 ## Diagrams, Examples, and Outputs
 
@@ -68,7 +68,7 @@ import { MermaidRenderer } from '@studnicky/dagonizer/viz';
 | `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter`, `MemoryCheckpointStore` | Deterministic-resume persistence: capture and recall a run's cursor and state |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler`, `LoopbackChannel`, `DagConformance` | Test-only doubles for the clock/scheduler contracts and a DAG-conformance test harness |
 | `./core` | `MonadicNode`, `PlaceholderNode`, `Batch`, `RoutedBatch` | Pluggable execution primitives: the node base class applications extend and the batch/item entities they operate on |
-| `./viz` | `MermaidRenderer`, `CytoscapeRenderer`, `MermaidExplorer` | DAG visualization: Mermaid and Cytoscape renderers, plus an interactive explorer widget |
+| `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout`, `MermaidExplorer` | DAG visualization: Mermaid, JSON-LD, and Cytoscape renderers, layout helpers, plus an interactive explorer widget |
 | `./store` | `BaseStore`, `MemoryStore`, `TypedStore`, `StoreInterface` | Shared key-value store applications extend for cross-node or cross-run state |
 | `./container` | `DagContainerBase`, `DagHost`, `DagTask`, `DagOutcome` | Embedded-DAG container surface: channel dispatch and worker-container transport contracts |
 | `./channels` | `InMemoryChannel`, `StreamChannel`, `StreamCursor` | Message channels: in-memory transport and resumable streaming channels with cursor tracking |
@@ -83,8 +83,6 @@ import { MermaidRenderer } from '@studnicky/dagonizer/viz';
 | `./viz/explorer.css` | - | Stylesheet asset for `MermaidExplorer`; import it directly, it has no JS exports |
 
 ## Details for Nerds
-
-Subpaths are compatibility promises. Prefer them over deep package paths, because deep paths bypass the package export map and may change without being part of the public API.
 
 Type-only imports belong on `./types` or `./contracts`. Runtime helpers belong on the surface that owns the behavior: `./builder` for authoring, `./runtime` for clocks/retry/accessors, `./validation` for schema validation, `./viz` for rendering, and `./plugin` for plugin loading/discovery.
 

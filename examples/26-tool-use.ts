@@ -7,11 +7,11 @@
  *   2. Drive it with a real OllamaApiAdapter against a discovered model. When
  *      the model supports tool calling it emits a typed ToolCall[] via the
  *      native 'tools' channel; the DAG node dispatches the call directly.
- *   3. Demonstrate the ToolCallCodec text-channel fallback path: feed a
+ *   3. Demonstrate the ToolCallCodec text-channel decode path: feed a
  *      sample assistant message string with embedded JSON to ToolCallCodec.decode
  *      and dispatch the result. This path requires no model — it shows the
  *      codec decoding a fixed string so the reader understands how the text
- *      fallback works for models that embed tool calls in prose.
+ *      path works for models that embed tool calls in prose.
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
@@ -37,6 +37,7 @@ import {
   OnTextNode,
   OnToolDoneNode,
   OnToolErrorNode,
+  TOOL_USE_DAG_IRI,
   dag,
 } from './dags/26-tool-use.js';
 
@@ -101,14 +102,14 @@ stateA.question = 'What is 7 + 35?';
 stateA.adapter  = adapter;
 stateA.registry = registry;
 
-await dispatcher.execute('tool-use-demo', stateA);
+await dispatcher.execute('urn:noocodec:dag:tool-use-demo', stateA);
 
 process.stdout.write(`  question:      "${stateA.question}"\n`);
 process.stdout.write(`  dispatched:    "${stateA.dispatchedTool}"\n`);
 process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 
 // ---------------------------------------------------------------------------
-// Run B: ToolCallCodec text-channel fallback demonstration.
+// Run B: ToolCallCodec text-channel decode demonstration.
 //
 //   No model call here. Feed a fixed assistant message string — the format a
 //   model that embeds tool calls in prose would return — to ToolCallCodec.decode.
@@ -120,7 +121,7 @@ process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 //   calls in prose rather than using the structured tool channel.
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Run B: ToolCallCodec.decode text-channel fallback ---\n');
+process.stdout.write('--- Run B: ToolCallCodec.decode text-channel path ---\n');
 
 const sampleProse =
   'Sure! I will compute that for you. '
@@ -166,7 +167,7 @@ stateC.dispatchedTool = unknownCalls[0]?.name ?? '';
 const dispatchNode = new DispatchToolNode();
 const ac = new AbortController();
 await dispatchNode.execute(Batch.of(stateC), {
-  dagName: 'tool-use-demo',
+  dagName: TOOL_USE_DAG_IRI,
   nodeName: 'dispatchTool',
   signal: ac.signal,
   validateOutputs: false,

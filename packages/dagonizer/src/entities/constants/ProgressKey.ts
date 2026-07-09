@@ -16,7 +16,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ProgressKeySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ProgressKey',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ProgressKey',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'string',
   'enum': ['__dagonizer_scatter_progress__', '__dagonizer_workset_progress__', '__dagonizer_gather_progress__'],

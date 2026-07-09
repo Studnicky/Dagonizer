@@ -32,6 +32,7 @@ import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ---------------------------------------------------------------------------
 // Test state
@@ -91,14 +92,17 @@ class WalkStateRestore {
 // ---------------------------------------------------------------------------
 
 const FAN_N = 4;
+const FAN_PROC_COLLECT_DAG = 'urn:noocodec:dag:fan-proc-collect';
+const SIZE1_CKPT_DAG = 'urn:noocodec:dag:size1-ckpt';
 
 /** Fan-out node: takes the single input item and fans to N clones. */
 class FanNode extends MonadicNode<WalkState, 'out'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly ['out'] = ['out'];
   private readonly n: number;
 
-  constructor(name: string, n: number) { super(); this.name = name; this.n = n; }
+  constructor(name: string, n: number) { super(); this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`; this.name = name; this.n = n; }
 
   override get outputSchema(): Record<'out', SchemaObjectType> {
     return { 'out': { 'type': 'object' } };
@@ -120,10 +124,11 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
 }
 /** Process node: stamps each item's log. */
 class ProcNode extends MonadicNode<WalkState, 'done'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly ['done'] = ['done'];
 
-  constructor(name: string) { super(); this.name = name; }
+  constructor(name: string) { super(); this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`; this.name = name; }
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -137,11 +142,12 @@ class ProcNode extends MonadicNode<WalkState, 'done'> {
 
 /** Accumulator node: pushes all items into `collected`, routes 'done'. */
 class CollectNode extends MonadicNode<WalkState, 'done'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly ['done'] = ['done'];
   private readonly collected: WalkState[];
 
-  constructor(name: string, collected: WalkState[]) { super(); this.name = name; this.collected = collected; }
+  constructor(name: string, collected: WalkState[]) { super(); this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`; this.name = name; this.collected = collected; }
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -177,43 +183,44 @@ class TestWorksetDag {
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:fan-proc-collect',
+      '@id': FAN_PROC_COLLECT_DAG,
       '@type': 'DAG',
       'name': 'fan-proc-collect',
       'version': '1',
-      'entrypoints': { 'main': 'fan-node' },
+      'entrypoints': { 'main': `${FAN_PROC_COLLECT_DAG}/node/fan-node` },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
+          '@id': `${FAN_PROC_COLLECT_DAG}/node/fan-node`,
           '@type': 'SingleNode',
           'name': 'fan-node',
-          'node': 'fan',
-          'outputs': { 'out': 'proc-node' },
+          'node': 'urn:noocodec:node:fan',
+          'outputs': { 'out': `${FAN_PROC_COLLECT_DAG}/node/proc-node` },
         },
         {
-          '@id': 'urn:noocodex:dag:fan-proc-collect/node/proc-node',
+          '@id': `${FAN_PROC_COLLECT_DAG}/node/proc-node`,
           '@type': 'SingleNode',
           'name': 'proc-node',
-          'node': 'proc',
-          'outputs': { 'done': 'collect-node' },
+          'node': 'urn:noocodec:node:proc',
+          'outputs': { 'done': `${FAN_PROC_COLLECT_DAG}/node/collect-node` },
         },
         {
-          '@id': 'urn:noocodex:dag:fan-proc-collect/node/collect-node',
+          '@id': `${FAN_PROC_COLLECT_DAG}/node/collect-node`,
           '@type': 'SingleNode',
           'name': 'collect-node',
-          'node': 'collect',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:collect',
+          'outputs': { 'done': `${FAN_PROC_COLLECT_DAG}/node/end` },
         },
         {
-          '@id': 'urn:noocodex:dag:fan-proc-collect/node/end',
+          '@id': `${FAN_PROC_COLLECT_DAG}/node/end`,
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
         },
       ],
     };
-    dispatcher.registerDAG(dag);
-    return dag;
+    const canonical = TestDag.from(dag);
+    dispatcher.registerDAG(canonical);
+    return canonical;
   }
 }
 
@@ -235,7 +242,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       const refDispatcher = new Dagonizer<WalkState>();
       TestWorksetDag.fan(refDispatcher, refCollected);
 
-      const refResult = await refDispatcher.execute('fan-proc-collect', new WalkState());
+      const refResult = await refDispatcher.execute(FAN_PROC_COLLECT_DAG, new WalkState());
       assert.equal(refResult.cursor, null, 'reference run must complete');
       assert.equal(refResult.terminalOutcome, 'completed');
       assert.equal(refCollected.length, FAN_N, 'reference run must collect all items');
@@ -256,7 +263,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       TestWorksetDag.fan(run1Dispatcher, run1Collected);
 
       const initialState = new WalkState();
-      const execution = run1Dispatcher.execute('fan-proc-collect', initialState, {
+      const execution = run1Dispatcher.execute(FAN_PROC_COLLECT_DAG, initialState, {
         'signal': ctl.signal,
       });
 
@@ -273,7 +280,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       assert.ok(run1Result.cursor !== null, 'run 1 must be interrupted');
 
       // Capture, round-trip, restore, resume.
-      const ckpt = await Checkpoint.capture('fan-proc-collect', run1Result);
+      const ckpt = await Checkpoint.capture(FAN_PROC_COLLECT_DAG, run1Result);
       const raw = ckpt.toJson();
       const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
@@ -330,7 +337,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
       TestWorksetDag.fan(dispatcher, collected);
 
       const initialState = new WalkState();
-      const execution = dispatcher.execute('fan-proc-collect', initialState, {
+      const execution = dispatcher.execute(FAN_PROC_COLLECT_DAG, initialState, {
         'signal': ctl.signal,
       });
 
@@ -374,7 +381,11 @@ void describe('WorkSet checkpoint — blob shape', () => {
         'blob entry must be an object',
       );
       // entryValue narrowed to JsonObjectType.
-      assert.equal(entryValue['placement'], 'proc-node', 'blob entry placement must be proc-node');
+      assert.equal(
+        entryValue['placement'],
+        `${FAN_PROC_COLLECT_DAG}/node/proc-node`,
+        'blob entry placement must be proc-node IRI',
+      );
       const itemsValue = entryValue['items'];
       assert.ok(Array.isArray(itemsValue), 'blob entry must have an items array');
       assert.equal(itemsValue.length, FAN_N, `blob entry must have ${FAN_N} items`);
@@ -391,7 +402,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const collected: WalkState[] = [];
       TestWorksetDag.fan(dispatcher, collected);
 
-      const result = await dispatcher.execute('fan-proc-collect', new WalkState());
+      const result = await dispatcher.execute(FAN_PROC_COLLECT_DAG, new WalkState());
       assert.equal(result.cursor, null, 'run must complete');
 
       const snap = result.state.snapshot();
@@ -445,10 +456,11 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
       // Inline node factory — increments count and routes to 'next'.
       class IncNode extends MonadicNode<CountState, 'next'> {
+        readonly '@id': string;
         readonly name: string;
         readonly outputs: readonly ['next'] = ['next'];
 
-        constructor(name: string) { super(); this.name = name; }
+        constructor(name: string) { super(); this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`; this.name = name; }
 
         override get outputSchema(): Record<'next', SchemaObjectType> {
           return { 'next': { 'type': 'object' } };
@@ -464,29 +476,33 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
       const dag: DAGType = {
         '@context': DAG_CONTEXT,
-        '@id': 'urn:noocodex:dag:size1-ckpt',
+        '@id': SIZE1_CKPT_DAG,
         '@type': 'DAG',
         'name': 'size1-ckpt',
         'version': '1',
-        'entrypoints': { 'main': 'a' },
+        'entrypoints': { 'main': `${SIZE1_CKPT_DAG}/node/a` },
         'nodes': [
-          { '@id': 'urn:noocodex:dag:size1-ckpt/node/a', '@type': 'SingleNode',
-            'name': 'a', 'node': 'inc', 'outputs': { 'next': 'b' } },
-          { '@id': 'urn:noocodex:dag:size1-ckpt/node/b', '@type': 'SingleNode',
-            'name': 'b', 'node': 'inc', 'outputs': { 'next': 'c' } },
-          { '@id': 'urn:noocodex:dag:size1-ckpt/node/c', '@type': 'SingleNode',
-            'name': 'c', 'node': 'inc', 'outputs': { 'next': 'end' } },
-          { '@id': 'urn:noocodex:dag:size1-ckpt/node/end', '@type': 'TerminalNode',
+          {
+            '@id': `${SIZE1_CKPT_DAG}/node/a`, '@type': 'SingleNode',
+            'name': 'a', 'node': 'urn:noocodec:node:inc', 'outputs': { 'next': `${SIZE1_CKPT_DAG}/node/b` } },
+          {
+            '@id': `${SIZE1_CKPT_DAG}/node/b`, '@type': 'SingleNode',
+            'name': 'b', 'node': 'urn:noocodec:node:inc', 'outputs': { 'next': `${SIZE1_CKPT_DAG}/node/c` } },
+          {
+            '@id': `${SIZE1_CKPT_DAG}/node/c`, '@type': 'SingleNode',
+            'name': 'c', 'node': 'urn:noocodec:node:inc', 'outputs': { 'next': `${SIZE1_CKPT_DAG}/node/end` } },
+          {
+            '@id': `${SIZE1_CKPT_DAG}/node/end`, '@type': 'TerminalNode',
             'name': 'end', 'outcome': 'completed' },
         ],
       };
-      dispatcher.registerDAG(dag);
+      dispatcher.registerDAG(TestDag.from(dag));
 
       // Abort after the first stage.
       const ctl = new AbortController();
       let stagesYielded = 0;
       const initial = new CountState();
-      const execution = dispatcher.execute('size1-ckpt', initial, { 'signal': ctl.signal });
+      const execution = dispatcher.execute(SIZE1_CKPT_DAG, initial, { 'signal': ctl.signal });
 
       for await (const _stage of execution) {
         stagesYielded++;
@@ -509,7 +525,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       }
 
       // Checkpoint → round-trip → restore → resume.
-      const ckpt = await Checkpoint.capture('size1-ckpt', partial);
+      const ckpt = await Checkpoint.capture(SIZE1_CKPT_DAG, partial);
       const raw = ckpt.toJson();
       const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
@@ -518,7 +534,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       );
 
       assert.equal(state.count, 1, 'restored count must be 1');
-      assert.equal(cursor, 'b', 'cursor must point to b');
+      assert.equal(cursor, `${SIZE1_CKPT_DAG}/node/b`, 'cursor must point to b placement IRI');
 
       const resumed = await dispatcher.resume(dagName, state, cursor);
       assert.equal(resumed.cursor, null, 'resume must complete');

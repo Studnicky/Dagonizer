@@ -19,7 +19,7 @@ Every other public page follows the same consumer-grade contract:
 6. **Details for Nerds** - deeper context about JSON-LD, registries, plugins,
    embedded DAGs, visualization, and adjacent frameworks.
 7. **Related Concepts** - conceptually close pages selected from curated
-   `seeAlso` frontmatter or fallback architecture/demo links.
+   `seeAlso` frontmatter or architecture/demo links.
 
 The code graph service is attempted first for code exploration, but the
 `codebase-memory-mcp` transport is unavailable in this session. This audit uses

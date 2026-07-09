@@ -9,7 +9,7 @@
  * @example
  * ```ts
  * // Quick stub during authoring:
- * const node = new PlaceholderNode('classify', ['success', 'error']);
+ * const node = new PlaceholderNode('urn:noocodec:node:classify', ['success', 'error'], { name: 'classify' });
  * // node.execute() always routes → 'success'
  * ```
  */
@@ -26,12 +26,18 @@ export class PlaceholderNode<
   TState extends NodeStateInterface,
   TOutput extends string,
 > extends MonadicNode<TState, TOutput> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly [TOutput, ...TOutput[]];
 
-  constructor(name: string, outputs: readonly [TOutput, ...TOutput[]]) {
+  constructor(
+    iri: string,
+    outputs: readonly [TOutput, ...TOutput[]],
+    options: { readonly name?: string } = {},
+  ) {
     super();
-    this.name = name;
+    this['@id'] = iri;
+    this.name = options.name ?? iri;
     this.outputs = outputs;
   }
 

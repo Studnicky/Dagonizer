@@ -4,8 +4,8 @@
  *
  * Single execution path:
  *
- *   const result = await dispatcher.execute('flow', state);          // summary
- *   for await (const stage of dispatcher.execute('flow', state)) {}  // streaming
+ *   const result = await dispatcher.execute('urn:noocodec:dag:flow', state);          // summary
+ *   for await (const stage of dispatcher.execute('urn:noocodec:dag:flow', state)) {}  // streaming
  *
  * Both consumption modes share a single internal generator; calling
  * `await` on an Execution that has already been iterated returns the
@@ -34,11 +34,11 @@
  * @example
  * ```ts
  * // Sync-style
- * const result = await dispatcher.execute('myFlow', initialState);
+ * const result = await dispatcher.execute('urn:noocodec:dag:my-flow', initialState);
  * console.log(result.state.lifecycle.variant); // 'completed'
  *
  * // Streaming
- * const execution = dispatcher.execute('myFlow', initialState);
+ * const execution = dispatcher.execute('urn:noocodec:dag:my-flow', initialState);
  * for await (const node of execution) {
  *   console.log(node.nodeName, node.output);
  * }

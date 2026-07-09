@@ -85,7 +85,7 @@ Every `Store` method returns a `Promise`. There is no sync variant. Always `awai
 
 **`set` is last-write-wins.** When two concurrent callers call `set` without coordination, whichever completes last persists. Avoid `set` for any value that two nodes write independently; use `update` instead.
 
-Stores do not synchronize across process boundaries. The concurrency contract is per-instance, in-process. Distributed stores are forward-compatible because the contract is fully async; plugin authors implement cross-process atomicity inside `update` (single-step backing access, SQL transactions, Redis WATCH/MULTI, etc.).
+Stores do not synchronize across process boundaries. The concurrency contract is per-instance, in-process. Distributed stores use the fully async contract; plugin authors implement cross-process atomicity inside `update` (single-step backing access, SQL transactions, Redis WATCH/MULTI, etc.).
 
 ## Details for Nerds
 
@@ -137,7 +137,7 @@ Pattern nodes that need a `TripleStore` accept it as a constructor argument. See
 
 ### Authoring a custom store
 
-Extend `BaseStore` and implement six `protected abstract` methods plus two `protected abstract get` accessors. Subclasses must override `update` to satisfy the atomicity contract; the base-class default is a fallback that is safe only when no concurrent calls touch the same key.
+Extend `BaseStore` and implement six `protected abstract` methods plus two `protected abstract get` accessors. Subclasses must override `update` to satisfy the atomicity contract; the base-class default is safe only when no concurrent calls touch the same key.
 
 <<< @/../examples/dags/custom-store.ts#custom-store
 
@@ -151,14 +151,14 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 ### Checkpoint integration
 
-`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, optional `stores` map, and optional `execution` policy. Store snapshots and restores run through the shared batch executor, so applications can set `execution.concurrency`, `execution.throttle`, and `execution.timing` for remote or expensive stores.
+`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts the DAG IRI/CURIE string in the `dagName` parameter, an execution `result`, optional `stores` map, and optional `execution` policy. Store snapshots and restores run through the shared batch executor, so applications can set `execution.concurrency`, `execution.throttle`, and `execution.timing` for remote or expensive stores.
 
 <<< @/../examples/10-shared-state.ts#store-checkpoint
 
 **Failure modes:**
 
 - **Missing store in restore map**: if the checkpoint names a store (e.g. `'memory'`) but `restoreStores` receives a map that does not include that key, it throws `DAGError` naming the missing stores. Loud failure is preferable to silent desync.
-- **Incompatible snapshot**: `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` when `snapshot.type` or `snapshot.version` does not match the store instance's `snapshotType` or `snapshotVersion`. Schema migration is the plugin author's responsibility; `snapshotVersion` is the hook.
+- **Incompatible snapshot**: `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` when `snapshot.type` or `snapshot.version` does not match the store instance's `snapshotType` or `snapshotVersion`. `snapshotVersion` is the versioning hook.
 - **Extra stores in restore map**: stores present in the map but absent from the checkpoint are a no-op. The application added a store that was not tracked at capture time; the engine accepts this silently.
 
 `CheckpointData.stores` is required in the schema. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.

@@ -9,7 +9,7 @@
  *
  * `pricing` is declared (optional) so the OpenRouter catalogue's per-token
  * cost survives typed into `listModels`; providers that omit it (Groq,
- * Cerebras, Mistral) fall back to the `ModelCost` name heuristic.
+ * Cerebras, Mistral) use the `ModelCost` name heuristic.
  *
  * Compiled once via `Validator.openAiModelsResponse` at module load.
  */
@@ -17,7 +17,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const OpenAiModelsResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/OpenAiModelsResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/OpenAiModelsResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['data'],

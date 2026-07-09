@@ -21,7 +21,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * delta tagged with its route key and originating dag/node.
  */
 export const RoutedChatStreamChunkSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/RoutedChatStreamChunk',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/RoutedChatStreamChunk',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['routeKey', 'delta', 'source'],

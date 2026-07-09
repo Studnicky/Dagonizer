@@ -57,9 +57,9 @@ import type { DAGType, SingleNodeType, ScatterNodeType } from '@studnicky/dagoni
 import { DAGSchema } from '@studnicky/dagonizer/entities';
 ```
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
+`$id`: `https://noocodec.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoints`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement variant (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `GatherNode`, `TerminalNode`, `PhaseNode`), discriminated by the `@type` field.
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoints`, `nodes`. The DAG `@id` is the registry identity; `name` is a display and observability label. Each entry in `nodes` is validated against a `oneOf` covering every placement variant (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `GatherNode`, `TerminalNode`, `PhaseNode`), discriminated by the `@type` field.
 
 ```ts twoslash
 import type { DAGType } from '@studnicky/dagonizer/entities';
@@ -77,7 +77,9 @@ The `@context` field is an optional `Record<string, string>` prefix map consumed
 }
 ```
 
-Every `name`, `node`, `dag`, and output route value in the document is expanded through this map before the DAG enters the registry. Bare names (no colon) expand to `ContextResolver.DEFAULT_NS + name` (`https://noocodex.dev/dag/default#`). Absolute IRIs (containing `://`) pass through unexpanded.
+The DAG `@id`, registered node references (`node`), registered DAG references (`dag`), and dynamic `DagReference.candidates` resolve through this map before registry lookup. Absolute IRIs pass through unchanged. Declared `prefix:local` CURIEs expand to their namespace IRI. Bare names and undeclared prefixes are invalid; the engine never invents an IRI from display text.
+
+Placement `@id` values, `entrypoints`, output route targets, and `GatherNode.sources` form the graph topology. Author them as explicit placement or entrypoint IRIs. `DAGBuilder` materializes routes to those IRIs during `build()`.
 
 `ContextResolver.validate` is called automatically by `registerDAG`; it throws `DAGError` if two prefix keys map to the same namespace IRI (a collision that would make inverse lookups ambiguous).
 
@@ -87,41 +89,41 @@ For the full expansion rules and multi-plugin isolation examples, see [Guide: IR
 
 ### `SingleNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/SingleNode`
+`$id`: `https://noocodec.dev/schemas/dagonizer/SingleNode`
 
-Single-node placement. Required: `@id`, `@type: 'SingleNode'`, `name`, `node`, `outputs`.
+Single-node placement. Required: `@id`, `@type: 'SingleNode'`, `name`, `node`, `outputs`. The placement `@id` is runtime identity; `name` is display/observability only.
 
 ```ts twoslash
 import { SingleNodeSchema } from '@studnicky/dagonizer/entities';
 import type { SingleNodeType } from '@studnicky/dagonizer/entities';
 ```
 
-`outputs` is a `Record<string, string>`: each key is an output name, the value is the next placement name. Flows terminate at an explicit `TerminalNode` placement, not via a `null` output value.
+`outputs` is a `Record<string, string>`: each key is an output name, the value is the next placement IRI. Flows terminate at an explicit `TerminalNode` placement; output maps always target placements.
 
 ---
 
 ### `ScatterNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
+`$id`: `https://noocodec.dev/schemas/dagonizer/ScatterNode`
 
-Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, fold clone state back through a required `gather`, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `gather`, `outputs`. Optional: `itemKey` (default `currentItem`), `execution` (unified concurrency-limiting policy — `{ mode: 'item', concurrency?, throttle? } | { mode: 'reservoir', concurrency?, reservoir }`, default `{ mode: 'item', concurrency: 1 }`; see [`ScatterNode`](/reference/nodes#scatternode) for the full `item` vs `reservoir` semantics), `stateMapping.input`, `reducer`.
+Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, emit clone outcome records for downstream gather nodes, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `outputs`. Optional: `itemKey` (default `currentItem`), `execution` (unified concurrency-limiting policy — `{ mode: 'item', concurrency?, throttle? } | { mode: 'reservoir', concurrency?, reservoir }`, default `{ mode: 'item', concurrency: 1 }`; see [`ScatterNode`](/reference/nodes#scatternode) for the full `item` vs `reservoir` semantics), `stateMapping.input`, `reducer`.
 
 ```ts twoslash
 import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';
 import type { ScatterNodeType } from '@studnicky/dagonizer/entities';
 ```
 
-`body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string }` for a registered sub-DAG body.
+`body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string | DagReference }` for a registered sub-DAG body.
 
-`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsType`.
+`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: N→1 merge belongs to a downstream `GatherNode`. Builder option: `inputs` in `ScatterOptionsType`.
 
 ---
 
 ### `EmbeddedDAGNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
+`$id`: `https://noocodec.dev/schemas/dagonizer/EmbeddedDAGNode`
 
-Embedded-DAG placement: invoke a referenced DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (literal DAG name or dynamic `DagReference`), `outputs`. Optional: `stateMapping`.
+Embedded-DAG placement: invoke a referenced DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `outputs`. Optional: `dag` (literal DAG IRI or dynamic `DagReference`), `stateMapping`, `gatherResult`, `container`.
 
 ```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
@@ -130,15 +132,30 @@ import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 
 `stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsType`.
 
-Use `EmbeddedDAGNode` when the selected DAG runs once. Use `ScatterNode` when the same `dag` reference surface runs once per source item and gathers clone output. The composition interface is the same; cardinality and gather policy are the difference.
+Use `EmbeddedDAGNode` when the selected DAG runs once. Use `ScatterNode` when the same `dag` reference surface runs once per source item. Use a downstream `GatherNode` when either placement contributes records to fan-in. Embedded DAGs, plugins, tools-as-DAGs, and dynamic references all use the same DAG-reference model.
+
+---
+
+### `GatherNodeSchema`
+
+`$id`: `https://noocodec.dev/schemas/dagonizer/GatherNode`
+
+First-class fan-in placement. Required: `@id`, `@type: 'GatherNode'`, `name`, `sources`, `gather`, `outputs`. Optional: `policy`.
+
+```ts twoslash
+import { GatherNodeSchema } from '@studnicky/dagonizer/entities';
+import type { GatherNodeType } from '@studnicky/dagonizer/entities';
+```
+
+`sources` is a `Record<sourceIri, { resultField?: string }>` keyed by producer placement IRIs or entrypoint IRIs. The optional `policy` supports `{ mode: 'all' | 'any' | 'quorum'; quorum?: number; includeErrors?: boolean }`. Default policy is `all` without error records.
 
 ---
 
 ### `GatherConfigSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/GatherConfig`
+`$id`: `https://noocodec.dev/schemas/dagonizer/GatherConfig`
 
-Gather strategy configuration for scatter nodes. Required: `strategy` (open `string`; built-in values: `map`, `append`, `partition`, `custom`, `collect`, `discard`; custom strategies registered via `GatherStrategies.register` are also referenceable). Strategy-specific fields:
+Gather strategy configuration for `GatherNode.gather`. Required: `strategy` (open `string`; built-in values: `map`, `append`, `partition`, `custom`, `collect`, `discard`; custom strategies registered via `GatherStrategies.register` are also referenceable). Strategy-specific fields:
 
 | Strategy | Key fields |
 |----------|-----------|
@@ -147,7 +164,7 @@ Gather strategy configuration for scatter nodes. Required: `strategy` (open `str
 | `partition` | `partitions: Record<outputToken, parentPath>`; optional `field` |
 | `collect` | `target: string` (parent array path); optional `field` |
 | `discard` | (none) — no-op; use for side-effect-only fan-outs |
-| `custom` | `customNode: string` (registered node name) |
+| `custom` | `customNode: string` (registered node IRI) |
 
 ```ts twoslash
 import { GatherConfigSchema } from '@studnicky/dagonizer/entities';
@@ -158,7 +175,7 @@ import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 
 ### `TerminalNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/TerminalNode`
+`$id`: `https://noocodec.dev/schemas/dagonizer/TerminalNode`
 
 Explicit terminal placement. Required: `@id`, `@type: 'TerminalNode'`, `name`, `outcome` (enum: `completed` | `failed`). No `outputs` field. TerminalNodes are leaves.
 
@@ -173,9 +190,9 @@ When the engine reaches a `TerminalNode`, the flow ends with the declared `outco
 
 ### `PhaseNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/PhaseNode`
+`$id`: `https://noocodec.dev/schemas/dagonizer/PhaseNode`
 
-Lifecycle-attached placement that runs outside the main DAG loop. Required: `@id`, `@type: 'PhaseNode'`, `name`, `node` (registered node name), `phase` (enum: `pre` | `post`). No `outputs` field.
+Lifecycle-attached placement that runs outside the main DAG loop. Required: `@id`, `@type: 'PhaseNode'`, `name`, `node` (registered node reference), `phase` (enum: `pre` | `post`). No `outputs` field.
 
 ```ts twoslash
 import { PhaseNodeSchema } from '@studnicky/dagonizer/entities';
@@ -188,7 +205,7 @@ import type { PhaseNodeType } from '@studnicky/dagonizer/entities';
 
 ### `DAGLifecycleStateSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/DAGLifecycleState`
+`$id`: `https://noocodec.dev/schemas/dagonizer/DAGLifecycleState`
 
 JSON-serializable wire shape of `DAGLifecycleState`. Covers all six `variant` values with their required timestamp fields. The discriminant field is `variant` (not `kind`).
 
@@ -201,9 +218,9 @@ import type { DAGLifecycleStateDataType } from '@studnicky/dagonizer/entities';
 
 ### `CheckpointDataSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/CheckpointData`
+`$id`: `https://noocodec.dev/schemas/dagonizer/CheckpointData`
 
-Persistable snapshot of an in-flight DAG execution. Required: `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
+Persistable snapshot of an in-flight DAG execution. Required: `dagName` (expanded DAG IRI), `cursor` (placement IRI or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
 
 ```ts twoslash
 import { CheckpointDataSchema } from '@studnicky/dagonizer/entities';
@@ -262,7 +279,7 @@ Each constant is exported as a value object (plural name) paired with a type (si
 | `ScatterOutputNames` | `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
 | `MetadataKeys` | `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
 | `OutputNames` | `Output` | Reserved canonical output names |
-| `NodeTypes` | `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
+| `NodeTypes` | `NodeType` | `'embedded'`, `'scatter'`, `'gather'`, `'single'` |
 | `BackoffStrategyNames` | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
 Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategynames-and-type-backoffstrategy) for `BackoffStrategyNames` usage details.
@@ -286,9 +303,9 @@ Used as the constraint for `snapshotData()` return values and `restoreData()` ar
 
 ## Details for Nerds
 
-Entity schemas are the source of truth for serialized documents. If a TypeScript type and schema ever appear to disagree, fix the schema-derived type path rather than hand-writing a parallel alias.
+Entity schemas are the source of truth for serialized documents. If a TypeScript type and schema ever appear to disagree, fix the schema-derived type path.
 
-Schema `$id` values are stable identifiers for validation and tooling. They are not registry keys for node execution; runtime lookup still happens through DAG/node names and IRI expansion.
+Schema `$id` values are stable identifiers for validation and tooling. They are not registry keys for node execution. Runtime DAG and placement identity comes from explicit IRIs; registered node and DAG implementation lookup uses context expansion.
 
 ## Related Concepts
 

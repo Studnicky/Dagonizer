@@ -25,37 +25,40 @@
 import { routeGeo } from '../nodes/routeGeo.ts';
 import { applyGeo } from '../nodes/applyGeo.ts';
 import { validateCoords } from '../nodes/validateCoords.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const geoPipelineDAG: DAGType = new DAGBuilder('geo-pipeline', '1.0')
+const GEO_PIPELINE_DAG_IRI = CARTOGRAPHER_IRIS.dag.geoPipeline;
+
+export const geoPipelineDAG: DAGType = new DAGBuilder(GEO_PIPELINE_DAG_IRI, '1.0')
 
   // 1. route-geo: skip the geo lookup when the source pre-resolved location.
-  .node('route-geo', routeGeo, {
-    'has-geo':   'apply-geo',
-    'needs-geo': 'validate-coords',
+  .node(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'route-geo'), routeGeo, {
+    'has-geo':   CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'apply-geo'),
+    'needs-geo': CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'validate-coords'),
   })
 
   // 2. apply-geo (skip path): materialise GeoContext from carried geo.
-  .node('apply-geo', applyGeo, {
-    'normalize': 'resolved',
+  .node(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'apply-geo'), applyGeo, {
+    'normalize': CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'resolved'),
   })
 
   // 3. validate-coords (lookup path): WGS-84 bounds classification. Both valid
   //    and rejected coords flow into geo-source-resolve — rejected ones are NOT dropped;
   //    CoordTimezone guards their out-of-range RangeError and degrades to baseline.
-  .node('validate-coords', validateCoords, {
-    'valid':    'geo-source-resolve',
-    'rejected': 'geo-source-resolve',
+  .node(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'validate-coords'), validateCoords, {
+    'valid':    CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'geo-source-resolve'),
+    'rejected': CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'geo-source-resolve'),
   })
 
   // 4. geo-source-resolve: embedded source-model geo-resolution sub-DAG.
   //    Writes state.geoContext + state.resolvedGeo + routing record.
-  .embeddedDAG<CartographerState, CartographerState>('geo-source-resolve', 'geo-source-resolve', {
-    'success': 'resolved',
-    'error':   'resolved',
+  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'geo-source-resolve'), CARTOGRAPHER_IRIS.dag.geoSourceResolve, {
+    'success': CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'resolved'),
+    'error':   CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'resolved'),
   }, {
     'inputs': {
       'raw':            'raw',
@@ -76,7 +79,7 @@ export const geoPipelineDAG: DAGType = new DAGBuilder('geo-pipeline', '1.0')
   })
 
   // Terminals
-  .terminal('resolved', { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'resolved'), { outcome: 'completed' })
 
   .build();
 

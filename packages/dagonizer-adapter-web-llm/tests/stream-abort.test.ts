@@ -154,7 +154,7 @@ void test('performChatStream: a tool-bearing request routes to buffered default,
     'tools':    [{ 'name': 'noop', 'description': 'does nothing', 'inputSchema': { 'type': 'object' } }],
   });
 
-  // `performChat` on the buffered fallback path ultimately calls
+  // `performChat` on the buffered path ultimately calls
   // `#openStream` too (shared setup), but only once, non-streamed: assert
   // the sink receives exactly one buffered chunk rather than several
   // token-sized deltas, which is what would happen if `create` were invoked

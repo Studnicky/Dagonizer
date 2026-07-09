@@ -1,7 +1,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GatherRecordProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherRecordProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/GatherRecordProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['source', 'index', 'output', 'terminalOutcome'],
@@ -22,7 +22,7 @@ export const GatherRecordProgressSchema = {
 } as const;
 
 export const GatherProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/GatherProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['entries'],

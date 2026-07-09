@@ -178,7 +178,7 @@ describe('GeoResolutionBuilder.from', () => {
   it('empty partial → DEFAULT_GEO_RESOLUTION values', () => {
     const res = GeoResolutionBuilder.from({});
     assert.equal(res.source, DEFAULT_GEO_RESOLUTION.source);
-    assert.equal(res.fallbackUsed, DEFAULT_GEO_RESOLUTION.fallbackUsed);
+    assert.equal(res.secondaryLookupUsed, DEFAULT_GEO_RESOLUTION.secondaryLookupUsed);
     assert.equal(res.timezone, DEFAULT_GEO_RESOLUTION.timezone);
   });
 
@@ -188,7 +188,7 @@ describe('GeoResolutionBuilder.from', () => {
       'timezone':  'Asia/Tokyo',
       'country':   'JP',
       'locale':    'ja-JP',
-      'fallbackUsed': false,
+      'secondaryLookupUsed': false,
       'countryName': 'Japan',
       'region':    '',
       'locality':  '',
@@ -209,7 +209,7 @@ describe('GeoResolutionBuilder.from', () => {
       'countryName': 'Germany',
       'locale':      'de-DE',
       'timezone':    'Europe/Berlin',
-      'fallbackUsed': false,
+      'secondaryLookupUsed': false,
       'region':      '',
       'locality':    '',
       'lat':         0,
@@ -222,10 +222,10 @@ describe('GeoResolutionBuilder.from', () => {
     assert.equal(res.locale, 'de-DE');
   });
 
-  it('fallbackUsed=true carried through', () => {
+  it('secondaryLookupUsed=true carried through', () => {
     const res = GeoResolutionBuilder.from({
       'source':       'coords',
-      'fallbackUsed': true,
+      'secondaryLookupUsed': true,
       'timezone':     'America/Chicago',
       'country':      'US',
       'countryName':  '',
@@ -236,7 +236,7 @@ describe('GeoResolutionBuilder.from', () => {
       'lng':          -87.6,
       'status':       'land',
     });
-    assert.equal(res.fallbackUsed, true);
+    assert.equal(res.secondaryLookupUsed, true);
     assert.equal(res.lat, 41.8);
   });
 });
@@ -303,7 +303,7 @@ describe('GeoSourceResolveDAG integration', () => {
     const dispatcher = new Dagonizer<CartographerState>({});
     dispatcher.registerBundle(bundle);
 
-    const execution = dispatcher.execute('geo-source-resolve', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:geo-source-resolve', state);
     for await (const _event of execution) { /* drain */ }
 
     assert.ok(state.resolvedGeo.country.length > 0, `expected country, got: ${JSON.stringify(state.resolvedGeo.country)}`);
@@ -352,7 +352,7 @@ describe('GeoSourceResolveDAG integration', () => {
     const dispatcher = new Dagonizer<CartographerState>({});
     dispatcher.registerBundle(bundle);
 
-    const execution = dispatcher.execute('geo-source-resolve', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:geo-source-resolve', state);
     for await (const _event of execution) { /* drain */ }
 
     // Both signals contributed — provenance contains both source strings.
@@ -388,7 +388,7 @@ describe('GeoSourceResolveDAG integration', () => {
     const dispatcher = new Dagonizer<CartographerState>({});
     dispatcher.registerBundle(bundle);
 
-    const execution = dispatcher.execute('geo-source-resolve', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:geo-source-resolve', state);
     for await (const _event of execution) { /* drain */ }
 
     // Baseline values: no country resolved, zero confidence.

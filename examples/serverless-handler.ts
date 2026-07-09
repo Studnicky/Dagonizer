@@ -18,6 +18,7 @@ import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 import {
   InMemoryQueueChannel,
   REGISTRY_VERSION,
+  SETTLE_DAG_IRI,
   ServerlessHandler,
 } from './dags/serverless-handler.js';
 
@@ -29,7 +30,7 @@ const egress = new InMemoryQueueChannel(downstreamQueue);
 
 // An inbound envelope, as a queue trigger would deliver it.
 const inbound: DAGHandoffType = {
-  dagName: 'settle',
+  dagName: SETTLE_DAG_IRI,
   terminalName: 'done',
   terminalOutput: 'completed',
   registryVersion: REGISTRY_VERSION,

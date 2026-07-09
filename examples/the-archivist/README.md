@@ -25,7 +25,7 @@ Default cascade:
    (`chrome://flags/#prompt-api-for-gemini-nano`).
 2. **WebLLM:** any WebGPU-capable browser. Lazy-downloads a ~700 MB
    quantized model on first use; subsequent runs reuse it.
-3. **Gemini API:** REST fallback. Pass the key via
+3. **Gemini API:** REST access. Pass the key via
    `http://localhost:5174/?apiKey=YOUR_KEY` or accept the `prompt()`
    dialog on first use.
 4. **Ollama:** only when the daemon is running locally with CORS
@@ -50,8 +50,7 @@ Default cascade:
 5. **Mistral:** `MISTRAL_API_KEY`
 6. **OpenRouter:** `OPENROUTER_API_KEY`
 
-Throws `LlmError(NO_ADAPTER_AVAILABLE)` if none are reachable. There is
-no stub fallback in the CLI; the stub is reserved for tests.
+Throws `LlmError(NO_ADAPTER_AVAILABLE)` if none are reachable. The CLI uses the stub only in tests.
 
 Recommended local setup: install any Ollama chat model first. The runner
 auto-detects an installed chat model from `/api/tags`, or honors `OLLAMA_MODEL`

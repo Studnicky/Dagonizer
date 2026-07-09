@@ -146,7 +146,8 @@ void describe('StreamCursor.resumeAfter: fresh state', () => {
 
   void it('returns 0 when no scatter checkpoint exists', () => {
     const state = new NodeStateBase();
-    const result = StreamCursor.resumeAfter(state, 'my-scatter');
+    const scatterIri = 'urn:noocodec:dag:stream-cursor-fresh/node/my-scatter';
+    const result = StreamCursor.resumeAfter(state, scatterIri);
     assert.strictEqual(result, 0);
   });
 
@@ -160,24 +161,25 @@ void describe('StreamCursor.resumeAfter: bounded checkpoint', () => {
 
   void it('returns nextIndex from a seeded bounded checkpoint', () => {
     const state = new NodeStateBase();
-    const name = 'scatter-a';
+    const scatterIri = 'urn:noocodec:dag:stream-cursor-bounded/node/scatter-a';
 
     // Seed a bounded checkpoint: watermark=5, no ahead-acked, no inbox.
     // restoreRunState will set nextIndex = watermarkRef.value = 5.
-    ScatterCheckpoint.writeBounded(state, name, [], 5, [], {});
+    ScatterCheckpoint.writeBounded(state, scatterIri, [], 5, [], {});
 
     // Compute expected value the same way the engine does.
-    const stored = ScatterCheckpoint.read(state, name);
+    const stored = ScatterCheckpoint.read(state, scatterIri);
     const expected = ScatterCheckpoint.restoreRunState(stored, true).nextIndex;
     assert.strictEqual(expected, 5);
 
-    const actual = StreamCursor.resumeAfter(state, name);
+    const actual = StreamCursor.resumeAfter(state, scatterIri);
     assert.strictEqual(actual, expected);
   });
 
   void it('returns 0 with compactable:false when no retained checkpoint exists', () => {
     const state = new NodeStateBase();
-    const result = StreamCursor.resumeAfter(state, 'scatter-b', { 'compactable': false });
+    const scatterIri = 'urn:noocodec:dag:stream-cursor-retained/node/scatter-b';
+    const result = StreamCursor.resumeAfter(state, scatterIri, { 'compactable': false });
     assert.strictEqual(result, 0);
   });
 

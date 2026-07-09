@@ -27,7 +27,7 @@ import type { FromSchema } from 'json-schema-to-ts';
  * uses a `reservoir` config; absent for non-reservoir scatter.
  */
 export const ScatterInboxItemSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterInboxItem',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterInboxItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['index', 'item'],
@@ -47,7 +47,7 @@ export type ScatterInboxItemType = FromSchema<typeof ScatterInboxItemSchema>;
 // ---------------------------------------------------------------------------
 
 export const ScatterAckedResultSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterAckedResult',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterAckedResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {
@@ -168,7 +168,7 @@ const ackedResultInline = {
 } as const;
 
 export const ScatterProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {
@@ -228,7 +228,7 @@ export type ScatterProgressType = FromSchema<typeof ScatterProgressSchema>;
 // ---------------------------------------------------------------------------
 
 export const StoredScatterProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoredScatterProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/StoredScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'additionalProperties': ScatterProgressSchema,

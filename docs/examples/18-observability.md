@@ -26,7 +26,7 @@ The integration point is intentionally narrow: subclass `Dagonizer` and override
 
 ## How It Works
 
-The dispatcher calls protected `on*` hooks around every execution boundary. A subclass translates those callbacks into domain events, UI state, or telemetry spans. Nested and contained execution includes `placementPath`, so applications can identify the full ancestry of an observed node even when embedded DAGs reuse names.
+The dispatcher calls protected `on*` hooks around every execution boundary. A subclass translates those callbacks into domain events, UI state, or telemetry spans. Nested and contained execution includes `placementPath`, so applications can identify the full ancestry of an observed node even when embedded DAGs reuse display names.
 
 This keeps observability out of node logic. Nodes return declared outputs; the runtime reports the flow around them.
 
@@ -61,8 +61,8 @@ The Dispatcher runner snippet shows the browser observer subclass and how hook c
 ## Details for Nerds
 
 - **Subclass hook surface.** Override the protected lifecycle methods on `Dagonizer`. All seven hooks receive strongly-typed state and placement context: `onFlowStart(dagName, state)`, `onFlowEnd(dagName, state, result)`, `onNodeStart(nodeName, state, placementPath)`, `onNodeEnd(nodeName, output, state, placementPath)`, `onError(nodeName, error, state, placementPath)`, `onPhaseEnter(dagName, phase, placementName, state, placementPath)`, `onPhaseExit(dagName, phase, placementName, state, placementPath)`.
-- **`placementPath` ancestry.** Empty for top-level nodes; carries the ordered list of parent embedded-DAG placement names for nested nodes. Use `[...placementPath, nodeName].join('/')` for a fully-qualified node id.
-- **Worker/container transparency.** For nodes running in isolates (worker threads, child processes), `WorkerObserver` bridges events through an `ObserverRelay` back to the parent dispatcher's protected hooks. The `placementPath` starts with the outer placement name so inner nodes are identifiable even when they share names across placements.
+- **`placementPath` ancestry.** Empty for top-level nodes; carries the ordered list of parent embedded-DAG placement identifiers for nested nodes. Use the placement path plus node display name for a human-readable trace label, and keep the placement IRI for durable identity.
+- **Worker/container transparency.** For nodes running in isolates (worker threads, child processes), `WorkerObserver` bridges events through an `ObserverRelay` back to the parent dispatcher's protected hooks. The `placementPath` starts with the outer placement identifier so inner nodes are identifiable even when they share display names across placements.
 - **Runnable visualization.** The Dispatcher DAG pane and trace feed are populated from the same hooks shown above.
 
 ## Related Concepts

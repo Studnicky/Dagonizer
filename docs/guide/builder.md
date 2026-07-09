@@ -31,13 +31,13 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 ## What It Is
 
-`DAGBuilder` is the chainable TypeScript API for writing a Dagonizer graph in code. Each call appends a placement to the JSON-LD DAG document, and each route map is checked against the node's declared output union before the graph ever runs.
+`DAGBuilder` is the chainable TypeScript API for writing a Dagonizer graph in code. Each call appends a placement with an explicit IRI to the JSON-LD DAG document, and each route map is checked against the node's declared output union before the graph ever runs.
 
 Use it when your workflow belongs in source control beside the nodes it invokes. The result is still the canonical JSON-LD `DAG`, so builder-authored DAGs can be serialized, visualized, embedded, packaged as plugins, and registered by the dispatcher without conversion.
 
 ## How It Works
 
-Every builder method appends a typed placement to an in-memory DAG document. The builder tracks the first placement as the default entrypoint, narrows route maps from node output unions, emits JSON-LD placement types, and returns a plain `DAG` from `.build()`. The dispatcher registers that returned object directly.
+Every builder method appends a typed placement to an in-memory DAG document. The builder tracks the first placement IRI as the default entrypoint, narrows route maps from node output unions, emits JSON-LD placement types, materializes route targets to placement IRIs, and returns a plain `DAG` from `.build()`. The dispatcher registers that returned object directly.
 
 `DAGBuilder` is the chainable TypeScript factory for JSON-LD DAG documents: ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences all use the same surface. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
 
@@ -55,16 +55,20 @@ The same runnable source builds the JSON-LD DAG below. The Mermaid diagram is ge
 
 <DagJsonMermaid :dag="builderDag" title="Example 02 builder DAG" aria-label="The Example 02 builder JSON-LD DAG beside Mermaid generated from it." />
 
-### `.placeholder(name, outputs, routes)`
+### `.placeholder(iri, outputs, routes)`
 
 Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `MonadicNode` subclass when ready.
 
 ```ts twoslash
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-const dag = new DAGBuilder('my-dag', '1')
-  .placeholder('process', ['success', 'error'], { success: 'end', error: 'end' })
-  .terminal('end', { outcome: 'completed' })
+const dagIri = 'workflow:my-dag';
+const processIri = `${dagIri}/node/process`;
+const endIri = `${dagIri}/node/end`;
+
+const dag = new DAGBuilder(dagIri, '1')
+  .placeholder(processIri, ['success', 'error'], { success: endIri, error: endIri }, { name: 'process' })
+  .terminal(endIri, { name: 'end', outcome: 'completed' })
   .build();
 ```
 
@@ -74,7 +78,7 @@ Import: `PlaceholderNode` is available from `@studnicky/dagonizer` if you need t
 
 ### Use when
 
-Use `DAGBuilder` when the DAG lives in TypeScript source and you want route maps, embedded DAG references, scatter bodies, phase nodes, and terminal placement names checked before runtime. Use raw JSON-LD loading when the graph is external configuration.
+Use `DAGBuilder` when the DAG lives in TypeScript source and you want route maps, embedded DAG references, scatter bodies, phase nodes, and terminal placement IRIs checked before runtime. Use raw JSON-LD loading when the graph is external configuration.
 
 ## Code Samples
 
@@ -90,15 +94,15 @@ Example 02 registers two nodes and builds a two-step chat flow:
 
 <<< @/../examples/02-builder.ts#run
 
-The first `.node()` call sets the entrypoint automatically. Call `.entrypoint('name')` to override.
+The first `.node()` call sets the `main` entrypoint automatically. Call `.entrypoints({ main: placementIri })` to override or declare multiple entry roots.
 
 ## Details for Nerds
 
 ### Scatter
 
-`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node or a sub-DAG) in the clone, folds clone state back through a required `gather`, and routes on the aggregate outcome via an outcome `reducer`. `source` is a required positional argument.
+`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node or a sub-DAG) in the clone, emits clone outcome records, and routes on the aggregate outcome via an outcome `reducer`. `source` is a required positional argument. Fan-in belongs to a separate `GatherNode`; scatter emits records and the gather folds them under its own placement IRI.
 
-`gather` is required on every scatter. Use `{ strategy: 'discard' }` to express a side-effect-only fan-out where no clone state flows back to the parent:
+Fan-in is a first-class `.gather()` placement. If a fan-out is side-effect-only, route scatter directly to the next placement and skip the gather:
 
 <<< @/../examples/dags/02-builder.topology.ts#scatter-discard
 
@@ -129,10 +133,9 @@ The full signature is shown in the scatter placement example:
 | `itemKey?` | `string` | Metadata key the clone reads for the current item. Default `'currentItem'`. |
 | `execution?` | `{ mode: 'item', concurrency?, throttle? } \| { mode: 'reservoir', concurrency?, reservoir }` | Unified concurrency-limiting policy — the exact wire shape `ScatterNode.execution` accepts. Default: `{ mode: 'item', concurrency: 1 }`. See [`ScatterNode`](/reference/nodes#scatternode) for the full `item` vs `reservoir` semantics. |
 | `inputs?` | `Partial<Record<string, Path<TState>>>` | Parent → clone field copy before the body runs. Becomes `stateMapping.input` on the entity. Keys are child-state keys; values are parent-state dotted paths. |
-| `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
-`Path<T>` enumerates valid dotted-path strings over a state shape recursively. For example `Path<{ user: { name: string; age: number } }>` resolves to `'user' | 'user.name' | 'user.age'`. Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@studnicky/dagonizer/builder` subpath.
+`Path<T>` enumerates valid dotted-path strings over a state shape recursively. For example `Path<{ user: { name: string; age: number } }>` resolves to `'user' | 'user.name' | 'user.age'`. Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting resolves to `string`. The type is exported from the `@studnicky/dagonizer/builder` subpath.
 
 The `inputs` option in a scatter call uses `Path<TState>` to constrain parent dotted paths at compile time:
 
@@ -140,7 +143,7 @@ The `inputs` option in a scatter call uses `Path<TState>` to constrain parent do
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
 
-When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and Cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
+When `body` is `{ dag: 'workflow:child' }`, the placement runs a full registered sub-DAG per clone. The value is a DAG IRI or CURIE resolved through the DAG context, not a display name. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and Cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
@@ -148,9 +151,9 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 `.embed()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
 
-`.embeddedDAG()` remains available as the legacy name and delegates to the same code path. New code should use `.embed()` because it accepts the full unified DAG reference surface:
+Use `.embed()` for the unified DAG reference surface:
 
-- a DAG name string
+- a DAG IRI or CURIE string
 - a `DAG` object
 - a runtime reference object `{ from: 'state', path: 'state.path', candidates: [...] }`
 
@@ -185,43 +188,53 @@ type EmbeddableDAGType =
 Normalization is direct:
 
 - `string` becomes `{ dag: value }`
-- `DAGType` becomes `{ dag: value.name }`
+- `DAGType` becomes `{ dag: value['@id'] }`
 - `{ from, path, candidates }` becomes `{ dag: { '@type': 'DagReference', from, path, candidates } }`
 
-That means application code can treat embedded local DAGs and plugin-exported DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
+That means application code can treat embedded local DAGs, plugin-exported DAGs, tool DAGs, and runtime-selected DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
 
 #### Runtime DAG resolution with `DagReference`
 
-Both `.scatter()` and `.embed()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state or item data at execution time rather than being hard-coded at authoring time. Dynamic references always declare their candidate DAG set so registration, validation, graph projection, plugin discovery, and runtime dispatch agree.
+Both `.scatter()` and `.embed()` accept a runtime-resolved DAG reference in addition to a build-time IRI string. This is the engine's primitive for recursion, tools-as-DAGs, plugin composition, and self-reference: the DAG to run is chosen from state or item data at execution time rather than being hard-coded at authoring time. Dynamic references always declare their candidate DAG IRI set so registration, validation, graph projection, plugin discovery, and runtime dispatch agree.
 
 **`.embed()` with a state-sourced `DagReference`**
 
-Pass `{ from: 'state', path: 'statePath', candidates: [...] }` as the `dag` argument. At execution time the engine reads the dotted state path and looks up the resulting string as a registered DAG name. If the resolved name is outside the candidate set or unregistered, the placement routes to `error` without throwing.
+Pass `{ from: 'state', path: 'statePath', candidates: [...] }` as the `dag` argument. At execution time the engine reads the dotted state path and resolves the resulting string as a registered DAG IRI. If the resolved IRI is outside the candidate set or unregistered, the placement routes to `error` without throwing.
 
 ```ts
 // The DAG to invoke is stored in state.selectedDag at runtime.
+const dagIri = 'workflow:parent';
+const p = (placement: string) => `${dagIri}/node/${placement}`;
+
 builder.embed(
-  'invoke',
-  { from: 'state', path: 'selectedDag', candidates: ['child-a', 'child-b'] },
-  { success: 'next', error: 'end-fail' },
+  p('invoke'),
+  { from: 'state', path: 'selectedDag', candidates: ['workflow:child-a', 'workflow:child-b'] },
+  { success: p('next'), error: p('end-fail') },
 );
 ```
 
 **`.scatter()` with an item-sourced `DagReference` as the body**
 
-Pass `{ dag: { from: 'item', path: 'targetDag', candidates: [...] } }` as the `body` argument. Each scatter clone resolves the item path to a DAG name and runs that DAG as its body. Values outside the candidate set route the clone to `error`.
+Pass `{ dag: { from: 'item', path: 'targetDag', candidates: [...] } }` as the `body` argument. Each scatter clone resolves the item path to a DAG IRI and runs that DAG as its body. Values outside the candidate set route the clone to `error`.
 
 ```ts
+const dagIri = 'workflow:fan-out';
+const p = (placement: string) => `${dagIri}/node/${placement}`;
+
 builder.scatter(
-  'fan-out',
+  p('fan-out'),
   'items',
-  { dag: { from: 'item', path: 'targetDag', candidates: ['child-a', 'child-b'] } },
-  { 'all-success': 'merge', 'all-error': 'end-fail', 'partial': 'merge', 'empty': 'end' },
-  { gather: { strategy: 'discard' } },
+  { dag: { from: 'item', path: 'targetDag', candidates: ['workflow:child-a', 'workflow:child-b'] } },
+  { 'all-success': p('merge'), 'all-error': p('end-fail'), partial: p('merge'), empty: p('end') },
+).gather(
+  p('merge'),
+  { [p('fan-out')]: {} },
+  { strategy: 'discard' },
+  { success: p('end'), error: p('end-fail'), empty: p('end') },
 );
 ```
 
-Both variants are the engine's only recursive primitive: a node can write a DAG name into state (or inherit one from its placement's source item) and the engine resolves it at the point of invocation. This enables trampoline flows and polymorphic fan-out without hard-coded DAG names in the topology.
+Both variants are the engine's only recursive primitive: a node can write a DAG IRI into state (or inherit one from its placement's source item) and the engine resolves it at the point of invocation. This enables trampoline flows and polymorphic fan-out without hard-coded route branches in the topology.
 
 ### `.terminal(name, options?)`
 
@@ -229,15 +242,15 @@ Both variants are the engine's only recursive primitive: a node can write a DAG 
 
 Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `{ outcome: 'failed' }` marks the state as failed before resolving.
 
-TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`. Every output of every node in a DAG must route to another named node — a `TerminalNode` placement is the only valid flow endpoint.
+TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`. Every output of every node in a DAG must route to another placement IRI; a `TerminalNode` placement is the only valid flow endpoint.
 
 #### Routing embedded-DAG outputs to a terminal placement
 
-An `EmbeddedDAGNode` placement targets named terminals directly:
+An `EmbeddedDAGNode` placement targets terminal placement IRIs directly:
 
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
-When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, { outcome: 'failed' })` call.
+When the child DAG exits with a failed terminal, the `error` output arrives at the `end-fail` placement IRI, which marks the parent flow `failed`. Without a terminal placement, the author would need a dedicated `SingleNode` to call `state.markFailed()`. The terminal collapses that to one `.terminal(placementIri, { outcome: 'failed' })` call.
 
 #### Example, two explicit terminals
 
@@ -273,7 +286,7 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
-### `.entrypoint()`
+### `.entrypoints()`
 
 By default the first added node is the entrypoint. Override explicitly:
 
@@ -281,7 +294,7 @@ By default the first added node is the entrypoint. Override explicitly:
 
 ### `.build()`
 
-`build()` materialises the accumulated nodes and returns a `DAG`. It throws an `Error` if no entrypoint has been set (no nodes added and `.entrypoint()` not called).
+`build()` materialises the accumulated nodes and returns a `DAG`. It throws an `Error` if no entrypoint has been set (no placements added and `.entrypoints(...)` not called).
 
 The returned object is identical to one written by hand. Pass it directly to `dispatcher.registerDAG()`.
 

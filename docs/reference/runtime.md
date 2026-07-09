@@ -210,7 +210,7 @@ const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames
 const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
 ```
 
-Decision predicate. Order: `abortOn` match stops retrying; `retryOn` (when set) must match to retry; with no `retryOn` filter, a `DAGError` falls back to its own `error.retryable` field; otherwise retry. See [Guide: Retry — Error filtering](../guide/retry#error-filtering) for the full precedence and [Composing with adapter resilience](../guide/retry#composing-with-adapter-resilience) for `abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError]` guidance. Override `shouldRetry` for conditional logic beyond `retryOn` / `abortOn`.
+Decision predicate. Order: `abortOn` match stops retrying; `retryOn` (when set) must match to retry; with no `retryOn` filter, a `DAGError` uses its own `error.retryable` field; otherwise retry. See [Guide: Retry — Error filtering](../guide/retry#error-filtering) for the full precedence and [Composing with adapter resilience](../guide/retry#composing-with-adapter-resilience) for `abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError]` guidance. Override `shouldRetry` for conditional logic beyond `retryOn` / `abortOn`.
 
 ---
 

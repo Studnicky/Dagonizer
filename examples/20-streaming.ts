@@ -22,7 +22,7 @@
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import type { NodeResultType, NodeStateInterface } from '@studnicky/dagonizer';
-import { PipelineState, IngestNode, EnrichNode, PersistNode, dag } from './dags/20-streaming.js';
+import { PipelineState, IngestNode, EnrichNode, PersistNode, dag, dagIri } from './dags/20-streaming.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -46,7 +46,7 @@ const intermediateNodes: Array<NodeResultType<NodeStateInterface>> = [];
 process.stdout.write('\n20-streaming: stage-by-stage execution progress\n\n');
 process.stdout.write('  Streaming nodes as they complete:\n');
 
-const execution = dispatcher.execute('streaming-demo', state);
+const execution = dispatcher.execute(dagIri, state);
 
 // Each iteration step yields one NodeResult when the node completes.
 // The consumer can react (log, store, update UI) before the next node runs.

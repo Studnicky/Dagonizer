@@ -11,14 +11,14 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const RecommendedWorkerCountConfigSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/RecommendedWorkerCountConfig',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/RecommendedWorkerCountConfig',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['maximumWorkers', 'mainThreadReservation', 'fallbackWorkerCount', 'memoryPerWorkerBytes'],
+  'required': ['maximumWorkers', 'mainThreadReservation', 'minimumWorkerCount', 'memoryPerWorkerBytes'],
   'properties': {
     'maximumWorkers':        { 'type': 'number' },
     'mainThreadReservation': { 'type': 'number' },
-    'fallbackWorkerCount':   { 'type': 'number' },
+    'minimumWorkerCount':    { 'type': 'number' },
     'memoryPerWorkerBytes':  { 'type': ['number', 'null'] },
   },
   'additionalProperties': false,
@@ -30,8 +30,8 @@ export type RecommendedWorkerCountConfigType = FromSchema<typeof RecommendedWork
 /** Default for `mainThreadReservation`: reserve 1 thread for the main thread. */
 export const RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION = 1;
 
-/** Default for `fallbackWorkerCount`: use 1 worker when probing is unavailable. */
-export const RECOMMENDED_WORKER_COUNT_FALLBACK = 1;
+/** Default for `minimumWorkerCount`: floor the pool at 1 worker. */
+export const RECOMMENDED_WORKER_COUNT_MINIMUM = 1;
 
 /** Default for `memoryPerWorkerBytes`: no memory-based cap (null). */
 export const RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES: null = null;
@@ -43,6 +43,6 @@ export const RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES: null = null;
 export const RecommendedWorkerCountConfigDefault: RecommendedWorkerCountConfigType = {
   'maximumWorkers':        1,
   'mainThreadReservation': RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
-  'fallbackWorkerCount':   RECOMMENDED_WORKER_COUNT_FALLBACK,
+  'minimumWorkerCount':    RECOMMENDED_WORKER_COUNT_MINIMUM,
   'memoryPerWorkerBytes':  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
 } as const satisfies RecommendedWorkerCountConfigType;

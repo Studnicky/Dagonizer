@@ -100,6 +100,7 @@ export class InsightsFoldGather extends GatherStrategy {
     return value === 'envelope' || value === 'small' || value === 'medium' || value === 'large' || value === 'freight';
   }
   readonly name = 'insights-fold';
+  readonly '@id' = 'urn:noocodec:node:insights-fold';
 
   // ── initial: reset accumulators in state ─────────────────────────────────
 

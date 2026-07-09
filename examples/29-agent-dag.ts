@@ -36,7 +36,7 @@ import {
 import type { ToolCallScatterItemType } from '@studnicky/dagonizer/patterns';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import type { NodeContextType } from '@studnicky/dagonizer/entities';
-import { dag as agentDag } from './dags/29-agent-dag.ts';
+import { dag as agentDag, dagIri } from './dags/29-agent-dag.ts';
 
 // ---------------------------------------------------------------------------
 // Domain state
@@ -51,7 +51,7 @@ class AgentState extends NodeStateBase {
   chatResponse: ChatResponseType | null = null;
   /** Accumulated assistant text for the current turn. */
   assistantText: string = '';
-  /** Tool calls decoded from text (text-channel fallback). */
+  /** Tool calls decoded from text (text-channel path). */
   decodedCalls: ToolCallType[] = [];
   /** Scatter items for safe (concurrent) tool dispatch. */
   safeWorkset: ToolCallScatterItemType[] = [];
@@ -112,6 +112,7 @@ class StubLlmAdapter implements LlmAdapterInterface {
 // 1. BuildChatRequestNode: assembles the ChatRequestType from state.
 class MyBuildChatRequestNode extends BuildChatRequestNode<AgentState> {
   readonly name = 'build-request';
+  readonly '@id' = 'urn:noocodec:node:build-request';
 
   protected buildRequest(state: AgentState, context: NodeContextType): ChatRequestType {
     const req: ChatRequestType = {
@@ -131,6 +132,7 @@ class MyBuildChatRequestNode extends BuildChatRequestNode<AgentState> {
 // 2. CallModelNode: sends the request to the LLM adapter and stores the response.
 class MyCallModelNode extends CallModelNode<AgentState> {
   readonly name = 'call-model';
+  readonly '@id' = 'urn:noocodec:node:call-model';
 
   constructor(llm: LlmAdapterInterface) { super(llm); }
 
@@ -150,6 +152,7 @@ class MyCallModelNode extends CallModelNode<AgentState> {
 // 3. NormalizeResponseNode: reads the stored response and routes on its variant.
 class MyNormalizeResponseNode extends NormalizeResponseNode<AgentState> {
   readonly name = 'normalize-response';
+  readonly '@id' = 'urn:noocodec:node:normalize-response';
 
   protected getResponse(state: AgentState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
@@ -159,6 +162,7 @@ class MyNormalizeResponseNode extends NormalizeResponseNode<AgentState> {
 // 4. DecodeTextToolCallsNode: decodes tool-call JSON embedded in text responses.
 class MyDecodeTextToolCallsNode extends DecodeTextToolCallsNode<AgentState> {
   readonly name = 'decode-tools';
+  readonly '@id' = 'urn:noocodec:node:decode-tools';
 
   protected getText(state: AgentState, _ctx: NodeContextType): string {
     return state.assistantText;
@@ -172,6 +176,7 @@ class MyDecodeTextToolCallsNode extends DecodeTextToolCallsNode<AgentState> {
 // 5. NormalizeToolCallsNode: validates decoded calls (id, name, arguments present).
 class MyNormalizeToolCallsNode extends NormalizeToolCallsNode<AgentState> {
   readonly name = 'normalize-tools';
+  readonly '@id' = 'urn:noocodec:node:normalize-tools';
 
   protected getToolCalls(state: AgentState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -185,6 +190,7 @@ class MyNormalizeToolCallsNode extends NormalizeToolCallsNode<AgentState> {
 // 6. BuildToolWorksetsNode: partitions calls into safe/exclusive scatter worksets.
 class MyBuildToolWorksetsNode extends BuildToolWorksetsNode<AgentState> {
   readonly name = 'build-worksets';
+  readonly '@id' = 'urn:noocodec:node:build-worksets';
 
   protected getToolCalls(state: AgentState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -207,6 +213,7 @@ class MyBuildToolWorksetsNode extends BuildToolWorksetsNode<AgentState> {
 // 7. CollectToolResultsNode: collects gather-folded tool outputs into finalized results.
 class MyCollectToolResultsNode extends CollectToolResultsNode<AgentState> {
   readonly name = 'collect-results';
+  readonly '@id' = 'urn:noocodec:node:collect-results';
 
   protected getGatheredResults(state: AgentState, _ctx: NodeContextType): readonly unknown[] {
     return state.toolOutputs;
@@ -220,6 +227,7 @@ class MyCollectToolResultsNode extends CollectToolResultsNode<AgentState> {
 // 8. AppendAssistantNode: appends the model response to the conversation history.
 class MyAppendAssistantNode extends AppendAssistantNode<AgentState> {
   readonly name = 'append-assistant';
+  readonly '@id' = 'urn:noocodec:node:append-assistant';
 
   protected getResponse(state: AgentState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
@@ -282,7 +290,7 @@ state.prompt = 'What is the capital of France?';
 
 process.stdout.write(`Prompt: "${state.prompt}"\n`);
 
-const result = await dispatcher.execute('my-agent', state);
+const result = await dispatcher.execute(dagIri, state);
 
 process.stdout.write(`\nOutcome:       ${result.terminalOutcome}\n`);
 process.stdout.write(`assistantText: "${state.assistantText}"\n`);

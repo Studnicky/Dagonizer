@@ -66,7 +66,7 @@ export const GatherConfigShapeSchema = {
 } as const;
 
 export const GatherConfigSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherConfig',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/GatherConfig',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   ...GatherConfigShapeSchema,
 } as const;

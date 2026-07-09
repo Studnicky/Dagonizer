@@ -4,12 +4,12 @@
  * Demonstrates DAGBuilder.phase() to attach side-effect work that wraps the
  * main execution loop without participating in output-port routing:
  *
- *   pre  phase — declared with `.phase('name', 'pre', node)`.
+ *   pre  phase — declared with `.phase(placementIri, 'pre', node)`.
  *     Runs BEFORE the DAG entrypoint, in declaration order.
  *     An error thrown in a pre-phase aborts the run; the main loop never runs.
  *     Use cases: acquire resources, seed state, validate preconditions.
  *
- *   post phase — declared with `.phase('name', 'post', node)`.
+ *   post phase — declared with `.phase(placementIri, 'post', node)`.
  *     Runs AFTER the main loop drains, on every exit path (completion, abort,
  *     timeout, terminal-failed, or node throw). Errors are collected as
  *     warnings on state; they do NOT change the already-set lifecycle.
@@ -24,7 +24,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { PhaseState, PreSetupNode, ComputeNode, PostAuditNode, dag } from './dags/19-phase-nodes.js';
+import { PhaseState, PreSetupNode, ComputeNode, PostAuditNode, dag, dagIri } from './dags/19-phase-nodes.js';
 
 // ---------------------------------------------------------------------------
 // Observability: subclass to tap phase boundaries
@@ -57,7 +57,7 @@ dispatcher.registerNode(new PostAuditNode());
 dispatcher.registerDAG(dag);
 
 const state = new PhaseState();
-const result = await dispatcher.execute('phase-demo', state);
+const result = await dispatcher.execute(dagIri, state);
 
 // ---------------------------------------------------------------------------
 // Print
@@ -88,7 +88,7 @@ observer.registerNode(new PostAuditNode());
 observer.registerDAG(dag);
 
 const observedState = new PhaseState();
-await observer.execute('phase-demo', observedState);
+await observer.execute(dagIri, observedState);
 
 process.stdout.write('\nPhaseObserver events:\n');
 for (const ev of observer.events) {

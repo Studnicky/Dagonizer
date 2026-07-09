@@ -22,7 +22,7 @@
 import { Dagonizer, PluginLoader } from '@studnicky/dagonizer';
 import type { DispatcherObserverType } from '@studnicky/dagonizer';
 
-import { normalizePlugin, PipelineState, parentDag } from './dags/33-plugin.js';
+import { normalizePlugin, PipelineState, parentDag, parentDAGIri } from './dags/33-plugin.js';
 
 // ---------------------------------------------------------------------------
 // Observer records: console logger and metric counter, composed via observers[]
@@ -65,14 +65,11 @@ dispatcher.registerDAG(parentDag);
 // #endregion plugin-registration
 
 // ---------------------------------------------------------------------------
-// Alternative: PluginLoader.load() — dynamic import with validation, no cast.
+// PluginLoader.load() — dynamic import with validation, no cast.
 // For npm-published plugins, replace the direct constructor call with:
 //
 //   const plugin = await PluginLoader.load('my-dagonizer-plugin');
 //   dispatcher.registerPlugin(plugin);
-//
-// PluginLoader.validate(mod) accepts an already-imported module namespace;
-// PluginLoader.isPlugin(value) is the structural type-guard predicate.
 // ---------------------------------------------------------------------------
 void PluginLoader; // reference to suppress unused-import warnings in the static example
 
@@ -83,7 +80,7 @@ void PluginLoader; // reference to suppress unused-import warnings in the static
 const state = new PipelineState();
 state.phrase = '  Hello, World! This is a somewhat long phrase.  ';
 
-const result = await dispatcher.execute('pipeline', state);
+const result = await dispatcher.execute(parentDAGIri, state);
 
 console.log('normalized:', state.normalized);
 console.log('status:    ', state.status);

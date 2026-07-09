@@ -15,7 +15,7 @@ export class CountryCodeResolution {
     const locale = CountryLocale.forIso2(iso2.toUpperCase());
     return GeoResolutionBuilder.from({
       'source':       source,
-      'fallbackUsed': false,
+      'secondaryLookupUsed': false,
       'timezone':     timezone,
       'country':      iso2.toUpperCase(),
       'countryName':  countryInfo.name,

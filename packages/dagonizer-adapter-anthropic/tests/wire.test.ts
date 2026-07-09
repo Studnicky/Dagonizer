@@ -570,7 +570,7 @@ void test('chatStream drains SSE frames into sink chunks and an assembled respon
   assert.equal(response.usage.completionTokens, 8);
 });
 
-void test('chatStream with tools falls back to the buffered path (no stream: true on wire)', async () => {
+void test('chatStream with tools uses the buffered path (no stream: true on wire)', async () => {
   const capture = new FetchCapture();
   globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
 

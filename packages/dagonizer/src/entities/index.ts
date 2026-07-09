@@ -173,7 +173,7 @@ export {
   RecommendedWorkerCountConfigSchema,
   RecommendedWorkerCountConfigDefault,
   RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
-  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MINIMUM,
   RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
 } from './executor/RecommendedWorkerCountConfig.js';
 export type { RecommendedWorkerCountConfigType } from './executor/RecommendedWorkerCountConfig.js';

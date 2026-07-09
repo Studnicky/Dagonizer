@@ -12,6 +12,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region validate-coords-node
 export class ValidateCoordsNode extends MonadicNode<CartographerState, 'valid' | 'rejected'> {
+  readonly '@id' = 'urn:noocodec:node:validate-coords';
   readonly 'name' = 'validate-coords';
   readonly 'outputs' = ['valid', 'rejected'] as const;
 

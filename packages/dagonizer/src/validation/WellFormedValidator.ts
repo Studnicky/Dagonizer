@@ -24,8 +24,8 @@ import type { DAGNodeType } from '../entities/dag/Placement.js';
  * Pure function: no Ajv, no I/O, no side effects.
  *
  * Called after `Validator.dag` has accepted the document. Checks semantic
- * constraints that the schema cannot express (e.g. route targets must name
- * real placements in the same DAG).
+ * constraints that the schema cannot express (e.g. route targets must reference
+ * real placement IRIs in the same DAG).
  */
 export class WellFormedValidator {
   private constructor() { /* static class */ }
@@ -34,10 +34,7 @@ export class WellFormedValidator {
    * Check a DAG for well-formedness violations.
    *
    * Rules applied:
-   *   1. All output targets must resolve to a placement name in dag.nodes.
-   *      (Null routes are schema-invalid and will have been rejected by
-   *      `Validator.dag` before this point; this rule catches dangling string
-   *      targets that name non-existent placements.)
+   *   1. All output targets must resolve to a placement IRI in dag.nodes.
    *
    * @param dag - A schema-validated DAG object.
    * @returns Array of human-readable violation messages. Empty = well-formed.
@@ -45,20 +42,25 @@ export class WellFormedValidator {
   static check(dag: DAGType): readonly string[] {
     const violations: string[] = [];
 
+    const placementIris = new Set<string>();
     const placementNames = new Set<string>();
     for (const placement of dag.nodes) {
       if (placementNames.has(placement.name)) {
         violations.push(`Duplicate placement name '${placement.name}'.`);
       }
       placementNames.add(placement.name);
+      if (placementIris.has(placement['@id'])) {
+        violations.push(`Duplicate placement IRI '${placement['@id']}'.`);
+      }
+      placementIris.add(placement['@id']);
     }
 
-    WellFormedValidator.checkEntrypoints(dag, placementNames, violations);
+    WellFormedValidator.checkEntrypoints(dag, placementIris, violations);
 
     const producerLabels = WellFormedValidator.gatherProducerLabels(dag);
 
     for (const node of dag.nodes) {
-      WellFormedValidator.checkPlacement(node, placementNames, producerLabels, violations);
+      WellFormedValidator.checkPlacement(node, placementIris, producerLabels, violations);
     }
 
     return violations;
@@ -66,14 +68,14 @@ export class WellFormedValidator {
 
   private static checkEntrypoints(
     dag: DAGType,
-    placementNames: ReadonlySet<string>,
+    placementIris: ReadonlySet<string>,
     violations: string[],
   ): void {
     for (const [label, target] of Object.entries(dag.entrypoints)) {
       if (label.length === 0) {
         violations.push(`Entrypoint label must be non-empty.`);
       }
-      if (!placementNames.has(target)) {
+      if (!placementIris.has(target)) {
         violations.push(`Entrypoint '${label}' targets '${target}', which does not exist in this DAG's placements.`);
       }
     }
@@ -81,7 +83,7 @@ export class WellFormedValidator {
 
   private static checkPlacement(
     node: DAGNodeType,
-    placementNames: ReadonlySet<string>,
+    placementIris: ReadonlySet<string>,
     producerLabels: ReadonlySet<string>,
     violations: string[],
   ): void {
@@ -102,7 +104,7 @@ export class WellFormedValidator {
     }
 
     if ('outputs' in node) {
-      WellFormedValidator.checkOutputTargets(node, placementNames, violations);
+      WellFormedValidator.checkOutputTargets(node, placementIris, violations);
     }
 
     if (Placement.isGather(node)) {
@@ -111,16 +113,16 @@ export class WellFormedValidator {
   }
 
   /**
-   * Validate that every output route target names an existing placement.
+   * Validate that every output route target references an existing placement IRI.
    * Applies to SingleNode, ScatterNode, and EmbeddedDAGNode.
    */
   private static checkOutputTargets(
     node: DAGNodeType & { outputs: Record<string, string> },
-    placementNames: ReadonlySet<string>,
+    placementIris: ReadonlySet<string>,
     violations: string[],
   ): void {
     for (const [route, target] of Object.entries(node.outputs)) {
-      if (!placementNames.has(target)) {
+      if (!placementIris.has(target)) {
         violations.push(
           `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
         );
@@ -133,7 +135,7 @@ export class WellFormedValidator {
     producerLabels: ReadonlySet<string>,
     violations: string[],
   ): void {
-    for (const source of gather.sources) {
+    for (const source of Object.keys(gather.sources)) {
       if (!producerLabels.has(source)) {
         violations.push(
           `GatherNode '${gather.name}': source '${source}' is not declared by an entrypoint or producer placement.`,
@@ -143,23 +145,24 @@ export class WellFormedValidator {
     if (gather.policy?.quorum !== undefined && gather.policy.mode !== 'quorum') {
       violations.push(`GatherNode '${gather.name}': policy.quorum is only valid when policy.mode is 'quorum'.`);
     }
-    if (gather.policy?.mode === 'quorum' && gather.policy.quorum !== undefined && gather.policy.quorum > gather.sources.length) {
-      violations.push(`GatherNode '${gather.name}': policy.quorum ${gather.policy.quorum} exceeds source count ${gather.sources.length}.`);
+    const sourceCount = Object.keys(gather.sources).length;
+    if (gather.policy?.mode === 'quorum' && gather.policy.quorum !== undefined && gather.policy.quorum > sourceCount) {
+      violations.push(`GatherNode '${gather.name}': policy.quorum ${gather.policy.quorum} exceeds source count ${sourceCount}.`);
     }
   }
 
   private static gatherProducerLabels(dag: DAGType): ReadonlySet<string> {
-    const labels = new Set(Object.keys(dag.entrypoints));
+    const labels = new Set(Object.entries(dag.entrypoints).map(([label]) => `${dag['@id']}/entrypoint/${encodeURIComponent(label)}`));
     const gatherNames = new Set(
       dag.nodes
         .filter((node) => Placement.isGather(node))
-        .map((node) => node.name),
+        .map((node) => node['@id']),
     );
 
     for (const node of dag.nodes) {
       if (!('outputs' in node)) continue;
       if (Object.values(node.outputs).some((target) => gatherNames.has(target))) {
-        labels.add(node.name);
+        labels.add(node['@id']);
       }
     }
 

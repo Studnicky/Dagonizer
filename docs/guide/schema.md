@@ -31,7 +31,7 @@ The schema is the same contract the builder emits. That keeps code-authored DAGs
 
 ## How It Works
 
-`DAGDocument.load` parses raw JSON, validates it against `DAGSchema`, and returns a typed `DAG` only after every placement satisfies its schema. `DAGDocument.ofValue` validates already-parsed input. `Validator` exposes the same precompiled Ajv validators for lower-level entity checks.
+`DAGDocument.load` parses raw JSON, validates it against `DAGSchema`, and returns a typed `DAG` only after every placement satisfies its schema. `Validator` exposes the same precompiled Ajv validators for lower-level entity checks.
 
 `DAGSchema` describes the canonical DAG wire shape in JSON Schema 2020-12. The Ajv 2020-12 instance that validates against it is compiled once at module load and exposed through `Validator.dag`. Application code calls `Validator.dag.validate(x)`; it does not need to build a fresh Ajv instance against the package schemas.
 
@@ -66,14 +66,14 @@ The schema is exported directly for callers that want to integrate with their ow
 
 <<< @/../examples/03-schema.ts#schema-id
 
-The schema covers `name`, `version`, `entrypoints`, and `nodes`. Each placement variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, gather `strategy`, and output target values.
+The schema covers `@id`, `name`, `version`, `entrypoints`, and `nodes`. Each placement variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, gather `strategy`, and output target values. Schema validation checks that the document has the right wire shape; semantic validation then verifies that referenced DAG IRIs, node IRIs, gather sources, and placement route targets resolve.
 
 | `@type` | Required fields | Notes |
 |---|---|---|
-| `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
-| `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `gather`, `outputs` | `body` is `{ node }` or `{ dag }`; `gather` is required; optional `itemKey`, `execution` (unified concurrency-limiting policy), `stateMapping.input`, `reducer` |
-| `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | `dag` is the registered child DAG name; optional `stateMapping` (`input` and `output` field maps) |
-| `GatherNode` | `@id`, `@type`, `name`, `sources`, `gather`, `outputs` | first-class fan-in barrier; optional `policy` controls `all`, `any`, or `quorum` readiness |
+| `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` route to placement IRIs |
+| `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `outputs` | `body` is `{ node }` or `{ dag }`; DAG bodies use literal DAG IRIs/CURIEs or `DagReference`; optional `itemKey`, `execution` (unified concurrency-limiting policy), `stateMapping.input`, `reducer` |
+| `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | `dag` is the registered child DAG IRI/CURIE or `DagReference`; optional `stateMapping` (`input` and `output` field maps) |
+| `GatherNode` | `@id`, `@type`, `name`, `sources`, `gather`, `outputs` | first-class fan-in barrier; `sources` and `outputs` point at placement IRIs; optional `policy` controls `all`, `any`, or `quorum` readiness |
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |
 
@@ -91,17 +91,9 @@ Example 03 exercises the validation path with a deliberately broken document:
 
 <<< @/../examples/03-schema.ts#validate
 
-### `DAGDocument.ofValue`
-
-Validate an already-parsed value (a YAML parser's output, for example):
-
-<<< @/../examples/03-schema.ts#from-value
-
-Semantically identical to `DAGDocument.load` but skips the `JSON.parse` step.
-
 ### `Validator.dag`
 
-The lower-level validator used by `DAGDocument.load` and `registerDAG`:
+The lower-level schema validator used by `DAGDocument.load` and semantic registration checks:
 
 <<< @/../examples/03-schema.ts#validator-validate
 
@@ -115,7 +107,7 @@ Round-trip a validated DAG to JSON:
 
 `DAGDocument.serialize` is `JSON.stringify(dag, null, 2)`. It does not re-validate; the DAG is assumed to already be valid.
 
-`DAGDocument.serializeCompact` produces compact JSON with no whitespace.
+`DAGDocument.serialize` produces JSON for persistence or transport. Use `JSON.stringify` only when the example is showing generic JSON formatting rather than the framework API.
 
 ### `ValidationError`
 

@@ -51,6 +51,7 @@ export class CountingState extends NodeStateBase {
 
 export class IncNode extends MonadicNode<CountingState, 'success'> {
   readonly name = 'inc';
+  readonly '@id' = 'urn:noocodec:node:inc';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -71,35 +72,35 @@ export class IncNode extends MonadicNode<CountingState, 'success'> {
 
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:count',
+  '@id': 'urn:noocodec:dag:count',
   '@type':     'DAG',
   "name":        'count',
   "version":     '1',
-  "entrypoints": { "main": 'a' },
+  "entrypoints": { "main": 'urn:noocodec:dag:count/node/a' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:count/node/a',
+      '@id': 'urn:noocodec:dag:count/node/a',
       '@type': 'SingleNode',
       "name":    'a',
-      "node":    'inc',
-      "outputs": { "success": 'b' },  // routes to 'b' on success
+      "node":    'urn:noocodec:node:inc',
+      "outputs": { "success": 'urn:noocodec:dag:count/node/b' },
     },
     {
-      '@id':   'urn:noocodex:dag:count/node/b',
+      '@id': 'urn:noocodec:dag:count/node/b',
       '@type': 'SingleNode',
       "name":    'b',
-      "node":    'inc',
-      "outputs": { "success": 'c' },  // routes to 'c' on success
+      "node":    'urn:noocodec:node:inc',
+      "outputs": { "success": 'urn:noocodec:dag:count/node/c' },
     },
     {
-      '@id':   'urn:noocodex:dag:count/node/c',
+      '@id': 'urn:noocodec:dag:count/node/c',
       '@type': 'SingleNode',
       "name":    'c',
-      "node":    'inc',
-      "outputs": { "success": 'end' },  // routes to canonical terminal
+      "node":    'urn:noocodec:node:inc',
+      "outputs": { "success": 'urn:noocodec:dag:count/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:count/node/end',
+      '@id': 'urn:noocodec:dag:count/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

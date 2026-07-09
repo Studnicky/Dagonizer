@@ -1,19 +1,19 @@
 /**
  * ScatterNode: fork over a source array: one clone per item in the named
- * array, run a body in each clone, gather produced clone state back into the
- * parent, and route on the aggregate outcome.
+ * array, run a body in each clone, emit clone outcome records for downstream
+ * first-class gather nodes, and route on the aggregate outcome.
  *
  * Uses `@type: 'ScatterNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
+ * URN: `urn:noocodec:dag:<dagName>/node/<name>`.
  *
  * `source` is required; it is the dotted path on state to the array to fork
  * over. For a single nested-DAG invocation (cardinality 1), use `EmbeddedDAGNode`.
  *
  * `stateMapping.input` seeds each clone before its body runs (child-state key →
  * parent-state dotted path), the same seeding concept and orientation as
- * `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`:
- * the N→1 merge back into the parent is `gather`'s job (a fork reduces, an embed
- * copies). `reducer` picks the outcome strategy; defaults to `'aggregate'`.
+ * `EmbeddedDAGNode.stateMapping.input`. Scatter has no N→1 merge config:
+ * fan-in is always expressed by routing to a first-class `GatherNode`.
+ * `reducer` picks the outcome strategy; defaults to `'aggregate'`.
  *
  * `container` (optional): logical container role name. Honored ONLY when the
  * body is a `dag` body (a `{dag: string}` body). A node body with `container`
@@ -52,7 +52,6 @@ import type { AdaptiveConfigEntity } from '@studnicky/throttle';
 import type { FromSchema } from 'json-schema-to-ts';
 
 import { DagReferenceShapeSchema } from './DagReference.js';
-import { GatherConfigShapeSchema } from './GatherConfig.js';
 
 const ScatterThrottleAdaptiveSchema = {
   'type': 'object',
@@ -72,10 +71,10 @@ const ScatterThrottleAdaptiveSchema = {
 } as const;
 
 export const ScatterNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['@id', '@type', 'name', 'body', 'source', 'gather', 'outputs'],
+  'required': ['@id', '@type', 'name', 'body', 'source', 'outputs'],
   'properties': {
     '@id':         { 'type': 'string', 'minLength': 1 },
     '@type':       { 'type': 'string', 'const': 'ScatterNode' },
@@ -106,7 +105,6 @@ export const ScatterNodeSchema = {
       },
       'additionalProperties': false,
     },
-    'gather': GatherConfigShapeSchema,
     'reducer': { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',

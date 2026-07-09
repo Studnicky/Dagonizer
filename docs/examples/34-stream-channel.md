@@ -1,6 +1,6 @@
 ---
-title: 'Example 34: StreamChannel Source'
-description: 'The Cartographer bridges its resumable event producer into the scatter source with StreamChannel.resumable, giving the in-browser pipeline bounded streaming input.'
+title: 'Example 34: Intake Stream Source'
+description: 'The Cartographer uses first-class intake entrypoints plus an intake gather to assemble bounded async source streams before the processing scatter.'
 seeAlso:
   - text: 'Example 17: Async source'
     link: './17-scatter-async-source'
@@ -17,29 +17,29 @@ seeAlso:
 import { cartographerDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
-# Example 34: StreamChannel Source
+# Example 34: Intake Stream Source
 
 ## What It Is
 
-StreamChannel Source bridges a producer into a scatter source without changing the DAG topology. The Cartographer uses `StreamChannel.resumable(...)` to feed bounded streaming input into `process-stream`.
+Intake Stream Source is the Cartographer’s open-input pattern: each event type enters as a DAG entrypoint label, every label targets `intake-gather`, and the gather writes one merged async stream into `state.sources` for `process-stream`.
 
-The graph still says `seed → process-stream → summarize`. The channel is how the seed step supplies data to the scatter.
+The graph shows the intake explicitly. There is no seed pre-phase and no scatter before the gather.
 
 ## How It Works
 
-The seed node assigns an async channel to `state.sources`. The scatter reads from that field using the normal source accessor and pulls the next item only when concurrency and reservoir capacity allow it. The channel applies back-pressure to the producer, so producer speed cannot outrun the DAG's configured drain rate.
+The scheduler seeds one gather record per entrypoint label because all five labels target the same `GatherNode`. The `source-intake` gather opens the matching event-type stream from `state.eventConfig`, round-robins the streams into a single `AsyncIterable<SourcePayload>`, and assigns that stream to `state.sources`. The scatter reads from that field using the normal source accessor and pulls the next item only when concurrency and reservoir capacity allow it.
 
-This keeps streaming as an input concern. The scatter, gather, reducer, and downstream summary nodes do not need a streaming-specific placement type.
+This keeps streaming as a DAG concern without a special streaming placement. The intake is a gather, the processor is a scatter, and both are visible in JSON-LD.
 
 ## Diagrams, Examples, and Outputs
 
 ### DAG registration and diagram
 
-The [Cartographer](./the-cartographer) seeds `state.sources` before the `process-stream` scatter runs. When streaming is enabled, that source is a `StreamChannel.resumable(...)` channel backed by `CartographerStreamProducer`.
+The [Cartographer](./the-cartographer) enters through five data-type entrypoints. Each entrypoint targets `intake-gather`; only after the gather completes does `process-stream` consume `state.sources`.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer streaming source DAG" aria-label="Cartographer streaming source JSON-LD DAG beside Mermaid generated from it." />
 
-`StreamChannel` is not a separate graph node. It is the bounded data source consumed by the scatter. That means JSON-LD shows the graph shape (`seed → process-stream → summarize`), while code shows how the source is supplied.
+The stream source is not a hidden host-side setup step. JSON-LD shows the graph shape: data-type entrypoint labels, first-class gather, then the worker-capable scatter.
 
 ### Run
 
@@ -51,25 +51,25 @@ Open [The Cartographer](./the-cartographer) and run the stream.
 
 ## What It Lets You Do
 
-`StreamChannel` lets a producer push items while scatter consumes them as an `AsyncIterable`. Use it when the full input is not available up front or should not be materialized in memory: browser events, server-sent events, file reads, model-token streams, queue drains, or generated worksets.
+Intake stream sources let entrypoints supply async data without materializing the full input collection first. Use this when different domains or data types should enter a DAG independently before converging into one processing stream.
 
-For applications, the useful property is pressure control. The producer can exist independently, but the DAG controls how quickly work is drained through scatter concurrency and reservoir settings.
+For applications, the useful property is clarity: intake shape is graph-visible, while the scatter still controls how quickly work is drained through concurrency and reservoir settings.
 
 ## Code Samples
 
-`SeedEventsNode` chooses the streaming path and assigns the channel to `state.sources`:
+`CartographerSourceIntake` owns per-type stream construction:
 
-<<< @/../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
+<<< @/../examples/the-cartographer/nodes/sourceIntake.ts#source-intake-helper
 
-`EventStreamSource` owns the lazy producer and the resumable producer factory:
+`SourceIntakeGather` merges the entrypoint records into the stream that `process-stream` consumes:
 
-<<< @/../examples/the-cartographer/services/EventStreamSource.ts#event-stream-source
+<<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 ## Details for Nerds
 
 - **Bounded streaming source.** The scatter consumes an `AsyncIterable<SourcePayload>` without materializing the whole feed.
-- **Back-pressure by pull rate.** The producer pushes through `StreamChannel`, and the scatter controls drain speed through concurrency and reservoir settings.
-- **Graph stays stable.** Switching array input to streaming input changes state seeding, not DAG topology.
+- **Back-pressure by pull rate.** The scatter controls drain speed through concurrency and reservoir settings.
+- **Graph-visible intake.** Switching from one producer to many producers changes DAG topology intentionally: the gather is the intake point.
 - **Runnable browser ownership.** The Cartographer page exposes event count, worker pool size, and batch capacity controls for the same stream.
 
 ## Related Concepts

@@ -5,8 +5,8 @@
  * transitively depends on, so they can register the right plugins before
  * executing.
  *
- * Literal references contribute one DAG name; dynamic `DagReference` values
- * contribute their declared candidate DAG names. Discovery walks the DAG's
+ * Literal references and dynamic `DagReference` values contribute DAG IRIs.
+ * Discovery walks the DAG's
  * declared entrypoint roots through routing edges so dead placements do not
  * inflate the reachable plugin set.
  */
@@ -26,15 +26,6 @@ import { PluginLoader } from './PluginLoader.js';
  */
 export class PluginDiscovery {
   private constructor() { /* static-only */ }
-
-  /**
-   * Collect all declared dag-body names referenced in the DAG topology.
-   * Names are lexical authoring values for specifier resolution; graph
-   * traversal uses expanded IRIs via `referencedDagIris`.
-   */
-  static referencedDagNames(dag: DAGType): readonly string[] {
-    return DagGraphQueries.reachableCandidateDagNames(DagGraphProjector.store(dag));
-  }
 
   /**
    * Collect all referenced DAG IRIs from the canonical graph projection.
@@ -84,8 +75,8 @@ export class PluginDiscovery {
    * Load all plugin modules referenced in the DAG forest and register them on
    * the dispatcher.
    *
-   * Walks the DAG's referenced sub-DAG names via `PluginDiscovery.walk()`,
-   * maps each name to a module specifier via `resolveSpecifier`, dynamically
+   * Walks the DAG's referenced sub-DAG IRIs via `PluginDiscovery.walk()`,
+   * maps each IRI to a module specifier via `resolveSpecifier`, dynamically
    * imports each via `PluginLoader.load()`, validates the default export as a
    * `PluginInterface`, and calls `dispatcher.registerPlugin(plugin)` for each.
    *

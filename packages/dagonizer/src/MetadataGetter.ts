@@ -21,42 +21,42 @@ export class MetadataGetter {
     this.#source = source;
   }
 
-  /** Read `key` as a string; `fallback` (default `''`) when absent or non-string. */
-  string(key: string, fallback: string = ''): string {
+  /** Read `key` as a string; `defaultValue` (default `''`) when absent or non-string. */
+  string(key: string, defaultValue: string = ''): string {
     const value = this.#source.getMetadata(key);
-    return typeof value === 'string' ? value : fallback;
+    return typeof value === 'string' ? value : defaultValue;
   }
 
-  /** Read `key` as a number; `fallback` (default `0`) when absent or non-number. */
-  number(key: string, fallback: number = 0): number {
+  /** Read `key` as a number; `defaultValue` (default `0`) when absent or non-number. */
+  number(key: string, defaultValue: number = 0): number {
     const value = this.#source.getMetadata(key);
-    return typeof value === 'number' ? value : fallback;
+    return typeof value === 'number' ? value : defaultValue;
   }
 
-  /** Read `key` as a boolean; `fallback` (default `false`) when absent or non-boolean. */
-  boolean(key: string, fallback: boolean = false): boolean {
+  /** Read `key` as a boolean; `defaultValue` (default `false`) when absent or non-boolean. */
+  boolean(key: string, defaultValue: boolean = false): boolean {
     const value = this.#source.getMetadata(key);
-    return typeof value === 'boolean' ? value : fallback;
+    return typeof value === 'boolean' ? value : defaultValue;
   }
 
   /**
-   * Read `key` as a string array; `fallback` (default `[]`) when absent, not an
+   * Read `key` as a string array; `defaultValue` (default `[]`) when absent, not an
    * array, or holding any non-string element. Returns a fresh copy so callers
    * cannot mutate the backing metadata through the result.
    */
-  stringArray(key: string, fallback: readonly string[] = []): string[] {
+  stringArray(key: string, defaultValue: readonly string[] = []): string[] {
     const value = this.#source.getMetadata(key);
-    if (!Array.isArray(value)) return [...fallback];
-    return value.every((item): item is string => typeof item === 'string') ? [...value] : [...fallback];
+    if (!Array.isArray(value)) return [...defaultValue];
+    return value.every((item): item is string => typeof item === 'string') ? [...value] : [...defaultValue];
   }
 
   /**
-   * Read `key` as a number array; `fallback` (default `[]`) when absent, not an
+   * Read `key` as a number array; `defaultValue` (default `[]`) when absent, not an
    * array, or holding any non-number element. Returns a fresh copy.
    */
-  numberArray(key: string, fallback: readonly number[] = []): number[] {
+  numberArray(key: string, defaultValue: readonly number[] = []): number[] {
     const value = this.#source.getMetadata(key);
-    if (!Array.isArray(value)) return [...fallback];
-    return value.every((item): item is number => typeof item === 'number') ? [...value] : [...fallback];
+    if (!Array.isArray(value)) return [...defaultValue];
+    return value.every((item): item is number => typeof item === 'number') ? [...value] : [...defaultValue];
   }
 }

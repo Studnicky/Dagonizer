@@ -9,11 +9,11 @@
  *     • current run is skipped (no self-match)
  *     • books seen in multiple runs are deduplicated
  *     • corrupted memory entry never throws (salvage path)
- *     • embedder=null falls back to Jaccard (no cosineSimilarity note)
+ *     • embedder=null uses Jaccard (no cosineSimilarity note)
  *   Cosine path (embedder present, prior runs carry dag:queryEmbedding):
  *     • similar query (cosine >= 0.70)   → priorCandidates populated, cosineSimilarity note set
  *     • orthogonal query (cosine < 0.70) → priorCandidates stays empty
- *     • embedder throws → falls back to Jaccard path
+ *     • embedder throws → uses Jaccard path
  *
  * Constructs the node with a minimal injected services record (memory +
  * embedder). Nodes are pure: they emit no logs, so the tests assert on state,
@@ -274,10 +274,10 @@ void test('recallCandidates: salvage path, never throws on corrupted memory entr
   // Should not throw.
   const node = RecallCandidatesFixture.makeNode(memory);
   await assert.doesNotReject(() => RecallCandidatesFixture.execute(node, state));
-  // Book still materialises with fallback title (isbn).
+  // Book still materialises with default title (isbn).
   assert.equal(state.priorCandidates.length, 1);
   assert.equal(state.priorCandidates[0]?.book.identity.isbn, '0000000099');
-  assert.equal(state.priorCandidates[0]?.book.identity.title, '0000000099'); // fallback = isbn
+  assert.equal(state.priorCandidates[0]?.book.identity.title, '0000000099'); // default = isbn
 });
 
 void test('recallCandidates: embedder=null recalls via the Jaccard path', async () => {
@@ -341,7 +341,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
   assert.equal(state.priorCandidates.length, 0, 'orthogonal query must not match');
 });
 
-void test('recallCandidates cosine: embedder throws → falls back to Jaccard path', async () => {
+void test('recallCandidates cosine: embedder throws → uses Jaccard path', async () => {
   const memory = new MemoryStore();
   // Prior run with a query that overlaps the current one (Jaccard).
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-fb-1', 'existentialism science fiction philosophy', [
@@ -357,6 +357,6 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   await RecallCandidatesFixture.execute(node, state);
 
   // Jaccard should populate from the prior run.
-  assert.equal(state.priorCandidates.length, 1, 'Jaccard fallback should populate');
+  assert.equal(state.priorCandidates.length, 1, 'Jaccard scoring should populate');
   assert.equal(state.priorCandidates[0]?.book.identity.isbn, '1110000003');
 });

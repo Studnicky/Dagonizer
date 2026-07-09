@@ -7,80 +7,87 @@
  * topology by name.
  */
 
-import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType, NodeStateInterface } from '@studnicky/dagonizer';
 
+export const dagIri = 'urn:noocodec:dag:my-agent' as const;
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 const topologyNodes = {
-  'chatRequest':         new PlaceholderNode<NodeStateInterface, 'ready' | 'error'>('build-request', ['ready', 'error']),
-  'callModel':           new PlaceholderNode<NodeStateInterface, 'text' | 'tools' | 'mixed' | 'error'>('call-model', ['text', 'tools', 'mixed', 'error']),
-  'normalizeResponse':   new PlaceholderNode<NodeStateInterface, 'text' | 'tools' | 'mixed' | 'empty' | 'error'>('normalize-response', ['text', 'tools', 'mixed', 'empty', 'error']),
-  'decodeTextToolCalls': new PlaceholderNode<NodeStateInterface, 'decoded' | 'empty' | 'error'>('decode-tools', ['decoded', 'empty', 'error']),
-  'normalizeToolCalls':  new PlaceholderNode<NodeStateInterface, 'valid' | 'empty' | 'error'>('normalize-tools', ['valid', 'empty', 'error']),
-  'toolWorksets':        new PlaceholderNode<NodeStateInterface, 'ready' | 'empty' | 'error'>('build-worksets', ['ready', 'empty', 'error']),
-  'collectToolResults':  new PlaceholderNode<NodeStateInterface, 'done' | 'empty' | 'error'>('collect-results', ['done', 'empty', 'error']),
-  'appendAssistant':     new PlaceholderNode<NodeStateInterface, 'done' | 'error'>('append-assistant', ['done', 'error']),
+  'chatRequest':         new PlaceholderNode<NodeStateInterface, 'ready' | 'error'>('urn:noocodec:node:build-request', ['ready', 'error']),
+  'callModel':           new PlaceholderNode<NodeStateInterface, 'text' | 'tools' | 'mixed' | 'error'>('urn:noocodec:node:call-model', ['text', 'tools', 'mixed', 'error']),
+  'normalizeResponse':   new PlaceholderNode<NodeStateInterface, 'text' | 'tools' | 'mixed' | 'empty' | 'error'>('urn:noocodec:node:normalize-response', ['text', 'tools', 'mixed', 'empty', 'error']),
+  'decodeTextToolCalls': new PlaceholderNode<NodeStateInterface, 'decoded' | 'empty' | 'error'>('urn:noocodec:node:decode-tools', ['decoded', 'empty', 'error']),
+  'normalizeToolCalls':  new PlaceholderNode<NodeStateInterface, 'valid' | 'empty' | 'error'>('urn:noocodec:node:normalize-tools', ['valid', 'empty', 'error']),
+  'toolWorksets':        new PlaceholderNode<NodeStateInterface, 'ready' | 'empty' | 'error'>('urn:noocodec:node:build-worksets', ['ready', 'empty', 'error']),
+  'collectToolResults':  new PlaceholderNode<NodeStateInterface, 'done' | 'empty' | 'error'>('urn:noocodec:node:collect-results', ['done', 'empty', 'error']),
+  'appendAssistant':     new PlaceholderNode<NodeStateInterface, 'done' | 'error'>('urn:noocodec:node:append-assistant', ['done', 'error']),
 };
 
-export const dag: DAGType = new DAGBuilder('my-agent', '1')
-  .node('build-request', topologyNodes.chatRequest, {
-    'ready': 'call-model',
-    'error': 'end-error',
+export const dag: DAGType = new DAGBuilder(dagIri, '1')
+  .node(placement('build-request'), topologyNodes.chatRequest, {
+    'ready': placement('call-model'),
+    'error': placement('end-error'),
   })
-  .node('call-model', topologyNodes.callModel, {
-    'text':  'normalize-response',
-    'tools': 'normalize-response',
-    'mixed': 'normalize-response',
-    'error': 'end-error',
+  .node(placement('call-model'), topologyNodes.callModel, {
+    'text':  placement('normalize-response'),
+    'tools': placement('normalize-response'),
+    'mixed': placement('normalize-response'),
+    'error': placement('end-error'),
   })
-  .node('normalize-response', topologyNodes.normalizeResponse, {
-    'text':  'append-assistant',
-    'tools': 'decode-tools',
-    'mixed': 'decode-tools',
-    'empty': 'end-error',
-    'error': 'end-error',
+  .node(placement('normalize-response'), topologyNodes.normalizeResponse, {
+    'text':  placement('append-assistant'),
+    'tools': placement('decode-tools'),
+    'mixed': placement('decode-tools'),
+    'empty': placement('end-error'),
+    'error': placement('end-error'),
   })
-  .node('append-assistant', topologyNodes.appendAssistant, {
-    'done':  'end-done',
-    'error': 'end-error',
+  .node(placement('append-assistant'), topologyNodes.appendAssistant, {
+    'done':  placement('end-done'),
+    'error': placement('end-error'),
   })
-  .node('decode-tools', topologyNodes.decodeTextToolCalls, {
-    'decoded': 'normalize-tools',
-    'empty':   'end-error',
-    'error':   'end-error',
+  .node(placement('decode-tools'), topologyNodes.decodeTextToolCalls, {
+    'decoded': placement('normalize-tools'),
+    'empty':   placement('end-error'),
+    'error':   placement('end-error'),
   })
-  .node('normalize-tools', topologyNodes.normalizeToolCalls, {
-    'valid': 'worksets',
-    'empty': 'end-error',
-    'error': 'end-error',
+  .node(placement('normalize-tools'), topologyNodes.normalizeToolCalls, {
+    'valid': placement('worksets'),
+    'empty': placement('end-error'),
+    'error': placement('end-error'),
   })
-  .node('worksets', topologyNodes.toolWorksets, {
-    'ready': 'dispatch-tools',
-    'empty': 'end-error',
-    'error': 'end-error',
+  .node(placement('worksets'), topologyNodes.toolWorksets, {
+    'ready': placement('dispatch-tools'),
+    'empty': placement('end-error'),
+    'error': placement('end-error'),
   })
   .scatter(
-    'dispatch-tools',
+    placement('dispatch-tools'),
     'safeWorkset',
-    { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['tool:calculator'] } },
+    { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': ['urn:noocodec:tool:calculator'] } },
     {
-      'all-success': 'collect-results',
-      'partial':     'collect-results',
-      'all-error':   'collect-results',
-      'empty':       'collect-results',
+      'all-success': placement('join-tool-results'),
+      'partial':     placement('join-tool-results'),
+      'all-error':   placement('join-tool-results'),
+      'empty':       placement('join-tool-results'),
     },
     {
       'itemKey': 'currentItem',
-      'gather': {
-        'strategy': 'map',
-        'mapping':  { 'output': 'toolOutputs' },
-      },
     },
   )
-  .node('collect-results', topologyNodes.collectToolResults, {
-    'done':  'build-request',
-    'empty': 'build-request',
-    'error': 'end-error',
+  .gather(placement('join-tool-results'), { [placement('dispatch-tools')]: {} }, {
+    'strategy': 'map',
+    'mapping':  { 'output': 'toolOutputs' },
+  }, {
+    'success': placement('collect-results'),
+    'error':   placement('end-error'),
+    'empty':   placement('collect-results'),
   })
-  .terminal('end-done')
-  .terminal('end-error', { 'outcome': 'failed' })
+  .node(placement('collect-results'), topologyNodes.collectToolResults, {
+    'done':  placement('build-request'),
+    'empty': placement('build-request'),
+    'error': placement('end-error'),
+  })
+  .terminal(placement('end-done'))
+  .terminal(placement('end-error'), { 'outcome': 'failed' })
   .build();

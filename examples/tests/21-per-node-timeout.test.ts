@@ -10,7 +10,7 @@ describe('21-per-node-timeout: per-node timeout budgets', () => {
     dispatcher.registerDAG(fastDag);
 
     const state = new TaskState();
-    const result = await dispatcher.execute('fast-dag', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:fast-dag', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.output, 'fast-done');
@@ -22,7 +22,7 @@ describe('21-per-node-timeout: per-node timeout budgets', () => {
     dispatcher.registerDAG(slowDag);
 
     const state = new TaskState();
-    const result = await dispatcher.execute('slow-dag', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:slow-dag', state);
 
     // The engine sets interruptedAt when a timeout fires; terminalOutcome may be 'failed' or null
     const interrupted =

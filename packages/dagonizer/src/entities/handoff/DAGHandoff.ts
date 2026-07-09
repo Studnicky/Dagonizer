@@ -44,7 +44,7 @@ const byRefBranch = {
 } as const;
 
 export const DAGHandoffSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DAGHandoff',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/DAGHandoff',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [byValueBranch, byRefBranch],
 } as const;

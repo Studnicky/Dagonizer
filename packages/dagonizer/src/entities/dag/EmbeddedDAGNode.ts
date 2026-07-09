@@ -3,11 +3,11 @@
  * in JSON-LD canonical form.
  *
  * Uses `@type: 'EmbeddedDAGNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`. Cardinality is always 1;
+ * URN: `urn:noocodec:dag:<dagName>/node/<name>`. Cardinality is always 1;
  * exactly one child execution runs. To fork (one clone per source item),
  * use `ScatterNode` with `source`.
  *
- * `dag` selects the sub-DAG to embed. It may be a literal DAG name or a
+ * `dag` selects the sub-DAG to embed. It may be a literal DAG IRI or a
  * `DagReference` that reads a state path and restricts runtime selection to a
  * declared candidate set. Every candidate is validated against the
  * registered-DAG set at `registerDAG` time. A missing or non-candidate runtime
@@ -27,7 +27,7 @@ import type { StateAccessorInterface } from '../../contracts/StateAccessorInterf
 import { DagReferenceShapeSchema } from './DagReference.js';
 
 export const EmbeddedDAGNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/EmbeddedDAGNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'outputs'],
@@ -97,9 +97,9 @@ export class EmbeddedDAGNodeDefaults {
   }
 
   /**
-   * Resolve the dag name for an `EmbeddedDAGNode` placement.
+   * Resolve the DAG IRI for an `EmbeddedDAGNode` placement.
    *
-   * - literal `dag`: returns the literal DAG name directly.
+   * - literal `dag`: returns the literal DAG IRI directly.
    * - dynamic `DagReference`: reads `reference.path` from state and returns the
    *   value only when it is one of `reference.candidates`. Returns `null` when
    *   the path resolves to a non-string, absent value, or non-candidate name.

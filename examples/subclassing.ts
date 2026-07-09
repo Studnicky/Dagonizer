@@ -45,6 +45,7 @@ class CountState extends NodeStateBase {
 
 class TickNode extends MonadicNode<CountState, 'success'> {
   readonly name    = 'tick';
+  readonly '@id'   = 'urn:noocodec:node:tick';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -63,16 +64,16 @@ const tick = new TickNode();
 
 const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:count',
+  '@id': 'urn:noocodec:dag:count',
   '@type':     'DAG',
   name:        'count',
   version:     '1',
-  entrypoints: { main: 'a' },
+  entrypoints: { main: 'urn:noocodec:dag:count/node/a' },
   nodes: [
-    { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'tick', outputs: { success: 'b' } },
-    { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'tick', outputs: { success: 'c' } },
-    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'tick', outputs: { success: 'end' } },
-    { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
+    { '@id': 'urn:noocodec:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'urn:noocodec:node:tick', outputs: { success: 'urn:noocodec:dag:count/node/b' } },
+    { '@id': 'urn:noocodec:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'urn:noocodec:node:tick', outputs: { success: 'urn:noocodec:dag:count/node/c' } },
+    { '@id': 'urn:noocodec:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'urn:noocodec:node:tick', outputs: { success: 'urn:noocodec:dag:count/node/end' } },
+    { '@id': 'urn:noocodec:dag:count/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
   ],
 };
 
@@ -82,7 +83,7 @@ dispatcher.registerDAG(dag);
 
 // Run, abort after one node, checkpoint, restore, resume.
 const ctl = new AbortController();
-const execution = dispatcher.execute('count', new CountState(), { signal: ctl.signal });
+const execution = dispatcher.execute('urn:noocodec:dag:count', new CountState(), { signal: ctl.signal });
 let stages = 0;
 for await (const _stage of execution) {
   stages++;
@@ -96,7 +97,7 @@ if (partial.cursor === null) {
   process.stdout.write('\nsubclassing: CountState with snapshotData/restoreData\n');
   process.stdout.write(`  after abort:  count=${partial.state.count} cursor="${partial.cursor}"\n`);
 
-  const ckpt  = await Checkpoint.capture('count', partial);
+  const ckpt  = await Checkpoint.capture('urn:noocodec:dag:count', partial);
   const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()));
 
   const { state: s2, dagName, cursor } = ckpt2.restoreState(

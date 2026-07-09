@@ -34,28 +34,32 @@
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
-import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
-const composeResponse        = new PlaceholderNode<ArchivistState, 'drafted' | 'retry' | 'salvage'>('compose-response', ['drafted', 'retry', 'salvage']);
-const composeResponseSalvage = new PlaceholderNode<ArchivistState, 'done'>('compose-salvage', ['done']);
-const validateResponse       = new PlaceholderNode<ArchivistState, 'approved' | 'retry' | 'exhausted'>('validate-response', ['approved', 'retry', 'exhausted']);
+const COMPOSE_RETRY_LOOP_DAG_IRI = 'urn:noocodec:dag:compose-retry-loop';
+const placement = (placementIdentifier: string): string => DAGIdentity.placementId(COMPOSE_RETRY_LOOP_DAG_IRI, placementIdentifier);
+const display = <T extends string>(name: T): { name: T } => ({ name });
 
-export const composeRetryLoopDAG: DAGType = new DAGBuilder('compose-retry-loop', '1.1')
+const composeResponse        = new PlaceholderNode<ArchivistState, 'drafted' | 'retry' | 'salvage'>('urn:noocodec:node:compose-response', ['drafted', 'retry', 'salvage']);
+const composeResponseSalvage = new PlaceholderNode<ArchivistState, 'done'>('urn:noocodec:node:compose-salvage', ['done']);
+const validateResponse       = new PlaceholderNode<ArchivistState, 'approved' | 'retry' | 'exhausted'>('urn:noocodec:node:validate-response', ['approved', 'retry', 'exhausted']);
+
+export const composeRetryLoopDAG: DAGType = new DAGBuilder(COMPOSE_RETRY_LOOP_DAG_IRI, '1.1', display('compose-retry-loop'))
 
       // ── 1. compose-response ──────────────────────────────────────────────────
       // Writes state.draft via an intent-specific compose method. A transient LLM
       // failure routes 'retry' (loops back, bounded by the shared 'compose' budget)
       // or 'salvage' once spent; no in-node RetryPolicy. 'drafted' goes on to the
       // quality gate, which adds its own retry edge for low-quality drafts.
-      .node('compose-response', composeResponse, {
-        'drafted': 'validate-response',
-        'retry':   'compose-response',
-        'salvage': 'compose-salvage',
-      })
-      .node('compose-salvage', composeResponseSalvage, {
-        'done': 'composed',
-      })
+      .node(placement('compose-response'), composeResponse, {
+        'drafted': placement('validate-response'),
+        'retry':   placement('compose-response'),
+        'salvage': placement('compose-salvage'),
+      }, display('compose-response'))
+      .node(placement('compose-salvage'), composeResponseSalvage, {
+        'done': placement('composed'),
+      }, display('compose-salvage'))
 
       // ── 2. validate-response ─────────────────────────────────────────────────
       // Quality gate: length, citations, tone. On 'retry', routes back to
@@ -63,15 +67,15 @@ export const composeRetryLoopDAG: DAGType = new DAGBuilder('compose-retry-loop',
       // 'approved' and 'exhausted' both exit via the canonical `composed`
       // TerminalNode (completed), so the parent EmbeddedDAGNode resolves 'success'
       // and routes to respond-to-visitor.
-      .node('validate-response', validateResponse, {
-        'approved':  'composed',
-        'retry':     'compose-response',
-        'exhausted': 'composed',
-      })
+      .node(placement('validate-response'), validateResponse, {
+        'approved':  placement('composed'),
+        'retry':     placement('compose-response'),
+        'exhausted': placement('composed'),
+      }, display('validate-response'))
 
       // ── 3. composed ──────────────────────────────────────────────────────────
       // Canonical TerminalNode(completed): the single explicit exit of the compose
       // loop. No bare null end-of-flow routes.
-      .terminal('composed', { outcome: 'completed' })
+      .terminal(placement('composed'), { outcome: 'completed', name: 'composed' })
 
       .build();

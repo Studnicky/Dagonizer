@@ -182,7 +182,7 @@ class ShortlistingLlmBackendA implements LlmClientInterface {
  * pre-phase setup) in isolation to exercise the recall read path without
  * requiring a full successful scout run. The full-DAG turn 2 path would
  * need scouts to return candidates too; to keep the test deterministic we
- * use the fallback: run the full DAG with empty scouts so it reaches
+ * use the recovery path: run the full DAG with empty scouts so it reaches
  * compose-empty/salvage, but we capture `state2.recalledContext` which is
  * populated by recall-context BEFORE classification.
  */
@@ -300,7 +300,7 @@ class CrossBackendHarness {
     const state      = new ArchivistState();
     state.query      = query;
 
-    const execution = dispatcher.execute('the-archivist', state);
+    const execution = dispatcher.execute('urn:noocodec:dag:the-archivist', state);
     for await (const _stage of execution) { /* drain */ }
     await execution;
     return state;

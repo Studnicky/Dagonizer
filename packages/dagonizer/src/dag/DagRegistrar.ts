@@ -12,9 +12,16 @@ import { DAGValidator } from '../validation/DAGValidator.js';
 
 import { ContextResolver } from './ContextResolver.js';
 
+function isAbsoluteIri(iri: string): boolean {
+  return iri.startsWith('urn:') || iri.includes('://');
+}
+
 function validateNodeContract<TNodeState extends NodeStateInterface, TOutput extends string>(
   node: NodeInterface<TNodeState, TOutput>,
 ): void {
+  if (!isAbsoluteIri(node['@id'])) {
+    throw new DAGError(`Node '${node.name}' @id must be an absolute IRI`);
+  }
   if (node.validate) {
     const result = node.validate();
 
@@ -48,9 +55,9 @@ function validateNodeContract<TNodeState extends NodeStateInterface, TOutput ext
 export interface DagRegistrarSourceInterface {
   /** Registered DAGs keyed by expanded IRI. Mutated by `registerDAG`. */
   readonly dags: Map<string, DAGType>;
-  /** Registered nodes keyed by expanded IRI. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
+  /** Registered nodes keyed by exact node IRI. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
   readonly nodes: Map<string, NodeInterface<NodeStateInterface, string>>;
-  /** Placement index keyed by `${dagIri}:${placementName}`. Mutated by `registerDAG`. */
+  /** Placement index keyed by canonical placement `@id`. Mutated by `registerDAG`. */
   readonly nodeIndex: Map<string, DAGNodeType>;
   /**
    * Child-state factories keyed by expanded DAG IRI. Mutated by `registerDAG`.
@@ -117,8 +124,7 @@ export class DagRegistrar {
     const dagContext = ContextResolver.contextOf(dag['@context']);
     ContextResolver.validate(dagContext);
 
-    // Expand the DAG name to its IRI key for all registry operations.
-    const dagIri = ContextResolver.expand(dag.name, dagContext);
+    const dagIri = ContextResolver.expand(dag['@id'], dagContext);
 
     if (this.#source.dags.has(dagIri)) {
       if (this.#source.dags.get(dagIri) === dag) return;
@@ -133,18 +139,8 @@ export class DagRegistrar {
     this.#source.dags.set(dagIri, dag);
     this.#source.stateFactories.set(dagIri, stateFactory);
     for (const node of dag.nodes) {
-      // DAGNodeType = DAG['nodes'][number] — node already satisfies the type.
-      // dagIri is the expanded IRI key; placement name stays as declared in the DAG.
-      this.#source.nodeIndex.set(`${dagIri}:${node.name}`, node);
+      this.#source.nodeIndex.set(node['@id'], node);
     }
-  }
-
-  hasDAG(iri: string): boolean {
-    return this.#source.dags.has(iri);
-  }
-
-  hasNode(iri: string): boolean {
-    return this.#source.nodes.has(iri);
   }
 
   listDAGs(): readonly DAGType[] {
@@ -176,13 +172,12 @@ export class DagRegistrar {
    * NodeStateInterface` — including child-state classes that differ from the
    * dispatcher's state type.
    *
-   * Throws `DAGError` when a node with the same expanded IRI is already registered.
+   * Throws `DAGError` when a node with the same IRI is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput>,
-    context: Record<string, unknown> = {},
   ): void {
-    const nodeIri = ContextResolver.expand(node.name, context);
+    const nodeIri = node['@id'];
     if (this.#source.nodes.has(nodeIri)) {
       // Identity check: runtime reference equality is sufficient; no cast needed
       // since Object.is accepts any two values. Both sides are the same object.
@@ -217,7 +212,7 @@ export class DagRegistrar {
     try {
       transaction.registerPluginSpecifiers(bundleContext, bundle.specifier);
       for (const node of bundle.nodes) {
-        transaction.registerNode(node, bundleContext);
+        transaction.registerNode(node);
       }
       for (const dag of bundle.dags) {
         transaction.registerDAGDocument(dag, bundle.stateFactories);
@@ -294,9 +289,8 @@ class RegistryTransaction {
 
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput>,
-    context: Record<string, unknown>,
   ): void {
-    const nodeIri = ContextResolver.expand(node.name, context);
+    const nodeIri = node['@id'];
     if (this.#source.nodes.has(nodeIri)) {
       if (Object.is(this.#source.nodes.get(nodeIri), node)) return;
       throw new DAGError(`Node '${node.name}' (IRI: '${nodeIri}') is already registered with a different implementation`);
@@ -312,7 +306,7 @@ class RegistryTransaction {
   ): void {
     const dagContext = ContextResolver.contextOf(dag['@context']);
     ContextResolver.validate(dagContext);
-    const dagIri = ContextResolver.expand(dag.name, dagContext);
+    const dagIri = ContextResolver.expand(dag['@id'], dagContext);
 
     if (this.#source.dags.has(dagIri)) {
       if (this.#source.dags.get(dagIri) === dag) return;
@@ -327,7 +321,7 @@ class RegistryTransaction {
     this.#addedStateFactoryIris.push(dagIri);
 
     for (const node of dag.nodes) {
-      const indexKey = `${dagIri}:${node.name}`;
+      const indexKey = node['@id'];
       this.#source.nodeIndex.set(indexKey, node);
       this.#addedNodeIndexKeys.push(indexKey);
     }

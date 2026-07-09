@@ -30,7 +30,7 @@ The graph does not need to know whether vectors come from local Ollama, a browse
 
 ## How It Works
 
-The host provisions an `EmbedderInterface` before DAG execution and passes it through service injection. Nodes call the embedder to produce vectors, then apply domain logic such as cosine similarity or threshold routing. The registry and cascade mirror the LLM adapter surface, so availability probing and provider fallback happen outside the graph.
+The host provisions an `EmbedderInterface` before DAG execution and passes it through service injection. Nodes call the embedder to produce vectors, then apply domain logic such as cosine similarity or threshold routing. The registry and cascade mirror the LLM adapter surface, so availability probing and provider selection happen outside the graph.
 
 That symmetry is deliberate. If your application can configure chat providers through an adapter cascade, it can configure embedding providers through the same registry/cascade style.
 
@@ -56,7 +56,7 @@ Open [The Archivist](./the-archivist); the browser runner provisions the embedde
 
 Embedders let applications add semantic comparison to DAG nodes without tying the graph to one vector provider. Use them for intent classification, memory recall, deduplication, ranking, and similarity checks that should work across browser, local, or cloud embedding backends.
 
-The application benefit is portability: change vector providers, dimensions, or fallback order in service setup while keeping DAG topology and node routes stable.
+The application benefit is portability: change vector providers, dimensions, or selection order in service setup while keeping DAG topology and node routes stable.
 
 ## Code Samples
 

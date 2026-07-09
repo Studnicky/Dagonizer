@@ -25,9 +25,9 @@ Use this page when integrating the dispatcher directly into an application host.
 
 ## How It Works
 
-Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG names. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
+Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG IRIs. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
 
-`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the application awaits the result or iterates events. Validation happens at registration time so dangling node names, missing embedded DAGs, invalid routes, and contract mismatches fail before a run starts.
+`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the application awaits the result or iterates events. Validation happens at registration time so dangling node/DAG references, missing embedded DAGs, invalid placement-IRI routes, and contract mismatches fail before a run starts.
 
 ## Diagrams, Examples, and Outputs
 
@@ -107,7 +107,7 @@ export {};
 | Field | Type | Description |
 |---|---|---|
 | `accessor` | `StateAccessorInterface` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
-| `containers` | `Readonly<Record<string, DagContainerInterface>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
+| `containers` | `Readonly<Record<string, DagContainerInterface>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and DAG bodies run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 | `validateOutputs` | `boolean` | When `true`, validates each node output against the node's declared `outputSchema` for that port after execution. On mismatch the item is re-routed to `'error'`. Default `false` — zero overhead in production. Enable in dev/test to catch contract violations early. |
@@ -183,23 +183,23 @@ d.registerDAG(dag, stateFactory);
 
 Registers a DAG after a semantic validation pass, followed by an optional contract check. The optional `stateFactory` argument overrides the default child-state constructor thunk for embedded-DAG and scatter executions within this DAG; when omitted, `ChildStateFactory.cloneParent` is stored.
 
-1. **Semantic pass.** Verifies every labeled entrypoint exists, node and DAG references resolve against the registry view, recursive DAG-reference components have a reachable terminal exit, and every registered node output has a routing entry in the placement's `outputs` map.
+1. **Semantic pass.** Verifies every labeled entrypoint targets a placement IRI, every output route targets a placement IRI, node and DAG references resolve against the registry view, recursive DAG-reference components have a reachable terminal exit, and every registered node output has a routing entry in the placement's `outputs` map.
 
 After the semantic pass, a data-flow check runs for each placement whose backing node declares required and produced state paths. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
 
-Schema validation is handled at the ingest boundary (`DAGDocument.load` / `DAGDocument.ofValue`); `registerDAG` does not repeat the structural pass because `DAGType` already guarantees schema conformance.
+Schema validation is handled at the JSON ingest boundary (`DAGDocument.load`); `registerDAG` does not repeat the structural pass because `DAGType` already guarantees schema conformance.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
 ---
 
-#### `getDAG(name)`
+#### `getDAG(iri)`
 
-Returns `DAG | undefined`. `undefined` when the DAG has not been registered.
+Returns `DAG | undefined` for the exact registered DAG IRI. `undefined` when the DAG IRI has not been registered.
 
-#### `getNode(name)`
+#### `getNode(iri)`
 
-Returns `NodeInterface<NodeStateInterface, string> | undefined`. `undefined` when the node has not been registered.
+Returns `NodeInterface<NodeStateInterface, string> | undefined` for the exact registered node IRI. `undefined` when the node IRI has not been registered.
 
 #### `listDAGs()`
 
@@ -218,7 +218,7 @@ All four read accessors in context:
 #### `DAGDocument.load(json, options?)` {#static-load}
 
 ```ts twoslash
-import { DAGDocument } from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
 // ---cut---
 // static load(json: string, options?: DAGDocumentLoadOptionsType): DAGType
 declare const rawJsonString: string;
@@ -228,7 +228,8 @@ const dag = DAGDocument.load(rawJsonString);
 Parse a JSON string and validate against `DAGSchema`. The single permitted ingest boundary where `unknown` enters the package. Throws `ValidationError` for malformed JSON or schema-noncompliant input.
 
 ```ts twoslash
-import { DAGDocument, Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const rawJsonString: string;
@@ -240,14 +241,16 @@ dispatcher.registerDAG(dag);
 **`options.overrides`** — a `Partial<DAGType>` merged into the decoded document before schema validation. Use this to inject runtime configuration (e.g. concurrency limits from an environment config) without mutating the source JSON.
 
 ```ts twoslash
-import { DAGDocument } from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
 // ---cut---
 declare const rawJsonString: string;
 declare const concurrency: number;
 const dag = DAGDocument.load(rawJsonString, {
   overrides: {
-    nodes: JSON.parse(rawJsonString).nodes.map((n: { name: string }) =>
-      n.name === 'scatter' ? { ...n, concurrency } : n
+    nodes: JSON.parse(rawJsonString).nodes.map((n: { '@id': string }) =>
+      n['@id'] === 'urn:noocodec:dag:my-dag/node/scatter'
+        ? { ...n, execution: { mode: 'item', concurrency } }
+        : n
     ),
   },
 });
@@ -255,24 +258,10 @@ const dag = DAGDocument.load(rawJsonString, {
 
 ---
 
-#### `DAGDocument.ofValue(value, options?)` {#static-ofvalue}
-
-```ts twoslash
-import { DAGDocument } from '@studnicky/dagonizer';
-// ---cut---
-// static ofValue(value: unknown, options?: DAGDocumentLoadOptionsType): DAGType
-declare const value: unknown;
-const dag = DAGDocument.ofValue(value);
-```
-
-Validate an already-parsed value. Same boundary semantics as `load` but skips `JSON.parse`. Accepts the same `options.overrides` field.
-
----
-
 #### `DAGDocument.serialize(dag)` {#static-serialize}
 
 ```ts twoslash
-import { DAGDocument } from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
 import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
 // static serialize(dag: DAGType): string
@@ -284,22 +273,7 @@ Serialize a DAG to pretty JSON (2-space indent). Does not re-validate.
 
 ---
 
-#### `DAGDocument.serializeCompact(dag)` {#static-serializecompact}
-
-```ts twoslash
-import { DAGDocument } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
-// ---cut---
-// static serializeCompact(dag: DAGType): string
-declare const dag: DAGType;
-const json: string = DAGDocument.serializeCompact(dag);
-```
-
-Serialize a DAG to compact JSON (no whitespace).
-
----
-
-#### `execute(dagName, initialState, options?)`
+#### `execute(dagIri, initialState, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -308,10 +282,10 @@ class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
 declare const state: MyState;
-const execution: Execution<MyState> = dispatcher.execute('my-flow', state);
+const execution: Execution<MyState> = dispatcher.execute('urn:noocodec:dag:my-flow', state);
 ```
 
-Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution is lazy: the generator does not run until the caller awaits or iterates.
+Returns an `Execution<TState>` starting at the DAG's entrypoint. The first argument is the registered DAG IRI. The execution is lazy: the generator does not run until the caller awaits or iterates.
 
 <<< @/../examples/the-archivist/runArchivist.ts#linear-run
 
@@ -319,7 +293,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 ---
 
-#### `resume(dagName, state, fromStage, options?)`
+#### `resume(dagIri, state, fromStage, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -328,10 +302,14 @@ class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
 declare const state: MyState;
-const execution: Execution<MyState> = dispatcher.resume('my-flow', state, 'node-b');
+const execution: Execution<MyState> = dispatcher.resume(
+  'my-flow',
+  state,
+  'urn:noocodec:dag:my-flow/node/node-b',
+);
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapter.wrap(fn))`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. `fromStage` is a placement IRI. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapter.wrap(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 
@@ -361,17 +339,17 @@ import type { ExecutionResultType, NodeStateInterface } from '@studnicky/dagoniz
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
-  protected override onFlowStart(dagName: string, state: MyState): void {
-    console.log('start', dagName);
+  protected override onFlowStart(dagIri: string, state: MyState): void {
+    console.log('start', dagIri);
   }
-  protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultType<MyState>): void {
-    console.log('end', dagName, result.terminalOutcome);
+  protected override onFlowEnd(dagIri: string, state: MyState, result: ExecutionResultType<MyState>): void {
+    console.log('end', dagIri, result.terminalOutcome);
   }
   protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
   protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {}
   protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onPhaseEnter(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onPhaseExit(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
 }
 ```
 
@@ -382,10 +360,10 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
-| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagName, phase: 'pre'\|'post', placementName, state, placementPath)` |
+| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagIri, phase: 'pre'\|'post', placementName, state, placementPath)` |
 | `onPhaseExit` | After a `pre` or `post` phase placement completes (success or collected error); same signature as `onPhaseEnter` |
 
-`placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
+`placementPath` is the ordered array of parent embedded-DAG placement labels leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` labelled `'search'` receives `['search']`. Graph identity still comes from placement `@id`; the path is observability context for watchers and worker relays.
 
 See [Observability](/guide/observability) for usage examples. Contract misalignment — a dangling read or a dead write — throws a `DAGError` at `registerDAG`/`build` time rather than surfacing a warning.
 
@@ -420,7 +398,7 @@ const key = SCATTER_PROGRESS_KEY; // type: "__dagonizer_scatter_progress__"
 export {};
 ```
 
-Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Application nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.
+Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Application nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement `@id`.
 
 ```ts twoslash
 // Illustrative local shapes (the actual StoredScatterProgress is a discriminated union):
@@ -431,7 +409,7 @@ interface ScatterItemResult {
   readonly fieldValue?:    unknown;
 }
 interface ScatterProgress {
-  readonly placementName:    string;
+  readonly placementIri:     string;
   readonly completedIndices: readonly number[];
   readonly itemResults:      readonly ScatterItemResult[];
 }
@@ -458,7 +436,7 @@ Reserved metadata key used by the work-set scheduler to persist the in-flight wo
 
 ## Details for Nerds
 
-`Dagonizer` intentionally keeps assembly explicit. JSON-LD carries names, routes, contexts, state mappings, phases, scatter bodies, and embedded DAG references. Registries bind those names to node implementations, DAG documents, child-state factories, containers, and channels. Visualization is generated from the DAG document, not from the live dispatcher.
+`Dagonizer` intentionally keeps assembly explicit. JSON-LD carries DAG IRIs, placement IRIs, routes, contexts, state mappings, phases, scatter bodies, gather barriers, and embedded DAG references. Registries bind registered references to node implementations, DAG documents, child-state factories, containers, and channels. Visualization is generated from the DAG document, not from the live dispatcher.
 
 That separation is why a DAG can be built with `DAGBuilder`, loaded from JSON-LD, packaged by a plugin, rendered as Mermaid, and executed by the same dispatcher without conversion.
 

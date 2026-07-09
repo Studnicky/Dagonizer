@@ -15,6 +15,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region canonicalize-facility-node
 export class CanonicalizeFacilityNode extends MonadicNode<CartographerState, 'done'> {
+  readonly '@id' = 'urn:noocodec:node:canonicalize-facility';
   readonly 'name' = 'canonicalize-facility';
   readonly 'outputs' = ['done'] as const;
 

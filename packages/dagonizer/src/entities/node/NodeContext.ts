@@ -10,7 +10,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import type { OutputSchemaValidatorInterface } from '../../contracts/NodeInterface.js';
 
 export const NodeContextSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeContext',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeContext',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['dagName', 'nodeName'],
@@ -34,7 +34,7 @@ export type NodeContextWireType = FromSchema<typeof NodeContextSchema>;
  * Nodes should pass `context.signal` to every awaitable IO (fetch, retry,
  * subprocess) so cancellation propagates cleanly.
  *
- * A node that needs its run's correlation id or DAG name reads it via
+ * A node that needs its run's correlation id or DAG IRI reads it via
  * `DagExecutionContext.correlationIdOf(context.signal)` /
  * `.dagNameOf(context.signal)` (`runtime/DagExecutionContext.ts`) — both
  * return `undefined` when the node runs outside `Dagonizer.execute()`/

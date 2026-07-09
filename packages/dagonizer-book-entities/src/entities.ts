@@ -97,7 +97,7 @@ export type BookAvailabilityType = FromSchema<typeof BookAvailabilitySchema>;
 
 /** Complete composed book record. */
 export const BookSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-book-entities/Book',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-book-entities/Book',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['identity', 'publication', 'availability'],
@@ -113,7 +113,7 @@ export type BookType = FromSchema<typeof BookSchema>;
 
 /** Scored book record with provenance. */
 export const CandidateSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer-book-entities/Candidate',
+  '$id': 'https://noocodec.dev/schemas/dagonizer-book-entities/Candidate',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['book', 'score', 'source'],
@@ -151,7 +151,7 @@ export type BookInputType = {
  * BookBuilder: static factory for the `BookType` value type.
  *
  * Separate from the `BookType` type because TypeScript cannot merge a class and a
- * type of the same name without aliasing. The name `BookBuilder` makes the
+ * type of the same name without reusing that name for the value. The name `BookBuilder` makes the
  * role explicit — it is the constructor for the `BookType` value.
  */
 export class BookBuilder {

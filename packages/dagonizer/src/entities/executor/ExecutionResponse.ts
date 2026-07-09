@@ -25,7 +25,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
 
 export const ExecutionResponseSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResponse',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['correlationId', 'items', 'errors', 'intermediates'],

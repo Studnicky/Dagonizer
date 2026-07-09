@@ -172,6 +172,7 @@ class AbortSleep {
 
 class RecorderNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'recorder';
+  override readonly '@id' = 'urn:noocodec:node:recorder';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
@@ -182,6 +183,7 @@ class RecorderNode extends MonadicNode<ConformanceState, 'done'> {
 
 class MutatorNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'mutator';
+  override readonly '@id' = 'urn:noocodec:node:mutator';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
@@ -192,6 +194,7 @@ class MutatorNode extends MonadicNode<ConformanceState, 'done'> {
 
 class ErrorEmitterNode extends MonadicNode<ConformanceState, 'error'> {
   override readonly name = 'error-emitter';
+  override readonly '@id' = 'urn:noocodec:node:error-emitter';
   override readonly outputs = ['error'] as const;
   override get outputSchema(): Record<'error', SchemaObjectType> { return { 'error': { 'type': 'object' } }; }
   override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'error', Batch<ConformanceState>>> {
@@ -212,6 +215,7 @@ class ErrorEmitterNode extends MonadicNode<ConformanceState, 'error'> {
 
 class TimeoutSleeperNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'timeout-sleeper';
+  override readonly '@id' = 'urn:noocodec:node:timeout-sleeper';
   override readonly outputs = ['done'] as const;
   override readonly timeout = Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS);
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
@@ -226,6 +230,7 @@ class TimeoutSleeperNode extends MonadicNode<ConformanceState, 'done'> {
 
 class AbortSleeperNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'abort-sleeper';
+  override readonly '@id' = 'urn:noocodec:node:abort-sleeper';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   override async execute(
@@ -246,6 +251,7 @@ class AbortSleeperNode extends MonadicNode<ConformanceState, 'done'> {
  */
 class ScatterCounterNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'scatter-counter';
+  override readonly '@id' = 'urn:noocodec:node:scatter-counter';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
@@ -260,28 +266,29 @@ class ScatterCounterNode extends MonadicNode<ConformanceState, 'done'> {
 
 const DAG_CONTEXT = {
   '@version': 1.1,
-  'name':            { '@id': 'https://noocodex.dev/ontology/dag/name' },
-  'version':         { '@id': 'https://noocodex.dev/ontology/dag/version' },
-  'entrypoints':     { '@id': 'https://noocodex.dev/ontology/dag/entrypoints', '@container': '@index' },
-  'nodes':           { '@id': 'https://noocodex.dev/ontology/dag/nodes', '@container': '@set' },
-  'outputs':         { '@id': 'https://noocodex.dev/ontology/dag/outputs' },
-  'node':            { '@id': 'https://noocodex.dev/ontology/dag/node' },
-  'container':       { '@id': 'https://noocodex.dev/ontology/dag/container' },
-  'dag':             { '@id': 'https://noocodex.dev/ontology/dag/dag' },
-  'DAG':             { '@id': 'https://noocodex.dev/ontology/dag/DAG' },
-  'SingleNode':      { '@id': 'https://noocodex.dev/ontology/dag/SingleNode' },
-  'EmbeddedDAGNode': { '@id': 'https://noocodex.dev/ontology/dag/EmbeddedDAGNode' },
-  'ScatterNode':     { '@id': 'https://noocodex.dev/ontology/dag/ScatterNode' },
-  'body':            { '@id': 'https://noocodex.dev/ontology/dag/body' },
-  'source':          { '@id': 'https://noocodex.dev/ontology/dag/source' },
-  'itemKey':         { '@id': 'https://noocodex.dev/ontology/dag/itemKey' },
-  'concurrency':     { '@id': 'https://noocodex.dev/ontology/dag/concurrency' },
-  'reducer':         { '@id': 'https://noocodex.dev/ontology/dag/reducer' },
-  'gather':          { '@id': 'https://noocodex.dev/ontology/dag/gather' },
+  'name': { '@id': 'https://noocodec.dev/ontology/dag/name' },
+  'version': { '@id': 'https://noocodec.dev/ontology/dag/version' },
+  'entrypoints': { '@id': 'https://noocodec.dev/ontology/dag/entrypoints', '@container': '@index' },
+  'nodes': { '@id': 'https://noocodec.dev/ontology/dag/nodes', '@container': '@set' },
+  'outputs': { '@id': 'https://noocodec.dev/ontology/dag/outputs' },
+  'node': { '@id': 'https://noocodec.dev/ontology/dag/node' },
+  'container': { '@id': 'https://noocodec.dev/ontology/dag/container' },
+  'dag': { '@id': 'https://noocodec.dev/ontology/dag/dag' },
+  'DAG': { '@id': 'https://noocodec.dev/ontology/dag/DAG' },
+  'SingleNode': { '@id': 'https://noocodec.dev/ontology/dag/SingleNode' },
+  'EmbeddedDAGNode': { '@id': 'https://noocodec.dev/ontology/dag/EmbeddedDAGNode' },
+  'ScatterNode': { '@id': 'https://noocodec.dev/ontology/dag/ScatterNode' },
+  'body': { '@id': 'https://noocodec.dev/ontology/dag/body' },
+  'source': { '@id': 'https://noocodec.dev/ontology/dag/source' },
+  'itemKey': { '@id': 'https://noocodec.dev/ontology/dag/itemKey' },
+  'concurrency': { '@id': 'https://noocodec.dev/ontology/dag/concurrency' },
+  'reducer': { '@id': 'https://noocodec.dev/ontology/dag/reducer' },
+  'gather': { '@id': 'https://noocodec.dev/ontology/dag/gather' },
 } as const;
 
-/** Name of the DAG that runs inside each scatter item clone. */
-export const SCATTER_ITEM_BODY_DAG = 'conformance-scatter-item-body';
+/** DAG IRI for the body that runs inside each scatter item clone. */
+export const SCATTER_ITEM_BODY_DAG = 'urn:conformance:dag:conformance-scatter-item-body';
+const SCATTER_ITEM_BODY_DAG_NAME = 'conformance-scatter-item-body';
 
 /**
  * Builders for the conformance law DAG fixtures.
@@ -300,24 +307,30 @@ export const SCATTER_ITEM_BODY_DAG = 'conformance-scatter-item-body';
 class ConformanceDags {
   private constructor() {}
 
-  static singleNode(dagName: string, nodeName: string, output: string): DAGType {
+  private static placementIri(dagIri: string, placementName: string): string {
+    return `${dagIri}/node/${placementName}`;
+  }
+
+  static singleNode(dagIri: string, dagName: string, nodeName: string, output: string): DAGType {
+    const nodeIri = ConformanceDags.placementIri(dagIri, nodeName);
+    const endIri = ConformanceDags.placementIri(dagIri, 'end');
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': `urn:conformance:dag:${dagName}`,
+      '@id': dagIri,
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoints': { 'main': nodeName },
+      'entrypoints': { 'main': nodeIri },
       'nodes': [
         {
-          '@id': `urn:conformance:dag:${dagName}/node/${nodeName}`,
+          '@id': nodeIri,
           '@type': 'SingleNode',
           'name': nodeName,
-          'node': nodeName,
-          'outputs': { [output]: 'end' },
+          'node': `urn:noocodec:node:${nodeName}`,
+          'outputs': { [output]: endIri },
         },
         {
-          '@id': `urn:conformance:dag:${dagName}/node/end`,
+          '@id': endIri,
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
@@ -326,25 +339,27 @@ class ConformanceDags {
     });
   }
 
-  static embedding(runnerName: string, childDagName: string, _outputs: string[]): DAGType {
-    // All embedded DAG outputs route to a shared 'end' TerminalNode.
+  static embedding(runnerIri: string, runnerName: string, childDagIri: string, _outputs: string[]): DAGType {
+    const childIri = ConformanceDags.placementIri(runnerIri, 'run-child');
+    const endIri = ConformanceDags.placementIri(runnerIri, 'end');
+    // All embedded DAG outputs route to a shared TerminalNode.
     // The _outputs parameter names the possible outcomes of the child DAG (e.g. 'done', 'error');
     // each is routed to the parent's terminal placement.
-    const outputMap: Record<string, string> = { 'done': 'end', 'error': 'end' };
+    const outputMap: Record<string, string> = { 'done': endIri, 'error': endIri };
 
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': `urn:conformance:dag:${runnerName}`,
+      '@id': runnerIri,
       '@type': 'DAG',
       'name': runnerName,
       'version': '1',
-      'entrypoints': { 'main': 'run-child' },
+      'entrypoints': { 'main': childIri },
       'nodes': [
         {
-          '@id': `urn:conformance:dag:${runnerName}/node/run-child`,
+          '@id': childIri,
           '@type': 'EmbeddedDAGNode',
           'name': 'run-child',
-          'dag': childDagName,
+          'dag': childDagIri,
           'outputs': outputMap,
           'container': CONFORMANCE_CONTAINER_ROLE,
           'stateMapping': {
@@ -358,7 +373,7 @@ class ConformanceDags {
           },
         },
         {
-          '@id': `urn:conformance:dag:${runnerName}/node/end`,
+          '@id': endIri,
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
@@ -368,23 +383,25 @@ class ConformanceDags {
   }
 
   static scatterItemBody(): DAGType {
+    const counterIri = ConformanceDags.placementIri(SCATTER_ITEM_BODY_DAG, 'scatter-counter');
+    const endIri = ConformanceDags.placementIri(SCATTER_ITEM_BODY_DAG, 'end');
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}`,
+      '@id': SCATTER_ITEM_BODY_DAG,
       '@type': 'DAG',
-      'name': SCATTER_ITEM_BODY_DAG,
+      'name': SCATTER_ITEM_BODY_DAG_NAME,
       'version': '1',
-      'entrypoints': { 'main': 'scatter-counter' },
+      'entrypoints': { 'main': counterIri },
       'nodes': [
         {
-          '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/scatter-counter`,
+          '@id': counterIri,
           '@type': 'SingleNode',
           'name': 'scatter-counter',
-          'node': 'scatter-counter',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:scatter-counter',
+          'outputs': { 'done': endIri },
         },
         {
-          '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/end`,
+          '@id': endIri,
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
@@ -393,17 +410,20 @@ class ConformanceDags {
     });
   }
 
-  static scatter(runnerName: string): DAGType {
+  static scatter(runnerIri: string, runnerName: string): DAGType {
+    const fanIri = ConformanceDags.placementIri(runnerIri, 'fan');
+    const joinIri = ConformanceDags.placementIri(runnerIri, 'join');
+    const endIri = ConformanceDags.placementIri(runnerIri, 'end');
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': `urn:conformance:dag:${runnerName}`,
+      '@id': runnerIri,
       '@type': 'DAG',
       'name': runnerName,
       'version': '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id': `urn:conformance:dag:${runnerName}/node/fan`,
+          '@id': fanIri,
           '@type': 'ScatterNode',
           'name': 'fan',
           'body': { 'dag': SCATTER_ITEM_BODY_DAG },
@@ -411,17 +431,27 @@ class ConformanceDags {
           'itemKey': 'currentItem',
           'execution': { 'mode': 'item', 'concurrency': 1 },
           'container': CONFORMANCE_CONTAINER_ROLE,
-          'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
-          'reducer': 'aggregate',
           'outputs': {
-            'all-success': 'end',
-            'partial': 'end',
-            'all-error': 'end',
-            'empty': 'end',
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
           },
         },
         {
-          '@id': `urn:conformance:dag:${runnerName}/node/end`,
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        {
+          '@id': endIri,
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',
@@ -435,8 +465,8 @@ class ConformanceDags {
 // DAG names
 // ---------------------------------------------------------------------------
 
-/** Body DAGs that run inside the container. */
-const BODY = {
+/** Display labels for body DAGs that run inside the container. */
+const BODY_NAME = {
   'law1': 'conformance-body-law1',
   'law2': 'conformance-body-law2',
   'law3': 'conformance-body-law3',
@@ -446,8 +476,19 @@ const BODY = {
   'law9': 'conformance-body-law9',
 } as const;
 
-/** Runner DAGs that the test dispatches; each embeds a body DAG via a container. */
-export const CONFORMANCE_DAG = {
+/** Body DAG IRIs that run inside the container. */
+const BODY = {
+  'law1': 'urn:conformance:dag:conformance-body-law1',
+  'law2': 'urn:conformance:dag:conformance-body-law2',
+  'law3': 'urn:conformance:dag:conformance-body-law3',
+  'law4': 'urn:conformance:dag:conformance-body-law4',
+  'law5': 'urn:conformance:dag:conformance-body-law5',
+  'law6': 'urn:conformance:dag:conformance-body-law6',
+  'law9': 'urn:conformance:dag:conformance-body-law9',
+} as const;
+
+/** Display labels for runner DAGs. */
+const CONFORMANCE_DAG_NAME = {
   'law1': 'conformance-runner-law1',
   'law2': 'conformance-runner-law2',
   'law3': 'conformance-runner-law3',
@@ -459,28 +500,41 @@ export const CONFORMANCE_DAG = {
   'law9': 'conformance-runner-law9',
 } as const;
 
+/** Runner DAG IRIs that the test dispatches; each embeds a body DAG via a container. */
+export const CONFORMANCE_DAG = {
+  'law1': 'urn:conformance:dag:conformance-runner-law1',
+  'law2': 'urn:conformance:dag:conformance-runner-law2',
+  'law3': 'urn:conformance:dag:conformance-runner-law3',
+  'law4': 'urn:conformance:dag:conformance-runner-law4',
+  'law5': 'urn:conformance:dag:conformance-runner-law5',
+  'law6': 'urn:conformance:dag:conformance-runner-law6',
+  'law7': 'urn:conformance:dag:conformance-runner-law7',
+  'law8': 'urn:conformance:dag:conformance-runner-law8',
+  'law9': 'urn:conformance:dag:conformance-runner-law9',
+} as const;
+
 // Body DAGs (registered on the host; run inside the container)
-const bodyLaw1 = ConformanceDags.singleNode(BODY.law1, 'recorder', 'done');
-const bodyLaw2 = ConformanceDags.singleNode(BODY.law2, 'mutator', 'done');
-const bodyLaw3 = ConformanceDags.singleNode(BODY.law3, 'error-emitter', 'error');
-const bodyLaw4 = ConformanceDags.singleNode(BODY.law4, 'timeout-sleeper', 'done');
-const bodyLaw5 = ConformanceDags.singleNode(BODY.law5, 'abort-sleeper', 'done');
-const bodyLaw6 = ConformanceDags.singleNode(BODY.law6, 'recorder', 'done');
-const bodyLaw9 = ConformanceDags.singleNode(BODY.law9, 'mutator', 'done');
+const bodyLaw1 = ConformanceDags.singleNode(BODY.law1, BODY_NAME.law1, 'recorder', 'done');
+const bodyLaw2 = ConformanceDags.singleNode(BODY.law2, BODY_NAME.law2, 'mutator', 'done');
+const bodyLaw3 = ConformanceDags.singleNode(BODY.law3, BODY_NAME.law3, 'error-emitter', 'error');
+const bodyLaw4 = ConformanceDags.singleNode(BODY.law4, BODY_NAME.law4, 'timeout-sleeper', 'done');
+const bodyLaw5 = ConformanceDags.singleNode(BODY.law5, BODY_NAME.law5, 'abort-sleeper', 'done');
+const bodyLaw6 = ConformanceDags.singleNode(BODY.law6, BODY_NAME.law6, 'recorder', 'done');
+const bodyLaw9 = ConformanceDags.singleNode(BODY.law9, BODY_NAME.law9, 'mutator', 'done');
 
 // Scatter item body DAG for Laws 7 & 8
 const scatterItemBody = ConformanceDags.scatterItemBody();
 
 // Runner DAGs (registered both parent and host-side; dispatch child via container)
-const runnerLaw1 = ConformanceDags.embedding(CONFORMANCE_DAG.law1, BODY.law1, ['done', 'error']);
-const runnerLaw2 = ConformanceDags.embedding(CONFORMANCE_DAG.law2, BODY.law2, ['done', 'error']);
-const runnerLaw3 = ConformanceDags.embedding(CONFORMANCE_DAG.law3, BODY.law3, ['done', 'error']);
-const runnerLaw4 = ConformanceDags.embedding(CONFORMANCE_DAG.law4, BODY.law4, ['done', 'error']);
-const runnerLaw5 = ConformanceDags.embedding(CONFORMANCE_DAG.law5, BODY.law5, ['done', 'error']);
-const runnerLaw6 = ConformanceDags.embedding(CONFORMANCE_DAG.law6, BODY.law6, ['done', 'error']);
-const runnerLaw7 = ConformanceDags.scatter(CONFORMANCE_DAG.law7);
-const runnerLaw8 = ConformanceDags.scatter(CONFORMANCE_DAG.law8);
-const runnerLaw9 = ConformanceDags.embedding(CONFORMANCE_DAG.law9, BODY.law9, ['done', 'error']);
+const runnerLaw1 = ConformanceDags.embedding(CONFORMANCE_DAG.law1, CONFORMANCE_DAG_NAME.law1, BODY.law1, ['done', 'error']);
+const runnerLaw2 = ConformanceDags.embedding(CONFORMANCE_DAG.law2, CONFORMANCE_DAG_NAME.law2, BODY.law2, ['done', 'error']);
+const runnerLaw3 = ConformanceDags.embedding(CONFORMANCE_DAG.law3, CONFORMANCE_DAG_NAME.law3, BODY.law3, ['done', 'error']);
+const runnerLaw4 = ConformanceDags.embedding(CONFORMANCE_DAG.law4, CONFORMANCE_DAG_NAME.law4, BODY.law4, ['done', 'error']);
+const runnerLaw5 = ConformanceDags.embedding(CONFORMANCE_DAG.law5, CONFORMANCE_DAG_NAME.law5, BODY.law5, ['done', 'error']);
+const runnerLaw6 = ConformanceDags.embedding(CONFORMANCE_DAG.law6, CONFORMANCE_DAG_NAME.law6, BODY.law6, ['done', 'error']);
+const runnerLaw7 = ConformanceDags.scatter(CONFORMANCE_DAG.law7, CONFORMANCE_DAG_NAME.law7);
+const runnerLaw8 = ConformanceDags.scatter(CONFORMANCE_DAG.law8, CONFORMANCE_DAG_NAME.law8);
+const runnerLaw9 = ConformanceDags.embedding(CONFORMANCE_DAG.law9, CONFORMANCE_DAG_NAME.law9, BODY.law9, ['done', 'error']);
 
 // ---------------------------------------------------------------------------
 // Bundle assembly

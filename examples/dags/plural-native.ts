@@ -12,6 +12,7 @@ import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObject
 // Items are partitioned across output ports — routing IS partitioning.
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
+  readonly '@id'   = 'urn:noocodec:node:echo';
   readonly outputs = ['out'] as const;
   override get outputSchema(): Record<'out', SchemaObjectType> {
     return { 'out': { 'type': 'object' } };
@@ -42,6 +43,7 @@ const geoCache = {
 // item-independent routing: loop locally and preserve each item's route.
 export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
+  readonly '@id'   = 'urn:noocodec:node:geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
   override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
     return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
@@ -61,6 +63,7 @@ export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
 // allowing a single shared-cache lookup across all items simultaneously.
 export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
+  readonly '@id'   = 'urn:noocodec:node:enrich';
   readonly outputs = ['enriched'] as const;
   override get outputSchema(): Record<'enriched', SchemaObjectType> {
     return { 'enriched': { 'type': 'object' } };
@@ -90,6 +93,7 @@ export class ScoreState extends NodeStateBase {
 
 export class ScoreNode extends MonadicNode<ScoreState, 'scored'> {
   readonly name    = 'score';
+  readonly '@id'   = 'urn:noocodec:node:score';
   readonly outputs = ['scored'] as const;
   override get outputSchema(): Record<'scored', SchemaObjectType> {
     return { 'scored': { 'type': 'object' } };
@@ -105,17 +109,17 @@ export class ScoreNode extends MonadicNode<ScoreState, 'scored'> {
 // 500 ms of idle time.
 export const reservoirDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:plural-native-demo',
+  '@id': 'urn:noocodec:dag:plural-native-demo',
   '@type':     'DAG',
   name:        'plural-native-demo',
   version:     '1',
-  entrypoints: { main: 'batch-score' },
+  entrypoints: { main: 'urn:noocodec:dag:plural-native-demo/node/batch-score' },
   nodes: [
     {
-      '@id':       'urn:noocodex:dag:plural-native-demo/node/batch-score',
+      '@id': 'urn:noocodec:dag:plural-native-demo/node/batch-score',
       '@type':     'ScatterNode',
       name:        'batch-score',
-      body:        { node: 'score' },
+      body:        { node: 'urn:noocodec:node:score' },
       source:      'items',
       itemKey:     'item',
       execution: {
@@ -127,19 +131,26 @@ export const reservoirDag: DAGType = {
           idleMs:   500,       // flush partial batches after 500 ms idle
         },
       },
+      outputs: {
+        'all-success': 'urn:noocodec:dag:plural-native-demo/node/collect-top',
+        partial: 'urn:noocodec:dag:plural-native-demo/node/collect-top',
+        'all-error': 'urn:noocodec:dag:plural-native-demo/node/collect-top',
+        empty: 'urn:noocodec:dag:plural-native-demo/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:plural-native-demo/node/collect-top',
+      '@type': 'GatherNode',
+      name: 'collect-top',
+      sources: { 'urn:noocodec:dag:plural-native-demo/node/batch-score': {} },
       gather: {
         strategy: 'append',
         target:   'topCandidates',
       },
-      outputs: {
-        'all-success': 'end',
-        partial:       'end',
-        'all-error':   'end',
-        empty:         'end',
-      },
+      outputs: { success: 'urn:noocodec:dag:plural-native-demo/node/end', error: 'urn:noocodec:dag:plural-native-demo/node/end', empty: 'urn:noocodec:dag:plural-native-demo/node/end' },
     },
     {
-      '@id':   'urn:noocodex:dag:plural-native-demo/node/end',
+      '@id': 'urn:noocodec:dag:plural-native-demo/node/end',
       '@type': 'TerminalNode',
       name:    'end',
       outcome: 'completed',

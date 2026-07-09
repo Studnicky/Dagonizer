@@ -26,7 +26,7 @@
  *   HITL park info (`result.parked`) is surfaced here; the base class has no
  *   IndexedDB or localStorage dependency.
  *
- * Static fallback pools:
+ * Static sample pools:
  *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants shared
  *   by every frontend.
  */
@@ -71,8 +71,10 @@ import type { ArchivistServices, LlmClientInterface } from './services.ts';
 import { StateProjection } from './state/StateProjection.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 
-// ── Static fallback pools ────────────────────────────────────────────────────
+// ── Static sample pools ───────────────────────────────────────────────────────
 // Single source of truth for every Archivist frontend.
+
+const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
 
 export const STATIC_GREETINGS: readonly string[] = [
   'Welcome to the shop. The shelves remember everything they hold. What brings you in?',
@@ -180,7 +182,7 @@ const DEFAULT_TIMEOUT_SETTINGS: SessionTimeoutSettings = {
 export interface ArchivistSessionOptions {
   readonly conversationContextWindow?: number;
   readonly timeoutSettings?: Partial<SessionTimeoutSettings>;
-  /** Clock for session timestamps and deterministic fallback selection. */
+  /** Clock for session timestamps and deterministic sample selection. */
   readonly clock?: SubstrateClock;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
@@ -206,7 +208,7 @@ const NODE_TRACE_MESSAGES: Readonly<Record<string, (state: ArchivistState) => st
     return state.bookWorksets.map((ws) => {
       const a = ws.arguments;
       const q = a['query'] ?? a['isbn'] ?? a['author'] ?? a['subject'] ?? '?';
-      return `search: ${ws.dagName.replace('tool:', '')} → "${String(q)}"`;
+      return `search: ${ws.dagIri.replace('urn:noocodec:tool:', '')} → "${String(q)}"`;
     }).join(' | ');
   },
   'rank-candidates': (state) => `candidates from tools: ${String(state.candidates.length)}`,
@@ -438,7 +440,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * real HTTP tool instances.
    *
    * The same tool instances MUST appear in both `services` and `toolRegistry`
-   * because the DAG's scatter body resolves `tool:<name>` embedded DAGs from
+   * because the DAG's scatter body resolves tool DAG IRIs from
    * the registry, and the node implementations call `services.webSearch`, etc.
    */
   protected buildRig(llm: LlmClientInterface, embedder: EmbedderInterface | null): SessionRig {
@@ -490,7 +492,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Served asset paths for the on-device transformers embedder (model + WASM),
    * so it loads fully offline from the app bundle. Default empty — the embedder
-   * falls back to its package-local vendored weights (node/headless). A browser
+   * uses its package-local vendored weights (node/headless). A browser
    * frontend overrides this to return the bundler-served paths.
    */
   protected embedderAssetPaths(): EmbedderProvisionOptionsType {
@@ -562,7 +564,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         this.activeBackend = picked.id;
         this.logger.info(
           {
-            'context': { 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' },
+            'context': { 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'available-default' },
             'event': 'archivist.backend-select',
             'message': savedId === null
               ? `backend auto-selected: ${picked.displayName}`
@@ -577,8 +579,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Generate and emit the Archivist greeting for a fresh session.
    *
-   * Tries the LLM first; falls back to a static pool entry when the LLM is
-   * unavailable or throws. Calls `onGreetingReady(greeting)` with the result.
+   * Tries the LLM first; uses a static sample when the LLM is unavailable or
+   * throws. Calls `onGreetingReady(greeting)` with the result.
    *
    * Returns the greeting text so callers can chain `sampleReply(greeting)`.
    */
@@ -591,7 +593,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         const generated = await llm.suggestGreeting();
         if (generated.length > 0) greeting = generated;
       } catch {
-        // static fallback
+        // Static sample remains selected.
       }
     }
 
@@ -602,8 +604,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Generate and emit a visitor-style reply to the supplied greeting.
    *
-   * Tries the LLM first; falls back to a static pool entry when unavailable
-   * or when the LLM produces an empty string. Calls `onSampleReplyReady(reply)`.
+   * Tries the LLM first; uses a static sample when unavailable or when the LLM
+   * produces an empty string. Calls `onSampleReplyReady(reply)`.
    */
   async sampleReply(greeting: string): Promise<void> {
     const llm = this.#resolveLlm();
@@ -614,7 +616,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         const generated = await llm.suggestVisitorReplyTo(greeting);
         if (generated.length > 0) reply = generated;
       } catch {
-        // static fallback
+        // Static sample remains selected.
       }
     }
 
@@ -690,7 +692,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     };
 
     try {
-      await observer.execute('the-archivist', visitor, executeOptions);
+      await observer.execute(ARCHIVIST_DAG_IRI, visitor, executeOptions);
     } catch (err) {
       this.onError(err instanceof Error ? err : new Error(String(err)));
     } finally {

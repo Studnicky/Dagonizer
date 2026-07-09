@@ -76,6 +76,7 @@ import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 class AverageGather extends GatherStrategy {
   readonly name = 'average';
+  readonly '@id' = 'urn:noocodec:node:average';
   reduce(
     config: GatherConfigType,
     batch: Batch<GatherRecordType>,

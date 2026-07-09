@@ -36,7 +36,7 @@ state.urls = [
   'https://ccc.example',  // 19 chars → fail
   'https://dddd.example', // 20 chars → ok
 ];
-await dispatcher.execute('scrape', state);
+await dispatcher.execute('urn:noocodec:dag:scrape', state);
 
 process.stdout.write('\nScatter DAG: probe runs once per URL, concurrency=2\n');
 process.stdout.write(`  succeeded: ${JSON.stringify(state.succeeded)}\n`);

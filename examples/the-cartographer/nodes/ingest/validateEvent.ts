@@ -28,6 +28,7 @@ import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '
 
 // #region validate-event-node
 export class ValidateEventNode extends MonadicNode<CartographerState, 'validated'> {
+  readonly '@id' = 'urn:noocodec:node:validate-event';
   readonly 'name' = 'validate-event';
   readonly 'outputs' = ['validated'] as const;
 

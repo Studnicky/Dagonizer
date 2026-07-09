@@ -2,7 +2,7 @@
  * PhaseNode: lifecycle-attached placement in JSON-LD canonical form.
  *
  * Uses `@type: 'PhaseNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
+ * URN: `urn:noocodec:dag:<dagName>/node/<name>`.
  *
  * A PhaseNode wraps the main DAG loop with side-effect work that runs
  * BEFORE the entrypoint (`phase: 'pre'`) or AFTER the main loop drains
@@ -14,7 +14,7 @@
  * does not change the already-set lifecycle.
  *
  * PhaseNode placements have no `outputs`; they cannot route to other
- * placements. They reference a registered `NodeInterface` by name and
+ * placements. They reference a registered `NodeInterface` by node IRI and
  * mutate state in place.
  *
  * Naming: the placement interface is distinct from `NodeInterface` (the
@@ -25,7 +25,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const PhaseNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/PhaseNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/PhaseNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'node', 'phase'],
@@ -41,4 +41,3 @@ export const PhaseNodeSchema = {
 
 /** TypeScript type derived from `PhaseNodeSchema` via `json-schema-to-ts`. */
 export type PhaseNodeType = FromSchema<typeof PhaseNodeSchema>;
-

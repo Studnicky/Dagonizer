@@ -26,6 +26,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
@@ -55,12 +56,14 @@ class HandoffState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-const incrementNode = TestNode.make<HandoffState>('increment', ['next'], (state) => {
+const incrementNode = TestNode.make<HandoffState>('urn:noocodec:node:increment', ['next'], (state) => {
   state.counter += 1;
   return 'next';
 });
 
-const noopNode = TestNode.make<HandoffState>('noop', ['done']);
+const noopNode = TestNode.make<HandoffState>('urn:noocodec:node:noop', ['done']);
+
+const placementIri = TestDag.placementIri;
 
 // ---------------------------------------------------------------------------
 // DAG helpers
@@ -68,24 +71,24 @@ const noopNode = TestNode.make<HandoffState>('noop', ['done']);
 
 class TestHandoffDag {
   private constructor() {}
-  static simple(dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAGType {
+  static simple(dagIri: string, dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id': `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoints': { 'main': 'increment' },
+      'entrypoints': { 'main': placementIri(dagIri, 'increment') },
       'nodes': [
         {
-          '@id': `urn:noocodex:dag:${dagName}/node/increment`,
+          '@id': placementIri(dagIri, 'increment'),
           '@type': 'SingleNode',
           'name': 'increment',
-          'node': 'increment',
-          'outputs': { 'next': terminalName },
+          'node': 'urn:noocodec:node:increment',
+          'outputs': { 'next': placementIri(dagIri, terminalName) },
         },
         {
-          '@id': `urn:noocodex:dag:${dagName}/node/${terminalName}`,
+          '@id': placementIri(dagIri, terminalName),
           '@type': 'TerminalNode',
           'name': terminalName,
           'outcome': outcome,
@@ -102,7 +105,7 @@ class TestHandoffDag {
 void describe('handoff-channel: bound terminal', () => {
   void it('publishes exactly one envelope with state snapshot', async () => {
     const channel = new InMemoryChannel();
-    const dag = TestHandoffDag.simple('handoff-bound', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-bound', 'handoff-bound', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
       'registryVersion': '1.2.3',
@@ -111,14 +114,14 @@ void describe('handoff-channel: bound terminal', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HandoffState();
-    const result = await dispatcher.execute('handoff-bound', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:handoff-bound', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(channel.published.length, 1);
 
     const envelope = channel.published[0];
     if (envelope === undefined) throw new Error('expected envelope at index 0');
-    assert.equal(envelope.dagName, 'handoff-bound');
+    assert.equal(envelope.dagName, 'urn:noocodec:dag:handoff-bound');
     assert.equal(envelope.terminalName, 'done');
     assert.equal(envelope.terminalOutput, 'completed');
     assert.equal(envelope.registryVersion, '1.2.3');
@@ -141,7 +144,7 @@ void describe('handoff-channel: bound terminal', () => {
 
   void it('envelope state reflects node mutations (counter incremented)', async () => {
     const channel = new InMemoryChannel();
-    const dag = TestHandoffDag.simple('handoff-counter', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-counter', 'handoff-counter', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
@@ -149,7 +152,7 @@ void describe('handoff-channel: bound terminal', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HandoffState();
-    await dispatcher.execute('handoff-counter', state);
+    await dispatcher.execute('urn:noocodec:dag:handoff-counter', state);
 
     assert.equal(channel.published.length, 1);
     const envelope = channel.published[0];
@@ -168,7 +171,7 @@ void describe('handoff-channel: bound terminal', () => {
 void describe('handoff-channel: unbound terminal', () => {
   void it('publishes nothing when terminal is not in channels', async () => {
     const channel = new InMemoryChannel();
-    const dag = TestHandoffDag.simple('handoff-unbound', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-unbound', 'handoff-unbound', 'done', 'completed');
     // channels does NOT include 'done'
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'other': channel },
@@ -177,7 +180,7 @@ void describe('handoff-channel: unbound terminal', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HandoffState();
-    const result = await dispatcher.execute('handoff-unbound', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:handoff-unbound', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(channel.published.length, 0);
@@ -185,13 +188,13 @@ void describe('handoff-channel: unbound terminal', () => {
 
   void it('publishes nothing when channels option is empty', async () => {
     const channel = new InMemoryChannel();
-    const dag = TestHandoffDag.simple('handoff-empty-channels', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-empty-channels', 'handoff-empty-channels', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>();
     dispatcher.registerNode(incrementNode);
     dispatcher.registerDAG(dag);
 
     const state = new HandoffState();
-    await dispatcher.execute('handoff-empty-channels', state);
+    await dispatcher.execute('urn:noocodec:dag:handoff-empty-channels', state);
 
     assert.equal(channel.published.length, 0);
   });
@@ -209,7 +212,7 @@ void describe('handoff-channel: publish failure', () => {
       },
     };
 
-    const dag = TestHandoffDag.simple('handoff-fail', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-fail', 'handoff-fail', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': failingChannel },
     });
@@ -217,7 +220,7 @@ void describe('handoff-channel: publish failure', () => {
     dispatcher.registerDAG(dag);
 
     const state = new HandoffState();
-    const result = await dispatcher.execute('handoff-fail', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:handoff-fail', state);
 
     // terminalOutcome unchanged
     assert.equal(result.terminalOutcome, 'completed');
@@ -242,21 +245,21 @@ void describe('handoff-channel: embedded child does not publish', () => {
     // child DAG: single node → terminal 'done'
     const childDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:handoff-child',
+      '@id': 'urn:noocodec:dag:handoff-child',
       '@type': 'DAG',
       'name': 'handoff-child',
       'version': '1',
-      'entrypoints': { 'main': 'noop' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:handoff-child', 'noop') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:handoff-child/node/noop',
+          '@id': 'urn:noocodec:dag:handoff-child/node/noop',
           '@type': 'SingleNode',
           'name': 'noop',
-          'node': 'noop',
-          'outputs': { 'done': 'child-done' },
+          'node': 'urn:noocodec:node:noop',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:handoff-child', 'child-done') },
         },
         {
-          '@id': 'urn:noocodex:dag:handoff-child/node/child-done',
+          '@id': 'urn:noocodec:dag:handoff-child/node/child-done',
           '@type': 'TerminalNode',
           'name': 'child-done',
           'outcome': 'completed',
@@ -267,21 +270,21 @@ void describe('handoff-channel: embedded child does not publish', () => {
     // parent DAG: embeds the child, then reaches own terminal
     const parentDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:handoff-parent',
+      '@id': 'urn:noocodec:dag:handoff-parent',
       '@type': 'DAG',
       'name': 'handoff-parent',
       'version': '1',
-      'entrypoints': { 'main': 'embed' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:handoff-parent', 'embed') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:handoff-parent/node/embed',
+          '@id': 'urn:noocodec:dag:handoff-parent/node/embed',
           '@type': 'EmbeddedDAGNode',
           'name': 'embed',
-          'dag': 'handoff-child',
-          'outputs': { 'success': 'parent-done' },
+          'dag': 'urn:noocodec:dag:handoff-child',
+          'outputs': { 'success': placementIri('urn:noocodec:dag:handoff-parent', 'parent-done') },
         },
         {
-          '@id': 'urn:noocodex:dag:handoff-parent/node/parent-done',
+          '@id': 'urn:noocodec:dag:handoff-parent/node/parent-done',
           '@type': 'TerminalNode',
           'name': 'parent-done',
           'outcome': 'completed',
@@ -302,7 +305,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new HandoffState();
-    await dispatcher.execute('handoff-parent', state);
+    await dispatcher.execute('urn:noocodec:dag:handoff-parent', state);
 
     // Only ONE publish: the top-level parent-done terminal.
     // The embedded child-done terminal must not publish.
@@ -424,14 +427,14 @@ void describe('InMemoryChannel: onPublished hook', () => {
       }
     }
     const channel = new RecordingChannel();
-    const dag = TestHandoffDag.simple('handoff-hook', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-hook', 'handoff-hook', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
     dispatcher.registerNode(incrementNode);
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('handoff-hook', new HandoffState());
+    await dispatcher.execute('urn:noocodec:dag:handoff-hook', new HandoffState());
 
     assert.equal(channel.published.length, 1);
     assert.equal(received.length, 1);
@@ -450,14 +453,14 @@ void describe('InMemoryChannel: onPublished hook', () => {
       }
     }
     const channel = new ThrowingChannel();
-    const dag = TestHandoffDag.simple('handoff-throw', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-throw', 'handoff-throw', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
     dispatcher.registerNode(incrementNode);
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('handoff-throw', new HandoffState());
+    await dispatcher.execute('urn:noocodec:dag:handoff-throw', new HandoffState());
 
     // Envelope is still recorded (publish() records before calling hook).
     assert.equal(channel.published.length, 1);
@@ -468,14 +471,14 @@ void describe('InMemoryChannel: onPublished hook', () => {
 
   void it('publishErrors is empty when onPublished succeeds', async () => {
     const channel = new InMemoryChannel();
-    const dag = TestHandoffDag.simple('handoff-no-error', 'done', 'completed');
+    const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-no-error', 'handoff-no-error', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
     dispatcher.registerNode(incrementNode);
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('handoff-no-error', new HandoffState());
+    await dispatcher.execute('urn:noocodec:dag:handoff-no-error', new HandoffState());
 
     assert.equal(channel.publishErrors.length, 0);
   });

@@ -7,8 +7,8 @@
  * this boundary.
  *
  * The tool instance is injected at construction — a collaborator object, not
- * a callback. The node name is passed explicitly so the same class can be
- * instantiated once per tool (each instance has its own unique `name`).
+ * a callback. The node IRI is passed explicitly so the same class can be
+ * instantiated once per tool while labels remain display-only.
  */
 
 import { SCATTER_ITEM_KEY_DEFAULT } from '../builder/ScatterOptions.js';
@@ -29,6 +29,7 @@ import type { ToolInterface } from './ToolInterface.js';
 import { ToolInvocationState } from './ToolInvocationState.js';
 
 export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'error'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs = ['done', 'error'] as const;
 
@@ -53,6 +54,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
   readonly #execution: BatchExecutionOptionsType;
 
   constructor(
+    iri: string,
     name: string,
     tool: ToolInterface<Record<string, unknown>, unknown>,
     inputValidator: EntityValidatorInterface<unknown>,
@@ -61,6 +63,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
   ) {
     super();
     // Initialise in declaration order — V8 shape stability.
+    this['@id'] = iri;
     this.name = name;
     this.#tool = tool;
     this.#inputValidator = inputValidator;
@@ -103,11 +106,11 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
     context: NodeContextType,
   ): Promise<NodeOutputType<'done' | 'error'>> {
     try {
-      // Resolve tool input from `state.input` (embeddedDAG path, seeded via
+      // Resolve tool input from `state.input` (embedded-DAG path, seeded via
       // `inputs` mapping) or from the scatter item stored in metadata
       // (scatter DagReference path: scatter sets metadata[currentItem] = the
-      // scatter item, which carries `arguments`). The embeddedDAG path wins when
-      // `state.input` is non-empty; the scatter path is the fallback. The item
+      // scatter item, which carries `arguments`). The embedded-DAG path wins when
+      // `state.input` is non-empty; otherwise the scatter item is used. The item
       // comes out of the `unknown`-typed metadata record and is narrowed through a
       // type guard — no cast.
       const inputFromState = state.input;

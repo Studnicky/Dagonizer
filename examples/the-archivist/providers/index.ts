@@ -146,7 +146,7 @@ export interface InstantiateInputs {
    * The chat model to instantiate the adapter with. Set by the runner from the
    * active backend's `BackendAvailability.resolvedModel` (populated by
    * `BackendMatrix.detect` via live model-list discovery). An empty string means
-   * "no explicit model": the adapter falls back to its internal default.
+   * "no explicit model": the adapter uses its internal default.
    */
   readonly model?: string;
   readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
@@ -170,17 +170,7 @@ export class ApiKeyStore {
   static load(): Partial<Record<ProviderId, string>> {
     if (typeof localStorage === 'undefined') return {};
     const raw = localStorage.getItem('dagonizer-api-keys');
-    if (raw === null) {
-      // Migrate legacy single-key entry.
-      const legacy = localStorage.getItem('dagonizer-gemini-key');
-      if (legacy !== null && legacy.length > 0) {
-        const migrated: Partial<Record<ProviderId, string>> = { 'gemini-api': legacy };
-        localStorage.setItem('dagonizer-api-keys', JSON.stringify(migrated));
-        localStorage.removeItem('dagonizer-gemini-key');
-        return migrated;
-      }
-      return {};
-    }
+    if (raw === null) return {};
     try {
       const parsed: unknown = JSON.parse(raw);
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -210,21 +200,11 @@ export class ApiKeyStore {
  */
 export class PreferredModels {
   static readonly #STORAGE_KEY = 'dagonizer-preferred-models';
-  static readonly #LEGACY_OLLAMA_KEY = 'dagonizer-ollama-model';
 
   static load(): Partial<Record<ProviderId, string>> {
     if (typeof localStorage === 'undefined') return {};
     const raw = localStorage.getItem(PreferredModels.#STORAGE_KEY);
-    if (raw === null) {
-      const legacy = localStorage.getItem(PreferredModels.#LEGACY_OLLAMA_KEY);
-      if (legacy !== null && legacy.trim().length > 0) {
-        const migrated: Partial<Record<ProviderId, string>> = { 'ollama': legacy.trim() };
-        PreferredModels.save(migrated);
-        localStorage.removeItem(PreferredModels.#LEGACY_OLLAMA_KEY);
-        return migrated;
-      }
-      return {};
-    }
+    if (raw === null) return {};
     try {
       const parsed: unknown = JSON.parse(raw);
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};

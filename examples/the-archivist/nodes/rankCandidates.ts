@@ -171,6 +171,7 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
   readonly #embeddingRequests = Coalesce.create<readonly number[]>();
 
   readonly name = 'rank-candidates';
+  readonly '@id' = 'urn:noocodec:node:rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
   constructor(services: ArchivistServices) {
@@ -261,7 +262,7 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
           queryVec     = await embedder.embed(queryText, { signal });
           semanticVecs = await this.embedSemantic(embedder, state.candidates, signal);
         } catch {
-          // Embedder threw: drop the cosine term and fall back to the
+          // Embedder threw: drop the cosine term and use the
           // deterministic composite score for every candidate.
           queryVec     = null;
           semanticVecs = state.candidates.map(() => null);
@@ -300,7 +301,7 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
             const found = byIsbn.get(ls.candidate.book.identity.isbn);
             if (found !== undefined) reorderedTop.push(found);
           }
-          // Defensive: if the LLM dropped one (schema drift), fall back.
+          // Defensive: if the LLM dropped one (schema drift), use local order.
           if (reorderedTop.length === 3) {
             scored.splice(0, 3, ...reorderedTop);
             llmTiebreakApplied = true;

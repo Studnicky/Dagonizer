@@ -27,8 +27,6 @@
  * from the original config are preserved across every cycle.
  */
 
-import type { ResumableStreamProducerInterface } from '@studnicky/dagonizer/contracts';
-import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 import type { EventTypeConfig, TypedScan } from '../services.ts';
 import { ShipmentEvents, Sources } from '../services.ts';
 import type { SourcePayload } from '../entities/SourcePayload.ts';
@@ -221,41 +219,6 @@ class ScaledCycleIterator implements AsyncIterator<SourcePayload, undefined> {
   }
 }
 
-// #region cartographer-stream-producer
-/**
- * CartographerStreamProducer: resumable stream producer for the Cartographer
- * scatter source. Implements `ResumableStreamProducerInterface<SourcePayload>`
- * so `StreamChannel.resumable` can supply the remainder after an abort.
- *
- * `produce` iterates `EventStreamSource.streamTyped` from the start and skips
- * the first `resumeAfter` items (already durably consumed by the scatter),
- * pushing the remainder into the provided sink.
- */
-export class CartographerStreamProducer implements ResumableStreamProducerInterface<SourcePayload> {
-  readonly #config: EventTypeConfig;
-  readonly #totalCount: number | undefined;
-
-  constructor(config: EventTypeConfig, totalCount?: number) {
-    this.#config = config;
-    this.#totalCount = totalCount;
-  }
-
-  static of(config: EventTypeConfig, totalCount?: number): CartographerStreamProducer {
-    return new CartographerStreamProducer(config, totalCount);
-  }
-
-  async produce(sink: StreamSinkInterface<SourcePayload>, resumeAfter: number): Promise<void> {
-    let index = 0;
-    for await (const item of EventStreamSource.streamTyped(this.#config, this.#totalCount)) {
-      if (index >= resumeAfter) {
-        await sink.push(item);
-      }
-      index++;
-    }
-  }
-}
-// #endregion cartographer-stream-producer
-
 // #region event-stream-source
 export class EventStreamSource {
   private constructor() { /* static-only */ }
@@ -273,9 +236,8 @@ export class EventStreamSource {
    * scaled config per cycle. This keeps buildRawScans arrays bounded at
    * O(CYCLE_CAP) per cycle regardless of effective total count.
    *
-   * Backward compatibility: when totalCount is undefined or does not exceed the
-   * config sum, the original single-pass path is used unchanged so existing
-   * consumers receive byte-identical output.
+   * Single-pass path: when totalCount is undefined or does not exceed the config
+   * sum, one generator pass produces the requested payloads.
    *
    * @param config     Typed feed configuration.
    * @param totalCount Optional override for total event count. When absent, the
@@ -285,8 +247,8 @@ export class EventStreamSource {
     const originalSum = EventTypeConfigMath.total(config);
     const effective = totalCount !== undefined ? EventTypeConfigMath.clampCount(totalCount) : EventTypeConfigMath.clampCount(originalSum);
 
-    // Backward-compatible single-pass path: effective fits within the config's
-    // natural sum — one generator pass produces exactly `effective` payloads.
+    // Single-pass path: effective fits within the config's natural sum, so one
+    // generator pass produces exactly `effective` payloads.
     // With the interleaved generator, scans arrive in mixed-type order, so each
     // type's local format index is tracked by config entry index (looked up from
     // the scan's eventType) rather than by sequential stream position.
@@ -369,14 +331,5 @@ export class EventStreamSource {
     };
   }
 
-  /**
-   * Return a `CartographerStreamProducer` that implements
-   * `ResumableStreamProducerInterface<SourcePayload>`. Pass the result to
-   * `StreamChannel.resumable(producer, cursor)` to supply only the items the
-   * scatter has not yet durably consumed.
-   */
-  static resumableProducer(config: EventTypeConfig, totalCount?: number): CartographerStreamProducer {
-    return CartographerStreamProducer.of(config, totalCount);
-  }
 }
 // #endregion event-stream-source

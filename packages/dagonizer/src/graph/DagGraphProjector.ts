@@ -37,11 +37,11 @@ export class DagGraphProjector {
     store.assert(dagNode, DagGraphTerms.predicate('name'), DagGraphTerms.literal(dag.name), graph);
     store.assert(dagNode, DagGraphTerms.predicate('version'), DagGraphTerms.literal(dag.version), graph);
 
-    for (const [label, placementName] of Object.entries(dag.entrypoints)) {
+    for (const [label, placementIri] of Object.entries(dag.entrypoints)) {
       const entrypoint = DagGraphTerms.namedNode(`${dagIri}/entrypoint/${encodeURIComponent(label)}`);
       store.assert(dagNode, DagGraphTerms.predicate('entrypoint'), entrypoint, graph);
       store.assert(entrypoint, DagGraphTerms.predicate('label'), DagGraphTerms.literal(label), graph);
-      store.assert(entrypoint, DagGraphTerms.predicate('target'), DagGraphTerms.namedNode(DagGraphProjector.placementIri(dagIri, placementName)), graph);
+      store.assert(entrypoint, DagGraphTerms.predicate('target'), DagGraphTerms.namedNode(placementIri), graph);
     }
 
     for (const placement of dag.nodes) {
@@ -60,13 +60,13 @@ export class DagGraphProjector {
     const graph = DagGraphTerms.namedNode(DagGraphProjector.topologyGraphIri(dagIri));
 
     for (const placement of input.dag.nodes) {
-      const nodeName = DagGraphProjector.nodeNameForSchemaProjection(placement);
-      if (nodeName === null) continue;
-      const nodeIri = ContextResolver.expand(nodeName, context);
+      const nodeRef = DagGraphProjector.nodeRefForSchemaProjection(placement);
+      if (nodeRef === null) continue;
+      const nodeIri = ContextResolver.expand(nodeRef, context);
       const node = input.nodes.get(nodeIri);
       if (node === undefined) continue;
       DagGraphProjector.projectNodeContract(
-        DagGraphProjector.placementIri(dagIri, placement.name),
+        placement['@id'],
         node,
         input.schemas,
         input.store,
@@ -90,15 +90,11 @@ export class DagGraphProjector {
   }
 
   static dagIri(dag: DAGType): string {
-    return ContextResolver.expand(dag.name, ContextResolver.contextOf(dag['@context']));
+    return ContextResolver.expand(dag['@id'], ContextResolver.contextOf(dag['@context']));
   }
 
   static topologyGraphIri(dagIri: string): string {
     return `${dagIri}#topology`;
-  }
-
-  static placementIri(dagIri: string, placementName: string): string {
-    return `${dagIri}#${encodeURIComponent(placementName)}`;
   }
 
   private static projectPlacement(
@@ -108,7 +104,7 @@ export class DagGraphProjector {
     store: TripleStoreInterface,
     graph: TermType,
   ): void {
-    const placementIri = DagGraphProjector.placementIri(dagIri, placement.name);
+    const placementIri = placement['@id'];
     const placementNode = DagGraphTerms.namedNode(placementIri);
 
     store.assert(DagGraphTerms.namedNode(dagIri), DagGraphTerms.predicate('placement'), placementNode, graph);
@@ -120,7 +116,7 @@ export class DagGraphProjector {
         const route = DagGraphTerms.namedNode(`${placementIri}/route/${encodeURIComponent(output)}`);
         store.assert(placementNode, DagGraphTerms.predicate('route'), route, graph);
         store.assert(route, DagGraphTerms.predicate('output'), DagGraphTerms.literal(output), graph);
-        store.assert(route, DagGraphTerms.predicate('target'), DagGraphTerms.namedNode(DagGraphProjector.placementIri(dagIri, target)), graph);
+        store.assert(route, DagGraphTerms.predicate('target'), DagGraphTerms.namedNode(target), graph);
       }
     }
 
@@ -131,8 +127,13 @@ export class DagGraphProjector {
       DagGraphProjector.projectDagReference(placement.body.dag, placementIri, context, store, graph);
     }
     if (Placement.isGather(placement)) {
-      for (const source of placement.sources) {
-        store.assert(placementNode, DagGraphTerms.predicate('source'), DagGraphTerms.literal(source), graph);
+      for (const [source, binding] of Object.entries(placement.sources)) {
+        const sourceNode = DagGraphTerms.namedNode(`${placementIri}/source/${encodeURIComponent(source)}`);
+        store.assert(placementNode, DagGraphTerms.predicate('source'), sourceNode, graph);
+        store.assert(sourceNode, DagGraphTerms.predicate('label'), DagGraphTerms.literal(source), graph);
+        if (binding.resultField !== undefined) {
+          store.assert(sourceNode, DagGraphTerms.predicate('resultField'), DagGraphTerms.literal(binding.resultField), graph);
+        }
       }
     }
   }
@@ -157,7 +158,6 @@ export class DagGraphProjector {
     for (const candidate of DagReference.candidates(reference)) {
       const candidateDag = DagGraphTerms.namedNode(ContextResolver.expand(candidate, context));
       store.assert(referenceNode, DagGraphTerms.predicate('candidateDag'), candidateDag, graph);
-      store.assert(referenceNode, DagGraphTerms.predicate('candidateName'), DagGraphTerms.literal(candidate), graph);
       store.assert(owner, DagGraphTerms.predicate('embedsDag'), candidateDag, graph);
     }
   }
@@ -184,7 +184,7 @@ export class DagGraphProjector {
     }
   }
 
-  private static nodeNameForSchemaProjection(placement: DAGNodeType): string | null {
+  private static nodeRefForSchemaProjection(placement: DAGNodeType): string | null {
     if (Placement.isSingle(placement)) return placement.node;
     if (Placement.isPhase(placement)) return placement.node;
     return null;

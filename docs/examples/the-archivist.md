@@ -1,6 +1,6 @@
 ---
 title: 'The Archivist'
-description: 'A bookstore help-bot powered by Dagonizer: multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
+description: 'A bookstore help-bot powered by Dagonizer: multi-branch DAG with hard and soft gates, parallel scouts, RAG retrieval, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
 seeAlso:
 
   - text: 'Concepts'
@@ -33,7 +33,7 @@ seeAlso:
 
 ## What It Is
 
-The Archivist is a runnable demo: a real browser-executed DAG application, not a decorative diagram. A bookstore help-bot powered by Dagonizer: multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. It is the running demo every Dagonizer agent example references.
+The Archivist is a runnable demo: a real browser-executed DAG application, not a decorative diagram. A bookstore help-bot powered by Dagonizer: multi-branch DAG with hard and soft gates, parallel scouts, RAG retrieval, and a bounded compose/validate retry loop. It is the running demo every Dagonizer agent example references.
 
 Use it to see a model-driven workflow become inspectable: model calls are nodes, tool work is routed through DAG placements, retries are visible edges, and memory is a shared store rather than a hidden callback side effect.
 
@@ -61,9 +61,9 @@ Three exit conditions, each carrying a different outcome.
 
 The Archivist proves that an LLM agent application can be an inspectable DAG: model calls are nodes, tool dispatch is embedded-DAG/scatter composition, recall uses shared memory, retries are graph edges, and the final response is a lifecycle outcome instead of an opaque callback.
 
-Try it live below; the demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. The browser demo provisions an on-device embedder (`EmbedderProvisioner` — transformers.js MiniLM, with TensorFlow.js USE and WebLLM behind it); cosine recall, hybrid ranking, and vector-similarity intent classification run client-side, falling back to Jaccard / heuristics only when no embedder probes available. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and a separate `EmbedderCascade` for the same vector-similarity intent classification.
+Try it live below; the demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device options (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. The browser demo provisions an on-device embedder (`EmbedderProvisioner` — transformers.js MiniLM, with TensorFlow.js USE and WebLLM behind it); cosine recall, hybrid ranking, and vector-similarity intent classification run client-side, using Jaccard / heuristics only when no embedder probes are available. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and a separate `EmbedderCascade` for the same vector-similarity intent classification.
 
-The Archivist composes reusable work through one interface: a placement points at a DAG through `dag`, either as a literal registered name or as a dynamic `DagReference` with explicit candidates. `EmbeddedDAGNode` invokes one selected DAG once; `ScatterNode` invokes the selected DAG per source item and then folds clone output through gather/reduce policy. `build-book-worksets` converts the decided tool plan into a `bookWorksets` array where each item carries a `dagName` field, the scatter resolves the body DAG through the same `dag` reference surface, the `tool-candidate-merge` gather folds each clone's output into the parent `candidates`, and the `any-success` reducer routes `success` when at least one tool returned results. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
+The Archivist composes reusable work through one interface: a placement points at a DAG through `dag`, either as a literal registered DAG IRI or as a dynamic `DagReference` with explicit candidates. `EmbeddedDAGNode` invokes one selected DAG once; `ScatterNode` invokes the selected DAG per source item and then routes clone output into a first-class gather placement. `build-book-worksets` converts the decided tool plan into a `bookWorksets` array where each item carries a `dagIri` field, the scatter resolves the body DAG through the same `dag` reference surface, the `tool-candidate-merge` gather folds each clone's output into the parent `candidates`, and the `any-success` reducer routes `success` when at least one tool returned results. A `PhaseNode` (`phase: 'pre'`, placement display name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
 <ClientOnly>
   <ArchivistRunner />
@@ -87,7 +87,7 @@ The Archivist source is intentionally visible because this demo is the reference
 
 ### Compositional embedded-DAG sub-DAGs
 
-The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any application can import, register, and reference via `.embed(name, dagName, routes, options)`.
+The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any application can import, register, and reference via `.embed(placementIri, dagIri, routes, options)`.
 
 - **`book-search-scatter`**: extract-query → decide-tools → recall-candidates → build-book-worksets → scatter over `bookWorksets` with a dynamic `DagReference` body (tool-registry dispatch, concurrency 4, `tool-candidate-merge` gather, `any-success` reducer) → rank-candidates → merge-candidates → record-findings → has-citations-gate → recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three embedded-DAG placements.
 - **`compose-retry-loop`**: compose-response and validate-response, with a bounded retry edge back to compose and a `compose-salvage` recovery node. The sub-DAG produces `state.draft` and exits with `success`; the parent DAG owns the shared `respond-to-visitor` terminal. Every successful search branch funnels through this one shared cluster.
@@ -108,7 +108,7 @@ Reviews and describe branches are inlined in the parent DAG because they substit
 
 #### JSON-LD as the canonical DAG format
 
-The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript object whose wire shape is JSON-LD 1.1; every placement carries a typed IRI under `@type`. `Dagonizer.serialize(dag)` produces the JSON string; `Dagonizer.load(json)` parses and validates it back to an equivalent typed `DAG`.
+The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript object whose wire shape is JSON-LD 1.1; every placement carries a typed IRI under `@type`. `DAGDocument.serialize(dag)` produces the JSON string; `DAGDocument.load(json)` parses and validates it back to an equivalent typed `DAG`.
 
 There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it: one surface throughout.
 
@@ -173,7 +173,7 @@ The Archivist runs against a real model in any of these environments. `detectBac
 | 6 | **Browser built-in model** (local, via `window.LanguageModel`) | Chrome 138+ or Edge. No key, no network, ~2 GB one-shot model download. Desktop only. |
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
 
-When none of these is reachable, the runner renders a no-model gate (with links to the free cloud keys above) instead of running. There is no canned-response fallback.
+When none of these is reachable, the runner renders a no-model gate (with links to the free cloud keys above) instead of running.
 
 ### Cross-agent memory and live model swapping
 
@@ -286,7 +286,7 @@ or any other static host without a proxy.
 
 ```bash
 # CLI: cascade is Ollama (localhost) → Gemini API → Cerebras → Groq; first reachable wins.
-# Throws NO_ADAPTER_AVAILABLE if none is reachable — there is no canned fallback.
+# Throws NO_ADAPTER_AVAILABLE if none is reachable.
 npx tsx examples/the-archivist/runArchivist.ts
 
 # Force Gemini REST with your key:
@@ -327,7 +327,7 @@ These numbered examples are owned by the Archivist domain because the live demo 
 | Example | Principle in the runnable Archivist |
 |---------|--------------------------------------|
 | [Example 22: Retry Timing and Salvage](./22-backoff-strategies) | The `compose-retry-loop` DAG shows retry/salvage routing; the example page isolates the timing policy that controls retry waits. |
-| [Example 24: LLM Adapter](./24-llm-adapter) | Provider selection and fallback happen before `compose-response` / intent-classification nodes call the active adapter. |
+| [Example 24: LLM Adapter](./24-llm-adapter) | Provider selection happens before `compose-response` / intent-classification nodes call the active adapter. |
 | [Example 25: Embedder](./25-embedder) | Semantic recall and intent support use the same embedder-registry surface against book and memory text. |
 | [Example 26: Tool Use](./26-tool-use) | `book-search-scatter` turns tool decisions into `bookWorksets`; each workset selects a registered tool DAG through a dynamic `DagReference`. |
 | [Example 29: Agent DAG with JSON-LD](./29-agent-dag) | The Archivist is the full in-browser agent application: request classification, model/tool work, memory recall, and response composition are all DAG placements. |

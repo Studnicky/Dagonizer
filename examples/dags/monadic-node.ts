@@ -23,6 +23,7 @@ import { Batch } from '@studnicky/dagonizer';
 // Items are partitioned across output ports — routing IS partitioning.
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
+  readonly '@id'   = 'urn:noocodec:node:echo';
   readonly outputs = ['out'] as const;
   override get outputSchema(): Record<'out', SchemaObjectType> {
     return { 'out': { 'type': 'object' } };
@@ -76,6 +77,7 @@ abstract class LoggingNode<
 
 export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' | 'empty' | 'error'> {
   readonly name    = 'search-catalogue';
+  readonly '@id'   = 'urn:noocodec:node:search-catalogue';
   readonly outputs = ['success', 'empty', 'error'] as const;
   override get outputSchema(): Record<'success' | 'empty' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'empty': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -113,6 +115,7 @@ const geoCache = {
 // item-independent routing: loop locally and preserve each item's route.
 export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
+  readonly '@id'   = 'urn:noocodec:node:geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
   override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
     return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
@@ -132,6 +135,7 @@ export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
 // allowing a single shared-cache lookup across all items simultaneously.
 export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
+  readonly '@id'   = 'urn:noocodec:node:enrich';
   readonly outputs = ['enriched'] as const;
   override get outputSchema(): Record<'enriched', SchemaObjectType> {
     return { 'enriched': { 'type': 'object' } };

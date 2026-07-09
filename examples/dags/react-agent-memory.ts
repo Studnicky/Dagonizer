@@ -11,7 +11,7 @@
  *      response (`lookup`), turn 2 (once a `tool`-role message is present
  *      in history) emits a plain-text final answer. `MyDecodeTextToolCallsNode`
  *      re-encodes the structured tool call as the `{tool_calls:[...]}` text
- *      envelope so `DecodeTextToolCallsNode` (the text-channel fallback
+ *      envelope so `DecodeTextToolCallsNode` (the text-channel decoder
  *      decoder) genuinely parses it — the same decode path a text-only
  *      model's embedded-JSON tool call would take.
  *
@@ -34,7 +34,7 @@
  * runnable entry point (`examples/react-agent-memory.ts`).
  *
  * Provenance quad shape, per step, in the run's named graph
- * (`urn:noocodex:react-agent-memory:run:<runId>`):
+ * (`urn:noocodec:react-agent-memory:run:<runId>`):
  *
  *   <step> prov#kind           "<thought|action|observation|final>"
  *   <step> prov#value          "<step text/tool-call/observation>"
@@ -104,10 +104,10 @@ export const REASONING_PROV_PREDICATE: {
   readonly wasGeneratedBy: TermType;
   readonly wasInformedBy: TermType;
 } = {
-  'kind':           { 'termType': 'NamedNode', 'value': 'urn:noocodex:react-agent-memory:prov#kind' },
-  'value':          { 'termType': 'NamedNode', 'value': 'urn:noocodex:react-agent-memory:prov#value' },
-  'wasGeneratedBy': { 'termType': 'NamedNode', 'value': 'urn:noocodex:react-agent-memory:prov#wasGeneratedBy' },
-  'wasInformedBy':  { 'termType': 'NamedNode', 'value': 'urn:noocodex:react-agent-memory:prov#wasInformedBy' },
+  'kind': { 'termType': 'NamedNode', 'value': 'urn:noocodec:react-agent-memory:prov#kind' },
+  'value': { 'termType': 'NamedNode', 'value': 'urn:noocodec:react-agent-memory:prov#value' },
+  'wasGeneratedBy': { 'termType': 'NamedNode', 'value': 'urn:noocodec:react-agent-memory:prov#wasGeneratedBy' },
+  'wasInformedBy': { 'termType': 'NamedNode', 'value': 'urn:noocodec:react-agent-memory:prov#wasInformedBy' },
 };
 
 /** Static factory for the run/step IRIs the provenance vocabulary addresses. */
@@ -116,12 +116,12 @@ export class ReasoningProvenanceIri {
 
   /** The named graph a run's provenance quads are asserted into. */
   static runGraph(runId: string): TermType {
-    return { 'termType': 'NamedNode', 'value': `urn:noocodex:react-agent-memory:run:${runId}` };
+    return { 'termType': 'NamedNode', 'value': `urn:noocodec:react-agent-memory:run:${runId}` };
   }
 
   /** The subject IRI for one step within a run. */
   static stepSubject(runId: string, index: number): TermType {
-    return { 'termType': 'NamedNode', 'value': `urn:noocodex:react-agent-memory:run:${runId}:step:${String(index)}` };
+    return { 'termType': 'NamedNode', 'value': `urn:noocodec:react-agent-memory:run:${runId}:step:${String(index)}` };
   }
 }
 
@@ -278,6 +278,7 @@ export class LookupTool implements ToolInterface<Record<string, unknown>, unknow
 //    request from the full running history.
 export class MyBuildChatRequestNode extends BuildChatRequestNode<AgentState> {
   readonly name = 'build-request';
+  readonly '@id' = 'urn:noocodec:node:build-request';
 
   protected buildRequest(state: AgentState, context: NodeContextType): ChatRequestType {
     if (state.history.length === 0) {
@@ -306,6 +307,7 @@ export class MyBuildChatRequestNode extends BuildChatRequestNode<AgentState> {
 //    human-readable "thought" text for the trace.
 export class MyCallModelNode extends CallModelNode<AgentState> {
   readonly name = 'call-model';
+  readonly '@id' = 'urn:noocodec:node:call-model';
 
   constructor(llm: LlmAdapterInterface, options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> } = {}) {
     super(llm, options);
@@ -329,19 +331,21 @@ export class MyCallModelNode extends CallModelNode<AgentState> {
 // 3. NormalizeResponseNode: routes on the stored response's variant.
 export class MyNormalizeResponseNode extends NormalizeResponseNode<AgentState> {
   readonly name = 'normalize-response';
+  readonly '@id' = 'urn:noocodec:node:normalize-response';
 
   protected getResponse(state: AgentState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
   }
 }
 
-// 4. DecodeTextToolCallsNode: text-channel tool-call fallback decoder. When the
+// 4. DecodeTextToolCallsNode: text-channel tool-call decoder. When the
 //    response carries structured tool calls (`'tools'`/`'mixed'`), re-encodes
 //    them as the `{tool_calls:[...]}` text envelope so the same decode path a
 //    text-only model's embedded-JSON tool call would take is genuinely
 //    exercised (`ToolCallCodec.decode` parses real JSON here, not a stub).
 export class MyDecodeTextToolCallsNode extends DecodeTextToolCallsNode<AgentState> {
   readonly name = 'decode-tools';
+  readonly '@id' = 'urn:noocodec:node:decode-tools';
 
   protected getText(state: AgentState, _ctx: NodeContextType): string {
     const response = state.chatResponse;
@@ -360,6 +364,7 @@ export class MyDecodeTextToolCallsNode extends DecodeTextToolCallsNode<AgentStat
 // 5. NormalizeToolCallsNode: validates decoded calls.
 export class MyNormalizeToolCallsNode extends NormalizeToolCallsNode<AgentState> {
   readonly name = 'normalize-tools';
+  readonly '@id' = 'urn:noocodec:node:normalize-tools';
 
   protected getToolCalls(state: AgentState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -374,6 +379,7 @@ export class MyNormalizeToolCallsNode extends NormalizeToolCallsNode<AgentState>
 //    exclusivity requirements in this example).
 export class MyBuildToolWorksetsNode extends BuildToolWorksetsNode<AgentState> {
   readonly name = 'build-worksets';
+  readonly '@id' = 'urn:noocodec:node:build-worksets';
 
   protected getToolCalls(state: AgentState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
@@ -399,6 +405,7 @@ export class MyBuildToolWorksetsNode extends BuildToolWorksetsNode<AgentState> {
 //    and answer with the final text).
 export class MyCollectToolResultsNode extends CollectToolResultsNode<AgentState> {
   readonly name = 'collect-results';
+  readonly '@id' = 'urn:noocodec:node:collect-results';
 
   protected getGatheredResults(state: AgentState, _ctx: NodeContextType): readonly unknown[] {
     return state.toolOutputs;
@@ -422,6 +429,7 @@ export class MyCollectToolResultsNode extends CollectToolResultsNode<AgentState>
 // 8. AppendAssistantNode: appends the final text answer to history.
 export class MyAppendAssistantNode extends AppendAssistantNode<AgentState> {
   readonly name = 'append-assistant';
+  readonly '@id' = 'urn:noocodec:node:append-assistant';
 
   protected getResponse(state: AgentState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
@@ -478,6 +486,7 @@ const STEP_VALIDATOR: EntityValidatorInterface<ReasoningTraceItemType> = Validat
  */
 export class RecordReasoningStepNode extends RecordFindingsNode<TraceState, ReasoningTraceItemType> {
   readonly name = 'record-step';
+  readonly '@id' = 'urn:noocodec:node:record-step';
   readonly outputs = ['success'] as const;
 
   readonly #runId: string;
@@ -579,92 +588,98 @@ export class ReActRecall {
 }
 
 /**
- * The pre-assembled agent-loop DAG, registered under the name `'react-agent'`.
+ * The pre-assembled agent-loop DAG, registered under its canonical DAG IRI.
  * Import and pass to `dispatcher.registerDAG(agentDag)`.
  */
 // #region react-agent-dag
 export const agentDag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:react-agent',
+  '@id': 'urn:noocodec:dag:react-agent',
   '@type': 'DAG',
   'name': 'react-agent',
   'version': '1',
-  'entrypoints': { 'main': 'build-request' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:react-agent/node/build-request' },
   'nodes': [
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/build-request',
+      '@id': 'urn:noocodec:dag:react-agent/node/build-request',
       '@type': 'SingleNode',
       'name': 'build-request',
-      'node': 'build-request',
-      'outputs': { 'ready': 'call-model', 'error': 'end-error' },
+      'node': 'urn:noocodec:node:build-request',
+      'outputs': {
+        'ready': 'urn:noocodec:dag:react-agent/node/call-model',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
+      },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/call-model',
+      '@id': 'urn:noocodec:dag:react-agent/node/call-model',
       '@type': 'SingleNode',
       'name': 'call-model',
-      'node': 'call-model',
+      'node': 'urn:noocodec:node:call-model',
       'outputs': {
-        'text': 'normalize-response',
-        'tools': 'normalize-response',
-        'mixed': 'normalize-response',
-        'error': 'end-error',
+        'text': 'urn:noocodec:dag:react-agent/node/normalize-response',
+        'tools': 'urn:noocodec:dag:react-agent/node/normalize-response',
+        'mixed': 'urn:noocodec:dag:react-agent/node/normalize-response',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/normalize-response',
+      '@id': 'urn:noocodec:dag:react-agent/node/normalize-response',
       '@type': 'SingleNode',
       'name': 'normalize-response',
-      'node': 'normalize-response',
+      'node': 'urn:noocodec:node:normalize-response',
       'outputs': {
-        'text': 'append-assistant',
-        'tools': 'decode-tools',
-        'mixed': 'decode-tools',
-        'empty': 'end-error',
-        'error': 'end-error',
+        'text': 'urn:noocodec:dag:react-agent/node/append-assistant',
+        'tools': 'urn:noocodec:dag:react-agent/node/decode-tools',
+        'mixed': 'urn:noocodec:dag:react-agent/node/decode-tools',
+        'empty': 'urn:noocodec:dag:react-agent/node/end-error',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/append-assistant',
+      '@id': 'urn:noocodec:dag:react-agent/node/append-assistant',
       '@type': 'SingleNode',
       'name': 'append-assistant',
-      'node': 'append-assistant',
-      'outputs': { 'done': 'end-done', 'error': 'end-error' },
+      'node': 'urn:noocodec:node:append-assistant',
+      'outputs': {
+        'done': 'urn:noocodec:dag:react-agent/node/end-done',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
+      },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/decode-tools',
+      '@id': 'urn:noocodec:dag:react-agent/node/decode-tools',
       '@type': 'SingleNode',
       'name': 'decode-tools',
-      'node': 'decode-tools',
+      'node': 'urn:noocodec:node:decode-tools',
       'outputs': {
-        'decoded': 'normalize-tools',
-        'empty': 'end-error',
-        'error': 'end-error',
+        'decoded': 'urn:noocodec:dag:react-agent/node/normalize-tools',
+        'empty': 'urn:noocodec:dag:react-agent/node/end-error',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/normalize-tools',
+      '@id': 'urn:noocodec:dag:react-agent/node/normalize-tools',
       '@type': 'SingleNode',
       'name': 'normalize-tools',
-      'node': 'normalize-tools',
+      'node': 'urn:noocodec:node:normalize-tools',
       'outputs': {
-        'valid': 'worksets',
-        'empty': 'end-error',
-        'error': 'end-error',
+        'valid': 'urn:noocodec:dag:react-agent/node/worksets',
+        'empty': 'urn:noocodec:dag:react-agent/node/end-error',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/worksets',
+      '@id': 'urn:noocodec:dag:react-agent/node/worksets',
       '@type': 'SingleNode',
       'name': 'worksets',
-      'node': 'build-worksets',
+      'node': 'urn:noocodec:node:build-worksets',
       'outputs': {
-        'ready': 'dispatch-tools',
-        'empty': 'end-error',
-        'error': 'end-error',
+        'ready': 'urn:noocodec:dag:react-agent/node/dispatch-tools',
+        'empty': 'urn:noocodec:dag:react-agent/node/end-error',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/dispatch-tools',
+      '@id': 'urn:noocodec:dag:react-agent/node/dispatch-tools',
       '@type': 'ScatterNode',
       'name': 'dispatch-tools',
       'source': 'safeWorkset',
@@ -672,42 +687,53 @@ export const agentDag: DAGType = {
         'dag': {
           '@type': 'DagReference',
           'from': 'item',
-          'path': 'dagName',
-          'candidates': ['tool:lookup'],
+          'path': 'dagIri',
+          'candidates': ['urn:noocodec:tool:lookup'],
         },
       },
-      'gather': {
-        'strategy': 'map',
-        'mapping': { 'output': 'toolOutputs' },
-      },
       'outputs': {
-        'all-success': 'collect-results',
-        'partial': 'collect-results',
-        'all-error': 'collect-results',
-        'empty': 'collect-results',
+        'all-success': 'urn:noocodec:dag:react-agent/node/join-tool-results',
+        'partial': 'urn:noocodec:dag:react-agent/node/join-tool-results',
+        'all-error': 'urn:noocodec:dag:react-agent/node/join-tool-results',
+        'empty': 'urn:noocodec:dag:react-agent/node/join-tool-results',
       },
       'itemKey': 'currentItem',
       'reducer': 'aggregate',
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/collect-results',
-      '@type': 'SingleNode',
-      'name': 'collect-results',
-      'node': 'collect-results',
+      '@id': 'urn:noocodec:dag:react-agent/node/join-tool-results',
+      '@type': 'GatherNode',
+      'name': 'join-tool-results',
+      sources: { 'urn:noocodec:dag:react-agent/node/dispatch-tools': {} },
+      'gather': {
+        'strategy': 'map',
+        'mapping': { 'output': 'toolOutputs' },
+      },
       'outputs': {
-        'done': 'build-request',
-        'empty': 'build-request',
-        'error': 'end-error',
+        'success': 'urn:noocodec:dag:react-agent/node/collect-results',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
+        'empty': 'urn:noocodec:dag:react-agent/node/collect-results',
       },
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/end-done',
+      '@id': 'urn:noocodec:dag:react-agent/node/collect-results',
+      '@type': 'SingleNode',
+      'name': 'collect-results',
+      'node': 'urn:noocodec:node:collect-results',
+      'outputs': {
+        'done': 'urn:noocodec:dag:react-agent/node/build-request',
+        'empty': 'urn:noocodec:dag:react-agent/node/build-request',
+        'error': 'urn:noocodec:dag:react-agent/node/end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:react-agent/node/end-done',
       '@type': 'TerminalNode',
       'name': 'end-done',
       'outcome': 'completed',
     },
     {
-      '@id': 'urn:noocodex:dag:react-agent/node/end-error',
+      '@id': 'urn:noocodec:dag:react-agent/node/end-error',
       '@type': 'TerminalNode',
       'name': 'end-error',
       'outcome': 'failed',
@@ -723,36 +749,44 @@ export const agentDag: DAGType = {
 // #region react-trace-dag
 export const traceDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:react-agent-memory-trace',
+  '@id': 'urn:noocodec:dag:react-agent-memory-trace',
   '@type':      'DAG',
   'name':       'react-agent-memory-trace',
   'version':    '1',
-  'entrypoints': { 'main': 'scatter-steps' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:react-agent-memory-trace/node/scatter-steps' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:react-agent-memory-trace/node/scatter-steps',
+      '@id': 'urn:noocodec:dag:react-agent-memory-trace/node/scatter-steps',
       '@type':       'ScatterNode',
       'name':        'scatter-steps',
-      'body':        { 'node': 'record-step' },
+      'body':        { 'node': 'urn:noocodec:node:record-step' },
       'source':      'source',
       'itemKey':     REASONING_ITEM_KEY,
       // A free performance choice, not a correctness requirement:
       // RecordReasoningStepNode derives the wasInformedBy chain from each
       // item's own `ordinal` field, so raising this is safe at any value.
       'execution': { 'mode': 'item', 'concurrency': 1 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'steps',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',
+        'partial': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',
+        'all-error': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',
+        'empty': 'urn:noocodec:dag:react-agent-memory-trace/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:react-agent-memory-trace/node/end',
+      '@id': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',
+      '@type': 'GatherNode',
+      'name': 'collect-steps',
+      sources: { 'urn:noocodec:dag:react-agent-memory-trace/node/scatter-steps': {} },
+      'gather': { 'strategy': 'append', 'target': 'steps' },
+      'outputs': {
+        'success': 'urn:noocodec:dag:react-agent-memory-trace/node/end',
+        'error': 'urn:noocodec:dag:react-agent-memory-trace/node/end',
+        'empty': 'urn:noocodec:dag:react-agent-memory-trace/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:react-agent-memory-trace/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

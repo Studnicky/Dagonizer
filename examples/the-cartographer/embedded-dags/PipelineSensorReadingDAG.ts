@@ -30,21 +30,26 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
 
-export const pipelineSensorReadingDAG: DAGType = new DAGBuilder('pipeline-sensor-reading', '1.0')
+const pipelineSensorReadingDagIri = 'urn:noocodec:dag:pipeline-sensor-reading' as const;
+const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
+const placement = (placementIdentifier: string): string =>
+  DAGIdentity.placementId(pipelineSensorReadingDagIri, placementIdentifier);
+
+export const pipelineSensorReadingDAG: DAGType = new DAGBuilder(pipelineSensorReadingDagIri, '1.0')
 
   // 1. parse-variant: decode the event union into a typed sensor-reading shape.
-  .node('parse-variant', parseVariant, {
-    'parsed':  'geo-pipeline',
-    'invalid': 'invalid',
+  .node(placement('parse-variant'), parseVariant, {
+    'parsed':  placement('geo-pipeline'),
+    'invalid': placement('invalid'),
   })
 
   // 2. geo-pipeline: shared geo spine (route-geo / apply-geo / validate-coords /
   //    geo-resolve). Writes geoContext + resolvedGeo + routing onto state.
-  .embeddedDAG<CartographerState, CartographerState>('geo-pipeline', 'geo-pipeline', {
-    'success': 'canonicalize-core',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('geo-pipeline'), geoPipelineDagIri, {
+    'success': placement('canonicalize-core'),
+    'error':   placement('rejected'),
   }, {
     'inputs': {
       'raw':            'raw',
@@ -61,30 +66,30 @@ export const pipelineSensorReadingDAG: DAGType = new DAGBuilder('pipeline-sensor
   })
 
   // 3. canonicalize-core: scalar canonicalization using the resolved geoContext timezone.
-  .node('canonicalize-core', canonicalizeCore, {
-    'normalized': 'cold-chain-check',
-    'rejected':   'rejected',
+  .node(placement('canonicalize-core'), canonicalizeCore, {
+    'normalized': placement('cold-chain-check'),
+    'rejected':   placement('rejected'),
   })
 
   // 4. cold-chain-check: temperature / shock breach evaluation for sensor telemetry.
-  .node('cold-chain-check', coldChainCheck, {
-    'checked': 'enrich-leg',
+  .node(placement('cold-chain-check'), coldChainCheck, {
+    'checked': placement('enrich-leg'),
   })
 
   // 5. enrich-leg: legFrom → scan distance measurement.
-  .node('enrich-leg', enrichLeg, {
-    'leg-measured': 'aggregate-event',
+  .node(placement('enrich-leg'), enrichLeg, {
+    'leg-measured': placement('aggregate-event'),
   })
 
   // 6. aggregate-event: write compact EnrichedShipment to state.enriched.
-  .node('aggregate-event', aggregateEvent, {
-    'done': 'done',
+  .node(placement('aggregate-event'), aggregateEvent, {
+    'done': placement('done'),
   })
 
   // Terminals
-  .terminal('done',     { outcome: 'completed' })
-  .terminal('rejected', { outcome: 'failed' })
-  .terminal('invalid',  { outcome: 'failed' })
+  .terminal(placement('done'),     { outcome: 'completed' })
+  .terminal(placement('rejected'), { outcome: 'failed' })
+  .terminal(placement('invalid'),  { outcome: 'failed' })
 
   .build();
 

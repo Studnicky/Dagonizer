@@ -14,7 +14,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const SensorReadingEventSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/events/SensorReadingEvent',
+  '$id': 'https://noocodec.dev/schemas/cartographer/events/SensorReadingEvent',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['shipmentId', 'eventId', 'epochMs', 'eventType', 'sourceId', 'sourceFormat', 'sourceCompression', 'body'],

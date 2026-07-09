@@ -12,8 +12,8 @@
  *     └─ violation ──► violation  (TerminalNode failed   → parent routes 'error')
  *
  * Embedded via:
- *   .embed('gdpr', 'gdpr-compliance',
- *     { 'success':'aggregate-event', 'error':'gdpr-violation' },
+ *   .embed(gdprPlacementIri, gdprComplianceDagIri,
+ *     { 'success': aggregateEventPlacementIri, 'error': gdprViolationPlacementIri },
  *     { 'outputs': { 'currentEvent':'currentEvent', 'gdprResult':'gdprResult' } })
  *
  * The embedded DAG runs in a CLONED child state. Its nodes redact PII on
@@ -24,37 +24,40 @@
 
 // #region gdpr-compliance-dag
 import { consentGate, classifyPii, redactPii } from '../nodes/gdprNodes.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const gdprComplianceDAG: DAGType = new DAGBuilder('gdpr-compliance', '1.0')
+const GDPR_COMPLIANCE_DAG_IRI = CARTOGRAPHER_IRIS.dag.gdprCompliance;
+
+export const gdprComplianceDAG: DAGType = new DAGBuilder(GDPR_COMPLIANCE_DAG_IRI, '1.0')
 
   // ── 1. consent-gate ──────────────────────────────────────────────────────
   // Resolves the consent status from marketingConsent + simulated expiry.
   // Always routes 'classify' (both consented and non-consented proceed;
   // the consent status drives redaction rules downstream).
-  .node('consent-gate', consentGate, {
-    'classify': 'classify-pii',
+  .node(CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'consent-gate'), consentGate, {
+    'classify': CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'classify-pii'),
   })
 
   // ── 2. classify-pii ──────────────────────────────────────────────────────
   // Records which fields are personal/sensitive; no routing decision yet.
-  .node('classify-pii', classifyPii, {
-    'redact': 'redact-pii',
+  .node(CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'classify-pii'), classifyPii, {
+    'redact': CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'redact-pii'),
   })
 
   // ── 3. redact-pii ────────────────────────────────────────────────────────
   // Applies GdprRedactor.redact. Routes to 'compliant' (ok) or 'violation'.
-  .node('redact-pii', redactPii, {
-    'ok':        'compliant',
-    'violation': 'violation',
+  .node(CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'redact-pii'), redactPii, {
+    'ok':        CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'compliant'),
+    'violation': CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'violation'),
   })
 
   // ── Terminals ─────────────────────────────────────────────────────────────
-  .terminal('compliant', { outcome: 'completed' })
-  .terminal('violation', { outcome: 'failed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'compliant'), { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(GDPR_COMPLIANCE_DAG_IRI, 'violation'), { outcome: 'failed' })
 
   .build();
 // #endregion gdpr-compliance-dag

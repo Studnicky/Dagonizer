@@ -101,12 +101,6 @@ export type { EntityValidatorInterface } from './validation/index.js';
 // ENTITIES (schemas + derived types)
 // =============================================================================
 
-// `DAGDocument` is engine-coupled (it validates against the compiled
-// `Validator`), so it lives at `src/dag/` and ships through `./dag`. It is
-// re-exported on the root barrel so the existing root-barrel `DAGDocument`
-// export resolves unchanged.
-export { DAGDocument } from './dag/index.js';
-export type { DAGDocumentLoadOptionsType } from './dag/index.js';
 export {
   Placement,
   NodeError,
@@ -143,6 +137,7 @@ export {
   BackoffStrategyNames,
   DAG_CONTEXT,
   DAGEntrypoints,
+  DAGIdentity,
   ExecutorIntermediateSchema,
   ExecutionRequestSchema,
   ExecutionResponseSchema,
@@ -206,7 +201,7 @@ export {
   RecommendedWorkerCountConfigSchema,
   RecommendedWorkerCountConfigDefault,
   RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
-  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MINIMUM,
   RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
   SystemInfo,
 } from './entities/index.js';

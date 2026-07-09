@@ -1,6 +1,6 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
-> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format checks use intercepted fetch. Expect minor adjustments before 1.0.
 
 Browser built-in LanguageModel adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Uses the [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) (`window.LanguageModel`) implemented by Chrome 138+ and Edge.
 

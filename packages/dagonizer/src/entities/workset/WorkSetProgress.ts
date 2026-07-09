@@ -23,7 +23,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 // ---------------------------------------------------------------------------
 
 export const WorkSetItemSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetItem',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['id', 'snapshot'],
@@ -47,7 +47,7 @@ export type WorkSetItemType = FromSchema<typeof WorkSetItemSchema>;
 // ---------------------------------------------------------------------------
 
 export const WorkSetEntrySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetEntry',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetEntry',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['placement', 'items'],
@@ -73,7 +73,7 @@ export type WorkSetEntryType = FromSchema<typeof WorkSetEntrySchema>;
 // ---------------------------------------------------------------------------
 
 export const WorkSetProgressSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/WorkSetProgress',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['entries'],

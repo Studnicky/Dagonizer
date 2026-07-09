@@ -43,7 +43,7 @@
  *   else            → UNKNOWN          (non-retryable)
  *
  * Streaming (`performChatStream`):
- *   Tool-bearing requests fall back to the buffered path
+ *   Tool-bearing requests use the buffered path
  *   (`super.performChatStream`) — partial tool-call JSON is unsafe to parse
  *   mid-stream. Tool-less requests POST with `stream: true` and drain the SSE
  *   body through `SseLineParser`. Anthropic emits named SSE events whose
@@ -371,7 +371,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
   }
 
   /**
-   * Streaming override: tool-bearing requests fall back to the buffered
+   * Streaming override: tool-bearing requests use the buffered
    * default (`super.performChatStream`) — partial tool-call JSON is unsafe to
    * parse mid-stream. Tool-less requests POST the same endpoint with
    * `stream: true` and drain the SSE body through `SseLineParser`, dispatching

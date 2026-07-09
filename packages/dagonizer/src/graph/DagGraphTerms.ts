@@ -3,7 +3,7 @@ import type { TermType } from '../contracts/TripleStoreInterface.js';
 export class DagGraphTerms {
   private constructor() { /* static-only */ }
 
-  static readonly DAGONIZER = 'https://noocodex.dev/ontology/dagonizer/';
+  static readonly DAGONIZER = 'https://noocodec.dev/ontology/dagonizer/';
   static readonly RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
   static readonly DEFAULT_GRAPH = 'urn:dagonizer:default-graph';
 

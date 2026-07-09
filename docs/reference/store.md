@@ -158,7 +158,7 @@ interface StoreSnapshotType {
 
 | Field | Description |
 |-------|-------------|
-| `version` | Snapshot schema version. Plugin authors increment this when the storage shape changes incompatibly. `BaseStore.restore` rejects mismatches with `StoreError(INCOMPATIBLE_SNAPSHOT)`. |
+| `version` | Snapshot schema version. Plugin authors increment this when the storage shape changes. `BaseStore.restore` rejects mismatches with `StoreError(INCOMPATIBLE_SNAPSHOT)`. |
 | `type` | Stable identifier for the store implementation (e.g. `'memory-store'`). Set via `BaseStore.snapshotType`. |
 | `entries` | Ordered list of key-value pairs at capture time. |
 
@@ -227,7 +227,7 @@ All public methods delegate to the `perform*` hooks after qualifying the key.
 | `set(key, value)` | Delegates to `performSet(qualifiedKey, value)`. |
 | `has(key)` | Delegates to `performHas(qualifiedKey)`. |
 | `delete(key)` | Delegates to `performDelete(qualifiedKey)`. |
-| `update(key, fn)` | Default: `performGet` → `fn(current)` → `performSet`. Two `await` points, not atomic on its own. Subclasses **must** override when backing supports a single-step RMW (in-memory direct access, SQL transactions, Redis WATCH/MULTI, etc.). The default is a fallback that is only safe when no concurrent calls touch the same key. |
+| `update(key, fn)` | Default: `performGet` → `fn(current)` → `performSet`. Two `await` points, not atomic on its own. Subclasses **must** override when backing supports a single-step RMW (in-memory direct access, SQL transactions, Redis WATCH/MULTI, etc.). |
 | `snapshot()` | Calls `performSnapshotEntries()`, then wraps in `{ version: snapshotVersion, type: snapshotType, entries }`. |
 | `restore(snapshot)` | Validates `snapshot.type` and `snapshot.version`; throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on mismatch. On match, calls `performRestoreEntries(entries)`. |
 | `connect()` | No-op default. Override for connection lifecycle. |
@@ -241,7 +241,7 @@ arguments receive the qualified key (namespace prefix already applied).
 | Hook | Signature | Description |
 |------|-----------|-------------|
 | `snapshotType` | `get snapshotType(): string` | Stable identifier written into every snapshot envelope. |
-| `snapshotVersion` | `get snapshotVersion(): number` | Schema version. Increment on incompatible shape change. |
+| `snapshotVersion` | `get snapshotVersion(): number` | Schema version. Increment when the shape changes. |
 | `performGet` | `(qualifiedKey: string) → Promise<T \| undefined>` | Read a single value. |
 | `performSet` | `(qualifiedKey: string, value: T) → Promise<void>` | Write a single value. |
 | `performHas` | `(qualifiedKey: string) → Promise<boolean>` | Check existence. |

@@ -669,8 +669,8 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
     if (first !== undefined && first.termType === 'Literal') return first.value;
     return `Book ${iri.slice(-4)}`;
   }
-  if (iri.startsWith('https://noocodex.dev/ontology/dagonizer/')) {
-    return iri.slice('https://noocodex.dev/ontology/dagonizer/'.length);
+  if (iri.startsWith('https://noocodec.dev/ontology/dagonizer/')) {
+    return iri.slice('https://noocodec.dev/ontology/dagonizer/'.length);
   }
   const hashIdx = iri.lastIndexOf('#');
   if (hashIdx >= 0) return iri.slice(hashIdx + 1);

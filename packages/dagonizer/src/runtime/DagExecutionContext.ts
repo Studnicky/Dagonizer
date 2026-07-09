@@ -53,14 +53,13 @@
  *
  * `withNodeTimeout` derives a fresh child `AbortSignal` per node with a
  * configured timeout budget; that child signal is not itself registered as a
- * scope owner. `DagExecutionScope.alias()` records it as an alternate anchor
- * for the same scope id, so a timed node's `context.signal` resolves exactly
- * like an untimed node's.
+ * scope owner. `DagExecutionScope.anchor()` records it to the same scope id,
+ * so a timed node's `context.signal` resolves exactly like an untimed node's.
  *
  * ## Graph storage
  *
  * A scope is a subject IRI `urn:dagonizer:scope:{scopeId}`. Its bindings
- * (correlation id, dag name) are quads on `urn:dagonizer:context:binding:{key}`;
+ * (correlation id, DAG IRI) are quads on `urn:dagonizer:context:binding:{key}`;
  * an optional parent scope is a quad on `urn:dagonizer:context:parentScope`.
  * `tryGet` walks from the signal's scope up through `parentScope` links,
  * `select()`-ing one predicate at a time — there is no property-path query in
@@ -314,14 +313,13 @@ export class DagExecutionScope {
   }
 
   /**
-   * Register `signal` as an additional anchor for the same scope as
-   * `existingSignal`. Used for derived signals that represent the same
-   * logical run scope under narrower cancellation semantics — e.g. the
-   * per-node child `AbortSignal` `Dagonizer.withNodeTimeout` mints when a
-   * placement declares a timeout budget. A no-op when `existingSignal` has
-   * no registered scope.
+   * Register `signal` to the same scope as `existingSignal`. Used for
+   * derived signals that represent the same logical run scope under narrower
+   * cancellation semantics, such as the per-node child `AbortSignal`
+   * `Dagonizer.withNodeTimeout` mints when a placement declares a timeout
+   * budget. A no-op when `existingSignal` has no registered scope.
    */
-  static alias(signal: AbortSignal, existingSignal: AbortSignal): void {
+  static anchor(signal: AbortSignal, existingSignal: AbortSignal): void {
     const scopeId = DagExecutionScope.#anchors.get(existingSignal);
     if (scopeId !== undefined) {
       DagExecutionScope.#anchors.set(signal, scopeId);
@@ -397,11 +395,10 @@ export class DagExecutionContext {
   }
 
   /**
-   * Register `signal` as an additional anchor for the same scope as
-   * `existingSignal`. See `DagExecutionScope.alias`.
+   * Register `signal` to the same scope as `existingSignal`.
    */
-  static alias(signal: AbortSignal, existingSignal: AbortSignal): void {
-    DagExecutionScope.alias(signal, existingSignal);
+  static anchor(signal: AbortSignal, existingSignal: AbortSignal): void {
+    DagExecutionScope.anchor(signal, existingSignal);
   }
 
   /**

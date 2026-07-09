@@ -12,6 +12,7 @@
 import {
   Batch,
   DAGBuilder,
+  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -34,9 +35,19 @@ export class ChatState extends NodeStateBase {
 // Nodes: identical to 01-linear; the builder wraps the same node definitions
 // ---------------------------------------------------------------------------
 
+export const chatDAGIri = 'urn:noocodec:dag:chat' as const;
+const typeSafeDAGIri = 'urn:noocodec:dag:type-safe-demo' as const;
+const notifyDAGIri = 'urn:noocodec:dag:notify' as const;
+const searchDAGIri = 'urn:noocodec:dag:search' as const;
+const batchDAGIri = 'urn:noocodec:dag:batch' as const;
+const demoDAGIri = 'urn:noocodec:dag:dag' as const;
+
+const placement = (dagIri: string, placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+
 // #region nodes
 export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
+  readonly '@id' = 'urn:noocodec:node:classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
   override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
     return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
@@ -57,6 +68,7 @@ export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic
 
 export class RespondNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'respond';
+  readonly '@id' = 'urn:noocodec:node:respond';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -77,9 +89,9 @@ export class RespondNode extends MonadicNode<ChatState, 'success'> {
 // ---------------------------------------------------------------------------
 // DAG: built via DAGBuilder instead of a literal object
 //
-// DAGBuilder('name', 'version')
-//   .node(placementName, nodeRef, routes)  ← first call auto-sets entrypoint
-//   .node(placementName, nodeRef, routes)
+// DAGBuilder(dagIri, 'version', { name: 'display-name' })
+//   .node(placementIri, nodeRef, routes, { name: 'display-name' })  ← first call auto-sets entrypoint
+//   .node(placementIri, nodeRef, routes, { name: 'display-name' })
 //   .build()
 //
 // routes must cover every key of node's TOutput; TypeScript enforces this.
@@ -87,12 +99,15 @@ export class RespondNode extends MonadicNode<ChatState, 'success'> {
 // ---------------------------------------------------------------------------
 
 // #region builder
-export const dag = new DAGBuilder('chat', '1')
+export const dag = new DAGBuilder(chatDAGIri, '1')
   // First .node() call → entrypoint is set to 'classify' automatically.
-  .node('classify', new ClassifyNode(), { "on_topic": 'respond', "off_topic": 'respond' })
+  .node(placement(chatDAGIri, 'classify'), new ClassifyNode(), {
+    "on_topic": placement(chatDAGIri, 'respond'),
+    "off_topic": placement(chatDAGIri, 'respond'),
+  })
   // routes for 'respond' must cover exactly { success }, no more, no less.
-  .node('respond', new RespondNode(), { "success": 'end' })
-  .terminal('end')
+  .node(placement(chatDAGIri, 'respond'), new RespondNode(), { "success": placement(chatDAGIri, 'end') })
+  .terminal(placement(chatDAGIri, 'end'))
   .build();  // materialises the canonical JSON-LD DAG document
 // #endregion builder
 
@@ -104,14 +119,14 @@ export const dag = new DAGBuilder('chat', '1')
 // ClassifyNode declares TOutput = 'on_topic' | 'off_topic'.
 // Every key of the union must appear in the routes map — TypeScript enforces
 // exhaustiveness. A missing key is a compile error before the DAG runs.
-export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
-  .node('classify', new ClassifyNode(), {
-    on_topic:  'respond',
-    off_topic: 'respond',
+export const typeSafeRoutingDag = new DAGBuilder(typeSafeDAGIri, '1')
+  .node(placement(typeSafeDAGIri, 'classify'), new ClassifyNode(), {
+    on_topic:  placement(typeSafeDAGIri, 'respond'),
+    off_topic: placement(typeSafeDAGIri, 'respond'),
     //  omitting either key ↑ is a TS compile error: property missing in routes
   })
-  .node('respond', new RespondNode(), { success: 'end' })
-  .terminal('end')
+  .node(placement(typeSafeDAGIri, 'respond'), new RespondNode(), { success: placement(typeSafeDAGIri, 'end') })
+  .terminal(placement(typeSafeDAGIri, 'end'))
   .build();
 // #endregion type-safe-routing
 
@@ -121,6 +136,7 @@ export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
 
 class NotifyNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-notify';
+  readonly '@id' = 'urn:noocodec:node:builder-notify';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -131,20 +147,24 @@ class NotifyNode extends MonadicNode<ChatState, 'success' | 'error'> {
 }
 
 // #region scatter-discard
-// Side-effect-only fan-out: gather.strategy 'discard' means no clone state
-// flows back into the parent. Use for notifications, fire-and-forget writes.
-export const scatterDiscardDag = new DAGBuilder('notify', '1')
+// Side-effect-only fan-out: no GatherNode is wired after scatter, so clone
+// state does not flow back into the parent.
+export const scatterDiscardDag = new DAGBuilder(notifyDAGIri, '1')
   .scatter(
-    'fan-out',
+    placement(notifyDAGIri, 'fan-out'),
     'targets',
     new NotifyNode(),
-    { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     {
-      gather:      { strategy: 'discard' },
+      'all-success': placement(notifyDAGIri, 'end'),
+      'partial': placement(notifyDAGIri, 'end'),
+      'all-error': placement(notifyDAGIri, 'end'),
+      'empty': placement(notifyDAGIri, 'end'),
+    },
+    {
       execution: { mode: 'item', concurrency: 10 },
     },
   )
-  .terminal('end')
+  .terminal(placement(notifyDAGIri, 'end'))
   .build();
 // #endregion scatter-discard
 
@@ -154,6 +174,7 @@ export const scatterDiscardDag = new DAGBuilder('notify', '1')
 
 class ScoutDispatchNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-scout-dispatch';
+  readonly '@id' = 'urn:noocodec:node:builder-scout-dispatch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -165,6 +186,7 @@ class ScoutDispatchNode extends MonadicNode<ChatState, 'success' | 'error'> {
 
 class MergeNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-merge';
+  readonly '@id' = 'urn:noocodec:node:builder-merge';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -178,20 +200,33 @@ class MergeNode extends MonadicNode<ChatState, 'success'> {
 // Heterogeneous fan-out: ScoutDispatchNode reads state.metadata.currentItem
 // to route per-provider logic. The engine is indifferent to whether each clone
 // runs identical or different logic; that is the implementer's choice.
-export const scatterHeterogeneousDag = new DAGBuilder('search', '1')
+export const scatterHeterogeneousDag = new DAGBuilder(searchDAGIri, '1')
   .scatter(
-    'scout',
+    placement(searchDAGIri, 'scout'),
     'scoutProviders',          // state field: ['openlibrary', 'googlebooks', 'wikipedia']
     new ScoutDispatchNode(),
-    { 'any-success': 'merge', 'all-error': 'end', 'empty': 'end' },
     {
-      gather:      { strategy: 'collect', target: 'scoutResults' },
+      'any-success': placement(searchDAGIri, 'collect-scout-results'),
+      'all-error': placement(searchDAGIri, 'end'),
+      'empty': placement(searchDAGIri, 'end'),
+    },
+    {
       reducer:     'any-success',
       execution: { mode: 'item', concurrency: 3 },
     },
   )
-  .node('merge', new MergeNode(), { success: 'end' })
-  .terminal('end')
+  .gather(
+    placement(searchDAGIri, 'collect-scout-results'),
+    { [placement(searchDAGIri, 'scout')]: {} },
+    { strategy: 'collect', target: 'scoutResults' },
+    {
+      success: placement(searchDAGIri, 'merge'),
+      error: placement(searchDAGIri, 'end'),
+      empty: placement(searchDAGIri, 'end'),
+    },
+  )
+  .node(placement(searchDAGIri, 'merge'), new MergeNode(), { success: placement(searchDAGIri, 'end') })
+  .terminal(placement(searchDAGIri, 'end'))
   .build();
 // #endregion scatter-heterogeneous
 
@@ -201,6 +236,7 @@ export const scatterHeterogeneousDag = new DAGBuilder('search', '1')
 
 class GenerateNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-generate';
+  readonly '@id' = 'urn:noocodec:node:builder-generate';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -212,6 +248,7 @@ class GenerateNode extends MonadicNode<ChatState, 'success' | 'error'> {
 
 class SelectNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-select';
+  readonly '@id' = 'urn:noocodec:node:builder-select';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -225,19 +262,33 @@ class SelectNode extends MonadicNode<ChatState, 'success'> {
 // Generate-collect: each clone produces one artifact; gather.mapping writes
 // produced artifacts back to the parent keyed by source index. The 'candidate'
 // clone field accumulates into the parent's 'candidates' array.
-export const scatterMapDag = new DAGBuilder('batch', '1')
+export const scatterMapDag = new DAGBuilder(batchDAGIri, '1')
   .scatter(
-    'generate',
+    placement(batchDAGIri, 'generate'),
     'providers',
     new GenerateNode(),
-    { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
     {
-      gather:      { strategy: 'map', mapping: { 'candidate': 'candidates' } },
+      'all-success': placement(batchDAGIri, 'collect-candidates'),
+      'partial': placement(batchDAGIri, 'collect-candidates'),
+      'all-error': placement(batchDAGIri, 'end'),
+      'empty': placement(batchDAGIri, 'end'),
+    },
+    {
       execution: { mode: 'item', concurrency: 4 },
     },
   )
-  .node('select', new SelectNode(), { success: 'end' })
-  .terminal('end')
+  .gather(
+    placement(batchDAGIri, 'collect-candidates'),
+    { [placement(batchDAGIri, 'generate')]: {} },
+    { strategy: 'map', mapping: { 'candidate': 'candidates' } },
+    {
+      success: placement(batchDAGIri, 'select'),
+      error: placement(batchDAGIri, 'end'),
+      empty: placement(batchDAGIri, 'end'),
+    },
+  )
+  .node(placement(batchDAGIri, 'select'), new SelectNode(), { success: placement(batchDAGIri, 'end') })
+  .terminal(placement(batchDAGIri, 'end'))
   .build();
 // #endregion scatter-map
 
@@ -247,6 +298,7 @@ export const scatterMapDag = new DAGBuilder('batch', '1')
 
 class ProcessNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-process';
+  readonly '@id' = 'urn:noocodec:node:builder-process';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
@@ -259,18 +311,32 @@ class ProcessNode extends MonadicNode<ChatState, 'success' | 'error'> {
 // #region scatter-partition
 // gather.strategy 'partition' groups clone results by their output token.
 // Each partition key maps to a parent-state field that receives matching clones.
-export const scatterPartitionDag = new DAGBuilder('batch', '1')
+export const scatterPartitionDag = new DAGBuilder(batchDAGIri, '1')
   .scatter(
-    'process-items',
+    placement(batchDAGIri, 'process-items'),
     'items',
     new ProcessNode(),
-    { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     {
-      gather:      { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
+      'all-success': placement(batchDAGIri, 'partition-results'),
+      'partial': placement(batchDAGIri, 'partition-results'),
+      'all-error': placement(batchDAGIri, 'partition-results'),
+      'empty': placement(batchDAGIri, 'end'),
+    },
+    {
       execution: { mode: 'item', concurrency: 4 },
     },
   )
-  .terminal('end')
+  .gather(
+    placement(batchDAGIri, 'partition-results'),
+    { [placement(batchDAGIri, 'process-items')]: {} },
+    { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
+    {
+      success: placement(batchDAGIri, 'end'),
+      error: placement(batchDAGIri, 'end'),
+      empty: placement(batchDAGIri, 'end'),
+    },
+  )
+  .terminal(placement(batchDAGIri, 'end'))
   .build();
 // #endregion scatter-partition
 
@@ -282,28 +348,33 @@ export const scatterPartitionDag = new DAGBuilder('batch', '1')
 // inputs copies parent-state fields into each clone before the body runs.
 // Keys are child-state field names; values are parent-state dotted paths.
 // Path<TState> enumerates valid dotted paths (e.g. 'user', 'user.name').
-export const scatterInputsDag = new DAGBuilder('chat', '1')
+export const scatterInputsDag = new DAGBuilder(chatDAGIri, '1')
   .scatter(
-    'classify-all',
+    placement(chatDAGIri, 'classify-all'),
     'inputs',
     new ClassifyNode(),
-    { 'all-success': 'respond', 'partial': 'respond', 'all-error': 'end', 'empty': 'end' },
     {
-      gather:  { strategy: 'discard' },
+      'all-success': placement(chatDAGIri, 'respond'),
+      'partial': placement(chatDAGIri, 'respond'),
+      'all-error': placement(chatDAGIri, 'end'),
+      'empty': placement(chatDAGIri, 'end'),
+    },
+    {
       inputs:  { 'input': 'input' },   // clone.input ← parent.input (dotted path)
     },
   )
-  .node('respond', new RespondNode(), { success: 'end' })
-  .terminal('end')
+  .node(placement(chatDAGIri, 'respond'), new RespondNode(), { success: placement(chatDAGIri, 'end') })
+  .terminal(placement(chatDAGIri, 'end'))
   .build();
 // #endregion scatter-inputs
 
 // ---------------------------------------------------------------------------
-// .entrypoint() override
+// .entrypoints() override
 // ---------------------------------------------------------------------------
 
 class SetupNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-setup';
+  readonly '@id' = 'urn:noocodec:node:builder-setup';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -315,6 +386,7 @@ class SetupNode extends MonadicNode<ChatState, 'success'> {
 
 class MainNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-main';
+  readonly '@id' = 'urn:noocodec:node:builder-main';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -326,12 +398,12 @@ class MainNode extends MonadicNode<ChatState, 'success'> {
 
 // #region entrypoint-override
 // By default the first .node() call sets the entrypoint automatically.
-// Call .entrypoint(name) to override — useful when resuming from a mid-flow
+// Call .entrypoints({ main: placementIri }) to override — useful when resuming from a mid-flow
 // checkpoint or when adding setup nodes that should be skipped on replay.
-export const entrypointOverrideDag = new DAGBuilder('dag', '1')
-  .node('setup', new SetupNode(), { success: 'main' })
-  .node('main',  new MainNode(),  { success: 'end'  })
-  .entrypoint('main')   // skip 'setup' on resume; 'main' becomes the entry
-  .terminal('end')
+export const entrypointOverrideDag = new DAGBuilder(demoDAGIri, '1')
+  .node(placement(demoDAGIri, 'setup'), new SetupNode(), { success: placement(demoDAGIri, 'main') })
+  .node(placement(demoDAGIri, 'main'),  new MainNode(),  { success: placement(demoDAGIri, 'end')  })
+  .entrypoints({ main: placement(demoDAGIri, 'main') })   // skip 'setup' on resume; 'main' becomes the entry
+  .terminal(placement(demoDAGIri, 'end'))
   .build();
 // #endregion entrypoint-override

@@ -25,7 +25,7 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 ## What It Is
 
-Dagonizer has one workflow artifact: a schema-validated JSON-LD `DAG` document. You can create it with `DAGBuilder`, load it from serialized JSON-LD, or receive it from a plugin bundle. After that, it is the same object: the dispatcher registers it, the visualizers render it, and validators check it.
+Dagonizer has one workflow artifact: a schema-validated JSON-LD `DAG` document. You can create it with `DAGBuilder`, load it from serialized JSON-LD, or receive it from a plugin bundle. After that, it is the same object: the dispatcher registers it by expanded DAG IRI, the visualizers render it, and validators check it.
 
 That makes authoring a topology decision, not a framework fork. Choose the most convenient source form for your application, then let everything converge on the canonical DAG document.
 
@@ -33,7 +33,7 @@ That makes authoring a topology decision, not a framework fork. Choose the most 
 
 Authoring produces one object: a schema-valid `DAG`. `DAGBuilder` is the typed factory for that object; JSON loading is the ingest path for the same object; plugin registration installs the same object into the registry. The dispatcher does not care which authoring path produced it.
 
-The `DAG` type is the API. A `DAG` is a JSON-LD 1.1 document with `@context`, `@id`, `@type`, and a `nodes` array of placement objects. The dispatcher consumes it; the schema validates it; RDF tools read it natively. Code authoring uses `DAGBuilder`; persistence and transport use the same JSON-LD document.
+The `DAG` type is the API. A `DAG` is a JSON-LD 1.1 document with `@context`, `@id`, `@type`, and a `nodes` array of placement objects. The DAG `@id` is the identity the registry expands and stores. Each placement `@id` is the routing target inside the graph. The `name` fields stay useful for diagrams, logs, and watchers in the deep, but they are not the source of execution identity.
 
 ```
                 ┌──────────────────────────────────────┐
@@ -104,7 +104,7 @@ If a node truly throws (an unexpected bug, not a handled error condition), the e
 
 ### DAGBuilder Is The Code Factory
 
-DAGBuilder is the factory for DAG documents in TypeScript. ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences use the same fluent surface.
+DAGBuilder is the factory for DAG documents in TypeScript. ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, tool DAGs, plugin DAGs, dynamic DAG references, and fixed sequences use the same fluent surface.
 
 The mental model: *first this, then that, then if X go here else go there.* TypeScript narrows the route map at each `.node()` call from the node's `TOutput` union, so misspelled routes are compile errors before the DAG ever runs.
 
@@ -131,7 +131,7 @@ Authoring decides topology; node implementations carry the work. `NodeInterface<
 
 <<< @/../examples/the-archivist/nodes/classifyIntent.ts#node-class
 
-The same `classifyIntent` reference is registered with the dispatcher and referenced by name from a placement in the DAG. The authoring surface decides where in the topology this node sits; the node implementation decides what it does and which output it returns.
+The same `classifyIntent` implementation is registered with the dispatcher and referenced from a placement in the DAG. The placement `@id` decides where the implementation sits in topology; `name` is the label humans see while the watcher lanterns are lit.
 
 ### Capability Matrix
 
@@ -141,7 +141,8 @@ DAGBuilder emits every placement shape the schema allows.
 |---|---|
 | `SingleNode` placement | yes via `.node()` |
 | `ScatterNode` placement | yes via `.scatter()` |
-| Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes via `options.gather` |
+| `GatherNode` placement | yes via `.gather()` |
+| Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes via `.gather(..., gatherConfig, ...)` |
 | Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes via `options.reducer` |
 | Scatter body variant (`node`, literal `dag`, or dynamic `DagReference`) | yes via `body` argument |
 | `EmbeddedDAGNode` placement | yes via `.embed()` |
@@ -150,13 +151,13 @@ DAGBuilder emits every placement shape the schema allows.
 | Multi-port routing | yes via `routes` map |
 | Compile-time route narrowing | yes from `NodeInterface` `TOutput` |
 | Runtime-conditional topology | yes by conditionally adding placements before `.build()` |
-| Recursive / trampoline flows | yes via `services.dispatcher.execute` inside node logic |
+| Recursive / trampoline flows | yes via `DagReference` over registered DAG IRIs |
 
-A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic while DAGBuilder owns the topology.
+A node can still invoke the dispatcher directly when a host deliberately owns that trampoline, but the DAG-native composition surface is `DagReference`: the graph names its candidate DAG IRIs and the engine resolves the selected child at the invocation point.
 
 ### Terminal placements
 
-Every DAG branch must end at a named `TerminalNode` placement. Declare one with `.terminal(name, options?)`:
+Every DAG branch must end at an explicit `TerminalNode` placement IRI. Declare one with `.terminal(placementIri, options?)`:
 
 <<< @/../examples/dags/09-terminals.ts#terminal-completed
 
@@ -164,9 +165,9 @@ Every DAG branch must end at a named `TerminalNode` placement. Declare one with 
 
 <<< @/../examples/dags/09-terminals.ts#terminal-failed
 
-Named terminals appear as discrete nodes in the visualisation. Use descriptive names (`end-ok`, `response-sent`, `workflow-failed`) when the endpoint name carries meaning.
+Terminals appear as discrete nodes in the visualisation. Use descriptive display names (`end-ok`, `response-sent`, `workflow-failed`) when the endpoint label carries meaning; route to the terminal placement IRI.
 
-An `EmbeddedDAGNode` placement targets named terminals directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
+An `EmbeddedDAGNode` placement targets terminal placement IRIs directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 

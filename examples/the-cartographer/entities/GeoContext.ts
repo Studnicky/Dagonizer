@@ -20,7 +20,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GeoContextSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/GeoContext',
+  '$id': 'https://noocodec.dev/schemas/cartographer/GeoContext',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['gridZone', 'country', 'continent', 'countries', 'region', 'hub', 'status', 'waterBodies', 'timezone', 'jurisdiction'],

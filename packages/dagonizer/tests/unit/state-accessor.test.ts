@@ -9,7 +9,10 @@ import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -112,34 +115,43 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
     }
 
     const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
-    dispatcher.registerNode(TestNode.make<ScatterState>('handler', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:handler', ['success'], (state) => {
       const item = state.getter.number('item');
       state.results.push(item * 2);
       return 'success';
     }));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:fan-test',
+      '@id': 'urn:noocodec:dag:fan-test',
       '@type':    'DAG',
       'name': 'fan-test',
       'version': '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:fan-test', 'fan') },
       'nodes': [{
-        '@id':    'urn:noocodex:dag:fan-test/node/fan',
+        '@id': placementIri('urn:noocodec:dag:fan-test', 'fan'),
         '@type':  'ScatterNode',
         'name':   'fan',
-        'body':   { 'node': 'handler' },
+        'body':   { 'node': 'urn:noocodec:node:handler' },
         'source': 'items',
         'itemKey': 'item',
-        'gather': { 'strategy': 'append', 'target': 'collected' },
-        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        'outputs': {
+          'all-success': placementIri('urn:noocodec:dag:fan-test', 'join'),
+          'partial': placementIri('urn:noocodec:dag:fan-test', 'join'),
+          'all-error': placementIri('urn:noocodec:dag:fan-test', 'join'),
+          'empty': placementIri('urn:noocodec:dag:fan-test', 'end'),
+        },
       },
-        { '@id': 'urn:noocodex:dag:fan-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': placementIri('urn:noocodec:dag:fan-test', 'join'), '@type': 'GatherNode',
+          'name': 'join', 'sources': { [placementIri('urn:noocodec:dag:fan-test', 'fan')]: {} }, 'gather': { 'strategy': 'append', 'target': 'collected' },
+          'outputs': { 'success': placementIri('urn:noocodec:dag:fan-test', 'end'), 'error': placementIri('urn:noocodec:dag:fan-test', 'end'), 'empty': placementIri('urn:noocodec:dag:fan-test', 'end') }
+        },
+        { '@id': placementIri('urn:noocodec:dag:fan-test', 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('fan-test', new ScatterState());
+    await dispatcher.execute('urn:noocodec:dag:fan-test', new ScatterState());
 
     assert.ok(getCalls > 0, 'custom accessor.get was invoked at least once');
   });

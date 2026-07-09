@@ -87,6 +87,7 @@ export class AbortCoordinator {
 
 export class CollectNode extends MonadicNode<FanInState, 'done'> {
   readonly name    = 'collect';
+  readonly '@id'   = 'urn:noocodec:node:collect';
   readonly outputs = ['done'] as const;
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -109,6 +110,7 @@ export class CollectNode extends MonadicNode<FanInState, 'done'> {
  */
 export class AbortingCollectNode extends MonadicNode<FanInState, 'done'> {
   readonly name    = 'collect';
+  readonly '@id'   = 'urn:noocodec:node:collect';
   readonly outputs = ['done'] as const;
   readonly #coordinator: AbortCoordinator;
 
@@ -192,33 +194,37 @@ export class DeterministicProducer implements ResumableStreamProducerInterface<n
 
 export const fanInDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:stream-fanin',
+  '@id': 'urn:noocodec:dag:stream-fanin',
   '@type':      'DAG',
   'name':       'stream-fanin',
   'version':    '1',
-  'entrypoints': { 'main': 'scatter-fanin' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:stream-fanin/node/scatter-fanin' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:stream-fanin/node/scatter-fanin',
+      '@id': 'urn:noocodec:dag:stream-fanin/node/scatter-fanin',
       '@type':       'ScatterNode',
       'name':        'scatter-fanin',
-      'body':        { 'node': 'collect' },
+      'body':        { 'node': 'urn:noocodec:node:collect' },
       'source':      'source',
       'itemKey':     'fan-item',
       'execution': { 'mode': 'item', 'concurrency': 2 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'results',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:stream-fanin/node/collect-results',
+        'partial': 'urn:noocodec:dag:stream-fanin/node/collect-results',
+        'all-error': 'urn:noocodec:dag:stream-fanin/node/collect-results',
+        'empty':       'urn:noocodec:dag:stream-fanin/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:stream-fanin/node/end',
+      '@id': 'urn:noocodec:dag:stream-fanin/node/collect-results',
+      '@type': 'GatherNode',
+      'name': 'collect-results',
+      sources: { 'urn:noocodec:dag:stream-fanin/node/scatter-fanin': {} },
+      'gather': { 'strategy': 'append', 'target': 'results' },
+      'outputs': { 'success': 'urn:noocodec:dag:stream-fanin/node/end', 'error': 'urn:noocodec:dag:stream-fanin/node/end', 'empty': 'urn:noocodec:dag:stream-fanin/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:stream-fanin/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
@@ -232,33 +238,37 @@ export const fanInDag: DAGType = {
 
 export const resumeDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:stream-resume',
+  '@id': 'urn:noocodec:dag:stream-resume',
   '@type':      'DAG',
   'name':       'resume-stream',
   'version':    '1',
-  'entrypoints': { 'main': 'resume-stream' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:stream-resume/node/resume-stream' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:stream-resume/node/resume-stream',
+      '@id': 'urn:noocodec:dag:stream-resume/node/resume-stream',
       '@type':       'ScatterNode',
       'name':        'resume-stream',
-      'body':        { 'node': 'collect' },
+      'body':        { 'node': 'urn:noocodec:node:collect' },
       'source':      'source',
       'itemKey':     'fan-item',
       'execution': { 'mode': 'item', 'concurrency': 2 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'results',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:stream-resume/node/collect-results',
+        'partial': 'urn:noocodec:dag:stream-resume/node/collect-results',
+        'all-error': 'urn:noocodec:dag:stream-resume/node/collect-results',
+        'empty':       'urn:noocodec:dag:stream-resume/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:stream-resume/node/end',
+      '@id': 'urn:noocodec:dag:stream-resume/node/collect-results',
+      '@type': 'GatherNode',
+      'name': 'collect-results',
+      sources: { 'urn:noocodec:dag:stream-resume/node/resume-stream': {} },
+      'gather': { 'strategy': 'append', 'target': 'results' },
+      'outputs': { 'success': 'urn:noocodec:dag:stream-resume/node/end', 'error': 'urn:noocodec:dag:stream-resume/node/end', 'empty': 'urn:noocodec:dag:stream-resume/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:stream-resume/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

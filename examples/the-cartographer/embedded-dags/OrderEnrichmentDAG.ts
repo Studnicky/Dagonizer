@@ -15,8 +15,8 @@
  *     └─eta-estimated─► enriched  (TerminalNode completed)
  *
  * Embedded in event-pipeline's order lane:
- *   .embed('order-enrichment', 'order-enrichment',
- *     { 'success': 'enrich-leg', 'error': 'enrich-leg' },
+ *   .embed(orderEnrichmentPlacementIri, orderEnrichmentDagIri,
+ *     { 'success': enrichLegPlacementIri, 'error': enrichLegPlacementIri },
  *     {
  *       'inputs':  { 'normalized': 'normalized' },
  *       'outputs': { 'pricedOrder': 'pricedOrder', 'shippingQuote': 'shippingQuote', 'deliveryEstimate': 'deliveryEstimate', 'routing': 'routing' },
@@ -32,31 +32,34 @@
 import { enrichPricing }  from '../nodes/enrichPricing.ts';
 import { enrichShipping } from '../nodes/enrichShipping.ts';
 import { enrichEta }      from '../nodes/enrichEta.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import type { CartographerState }   from '../CartographerState.ts';
 
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 import type { DAGType }              from '@studnicky/dagonizer/entities';
 
-export const orderEnrichmentDAG: DAGType = new DAGBuilder('order-enrichment', '1.0')
+const ORDER_ENRICHMENT_DAG_IRI = CARTOGRAPHER_IRIS.dag.orderEnrichment;
+
+export const orderEnrichmentDAG: DAGType = new DAGBuilder(ORDER_ENRICHMENT_DAG_IRI, '1.0')
 
   // 1. enrich-pricing: basket → PricedOrder with FX normalisation.
-  .node('enrich-pricing', enrichPricing, {
-    'priced': 'enrich-shipping',
+  .node(CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enrich-pricing'), enrichPricing, {
+    'priced': CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enrich-shipping'),
   })
 
   // 2. enrich-shipping: origin→dest haversine + carrier rate → ShippingQuote.
-  .node('enrich-shipping', enrichShipping, {
-    'shipping-quoted': 'enrich-eta',
+  .node(CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enrich-shipping'), enrichShipping, {
+    'shipping-quoted': CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enrich-eta'),
   })
 
   // 3. enrich-eta: SLA promise vs disrupted ETA → DeliveryEstimate.
-  .node('enrich-eta', enrichEta, {
-    'eta-estimated': 'enriched',
+  .node(CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enrich-eta'), enrichEta, {
+    'eta-estimated': CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enriched'),
   })
 
   // Terminal
-  .terminal('enriched', { outcome: 'completed' })
+  .terminal(CARTOGRAPHER_IRIS.placementIri(ORDER_ENRICHMENT_DAG_IRI, 'enriched'), { outcome: 'completed' })
 
   .build();
 

@@ -45,7 +45,7 @@ collectDispatcher.registerDAG(collectDag);
 const collectState = new GatherDemoState();
 collectState.items = ['alpha', 'bravo', 'charlie', 'delta'];
 
-await collectDispatcher.execute('collect-run', collectState);
+await collectDispatcher.execute('urn:noocodec:dag:collect-run', collectState);
 
 process.stdout.write('\n=== collect strategy ===\n');
 process.stdout.write(`  source items: ${JSON.stringify(collectState.items)}\n`);
@@ -65,7 +65,7 @@ discardDispatcher.registerDAG(discardDag);
 const discardState = new GatherDemoState();
 discardState.items = ['alpha', 'bravo', 'charlie', 'delta'];
 
-await discardDispatcher.execute('discard-run', discardState);
+await discardDispatcher.execute('urn:noocodec:dag:discard-run', discardState);
 
 process.stdout.write('\n=== discard strategy ===\n');
 process.stdout.write(`  source items: ${JSON.stringify(discardState.items)}\n`);

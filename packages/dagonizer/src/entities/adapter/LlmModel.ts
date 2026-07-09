@@ -16,7 +16,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const LlmModelSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/LlmModel',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/LlmModel',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['name', 'variant', 'cloud', 'costRank'],

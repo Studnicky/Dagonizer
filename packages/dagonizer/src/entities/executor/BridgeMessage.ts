@@ -117,7 +117,7 @@ const InlineExecutionResponseShape = {
 // ---------------------------------------------------------------------------
 
 export const BridgeMessageSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/BridgeMessage',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/BridgeMessage',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     // ── parent → host ────────────────────────────────────────────────────────

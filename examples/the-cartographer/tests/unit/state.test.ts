@@ -3,7 +3,7 @@
  *
  * CartographerState manages the mutable clipboard threaded through every node.
  * Tests assert:
- *  - clone() produces deep-independent copies (mutations do not alias back)
+ *  - clone() produces deep-independent copies (mutations do not share state)
  *  - defaultRouting() returns the expected all-false shape
  *  - unresolvedCandidate() returns a well-formed GeoCandidate
  *  - the 'variant' discriminant on CanonicalEventVariant is used (not 'kind')

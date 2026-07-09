@@ -7,138 +7,146 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const CANCEL_DAG_IRI = 'urn:noocodex:dag:cancel';
+const MID_CANCEL_DAG_IRI = 'urn:noocodex:dag:mid-cancel';
+const TIMEOUT_DAG_IRI = 'urn:noocodex:dag:t';
+const INSPECT_DAG_IRI = 'urn:noocodex:dag:inspect-dag';
+const HOOKED_DAG_IRI = 'urn:noocodex:dag:hooked';
+const ERROR_DAG_IRI = 'urn:noocodex:dag:err';
 
 void describe('Dagonizer AbortSignal cancellation', () => {
   void it('marks state cancelled when caller aborts before DAG starts', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('slow', ['success'], async (_state, context) => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:slow', ['success'], async (_state, context) => {
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(resolve, 1000);
         context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
       });
       return 'success';
     }));
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:cancel',
+      '@id':      CANCEL_DAG_IRI,
       '@type':    'DAG',
       'name': 'cancel',
       'version': '1',
-      'entrypoints': { 'main': 'slow' },
+      'entrypoints': { 'main': `${CANCEL_DAG_IRI}/node/slow` },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:cancel/node/slow',
+        '@id':   `${CANCEL_DAG_IRI}/node/slow`,
         '@type': 'SingleNode',
-        'name':  'slow', 'node': 'slow', 'outputs': { 'success': 'end' },
+        'name':  'slow', 'node': 'urn:noocodec:node:slow', 'outputs': { 'success': `${CANCEL_DAG_IRI}/node/end` },
       },
-        { '@id': 'urn:noocodex:dag:cancel/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${CANCEL_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
+    }));
 
     const controller = new AbortController();
     controller.abort(new Error('user aborted'));
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('cancel', state, { 'signal': controller.signal });
+    const result = await dispatcher.execute(CANCEL_DAG_IRI, state, { 'signal': controller.signal });
     assert.equal(state.lifecycle.variant, 'cancelled');
-    assert.equal(result.cursor, 'slow');
-    assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'abort' });
+    assert.equal(result.cursor, `${CANCEL_DAG_IRI}/node/slow`);
+    assert.deepEqual(result.interruptedAt, { 'nodeName': `${CANCEL_DAG_IRI}/node/slow`, 'reason': 'abort' });
   });
 
   void it('records interruptedAt when caller aborts mid-flow at a downstream node', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const controller = new AbortController();
-    dispatcher.registerNode(TestNode.make('first', ['success'], () => 'success'));
-    dispatcher.registerNode(TestNode.make('second', ['success'], () => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:first', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:second', ['success'], () => {
       // Trip the controller before this node returns so the next iteration
       // observes `signal.aborted` BEFORE running the downstream stage.
       controller.abort(new Error('mid-flow cancel'));
       return 'success';
     }));
-    dispatcher.registerNode(TestNode.make('third', ['success'], () => 'success'));
-    dispatcher.registerDAG({
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:third', ['success'], () => 'success'));
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:mid-cancel',
+      '@id':      MID_CANCEL_DAG_IRI,
       '@type':    'DAG',
       'name':       'mid-cancel',
       'version':    '1',
-      'entrypoints': { 'main': 'a' },
+      'entrypoints': { 'main': `${MID_CANCEL_DAG_IRI}/node/a` },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:mid-cancel/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'first', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:mid-cancel/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'second', 'outputs': { 'success': 'c' } },
-        { '@id': 'urn:noocodex:dag:mid-cancel/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'third', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:mid-cancel/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${MID_CANCEL_DAG_IRI}/node/a`, '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:first', 'outputs': { 'success': `${MID_CANCEL_DAG_IRI}/node/b` } },
+        { '@id': `${MID_CANCEL_DAG_IRI}/node/b`, '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:second', 'outputs': { 'success': `${MID_CANCEL_DAG_IRI}/node/c` } },
+        { '@id': `${MID_CANCEL_DAG_IRI}/node/c`, '@type': 'SingleNode',
+          'name': 'c', 'node': 'urn:noocodec:node:third', 'outputs': { 'success': `${MID_CANCEL_DAG_IRI}/node/end` } },
+        { '@id': `${MID_CANCEL_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
+    }));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('mid-cancel', state, { 'signal': controller.signal });
+    const result = await dispatcher.execute(MID_CANCEL_DAG_IRI, state, { 'signal': controller.signal });
     assert.equal(state.lifecycle.variant, 'cancelled');
     // The loop checks `signal.aborted` before running 'c', so the cursor and
     // interruptedAt.nodeName point at the node that would have run next.
-    assert.equal(result.cursor, 'c');
-    assert.deepEqual(result.interruptedAt, { 'nodeName': 'c', 'reason': 'abort' });
+    assert.equal(result.cursor, `${MID_CANCEL_DAG_IRI}/node/c`);
+    assert.deepEqual(result.interruptedAt, { 'nodeName': `${MID_CANCEL_DAG_IRI}/node/c`, 'reason': 'abort' });
   });
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('slow', ['success'], async (_state, context) => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:slow', ['success'], async (_state, context) => {
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(resolve, 5000);
         context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
       });
       return 'success';
     }));
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:t',
+      '@id':      TIMEOUT_DAG_IRI,
       '@type':    'DAG',
       'name': 't',
       'version': '1',
-      'entrypoints': { 'main': 'slow' },
+      'entrypoints': { 'main': `${TIMEOUT_DAG_IRI}/node/slow` },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:t/node/slow',
+        '@id':   `${TIMEOUT_DAG_IRI}/node/slow`,
         '@type': 'SingleNode',
-        'name':  'slow', 'node': 'slow', 'outputs': { 'success': 'end' },
+        'name':  'slow', 'node': 'urn:noocodec:node:slow', 'outputs': { 'success': `${TIMEOUT_DAG_IRI}/node/end` },
       },
-        { '@id': 'urn:noocodex:dag:t/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${TIMEOUT_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
+    }));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('t', state, { 'deadlineMs': 25 });
+    const result = await dispatcher.execute(TIMEOUT_DAG_IRI, state, { 'deadlineMs': 25 });
     assert.equal(state.lifecycle.variant, 'timed_out');
-    assert.equal(result.cursor, 'slow');
-    assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'timeout' });
+    assert.equal(result.cursor, `${TIMEOUT_DAG_IRI}/node/slow`);
+    assert.deepEqual(result.interruptedAt, { 'nodeName': `${TIMEOUT_DAG_IRI}/node/slow`, 'reason': 'timeout' });
   });
 
   void it('passes dagName/nodeName through NodeContext', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: { dag: string; node: string } = { 'dag': '', 'node': '' };
-    dispatcher.registerNode(TestNode.make('inspect', ['success'], (_state, context) => {
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:inspect', ['success'], (_state, context) => {
       seen.dag = context.dagName;
       seen.node = context.nodeName;
       return 'success';
     }));
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:inspect-dag',
+      '@id':      INSPECT_DAG_IRI,
       '@type':    'DAG',
       'name': 'inspect-dag',
       'version': '1',
-      'entrypoints': { 'main': 's1' },
+      'entrypoints': { 'main': `${INSPECT_DAG_IRI}/node/s1` },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:inspect-dag/node/s1',
+        '@id':   `${INSPECT_DAG_IRI}/node/s1`,
         '@type': 'SingleNode',
-        'name':  's1', 'node': 'inspect', 'outputs': { 'success': 'end' },
+        'name':  's1', 'node': 'urn:noocodec:node:inspect', 'outputs': { 'success': `${INSPECT_DAG_IRI}/node/end` },
       },
-        { '@id': 'urn:noocodex:dag:inspect-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${INSPECT_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
-    const result = await dispatcher.execute('inspect-dag', new NodeStateBase());
-    assert.equal(seen.dag, 'inspect-dag');
+    }));
+    const result = await dispatcher.execute(INSPECT_DAG_IRI, new NodeStateBase());
+    assert.equal(seen.dag, INSPECT_DAG_IRI);
     assert.equal(seen.node, 's1');
     assert.equal(result.interruptedAt, null);
   });
@@ -164,32 +172,32 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new TracedDagonizer();
-    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
-    dispatcher.registerDAG({
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success'], () => 'success'));
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:hooked',
+      '@id':      HOOKED_DAG_IRI,
       '@type':    'DAG',
       'name': 'hooked',
       'version': '1',
-      'entrypoints': { 'main': 'a' },
+      'entrypoints': { 'main': `${HOOKED_DAG_IRI}/node/a` },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:hooked/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:hooked/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:hooked/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${HOOKED_DAG_IRI}/node/a`, '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': `${HOOKED_DAG_IRI}/node/b` } },
+        { '@id': `${HOOKED_DAG_IRI}/node/b`, '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': `${HOOKED_DAG_IRI}/node/end` } },
+        { '@id': `${HOOKED_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
-    await dispatcher.execute('hooked', new NodeStateBase());
+    }));
+    await dispatcher.execute(HOOKED_DAG_IRI, new NodeStateBase());
     assert.deepEqual(events, [
-      'flow:start:hooked',
+      `flow:start:${HOOKED_DAG_IRI}`,
       'stage:start:a',
       'stage:end:a:success',
       'stage:start:b',
       'stage:end:b:success',
       'stage:start:end',
       'stage:end:end:completed',
-      'flow:end:hooked',
+      `flow:end:${HOOKED_DAG_IRI}`,
     ]);
   });
 
@@ -205,34 +213,35 @@ void describe('Dagonizer extension hooks', () => {
     const dispatcher = new ErrTraced();
     class BoomNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
+      readonly '@id' = 'urn:noocodec:node:boom';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(_batch: Batch<NodeStateBase>): Promise<Map<'success', Batch<NodeStateBase>>> { throw new Error('kaboom'); }
     }
     dispatcher.registerNode(new BoomNode());
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:err',
+      '@id':      ERROR_DAG_IRI,
       '@type':    'DAG',
       'name': 'err',
       'version': '1',
-      'entrypoints': { 'main': 's' },
+      'entrypoints': { 'main': `${ERROR_DAG_IRI}/node/s` },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:err/node/s',
+        '@id':   `${ERROR_DAG_IRI}/node/s`,
         '@type': 'SingleNode',
-        'name':  's', 'node': 'boom', 'outputs': { 'success': 'end' },
+        'name':  's', 'node': 'urn:noocodec:node:boom', 'outputs': { 'success': `${ERROR_DAG_IRI}/node/end` },
       },
-        { '@id': 'urn:noocodex:dag:err/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': `${ERROR_DAG_IRI}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
-    const result = await dispatcher.execute('err', new NodeStateBase());
-    assert.equal(result.cursor, 's');
+    }));
+    const result = await dispatcher.execute(ERROR_DAG_IRI, new NodeStateBase());
+    assert.equal(result.cursor, `${ERROR_DAG_IRI}/node/s`);
     assert.equal(result.state.lifecycle.variant, 'failed');
     // Node throws without abort signal; lifecycle is `failed`, not a
     // cancellation. interruptedAt MUST be null.
     assert.equal(result.interruptedAt, null);
     assert.equal(seen.length, 1);
-    assert.equal(seen[0]?.stage, 's');
+    assert.equal(seen[0]?.stage, `${ERROR_DAG_IRI}/node/s`);
     assert.equal(seen[0]?.message, 'kaboom');
   });
 });

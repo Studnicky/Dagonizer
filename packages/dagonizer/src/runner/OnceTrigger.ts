@@ -7,7 +7,7 @@
  *
  * @example
  * ```ts
- * const trigger = new OnceTrigger<MyInput, MyState, MyOutput>('my-dag', input);
+ * const trigger = new OnceTrigger<MyInput, MyState, MyOutput>('urn:noocodec:dag:my-dag', input);
  * await trigger.attach(runner);
  * const result = trigger.result; // available after attach resolves
  * ```
@@ -24,14 +24,14 @@ export class OnceTrigger<
   TState extends NodeStateInterface,
   TOutput,
 > implements TriggerInterface<TInput, TState, TOutput> {
-  readonly #dagName: string;
+  readonly #dagIri: string;
   readonly #input: TInput;
   readonly #options: ExecuteOptionsType;
   #result: TOutput | null;
   #detached: boolean;
 
-  constructor(dagName: string, input: TInput, options: ExecuteOptionsType = {}) {
-    this.#dagName = dagName;
+  constructor(dagIri: string, input: TInput, options: ExecuteOptionsType = {}) {
+    this.#dagIri = dagIri;
     this.#input = input;
     this.#options = options;
     this.#result = null;
@@ -49,7 +49,7 @@ export class OnceTrigger<
 
   async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     if (this.#detached) return;
-    this.#result = await runner.run(this.#dagName, this.#input, this.#options);
+    this.#result = await runner.run(this.#dagIri, this.#input, this.#options);
   }
 
   async detach(): Promise<void> {

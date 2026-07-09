@@ -104,7 +104,7 @@ The hand-written JSON form is also accepted:
 
 ```jsonc
 {
-  "@id":   "urn:noocodex:dag:pipeline/node/warm-cache",
+  "@id":   "urn:noocodec:dag:pipeline/node/warm-cache",
   "@type": "PhaseNode",
   "name":  "warm-cache",
   "node":  "warm-cache-node",

@@ -43,6 +43,7 @@ export class GenerateState extends NodeStateBase {
 // every clone returning 'success' yields the 'all-success' route.
 export class ProviderNode extends MonadicNode<GenerateState, 'success'> {
   readonly name = 'provider';
+  readonly '@id' = 'urn:noocodec:node:provider';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -73,6 +74,7 @@ export class ProviderNode extends MonadicNode<GenerateState, 'success'> {
 // Reads the collected candidates off parent state and picks the highest score.
 export class SelectNode extends MonadicNode<GenerateState, 'selected' | 'none'> {
   readonly name = 'select';
+  readonly '@id' = 'urn:noocodec:node:select';
   readonly outputs = ['selected', 'none'] as const;
   override get outputSchema(): Record<'selected' | 'none', SchemaObjectType> {
     return { 'selected': { 'type': 'object' }, 'none': { 'type': 'object' } };
@@ -106,45 +108,52 @@ export class SelectNode extends MonadicNode<GenerateState, 'selected' | 'none'> 
 // #region scatter-collect-placement
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:generate-select',
+  '@id': 'urn:noocodec:dag:generate-select',
   '@type':      'DAG',
   "name":         'generate-select',
   "version":      '1',
-  "entrypoints": { "main": 'generate' },
+  "entrypoints": { "main": 'urn:noocodec:dag:generate-select/node/generate' },
   "nodes": [
     {
-      '@id':        'urn:noocodex:dag:generate-select/node/generate',
+      '@id': 'urn:noocodec:dag:generate-select/node/generate',
       '@type':      'ScatterNode',
       "name":         'generate',
-      "body":         { "node": 'provider' },         // run provider once per clone
+      "body":         { "node": 'urn:noocodec:node:provider' },         // run provider once per clone
       "source":       'providers',                     // one clone per provider
       "itemKey":      'provider',                      // current provider bound under this key
       "execution": { "mode": "item", "concurrency": 3 },                               // up to 3 providers in-flight
-      // map gather: read each clone's `candidate` metadata, append into
-      // parent.candidates in source-index order. Because `source` is set, a
-      // map gather appends (N clones ⇒ array); produced data survives.
-      "gather": {
-        "strategy": GatherStrategyNames.MAP,
-        "mapping":  { "candidate": 'candidates' },     // cloneField → parentPath
-      },
       // Aggregate outputs from the default 'aggregate' reducer. All providers
       // emit 'produced' (success), so 'all-success' fires → route to select.
       "outputs": {
-        'all-success': 'select',
-        "partial":     'select',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:generate-select/node/collect-candidates',
+        "partial": 'urn:noocodec:dag:generate-select/node/collect-candidates',
+        'all-error':   'urn:noocodec:dag:generate-select/node/end',
+        "empty":       'urn:noocodec:dag:generate-select/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:generate-select/node/select',
-      '@type':   'SingleNode',
-      "name":    'select',
-      "node":    'select',
-      "outputs": { "selected": 'end', "none": 'end' },
+      '@id': 'urn:noocodec:dag:generate-select/node/collect-candidates',
+      '@type': 'GatherNode',
+      "name": 'collect-candidates',
+      sources: { "urn:noocodec:dag:generate-select/node/generate": {} },
+      // map gather: read each clone's `candidate` metadata, append into
+      // parent.candidates in source-index order. Because scatter emits one
+      // record per clone, the first-class gather sees an ordered source batch.
+      "gather": {
+        "strategy": GatherStrategyNames.MAP,
+        "mapping": { "candidate": 'candidates' },     // cloneField → parentPath
+      },
+      "outputs": { "success": 'urn:noocodec:dag:generate-select/node/select', "error": 'urn:noocodec:dag:generate-select/node/end', "empty": 'urn:noocodec:dag:generate-select/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:generate-select/node/end',
+      '@id': 'urn:noocodec:dag:generate-select/node/select',
+      '@type':   'SingleNode',
+      "name":    'select',
+      "node":    'urn:noocodec:node:select',
+      "outputs": { "selected": 'urn:noocodec:dag:generate-select/node/end', "none": 'urn:noocodec:dag:generate-select/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:generate-select/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

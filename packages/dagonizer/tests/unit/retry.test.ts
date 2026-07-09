@@ -60,14 +60,14 @@ void describe('RetryPolicy.shouldRetry filtering', () => {
   });
 });
 
-void describe('RetryPolicy.shouldRetry DAGError.retryable fallback precedence', () => {
-  void it('with no retryOn/abortOn filters, falls back to DAGError.retryable: false to stop retrying', () => {
+void describe('RetryPolicy.shouldRetry DAGError.retryable precedence', () => {
+  void it('with no retryOn/abortOn filters, uses DAGError.retryable: false to stop retrying', () => {
     const p = RetryPolicy.from({ "maxAttempts": 5 });
     const notRetryable = new DAGError('nope', { "code": 'VALIDATION_ERROR', "retryable": false });
     assert.equal(p.shouldRetry(notRetryable, 1), false);
   });
 
-  void it('with no retryOn/abortOn filters, falls back to DAGError.retryable: true to keep retrying', () => {
+  void it('with no retryOn/abortOn filters, uses DAGError.retryable: true to keep retrying', () => {
     const p = RetryPolicy.from({ "maxAttempts": 5 });
     const retryable = new DAGError('later', { "code": 'EXECUTION_ERROR', "retryable": true });
     assert.equal(p.shouldRetry(retryable, 1), true);

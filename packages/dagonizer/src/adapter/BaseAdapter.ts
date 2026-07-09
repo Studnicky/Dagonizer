@@ -111,7 +111,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
    * Adapters whose provider has no native tool-result channel (gemini-nano,
    * web-llm) flatten tool results into the prompt; this static is the single
    * source of that string so the format never drifts between them. A blank
-   * `toolName` falls back to `unknown`.
+   * `toolName` uses `unknown` when blank.
    */
   static formatToolResult(message: Extract<ChatMessageType, { 'role': 'tool' }>): string {
     const toolName = message.toolName.length > 0 ? message.toolName : 'unknown';
@@ -195,8 +195,8 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
       selected = chatModels.find((m) => m.name === preferred);
     }
     if (selected === undefined) {
-      // Configured default absent from the live catalogue: fall back to the
-      // cheapest available chat model by `costRank` (each adapter populates
+      // Configured default absent from the live catalogue: select the cheapest
+      // available chat model by `costRank` (each adapter populates
       // it from its best cost signal). Prefer fully-local models — a
       // cloud-routed model needs a provider subscription and fails without
       // one, so it is chosen only when no local chat model exists. Both

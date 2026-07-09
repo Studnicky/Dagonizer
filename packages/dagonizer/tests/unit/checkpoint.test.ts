@@ -9,7 +9,6 @@ import {
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
-import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -25,6 +24,7 @@ import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── State fixtures ───────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ class StoreState extends NodeStateBase {
 
 class SlowNode extends MonadicNode<NodeStateBase, 'done'> {
   readonly name = 'slow';
+  readonly '@id' = 'urn:noocodec:node:slow';
   readonly outputs = ['done'] as const;
   readonly #onReady: () => void;
   constructor(onReady: () => void) { super(); this.#onReady = onReady; }
@@ -90,26 +91,26 @@ class TestCheckpoint {
   const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
   dispatcher.registerNode(new SlowNode(resolveNodeReady));
-  dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
     '@context': DAG_CONTEXT,
-    '@id':      'urn:noocodex:dag:store-test',
+    '@id': 'urn:noocodec:dag:store-test',
     '@type':    'DAG',
-    'name': 'store-test', 'version': '1', 'entrypoints': { 'main': 'a' },
+    'name': 'store-test', 'version': '1', 'entrypoints': { 'main': 'urn:noocodec:dag:store-test/node/a' },
     'nodes': [
       {
-        '@id': 'urn:noocodex:dag:store-test/node/a', '@type': 'SingleNode',
-        'name': 'a', 'node': 'slow', 'outputs': { 'done': 'b' },
+        '@id': 'urn:noocodec:dag:store-test/node/a', '@type': 'SingleNode',
+        'name': 'a', 'node': 'urn:noocodec:node:slow', 'outputs': { 'done': 'urn:noocodec:dag:store-test/node/b' },
       },
       {
-        '@id': 'urn:noocodex:dag:store-test/node/b', '@type': 'SingleNode',
-        'name': 'b', 'node': 'slow', 'outputs': { 'done': 'end' },
+        '@id': 'urn:noocodec:dag:store-test/node/b', '@type': 'SingleNode',
+        'name': 'b', 'node': 'urn:noocodec:node:slow', 'outputs': { 'done': 'urn:noocodec:dag:store-test/node/end' },
       },
-      { '@id': 'urn:noocodex:dag:store-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      { '@id': 'urn:noocodec:dag:store-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
     ],
-  });
+  }));
 
   const ctl = new AbortController();
-  const execution = dispatcher.execute('store-test', new NodeStateBase(), { 'signal': ctl.signal });
+  const execution = dispatcher.execute('urn:noocodec:dag:store-test', new NodeStateBase(), { 'signal': ctl.signal });
   // Abort deterministically once the node body is suspended, no wall-clock wait.
   nodeReady.then(() => { ctl.abort(new Error('pause')); });
   const result = await execution;
@@ -247,20 +248,20 @@ void describe('NodeStateBase snapshot/restore', () => {
 void describe('cursor on ExecutionResultType', () => {
   void it('is null on a clean completion', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success']));
-    dispatcher.registerDAG({
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success']));
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:clean',
+      '@id': 'urn:noocodec:dag:clean',
       '@type':    'DAG',
-      'name': 'clean', 'version': '1', 'entrypoints': { 'main': 's' },
+      'name': 'clean', 'version': '1', 'entrypoints': { 'main': 'urn:noocodec:dag:clean/node/s' },
       'nodes': [{
-        '@id': 'urn:noocodex:dag:clean/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+        '@id': 'urn:noocodec:dag:clean/node/s', '@type': 'SingleNode',
+        'name': 's', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:clean/node/end' },
       },
-        { '@id': 'urn:noocodex:dag:clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
-    const result = await dispatcher.execute('clean', new NodeStateBase());
+    }));
+    const result = await dispatcher.execute('urn:noocodec:dag:clean', new NodeStateBase());
     assert.equal(result.cursor, null);
   });
 
@@ -272,6 +273,7 @@ void describe('cursor on ExecutionResultType', () => {
 
     class OpNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'op';
+      readonly '@id' = 'urn:noocodec:node:op';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
@@ -285,26 +287,28 @@ void describe('cursor on ExecutionResultType', () => {
       }
     }
     dispatcher.registerNode(new OpNode());
-    dispatcher.registerDAG({
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:two',
+      '@id': 'urn:noocodec:dag:two',
       '@type':    'DAG',
-      'name': 'two', 'version': '1', 'entrypoints': { 'main': 'a' },
+      'name': 'two', 'version': '1', 'entrypoints': { 'main': 'urn:noocodec:dag:two/node/a' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:two/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:two/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'op', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:two/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': 'urn:noocodec:dag:two/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:two/node/b' } },
+        {
+          '@id': 'urn:noocodec:dag:two/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:two/node/end' } },
+        { '@id': 'urn:noocodec:dag:two/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
+    }));
     const ctl = new AbortController();
     // Start execution, then abort immediately once the node body is suspended.
-    const execution = dispatcher.execute('two', new NodeStateBase(), { 'signal': ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:two', new NodeStateBase(), { 'signal': ctl.signal });
     // Wait for node to signal it is running, then abort deterministically.
     nodeReady.then(() => { ctl.abort(new Error('stop')); });
     const result = await execution;
-    assert.equal(result.cursor, 'a');
+    assert.equal(result.cursor, 'urn:noocodec:dag:two/node/a');
     assert.equal(result.executedNodes.length, 0);
   });
 });
@@ -319,30 +323,33 @@ void describe('Checkpoint round-trip', () => {
     Scheduler.configure(new VirtualScheduler(0));
 
     const dispatcher = new Dagonizer<CountingState>();
-    dispatcher.registerNode(TestNode.make<CountingState>('inc', ['success'], (state) => {
+    dispatcher.registerNode(TestNode.make<CountingState>('urn:noocodec:node:inc', ['success'], (state) => {
       state.count++;
       state.log.push(`tick:${state.count}`);
       return 'success';
     }));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:count',
+      '@id': 'urn:noocodec:dag:count',
       '@type':    'DAG',
-      'name': 'count', 'version': '1', 'entrypoints': { 'main': 'a' },
+      'name': 'count', 'version': '1', 'entrypoints': { 'main': 'urn:noocodec:dag:count/node/a' },
       'nodes': [
-        { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'inc', 'outputs': { 'success': 'b' } },
-        { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'inc', 'outputs': { 'success': 'c' } },
-        { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'inc', 'outputs': { 'success': 'end' } },
-        { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        {
+          '@id': 'urn:noocodec:dag:count/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'urn:noocodec:node:inc', 'outputs': { 'success': 'urn:noocodec:dag:count/node/b' } },
+        {
+          '@id': 'urn:noocodec:dag:count/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'urn:noocodec:node:inc', 'outputs': { 'success': 'urn:noocodec:dag:count/node/c' } },
+        {
+          '@id': 'urn:noocodec:dag:count/node/c', '@type': 'SingleNode',
+          'name': 'c', 'node': 'urn:noocodec:node:inc', 'outputs': { 'success': 'urn:noocodec:dag:count/node/end' } },
+        { '@id': 'urn:noocodec:dag:count/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
-    dispatcher.registerDAG(dag);
+    dispatcher.registerDAG(TestDag.from(dag));
 
     // Reference run: no checkpoint.
-    const reference = await dispatcher.execute('count', new CountingState());
+    const reference = await dispatcher.execute('urn:noocodec:dag:count', new CountingState());
     assert.equal(reference.cursor, null);
     assert.equal(reference.state.count, 3);
 
@@ -350,24 +357,24 @@ void describe('Checkpoint round-trip', () => {
     const ctl = new AbortController();
     let nodesRun = 0;
     const initial = new CountingState();
-    const execution = dispatcher.execute('count', initial, { 'signal': ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:count', initial, { 'signal': ctl.signal });
     for await (const _stage of execution) {
       nodesRun++;
       if (nodesRun === 1) ctl.abort(new Error('pause'));
     }
     const partial = await execution;
-    assert.equal(partial.cursor, 'b');
+    assert.equal(partial.cursor, 'urn:noocodec:dag:count/node/b');
     assert.equal(partial.state.count, 1);
 
     // Checkpoint → persist → load → restoreState → resume.
-    const ckpt = await Checkpoint.capture('count', partial);
+    const ckpt = await Checkpoint.capture('urn:noocodec:dag:count', partial);
     const round = ckpt.toJson();
     const parsed: unknown = JSON.parse(round);
     const ckpt2 = Checkpoint.load(parsed);
     const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
-    assert.equal(cursor, 'b');
-    assert.equal(dagName, ContextResolver.expand('count', {}));
+    assert.equal(cursor, 'urn:noocodec:dag:count/node/b');
+    assert.equal(dagName, 'urn:noocodec:dag:count');
     const resumed = await dispatcher.resume(dagName, state, cursor);
     assert.equal(resumed.cursor, null);
     assert.equal(resumed.state.count, 3);
@@ -376,24 +383,24 @@ void describe('Checkpoint round-trip', () => {
 
   void it('rejects checkpointing a completed DAG', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success']));
-    dispatcher.registerDAG({
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:op', ['success']));
+    dispatcher.registerDAG(TestDag.from({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:done',
+      '@id': 'urn:noocodec:dag:done',
       '@type':    'DAG',
-      'name': 'done', 'version': '1', 'entrypoints': { 'main': 's' },
+      'name': 'done', 'version': '1', 'entrypoints': { 'main': 'urn:noocodec:dag:done/node/s' },
       'nodes': [{
-        '@id': 'urn:noocodex:dag:done/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+        '@id': 'urn:noocodec:dag:done/node/s', '@type': 'SingleNode',
+        'name': 's', 'node': 'urn:noocodec:node:op', 'outputs': { 'success': 'urn:noocodec:dag:done/node/end' },
       },
-        { '@id': 'urn:noocodex:dag:done/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:done/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
-    });
-    const result = await dispatcher.execute('done', new NodeStateBase());
-    await assert.rejects(() => Checkpoint.capture('done', result), DAGError);
+    }));
+    const result = await dispatcher.execute('urn:noocodec:dag:done', new NodeStateBase());
+    await assert.rejects(() => Checkpoint.capture('urn:noocodec:dag:done', result), DAGError);
   });
 
-  void it('writes the resolved DAG IRI when capture receives a context', async () => {
+  void it('writes the absolute DAG IRI supplied to capture', async () => {
     const state = new CountingState();
     const result = {
       'cursor': 'next',
@@ -404,11 +411,25 @@ void describe('Checkpoint round-trip', () => {
       'interruptedAt': null,
       'parked': null,
     };
-    const context = { 'flow': 'https://example.com/flows#' };
 
-    const ckpt = await Checkpoint.capture('flow:count', result, { context });
+    const ckpt = await Checkpoint.capture('urn:noocodec:dag:count', result);
 
-    assert.equal(ckpt.data.dagName, 'https://example.com/flows#count');
+    assert.equal(ckpt.data.dagName, 'urn:noocodec:dag:count');
+  });
+
+  void it('rejects non-absolute DAG identifiers during capture', async () => {
+    const state = new CountingState();
+    const result = {
+      'cursor': 'next',
+      'executedNodes': ['first'],
+      'skippedNodes': [],
+      state,
+      'terminalOutcome': null,
+      'interruptedAt': null,
+      'parked': null,
+    };
+
+    await assert.rejects(() => Checkpoint.capture('flow:count', result), /requires an absolute IRI/u);
   });
 
   void it('load rejects malformed CheckpointData', () => {
@@ -561,13 +582,15 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
 // fresh store instances from those snapshots on resume.
 
 void describe('Checkpoint.capture + restoreStores', () => {
+  const STORE_TEST_DAG_IRI = 'urn:noocodec:dag:store-test';
+
   void it('round-trips a single named store through persist + load', async () => {
     const memory = new MemoryStore();
     await memory.set('counter', 42);
     await memory.set('label', 'hello');
 
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': { memory } });
 
     assert.ok(ckpt.data.stores !== undefined, 'stores should be present on checkpoint data');
     assert.ok('memory' in (ckpt.data.stores ?? {}), 'stores.memory should be present');
@@ -595,7 +618,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await audit.set('event', 'login');
 
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory, audit } });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': { memory, audit } });
 
     const cpStore = new MemoryCheckpointStore();
     await cpStore.save('run:2', ckpt.toJson());
@@ -620,7 +643,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await memory.set('k', 'v');
 
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': { memory } });
 
     // Pass empty map; 'memory' is in the checkpoint but not supplied.
     await assert.rejects(
@@ -641,7 +664,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await memory.set('k', 'v');
 
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': { memory } });
 
     const freshMemory = new MemoryStore();
     const extra       = new MemoryStore();
@@ -688,7 +711,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
 
   void it('capture with an empty stores option produces no store entries and a no-op restoreStores', async () => {
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': {} });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': {} });
 
     // Implementation choice: empty stores map → no stores field in data
     // (or present but empty). Either is valid per spec.
@@ -707,10 +730,10 @@ void describe('Checkpoint.capture + restoreStores', () => {
 
   void it('capture with no stores option succeeds unchanged with a no-op restoreStores', async () => {
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result);
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result);
 
     assert.ok(ckpt instanceof Checkpoint, 'Expected a Checkpoint instance');
-    assert.equal(ckpt.data.dagName, ContextResolver.expand('store-test', {}));
+    assert.equal(ckpt.data.dagName, STORE_TEST_DAG_IRI);
     assert.equal(ckpt.data.cursor, result.cursor);
 
     // restoreStores on a no-stores checkpoint should be a no-op.
@@ -723,7 +746,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     log.add('crawled');
 
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { 'log': log } });
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, { 'stores': { 'log': log } });
 
     const cpStore = new MemoryCheckpointStore();
     await cpStore.save('run:nonkv', ckpt.toJson());
@@ -743,7 +766,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const stats = { 'active': 0, 'max': 0 };
     const result = await TestCheckpoint.abortedResult();
 
-    await Checkpoint.capture('store-test', result, {
+    await Checkpoint.capture(STORE_TEST_DAG_IRI, result, {
       'stores': {
         'a': new ConcurrencyProbeStore('a', stats),
         'b': new ConcurrencyProbeStore('b', stats),
@@ -758,7 +781,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const stats = { 'active': 0, 'max': 0 };
     const result = await TestCheckpoint.abortedResult();
 
-    await Checkpoint.capture('store-test', result, {
+    await Checkpoint.capture(STORE_TEST_DAG_IRI, result, {
       'execution': { 'concurrency': 2 },
       'stores': {
         'a': new ConcurrencyProbeStore('a', stats),
@@ -774,7 +797,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const captureStats = { 'active': 0, 'max': 0 };
     const restoreStats = { 'active': 0, 'max': 0 };
     const result = await TestCheckpoint.abortedResult();
-    const ckpt = await Checkpoint.capture('store-test', result, {
+    const ckpt = await Checkpoint.capture(STORE_TEST_DAG_IRI, result, {
       'execution': { 'concurrency': 3 },
       'stores': {
         'a': new ConcurrencyProbeStore('a', captureStats),

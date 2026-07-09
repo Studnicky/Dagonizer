@@ -5,8 +5,8 @@ title: Dagonizer
 description: 'TypeScript DAG orchestration framework for LLM agents and data pipelines: typed nodes, JSON-LD DAGs, streaming, checkpoint resume, plugins, and browser demos.'
 hero:
   name: Dagonizer
-  text: One engine. Two applications.
-  tagline: 'One type-safe DAG engine powers both LLM-agent orchestration and data pipelines / ETL — the node domain differs, the engine is identical. Compose, observe, resume. No external runtime required.'
+  text: One engine. Many DAGs.
+  tagline: 'One type-safe DAG engine powers LLM-agent orchestration, streaming data pipelines, and plugin-composed applications. Author the graph, register the parts, observe the run, resume from the cursor. The ritual is practical.'
   image:
     src: /dagonizer-icon.svg
     alt: Dagonizer
@@ -32,8 +32,8 @@ features:
     title: Deterministic Resume
     details: 'Snapshot a paused DAG at its cursor. Serialize to JSON, store anywhere, restore and resume with a new Execution that picks up where it left off.'
   - icon: ⬡
-    title: Scatter Composition
-    details: 'Isolate a state clone and run a body (registered node or sub-DAG) in it. Gather produced clone state back into the parent via map, append, partition, or custom strategies. Route on the aggregate outcome.'
+    title: Scatter + Gather Composition
+    details: 'Scatter fans work out to registered nodes or DAG bodies. First-class GatherNode placements join producers back together by placement/entrypoint IRI, then route on explicit fan-in policy. Forks and joins stay visible in JSON-LD and Mermaid.'
   - icon: ⫴
     title: Streaming & Backpressure
     details: 'ScatterNode accepts an AsyncIterable or AsyncGenerator as its source — a stream drains through the same bounded worker pool as a finite array. concurrency IS the backpressure: the engine pulls the next item only when a worker frees. Resume is durable via an inbox queue: un-acked items reprocess on restart; the stream is never re-read from the beginning. Separately, every LlmAdapterInterface implements chatStream(request, sink) so a CallModelNode can push live per-token deltas to an observation sink while the assembled response still lands in state through the normal path.'
@@ -42,7 +42,7 @@ features:
     details: 'RetryPolicy provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type. Cooperates with the abort signal so retries stop on cancellation.'
   - icon: ⊨
     title: JSON-LD Canonical Wire Format
-    details: 'DAG definitions are validated against DAGSchema (Ajv 2020-12) at the ingest boundary. DAGDocument.load(json) parses and validates a JSON string; DAGDocument.ofValue(value) validates an already-decoded object. Register the result with dispatcher.registerDAG(dag); everything inside is typed.'
+    details: 'DAGBuilder produces the JSON-LD document the runtime consumes. Explicit DAG IRIs and placement IRIs are identity; display names are for humans, logs, and diagrams. DAGDocument.load(json) validates the wire shape before registration.'
   - icon: ◉
     title: Observability Hooks
     details: 'Subclass Dagonizer and override onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError, onPhaseEnter, and onPhaseExit for structured metrics, tracing, and audit trails.'
@@ -55,9 +55,9 @@ features:
 
 ## ⦿ What problem it solves
 
-When work has multiple steps that depend on each other — classify, then fetch, then compose, then save — you need a way to express those dependencies, track shared state as work moves through them, stop safely when something goes wrong, and pick up where you left off if the process crashes. `@studnicky/dagonizer` is that infrastructure. You declare each step as a typed node and connect nodes in a DAG (a **D**irected **A**cyclic **G**raph — a graph where each step points forward to the next, with no cycles). The dispatcher runs the graph, routes between steps based on the output each step returns, and handles retries, cancellation, and checkpoint/resume without your nodes knowing about any of it.
+When work has multiple steps that depend on each other — classify, then fetch, then compose, then save — you need a way to express those dependencies, track shared state as work moves through them, stop safely when something goes wrong, and pick up where you left off if the process crashes. `@studnicky/dagonizer` is that infrastructure. You declare each step as a typed node, place those nodes inside a JSON-LD DAG, and register the DAGs and nodes the dispatcher may run. The dispatcher follows placement IRIs, routes by typed outputs, and handles retries, cancellation, and checkpoint/resume without your nodes carrying orchestration code.
 
-A **DAG** is therefore a graph of steps where each step's output drives the routing decision for the next step. Non-technical readers can think of it as a flowchart where each box is a typed function and the arrows are labelled with the outcomes.
+A **DAG** is therefore a graph of placements where each placement's output drives the routing decision for the next placement. Non-technical readers can think of it as a flowchart where each box is a typed function or registered sub-DAG, the arrows are labeled outcomes, and every box has a canonical IRI under the hood. The eye of the graph is the IRI; the display name is just the label etched on the box.
 
 ## ⦿ One engine, two applications
 
@@ -65,12 +65,13 @@ A **DAG** is therefore a graph of steps where each step's output drives the rout
 
 ## ⦿ What it is
 
-A **node** is a typed, stateless unit of work that receives a batch of state items and a context (including an `AbortSignal`) and returns a routed batch — each item mapped to a named output port. Nodes receive external dependencies through their constructors. The dispatcher routes items to the next node based on their port. Extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly; per-item behavior lives inside the node's own `execute(batch, context)` loop. Five placement kinds cover the composition space.
+A **node** is a typed, stateless unit of work that receives a batch of state items and a context (including an `AbortSignal`) and returns a routed batch — each item mapped to a named output port. Nodes receive external dependencies through their constructors. The dispatcher routes items to the next placement based on the output port. Extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly; per-item behavior lives inside the node's own `execute(batch, context)` loop. Six placement kinds cover the composition space.
 
 | Kind | What it does |
 |------|-------------|
-| `single` | One node; output name selects the next vertex |
-| `scatter` | Isolate one state clone per item in a source array, run a body (node or sub-DAG) in each clone, gather produced clone state back, route on aggregate outcome |
+| `single` | One registered node; output name selects the next placement IRI |
+| `scatter` | Isolate one state clone per source item, run a registered node or DAG body in each clone, and emit per-item records for downstream fan-in |
+| `gather` | Join records from producer placement or entrypoint IRIs, apply a gather strategy, and route when the fan-in policy is satisfied |
 | `embedded` | Invoke a registered sub-DAG exactly once (cardinality 1) in an isolated state; optional `stateMapping` seeds the child and copies fields back; route on the child's terminal outcome |
 | `terminal` | Named end state for explicit completion or failure; use when a flow has more than one "done" semantics |
 | `phase` | Lifecycle-attached single-node placement: `pre` runs before the entrypoint, `post` runs after the main loop drains on every exit path |
@@ -87,9 +88,9 @@ pending ──start──▶ running ──succeed──▶ completed
                       └──timeout──────▶ timed_out
 ```
 
-## ⦿ No external runtime
+## ⦿ No mandatory external runtime
 
-Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG definitions are plain JSON objects: store them in files, databases, or configuration services and load them at runtime via `DAGDocument.load(json)` (or `DAGDocument.ofValue(value)` for already-decoded objects), then register with `dispatcher.registerDAG(dag)`. The framework is browser-runnable; no Node.js-only primitives in the core engine.
+Dagonizer runs in-process by default. No queue, scheduler, external state store, or daemon is required to get a graph moving. DAG definitions are plain JSON-LD documents: store the serialized JSON in files, databases, or configuration services, load it at runtime via `DAGDocument.load(json)`, then register with `dispatcher.registerDAG(dag)`. When you do need remote or worker execution, the same DAG boundary travels through the container/worker contract; no second composition model crawls out of the deep.
 
 ## ⦿ See it in action
 
@@ -99,7 +100,7 @@ Three demos, one engine — each a different role the dispatcher can run, all li
 
 **[The Dispatcher](/examples/the-dispatcher)** — *the router.* LLM agents with a human in the loop. A warm-handoff support pipeline: a classifier routes each message, the AI either composes a reply instantly or the flow parks and waits for a human operator, then resumes from checkpoint on their response. A deterministic "trolley switch" can force human routing on top of the LLM decision. Demonstrates HITL Park-and-Correlate and checkpoint/resume.
 
-**[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Fans multi-format satellite tracking feeds (CSV, JSON, gzip-NDJSON) through per-format ingest sub-DAGs into one canonical model. Demonstrates branching conditional routing (skip geo when the source pre-resolved location, skip GDPR redaction when no PII is present), offline geo-resolution via `@rapideditor/country-coder`, live IP geo via `freeipapi`, GDPR PII redaction, and continent-level routing-savings insights. No LLM. Runs entirely in the browser.
+**[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Multiple source entrypoints feed a first-class intake gather, then scatter through typed event pipelines into geo-resolution, GDPR redaction, and continent-level insights. It demonstrates open intake, explicit gather barriers, worker/container roles, and plugin-shaped DAG parts. No LLM. Runs entirely in the browser.
 
 ## ⦿ Why "Dagonizer"
 

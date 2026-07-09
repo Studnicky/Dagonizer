@@ -28,11 +28,11 @@ import type {
 } from '../../src/types/index.js';
 
 void describe('public root surface', () => {
-  void it('exports the first-class gather progress key', () => {
+  void it('exports the gather progress key', () => {
     assert.equal(ROOT_GATHER_PROGRESS_KEY, GATHER_PROGRESS_KEY);
   });
 
-  void it('exports first-class gather checkpoint and progress schemas', () => {
+  void it('exports gather checkpoint and progress schemas', () => {
     const progress: RootGatherProgressType = { 'entries': {} };
     const sameProgress: TypeBarrelGatherProgressType = progress;
     const record: RootGatherRecordProgressType = {

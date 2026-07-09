@@ -54,6 +54,7 @@ export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> 
   private readonly services: ArchivistServices;
   readonly #clock = SubstrateClock.create(RealTimeClockProvider.create());
   readonly name = 'record-findings';
+  readonly '@id' = 'urn:noocodec:node:record-findings';
   readonly outputs = ['recorded'] as const;
   override get outputSchema(): Record<'recorded', SchemaObjectType> {
     return {
@@ -162,7 +163,7 @@ export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> 
           memory.assert(run, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify([...queryVec])), GRAPH_MEMORY);
         }
       } catch {
-        // Embedder unreachable: skip embedding writes. Recall falls back to
+        // Embedder unreachable: skip embedding writes. Recall uses
         // Jaccard similarity, so the per-run findings are still recorded.
       }
     }

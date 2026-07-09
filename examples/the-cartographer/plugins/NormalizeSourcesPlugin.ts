@@ -3,7 +3,7 @@
  * Cartographer ingest pipeline.
  *
  * IngestSourceDAG embeds normalize-csv / normalize-json / normalize-ndjson /
- * normalize-yaml by DAG name. The plugin registers those child DAGs and their
+ * normalize-yaml by DAG IRI. The plugin registers those child DAGs and their
  * nodes through the same dispatcher registry used by direct bundles.
  */
 
@@ -22,7 +22,7 @@ import { normalizeYamlDAG } from '../embedded-dags/NormalizeYamlDAG.ts';
 export const normalizeSourcesPlugin = defineDagonizerPlugin({
   'id': '@studnicky/dagonizer-cartographer-normalize-sources',
   'context': {
-    'plugin': 'urn:noocodex:dagonizer:cartographer:normalize-sources',
+    'plugin': 'urn:noocodec:dagonizer:cartographer:normalize-sources',
   },
   'nodes': [
     normalizeCsv,

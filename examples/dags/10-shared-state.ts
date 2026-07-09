@@ -24,6 +24,7 @@ import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 export class StepANode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'step-a';
+  readonly '@id' = 'urn:noocodec:node:step-a';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -46,6 +47,7 @@ export class StepANode extends MonadicNode<NodeStateBase, 'done'> {
 export class StepBNode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'step-b';
+  readonly '@id' = 'urn:noocodec:node:step-b';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -68,6 +70,7 @@ export class StepBNode extends MonadicNode<NodeStateBase, 'done'> {
 export class ChildStepNode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'child-step';
+  readonly '@id' = 'urn:noocodec:node:child-step';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -94,21 +97,21 @@ export class ChildStepNode extends MonadicNode<NodeStateBase, 'done'> {
 // #region child-dag
 export const childDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:sub-flow',
+  '@id': 'urn:noocodec:dag:sub-flow',
   '@type':      'DAG',
   "name":       'sub-flow',
   "version":    '1',
-  "entrypoints": { "main": 'child-step' },
+  "entrypoints": { "main": 'urn:noocodec:dag:sub-flow/node/child-step' },
   "nodes": [
     {
-      '@id':     'urn:noocodex:dag:sub-flow/node/child-step',
+      '@id': 'urn:noocodec:dag:sub-flow/node/child-step',
       '@type':   'SingleNode',
       "name":    'child-step',
-      "node":    'child-step',
-      "outputs": { "done": 'child-end' },
+      "node":    'urn:noocodec:node:child-step',
+      "outputs": { "done": 'urn:noocodec:dag:sub-flow/node/child-end' },
     },
     {
-      '@id':     'urn:noocodex:dag:sub-flow/node/child-end',
+      '@id': 'urn:noocodec:dag:sub-flow/node/child-end',
       '@type':   'TerminalNode',
       "name":    'child-end',
       "outcome": 'completed',
@@ -123,35 +126,38 @@ export const childDag: DAGType = {
 // MemoryStore between step-a and step-b.
 export const parentDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:main-flow',
+  '@id': 'urn:noocodec:dag:main-flow',
   '@type':      'DAG',
   "name":       'main-flow',
   "version":    '1',
-  "entrypoints": { "main": 'step-a' },
+  "entrypoints": { "main": 'urn:noocodec:dag:main-flow/node/step-a' },
   "nodes": [
     {
-      '@id':     'urn:noocodex:dag:main-flow/node/step-a',
+      '@id': 'urn:noocodec:dag:main-flow/node/step-a',
       '@type':   'SingleNode',
       "name":    'step-a',
-      "node":    'step-a',
-      "outputs": { "done": 'run-child' },
+      "node":    'urn:noocodec:node:step-a',
+      "outputs": { "done": 'urn:noocodec:dag:main-flow/node/run-child' },
     },
     {
-      '@id':         'urn:noocodex:dag:main-flow/node/run-child',
+      '@id': 'urn:noocodec:dag:main-flow/node/run-child',
       '@type':       'EmbeddedDAGNode',
       "name":        'run-child',
-      "dag":         'sub-flow',
-      "outputs":     { "success": 'step-b', "error": 'step-b' },
+      "dag":         'urn:noocodec:dag:sub-flow',
+      "outputs":     {
+        "success": 'urn:noocodec:dag:main-flow/node/step-b',
+        "error": 'urn:noocodec:dag:main-flow/node/step-b',
+      },
     },
     {
-      '@id':     'urn:noocodex:dag:main-flow/node/step-b',
+      '@id': 'urn:noocodec:dag:main-flow/node/step-b',
       '@type':   'SingleNode',
       "name":    'step-b',
-      "node":    'step-b',
-      "outputs": { "done": 'end' },
+      "node":    'urn:noocodec:node:step-b',
+      "outputs": { "done": 'urn:noocodec:dag:main-flow/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:main-flow/node/end',
+      '@id': 'urn:noocodec:dag:main-flow/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
@@ -261,6 +267,7 @@ interface AppServices {
 export class DbFetchNode extends MonadicNode<NodeStateBase, 'success' | 'error'> {
   private readonly services: AppServices;
   readonly name    = 'db-fetch';
+  readonly '@id'   = 'urn:noocodec:node:db-fetch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };

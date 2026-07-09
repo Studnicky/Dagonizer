@@ -2,8 +2,16 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import { GatherConfigShapeSchema } from './GatherConfig.js';
 
+export const GatherSourceConfigSchema = {
+  'type': 'object',
+  'properties': {
+    'resultField': { 'type': 'string', 'minLength': 1 },
+  },
+  'additionalProperties': false,
+} as const;
+
 export const GatherNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherNode',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/GatherNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'sources', 'gather', 'outputs'],
@@ -12,10 +20,9 @@ export const GatherNodeSchema = {
     '@type': { 'type': 'string', 'const': 'GatherNode' },
     'name':  { 'type': 'string', 'minLength': 1 },
     'sources': {
-      'type': 'array',
-      'items': { 'type': 'string', 'minLength': 1 },
-      'minItems': 1,
-      'uniqueItems': true,
+      'type': 'object',
+      'minProperties': 1,
+      'additionalProperties': GatherSourceConfigSchema,
     },
     'gather': GatherConfigShapeSchema,
     'policy': {
@@ -36,6 +43,7 @@ export const GatherNodeSchema = {
 } as const;
 
 export type GatherNodeType = FromSchema<typeof GatherNodeSchema>;
+export type GatherSourceConfigType = FromSchema<typeof GatherSourceConfigSchema>;
 export type GatherPolicyType = NonNullable<GatherNodeType['policy']>;
 
 const GATHER_POLICY_DEFAULT = Object.freeze({

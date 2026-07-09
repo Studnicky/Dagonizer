@@ -19,6 +19,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
@@ -44,6 +45,8 @@ const intermediateValidator = (() => {
   const existing = sharedAjv.getSchema(ExecutorIntermediateSchema.$id);
   return existing ?? sharedAjv.compile(ExecutorIntermediateSchema);
 })();
+
+const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
 
 // ---------------------------------------------------------------------------
 // ExecutorIntermediate
@@ -208,21 +211,21 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
   void it('Validator.dag.is accepts a minimal valid DAG and returns true', () => {
     const minimalDag: unknown = {
       '@context': { '@version': 1.1 },
-      '@id': 'urn:noocodex:dag:cte-smoke',
+      '@id': 'urn:noocodec:dag:cte-smoke',
       '@type': 'DAG',
       'name': 'cte-smoke',
       'version': '1',
-      'entrypoints': { 'main': 'step' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:cte-smoke', 'step') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:cte-smoke/node/step',
+          '@id': 'urn:noocodec:dag:cte-smoke/node/step',
           '@type': 'SingleNode',
           'name': 'step',
-          'node': 'step',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:step',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:cte-smoke', 'end') },
         },
         {
-          '@id': 'urn:noocodex:dag:cte-smoke/node/end',
+          '@id': 'urn:noocodec:dag:cte-smoke/node/end',
           '@type': 'TerminalNode',
           'name': 'end',
           'outcome': 'completed',

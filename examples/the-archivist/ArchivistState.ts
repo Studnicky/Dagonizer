@@ -176,14 +176,14 @@ export class ArchivistState extends NodeStateBase {
    * Prior shortlisted candidates loaded from memory by `recallContext`
    * (cap 5, low Jaccard) and overridden by `recallCandidates` inside the
    * `book-search-scatter` embedded-DAG (cap 10, Jaccard >= 0.35).
-   * `mergeCandidates` falls back to this pool when live scouts return zero.
+   * `mergeCandidates` uses this pool when live scouts return zero.
    * Always initialized; never undefined (V8 shape stability).
    */
   priorCandidates: readonly CandidateType[] = [];
   /**
    * Scatter workset built by BuildBookWorksetsNode before each scatter fan-out.
-   * Each entry names a registered `tool:<name>` embedded DAG and the call
-   * arguments to pass to it. The scatter placement reads `dagName` through an
+   * Each entry carries a registered tool DAG IRI and the call
+   * arguments to pass to it. The scatter placement reads `dagIri` through an
    * item-scoped DagReference to resolve the body DAG at runtime.
    * Written fresh before every scatter; always array-typed (never undefined).
    */
@@ -263,7 +263,7 @@ export class ArchivistState extends NodeStateBase {
       },
       "priorCandidates": this.priorCandidates.map(ArchivistState.candidateToJson),
       "conversation": this.conversation.map(ArchivistState.turnToJson),
-      "bookWorksets": this.bookWorksets.map((w) => ({ "dagName": w.dagName, "arguments": w.arguments })),
+      "bookWorksets": this.bookWorksets.map((w) => ({ "dagIri": w.dagIri, "arguments": w.arguments })),
       "reasoning": this.reasoning.map(ArchivistState.reasoningStepToJson),
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
@@ -537,8 +537,8 @@ export class ArchivistState extends NodeStateBase {
 
   private static isBookWorksetItem(v: unknown): v is BookWorksetItemType {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
-    if (!('dagName' in v && 'arguments' in v)) return false;
-    return typeof v.dagName === 'string'
+    if (!('dagIri' in v && 'arguments' in v)) return false;
+    return typeof v.dagIri === 'string'
       && typeof v.arguments === 'object'
       && v.arguments !== null
       && !Array.isArray(v.arguments);

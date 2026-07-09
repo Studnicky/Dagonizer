@@ -27,7 +27,7 @@
  *     value.
  *   - `routingDag` — a `ScatterNode` over `RoutingState.source` (the shared
  *     `StreamChannel`, itself an `AsyncIterable<RoutedChatStreamChunkType>`),
- *     body `route-chunk`, `gather: { strategy: 'append', target: 'chunks' }`
+ *     body `route-chunk`, then `collect-chunks` append gather
  *     logging every routed chunk on `RoutingState` for inspection/assertions
  *     (source-stamp checks) without participating in the demux itself — the
  *     demux happens via `TranscriptStore`, not through gather.
@@ -126,6 +126,7 @@ const CHUNK_VALIDATOR: EntityValidatorInterface<RoutedChatStreamChunkType> = Val
  */
 export class RouteChunkNode extends MonadicNode<RoutingState, 'done'> {
   readonly name = 'route-chunk';
+  readonly '@id' = 'urn:noocodec:node:route-chunk';
   readonly outputs = ['done'] as const;
 
   readonly #transcripts: TranscriptStore;
@@ -157,36 +158,44 @@ export class RouteChunkNode extends MonadicNode<RoutingState, 'done'> {
 // #region react-routing-dag
 export const routingDag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:react-agent-routing',
+  '@id': 'urn:noocodec:dag:react-agent-routing',
   '@type':      'DAG',
   'name':       'react-agent-routing',
   'version':    '1',
-  'entrypoints': { 'main': 'scatter-chunks' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:react-agent-routing/node/scatter-chunks' },
   'nodes': [
     {
-      '@id':         'urn:noocodex:dag:react-agent-routing/node/scatter-chunks',
+      '@id': 'urn:noocodec:dag:react-agent-routing/node/scatter-chunks',
       '@type':       'ScatterNode',
       'name':        'scatter-chunks',
-      'body':        { 'node': 'route-chunk' },
+      'body':        { 'node': 'urn:noocodec:node:route-chunk' },
       'source':      'source',
       'itemKey':     ROUTE_ITEM_KEY,
       // Chunks route by their own `routeKey`; TranscriptStore.append is safe
       // under any interleaving (single-threaded event loop), so raising this
       // is a free performance choice, not a correctness requirement.
       'execution': { 'mode': 'item', 'concurrency': 4 },
-      'gather': {
-        'strategy': 'append',
-        'target':   'chunks',
-      },
       'outputs': {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+        'all-success': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',
+        'partial': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',
+        'all-error': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',
+        'empty': 'urn:noocodec:dag:react-agent-routing/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:react-agent-routing/node/end',
+      '@id': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',
+      '@type': 'GatherNode',
+      'name': 'collect-chunks',
+      sources: { 'urn:noocodec:dag:react-agent-routing/node/scatter-chunks': {} },
+      'gather': { 'strategy': 'append', 'target': 'chunks' },
+      'outputs': {
+        'success': 'urn:noocodec:dag:react-agent-routing/node/end',
+        'error': 'urn:noocodec:dag:react-agent-routing/node/end',
+        'empty': 'urn:noocodec:dag:react-agent-routing/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:react-agent-routing/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

@@ -36,6 +36,7 @@ const passthroughOutputSchemas = {
 
 class ScoreProducerNode extends MonadicNode<SchemaRouteState, 'done'> {
   override readonly name = 'score-producer';
+  override readonly '@id' = 'urn:noocodec:node:score-producer';
   override readonly outputs = ['done'] as const;
 
   override get outputSchema(): typeof scoreOutputSchemas {
@@ -52,6 +53,7 @@ class ScoreProducerNode extends MonadicNode<SchemaRouteState, 'done'> {
 
 class NeedsScoreNode extends MonadicNode<SchemaRouteState, 'done'> {
   override readonly name = 'needs-score';
+  override readonly '@id' = 'urn:noocodec:node:needs-score';
   override readonly outputs = ['done'] as const;
 
   override get inputSchema(): typeof scoreSchema {
@@ -72,6 +74,7 @@ class NeedsScoreNode extends MonadicNode<SchemaRouteState, 'done'> {
 
 class NeedsLabelNode extends MonadicNode<SchemaRouteState, 'done'> {
   override readonly name = 'needs-label';
+  override readonly '@id' = 'urn:noocodec:node:needs-label';
   override readonly outputs = ['done'] as const;
 
   override get inputSchema(): typeof labelSchema {
@@ -97,6 +100,7 @@ class GenericScoreProducerNode extends MonadicNode<
   typeof scoreOutputSchemas
 > {
   override readonly name = 'generic-score-producer';
+  override readonly '@id' = 'urn:noocodec:node:generic-score-producer';
   override readonly outputs = ['done'] as const;
 
   override get outputSchema() {
@@ -118,6 +122,7 @@ class GenericNeedsScoreNode extends MonadicNode<
   typeof passthroughOutputSchemas
 > {
   override readonly name = 'generic-needs-score';
+  override readonly '@id' = 'urn:noocodec:node:generic-needs-score';
   override readonly outputs = ['done'] as const;
 
   override get inputSchema() {

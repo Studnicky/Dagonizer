@@ -27,7 +27,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 export const SourcePayloadSchema = {
-  '$id': 'https://noocodex.dev/schemas/cartographer/SourcePayload',
+  '$id': 'https://noocodec.dev/schemas/cartographer/SourcePayload',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['sourceId', 'format', 'compression', 'mappingKey', 'eventType', 'payload'],

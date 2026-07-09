@@ -93,7 +93,7 @@ process.stdout.write(`  input:  ${JSON.stringify(state.tasks)}\n`);
 process.stdout.write(`  cpu container: WorkerThreadContainer (thread pool, 2 workers)\n`);
 process.stdout.write(`  io  container: ForkContainer (fork pool, 1 worker)\n\n`);
 
-await dispatcher.execute('multibackend', state);
+await dispatcher.execute('urn:noocodec:dag:multibackend', state);
 
 // Sort results for deterministic display (scatter completion order varies by run).
 const sorted = [...state.results].sort((a, b) => a - b);

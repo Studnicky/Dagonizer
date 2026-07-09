@@ -1,9 +1,9 @@
 /**
  * Tests for runtime DagReference resolution.
  *
- * `EmbeddedDAGNode` and `ScatterNode` can read the dag name from a dotted
+ * `EmbeddedDAGNode` and `ScatterNode` can read the DAG IRI from a dotted
  * state or item path at execution time in addition to build-time literal
- * DAG references. An empty or non-candidate dag name routes to the placement's
+ * DAG references. An empty or non-candidate DAG IRI routes to the placement's
  * `error` output without throwing. The validator enforces that every dynamic
  * reference declares its candidate DAG set.
  */
@@ -17,8 +17,7 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAGType } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity, type DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DagReferenceResolver } from '../../src/execution/DagReferenceResolver.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
@@ -39,17 +38,49 @@ class ExecutionProbe {
   count = 0;
 }
 
+const CHILD_A_DAG_IRI = 'urn:noocodec:dag:child-a';
+const CHILD_EXPANDED_DAG_IRI = 'https://noocodec.dev/dag/default#child-expanded';
+const MULTI_ENTRY_CHILD_A_DAG_IRI = 'urn:noocodec:dag:multi-entry-child-a';
+const MULTI_ENTRY_CHILD_B_DAG_IRI = 'urn:noocodec:dag:multi-entry-child-b';
+const SCATTER_CHILD_DAG_IRI = 'urn:noocodec:dag:scatter-child';
+const SCATTER_EXPANDED_CHILD_DAG_IRI = 'https://noocodec.dev/dag/default#scatter-expanded-child';
+const RETAINED_SELECTED_CHILD_A_DAG_IRI = 'urn:noocodec:dag:retained-selected-child-a';
+const RETAINED_SELECTED_CHILD_B_DAG_IRI = 'urn:noocodec:dag:retained-selected-child-b';
+const SELECTED_CHILD_DAG_IRI = 'https://noocodec.dev/dag/default#selected-child';
+const SOME_CHILD_DAG_IRI = 'urn:noocodec:dag:some-child';
+const VALID_CHILD_LITERAL_DAG_IRI = 'urn:noocodec:dag:valid-child-literal';
+const VALID_CHILD_DYNAMIC_DAG_IRI = 'urn:noocodec:dag:valid-child-dynamic';
+const EMBEDDED_MODE_CHILD_DAG_IRI = 'urn:noocodec:dag:embedded-mode-child';
+const SCATTER_MODE_CHILD_DAG_IRI = 'urn:noocodec:dag:scatter-mode-child';
+const PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent';
+const PARENT_EXPANDED_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent-expanded';
+const MULTI_ENTRY_PARENT_DAG_IRI = 'urn:noocodec:dag:multi-entry-embedded-parent';
+const PARENT_MISSING_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent-missing';
+const PARENT_EMPTY_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent-empty';
+const SCATTER_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-parent';
+const SCATTER_EXPANDED_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-expanded-parent';
+const RETAINED_SELECTED_PARENT_DAG_IRI = 'urn:noocodec:dag:retained-selected-parent';
+const SCATTER_BAD_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-bad';
+const SCATTER_SCALE_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-scale-parent';
+const VALID_LITERAL_DAG_IRI = 'urn:noocodec:dag:valid-literal';
+const VALID_FROM_ONLY_DAG_IRI = 'urn:noocodec:dag:valid-from-only';
+const BOGUS_BOTH_DAG_IRI = 'urn:noocodec:dag:bogus-both';
+const BOGUS_NEITHER_DAG_IRI = 'urn:noocodec:dag:bogus-neither';
+const BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI = 'urn:noocodec:dag:bad-embedded-reference-mode';
+const BAD_SCATTER_REFERENCE_MODE_DAG_IRI = 'urn:noocodec:dag:bad-scatter-reference-mode';
+
 class RoutingState extends NodeStateBase {
-  /** The dag name placed here by a setup node and read by the dynamic embed reference. */
+  /** The DAG IRI placed here by a setup node and read by the dynamic embed reference. */
   selectedDag = '';
   /** Execution counter threaded through the cardinality-1 embed via state mapping. */
   executed = 0;
   /** Scatter items: each names its own body dag. */
-  items: Array<{ dagName: string }> = [{ 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }];
+  items: Array<{ dagIri: string }> = [{ 'dagIri': SCATTER_CHILD_DAG_IRI }, { 'dagIri': SCATTER_CHILD_DAG_IRI }];
 }
 
 /** Increments `state.executed` (for state round-trip) and the shared probe. */
 class IncrNode extends MonadicNode<RoutingState, 'success' | 'error'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } }; }
@@ -57,6 +88,7 @@ class IncrNode extends MonadicNode<RoutingState, 'success' | 'error'> {
 
   constructor(name: string, probe: ExecutionProbe) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.#probe = probe;
   }
@@ -75,6 +107,7 @@ class IncrNode extends MonadicNode<RoutingState, 'success' | 'error'> {
 
 /** Increments the probe and optionally aborts after the first scatter item. */
 class AbortOnFirstItemNode extends MonadicNode<RoutingState, 'success'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -83,6 +116,7 @@ class AbortOnFirstItemNode extends MonadicNode<RoutingState, 'success'> {
 
   constructor(name: string, probe: ExecutionProbe, controller: AbortController | null) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.#probe = probe;
     this.#controller = controller;
@@ -102,6 +136,7 @@ class AbortOnFirstItemNode extends MonadicNode<RoutingState, 'success'> {
 
 /** Sets `state.selectedDag` to the provided value then routes success. */
 class SetDagNode extends MonadicNode<RoutingState, 'success'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -109,6 +144,7 @@ class SetDagNode extends MonadicNode<RoutingState, 'success'> {
 
   constructor(name: string, dagName: string) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.#dagName = dagName;
   }
@@ -122,22 +158,24 @@ class SetDagNode extends MonadicNode<RoutingState, 'success'> {
   }
 }
 
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+
 /** DAG-shaped fixtures: terminals and a minimal child DAG. */
 class TestDag {
   private constructor() { /* static-only */ }
 
-  static terminal(dagName: string): DAGType['nodes'][number] {
+  static terminal(dagIri: string): DAGType['nodes'][number] {
     return {
-      '@id':     `urn:noocodex:dag:${dagName}/node/end`,
+      '@id': placementIri(dagIri, 'end'),
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
     };
   }
 
-  static failedTerminal(dagName: string): DAGType['nodes'][number] {
+  static failedTerminal(dagIri: string): DAGType['nodes'][number] {
     return {
-      '@id':     `urn:noocodex:dag:${dagName}/node/end-fail`,
+      '@id': placementIri(dagIri, 'end-fail'),
       '@type':   'TerminalNode',
       'name':    'end-fail',
       'outcome': 'failed',
@@ -145,28 +183,28 @@ class TestDag {
   }
 
   /** A minimal 1-node child DAG that runs the `incr` node. */
-  static child(name: string): DAGType {
-    return TestDag.childWithNode(name, 'incr');
+  static child(iri: string, name: string): DAGType {
+    return TestDag.childWithNode(iri, name, 'urn:noocodec:node:incr');
   }
 
-  static childWithNode(name: string, nodeName: string): DAGType {
+  static childWithNode(iri: string, name: string, nodeName: string): DAGType {
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': iri,
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoints': { 'main': 'run' },
+      'entrypoints': { 'main': placementIri(iri, 'run') },
       'nodes': [
         {
-          '@id':   `urn:noocodex:dag:${name}/node/run`,
+          '@id': placementIri(iri, 'run'),
           '@type': 'SingleNode',
           'name':  'run',
           'node':  nodeName,
-          'outputs': { 'success': 'end', 'error': 'end-fail' },
+          'outputs': { 'success': placementIri(iri, 'end'), 'error': placementIri(iri, 'end-fail') },
         },
-        TestDag.terminal(name),
-        TestDag.failedTerminal(name),
+        TestDag.terminal(iri),
+        TestDag.failedTerminal(iri),
       ],
     };
   }
@@ -175,20 +213,21 @@ class TestDag {
 // ── EmbeddedDAGNode DagReference tests ────────────────────────────────────────
 
 void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
-  void it('resolves the dag name from a state path and executes the child dag', async () => {
+  void it('resolves the DAG IRI from a state path and executes the child dag', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
-    const setNode = new SetDagNode('set-dag', 'child-a');
-    const childDag = TestDag.child('child-a');
+    const setNode = new SetDagNode('set-dag', CHILD_A_DAG_IRI);
+    const childDag = TestDag.child(CHILD_A_DAG_IRI, 'child-a');
 
-    const parentDag = new DAGBuilder('parent', '1')
-      .node('set-dag', setNode, { 'success': 'invoke' })
-      .embeddedDAG<RoutingState, RoutingState>('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end', 'error': 'end-fail' }, {
+    const parentDag = new DAGBuilder(PARENT_DAG_IRI, '1', { 'name': 'parent' })
+      .node(placementIri(PARENT_DAG_IRI, 'set-dag'), setNode, { 'success': placementIri(PARENT_DAG_IRI, 'invoke') }, { 'name': 'set-dag' })
+      .embed<RoutingState, RoutingState>(placementIri(PARENT_DAG_IRI, 'invoke'), { 'from': 'state', 'path': 'selectedDag', 'candidates': [CHILD_A_DAG_IRI] }, { 'success': placementIri(PARENT_DAG_IRI, 'end'), 'error': placementIri(PARENT_DAG_IRI, 'end-fail') }, {
         'inputs':  { 'executed': 'executed' },
         'outputs': { 'executed': 'executed' },
+        'name': 'invoke',
       })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(PARENT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(PARENT_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
@@ -198,7 +237,7 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    const result = await dispatcher.execute('parent', state);
+    const result = await dispatcher.execute(PARENT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 1, 'child dag should have executed once');
@@ -208,18 +247,19 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
   void it('resolves an expanded DAG IRI from a state path and executes the declared candidate', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
-    const setNode = new SetDagNode('set-dag', 'https://noocodex.dev/dag/default#child-expanded');
-    const childDag = TestDag.child('child-expanded');
+    const setNode = new SetDagNode('set-dag', CHILD_EXPANDED_DAG_IRI);
+    const childDag = TestDag.child(CHILD_EXPANDED_DAG_IRI, 'child-expanded');
     const store = new InMemoryTopologyStore();
 
-    const parentDag = new DAGBuilder('parent-expanded', '1')
-      .node('set-dag', setNode, { 'success': 'invoke' })
-      .embeddedDAG<RoutingState, RoutingState>('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-expanded'] }, { 'success': 'end', 'error': 'end-fail' }, {
+    const parentDag = new DAGBuilder(PARENT_EXPANDED_DAG_IRI, '1', { 'name': 'parent-expanded' })
+      .node(placementIri(PARENT_EXPANDED_DAG_IRI, 'set-dag'), setNode, { 'success': placementIri(PARENT_EXPANDED_DAG_IRI, 'invoke') }, { 'name': 'set-dag' })
+      .embed<RoutingState, RoutingState>(placementIri(PARENT_EXPANDED_DAG_IRI, 'invoke'), { 'from': 'state', 'path': 'selectedDag', 'candidates': [CHILD_EXPANDED_DAG_IRI] }, { 'success': placementIri(PARENT_EXPANDED_DAG_IRI, 'end'), 'error': placementIri(PARENT_EXPANDED_DAG_IRI, 'end-fail') }, {
         'inputs':  { 'executed': 'executed' },
         'outputs': { 'executed': 'executed' },
+        'name': 'invoke',
       })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(PARENT_EXPANDED_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(PARENT_EXPANDED_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
@@ -229,7 +269,7 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    const result = await dispatcher.execute('parent-expanded', state);
+    const result = await dispatcher.execute(PARENT_EXPANDED_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 1);
@@ -237,7 +277,7 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     assert.deepEqual(
       DagGraphQueries.selectedDagRows(store),
       [{
-        'ownerIri': DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'invoke'),
+        'ownerIri': parentDag.nodes.find((placement) => placement.name === 'invoke')?.['@id'] ?? '',
         'dagIri':   DagGraphProjector.dagIri(childDag),
       }],
     );
@@ -246,59 +286,60 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
   void it('partitions converged multi-entry batches by each state dynamic dag selection', async () => {
     const probeA = new ExecutionProbe();
     const probeB = new ExecutionProbe();
-    const childADag = TestDag.childWithNode('multi-entry-child-a', 'incr-a');
-    const childBDag = TestDag.childWithNode('multi-entry-child-b', 'incr-b');
+    const childADag = TestDag.childWithNode(MULTI_ENTRY_CHILD_A_DAG_IRI, 'multi-entry-child-a', 'urn:noocodec:node:incr-a');
+    const childBDag = TestDag.childWithNode(MULTI_ENTRY_CHILD_B_DAG_IRI, 'multi-entry-child-b', 'urn:noocodec:node:incr-b');
     const store = new InMemoryTopologyStore();
 
-    const parentDag = new DAGBuilder('multi-entry-embedded-parent', '1')
-      .entrypoints({ 'alpha': 'set-a', 'beta': 'set-b' })
-      .node('set-a', new SetDagNode('set-a', 'multi-entry-child-a'), { 'success': 'invoke' })
-      .node('set-b', new SetDagNode('set-b', 'multi-entry-child-b'), { 'success': 'invoke' })
-      .embeddedDAG<RoutingState, RoutingState>('invoke', {
+    const parentDag = new DAGBuilder(MULTI_ENTRY_PARENT_DAG_IRI, '1', { 'name': 'multi-entry-embedded-parent' })
+      .entrypoints({ 'alpha': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'set-a'), 'beta': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'set-b') })
+      .node(placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'set-a'), new SetDagNode('set-a', MULTI_ENTRY_CHILD_A_DAG_IRI), { 'success': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'invoke') }, { 'name': 'set-a' })
+      .node(placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'set-b'), new SetDagNode('set-b', MULTI_ENTRY_CHILD_B_DAG_IRI), { 'success': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'invoke') }, { 'name': 'set-b' })
+      .embed<RoutingState, RoutingState>(placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'invoke'), {
         'from': 'state',
         'path': 'selectedDag',
-        'candidates': ['multi-entry-child-a', 'multi-entry-child-b'],
-      }, { 'success': 'end', 'error': 'end-fail' }, {
+        'candidates': [MULTI_ENTRY_CHILD_A_DAG_IRI, MULTI_ENTRY_CHILD_B_DAG_IRI],
+      }, { 'success': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'end'), 'error': placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'end-fail') }, {
         'inputs':  { 'executed': 'executed' },
         'outputs': { 'executed': 'executed' },
+        'name': 'invoke',
       })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+      .terminal(placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(MULTI_ENTRY_PARENT_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
     dispatcher.registerNode(new IncrNode('incr-a', probeA));
     dispatcher.registerNode(new IncrNode('incr-b', probeB));
-    dispatcher.registerNode(new SetDagNode('set-a', 'multi-entry-child-a'));
-    dispatcher.registerNode(new SetDagNode('set-b', 'multi-entry-child-b'));
+    dispatcher.registerNode(new SetDagNode('set-a', MULTI_ENTRY_CHILD_A_DAG_IRI));
+    dispatcher.registerNode(new SetDagNode('set-b', MULTI_ENTRY_CHILD_B_DAG_IRI));
     dispatcher.registerDAG(childADag);
     dispatcher.registerDAG(childBDag);
     dispatcher.registerDAG(parentDag);
 
-    const result = await dispatcher.execute('multi-entry-embedded-parent', new RoutingState());
+    const result = await dispatcher.execute(MULTI_ENTRY_PARENT_DAG_IRI, new RoutingState());
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probeA.count, 1);
     assert.equal(probeB.count, 1);
-    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'invoke');
+    const ownerBaseIri = parentDag.nodes.find((placement) => placement.name === 'invoke')?.['@id'] ?? '';
     assert.deepEqual(
       [...DagGraphQueries.selectedDagRows(store)].sort((a, b) => a.ownerIri.localeCompare(b.ownerIri)),
       [
-        { 'ownerIri': `${ownerBaseIri}/item/alpha`, 'dagIri': DagGraphProjector.dagIri(childADag) },
-        { 'ownerIri': `${ownerBaseIri}/item/beta`, 'dagIri': DagGraphProjector.dagIri(childBDag) },
+        { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': DagGraphProjector.dagIri(childADag) },
+        { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': DagGraphProjector.dagIri(childBDag) },
       ],
     );
   });
 
   void it('routes to error when the state value is not in the candidate set', async () => {
-    const setNode = new SetDagNode('set-dag', 'does-not-exist');
-    const childDag = TestDag.child('child-a');
+    const setNode = new SetDagNode('set-dag', 'urn:noocodec:dag:does-not-exist');
+    const childDag = TestDag.child(CHILD_A_DAG_IRI, 'child-a');
 
-    const parentDag = new DAGBuilder('parent-missing', '1')
-      .node('set-dag', setNode, { 'success': 'invoke' })
-      .embeddedDAG('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end-ok', 'error': 'end-fail' })
-      .terminal('end-ok')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(PARENT_MISSING_DAG_IRI, '1', { 'name': 'parent-missing' })
+      .node(placementIri(PARENT_MISSING_DAG_IRI, 'set-dag'), setNode, { 'success': placementIri(PARENT_MISSING_DAG_IRI, 'invoke') }, { 'name': 'set-dag' })
+      .embed(placementIri(PARENT_MISSING_DAG_IRI, 'invoke'), { 'from': 'state', 'path': 'selectedDag', 'candidates': [CHILD_A_DAG_IRI] }, { 'success': placementIri(PARENT_MISSING_DAG_IRI, 'end-ok'), 'error': placementIri(PARENT_MISSING_DAG_IRI, 'end-fail') }, { 'name': 'invoke' })
+      .terminal(placementIri(PARENT_MISSING_DAG_IRI, 'end-ok'), { 'name': 'end-ok' })
+      .terminal(placementIri(PARENT_MISSING_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
@@ -308,26 +349,26 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    const result = await dispatcher.execute('parent-missing', state);
+    const result = await dispatcher.execute(PARENT_MISSING_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'failed', 'non-candidate dag → error output → failed terminal');
   });
 
   void it('routes to error when dynamic reference path resolves to an empty string', async () => {
-    // selectedDag starts as '' — an empty string is not a valid dag name.
-    const parentDag = new DAGBuilder('parent-empty', '1')
-      .embeddedDAG('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end-ok', 'error': 'end-fail' })
-      .terminal('end-ok')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    // selectedDag starts as '' — an empty string is not a valid DAG IRI.
+    const parentDag = new DAGBuilder(PARENT_EMPTY_DAG_IRI, '1', { 'name': 'parent-empty' })
+      .embed(placementIri(PARENT_EMPTY_DAG_IRI, 'invoke'), { 'from': 'state', 'path': 'selectedDag', 'candidates': [CHILD_A_DAG_IRI] }, { 'success': placementIri(PARENT_EMPTY_DAG_IRI, 'end-ok'), 'error': placementIri(PARENT_EMPTY_DAG_IRI, 'end-fail') }, { 'name': 'invoke' })
+      .terminal(placementIri(PARENT_EMPTY_DAG_IRI, 'end-ok'), { 'name': 'end-ok' })
+      .terminal(placementIri(PARENT_EMPTY_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
-    dispatcher.registerDAG(TestDag.child('child-a'));
+    dispatcher.registerDAG(TestDag.child(CHILD_A_DAG_IRI, 'child-a'));
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState(); // selectedDag === ''
-    const result = await dispatcher.execute('parent-empty', state);
+    const result = await dispatcher.execute(PARENT_EMPTY_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'failed');
   });
@@ -336,22 +377,20 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
 // ── ScatterNode DagReference tests ────────────────────────────────────────────
 
 void describe('ScatterNode: DagReference runtime resolution', () => {
-  void it('resolves each item dag name from clone state and runs the sub-dag per item', async () => {
+  void it('resolves each item DAG IRI from clone state and runs the sub-dag per item', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
-    const childDag = TestDag.child('scatter-child');
+    const childDag = TestDag.child(SCATTER_CHILD_DAG_IRI, 'scatter-child');
 
     // Each scatter item names its own body dag from the item directly.
-    const parentDag = new DAGBuilder('scatter-parent', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-child'] } }, {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
-      }, {
-        'gather': { 'strategy': 'discard' },
-      })
-      .terminal('end')
+    const parentDag = new DAGBuilder(SCATTER_PARENT_DAG_IRI, '1', { 'name': 'scatter-parent' })
+      .scatter(placementIri(SCATTER_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [SCATTER_CHILD_DAG_IRI] } }, {
+        'all-success': placementIri(SCATTER_PARENT_DAG_IRI, 'end'),
+        'partial':     placementIri(SCATTER_PARENT_DAG_IRI, 'end'),
+        'all-error':   placementIri(SCATTER_PARENT_DAG_IRI, 'end'),
+        'empty': placementIri(SCATTER_PARENT_DAG_IRI, 'end'),
+      }, { 'name': 'scatter' })
+      .terminal(placementIri(SCATTER_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
@@ -360,8 +399,8 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = [{ 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }];
-    const result = await dispatcher.execute('scatter-parent', state);
+    state.items = [{ 'dagIri': SCATTER_CHILD_DAG_IRI }, { 'dagIri': SCATTER_CHILD_DAG_IRI }, { 'dagIri': SCATTER_CHILD_DAG_IRI }];
+    const result = await dispatcher.execute(SCATTER_PARENT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 3, 'child dag should run once per item');
@@ -370,19 +409,17 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
   void it('resolves expanded DAG IRIs from scatter items and runs the declared candidate', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
-    const childDag = TestDag.child('scatter-expanded-child');
+    const childDag = TestDag.child(SCATTER_EXPANDED_CHILD_DAG_IRI, 'scatter-expanded-child');
     const store = new InMemoryTopologyStore();
 
-    const parentDag = new DAGBuilder('scatter-expanded-parent', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-expanded-child'] } }, {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
-      }, {
-        'gather': { 'strategy': 'discard' },
-      })
-      .terminal('end')
+    const parentDag = new DAGBuilder(SCATTER_EXPANDED_PARENT_DAG_IRI, '1', { 'name': 'scatter-expanded-parent' })
+      .scatter(placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [SCATTER_EXPANDED_CHILD_DAG_IRI] } }, {
+        'all-success': placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'end'),
+        'partial':     placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'end'),
+        'all-error':   placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'end'),
+        'empty': placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'end'),
+      }, { 'name': 'scatter' })
+      .terminal(placementIri(SCATTER_EXPANDED_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
@@ -392,14 +429,14 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
 
     const state = new RoutingState();
     state.items = [
-      { 'dagName': 'https://noocodex.dev/dag/default#scatter-expanded-child' },
-      { 'dagName': 'https://noocodex.dev/dag/default#scatter-expanded-child' },
+      { 'dagIri': SCATTER_EXPANDED_CHILD_DAG_IRI },
+      { 'dagIri': SCATTER_EXPANDED_CHILD_DAG_IRI },
     ];
-    const result = await dispatcher.execute('scatter-expanded-parent', state);
+    const result = await dispatcher.execute(SCATTER_EXPANDED_PARENT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 2);
-    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'scatter');
+    const ownerBaseIri = parentDag.nodes.find((placement) => placement.name === 'scatter')?.['@id'] ?? '';
     const selectedDagIri = DagGraphProjector.dagIri(childDag);
     assert.deepEqual(
       DagGraphQueries.selectedDagRows(store),
@@ -415,19 +452,19 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     const controller = new AbortController();
     const firstProbe = new ExecutionProbe();
     const resumeProbe = new ExecutionProbe();
-    const childADag = TestDag.child('retained-selected-child-a');
-    const childBDag = TestDag.child('retained-selected-child-b');
-    const parentDag = new DAGBuilder('retained-selected-parent', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['retained-selected-child-a', 'retained-selected-child-b'] } }, {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+    const childADag = TestDag.child(RETAINED_SELECTED_CHILD_A_DAG_IRI, 'retained-selected-child-a');
+    const childBDag = TestDag.child(RETAINED_SELECTED_CHILD_B_DAG_IRI, 'retained-selected-child-b');
+    const parentDag = new DAGBuilder(RETAINED_SELECTED_PARENT_DAG_IRI, '1', { 'name': 'retained-selected-parent' })
+      .scatter(placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [RETAINED_SELECTED_CHILD_A_DAG_IRI, RETAINED_SELECTED_CHILD_B_DAG_IRI] } }, {
+        'all-success': placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'partial':     placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'all-error':   placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'empty':       placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
       }, {
-        'gather': { 'strategy': 'custom', 'customNode': 'merge-retained-selected' },
         'execution': { 'mode': 'item', 'concurrency': 1 },
+        'name': 'scatter',
       })
-      .terminal('end')
+      .terminal(placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const childAIri = DagGraphProjector.dagIri(childADag);
@@ -440,21 +477,26 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     firstDispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = [{ 'dagName': childAIri }, { 'dagName': childBIri }];
-    const partial = await firstDispatcher.execute('retained-selected-parent', state, {
+    state.items = [{ 'dagIri': childAIri }, { 'dagIri': childBIri }];
+    const partial = await firstDispatcher.execute(RETAINED_SELECTED_PARENT_DAG_IRI, state, {
       'signal': controller.signal,
     });
 
-    assert.equal(partial.cursor, 'scatter');
+    assert.equal(partial.cursor, placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'));
     assert.equal(firstProbe.count, 1);
     const rawProgress = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.ok(rawProgress !== undefined, 'retained scatter checkpoint should be present');
     const progress = Validator.storedScatterProgress.validate(rawProgress);
-    const scatterProgress = progress['scatter'];
-    assert.equal(scatterProgress?.mode, 'retained');
-    assert.equal(scatterProgress.ackedResults[0]?.selectedDag, childAIri);
+    const scatterProgress = progress[placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter')];
+    assert.ok(scatterProgress !== undefined, 'scatter checkpoint should include the scatter placement');
+    if (scatterProgress.mode === 'bounded') {
+      assert.equal(scatterProgress.watermark, 1);
+      assert.equal(scatterProgress.aheadAcked.length, 0);
+    } else {
+      assert.equal(scatterProgress.ackedResults[0]?.selectedDag, childAIri);
+    }
 
-    partial.state.items = [{ 'dagName': childBIri }, { 'dagName': childBIri }];
+    partial.state.items = [{ 'dagIri': childBIri }, { 'dagIri': childBIri }];
     const resumeStore = new InMemoryTopologyStore();
     const resumeDispatcher = new Dagonizer<RoutingState>({
       'executionTopologyStore': resumeStore,
@@ -465,15 +507,14 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     resumeDispatcher.registerDAG(childBDag);
     resumeDispatcher.registerDAG(parentDag);
 
-    const resumed = await resumeDispatcher.resume('retained-selected-parent', partial.state, 'scatter');
+    const resumed = await resumeDispatcher.resume(RETAINED_SELECTED_PARENT_DAG_IRI, partial.state, placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'));
 
     assert.equal(resumed.terminalOutcome, 'completed');
     assert.equal(resumeProbe.count, 1, 'resume should not re-run the already-acked first item');
-    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'scatter');
+    const ownerBaseIri = parentDag.nodes.find((placement) => placement.name === 'scatter')?.['@id'] ?? '';
     const rows = [...DagGraphQueries.selectedDagRows(resumeStore)]
       .sort((a, b) => a.ownerIri.localeCompare(b.ownerIri));
     assert.deepEqual(rows, [
-      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': childAIri },
       { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': childBIri },
     ]);
   });
@@ -481,18 +522,16 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
   void it('routes scatter items to error when the item value is not in the candidate set', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
-    const childDag = TestDag.child('scatter-child');
+    const childDag = TestDag.child(SCATTER_CHILD_DAG_IRI, 'scatter-child');
 
-    const parentDag = new DAGBuilder('scatter-bad', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-child'] } }, {
-        'all-success': 'end-ok',
-        'partial':     'end-ok',
-        'all-error':   'end-ok',
-        'empty':       'end-ok',
-      }, {
-        'gather': { 'strategy': 'discard' },
-      })
-      .terminal('end-ok')
+    const parentDag = new DAGBuilder(SCATTER_BAD_DAG_IRI, '1', { 'name': 'scatter-bad' })
+      .scatter(placementIri(SCATTER_BAD_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [SCATTER_CHILD_DAG_IRI] } }, {
+        'all-success': placementIri(SCATTER_BAD_DAG_IRI, 'end-ok'),
+        'partial':     placementIri(SCATTER_BAD_DAG_IRI, 'end-ok'),
+        'all-error':   placementIri(SCATTER_BAD_DAG_IRI, 'end-ok'),
+        'empty': placementIri(SCATTER_BAD_DAG_IRI, 'end-ok'),
+      }, { 'name': 'scatter' })
+      .terminal(placementIri(SCATTER_BAD_DAG_IRI, 'end-ok'), { 'name': 'end-ok' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
@@ -501,8 +540,8 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = [{ 'dagName': 'no-such-dag' }, { 'dagName': 'no-such-dag' }];
-    const result = await dispatcher.execute('scatter-bad', state);
+    state.items = [{ 'dagIri': 'urn:noocodec:dag:no-such-dag' }, { 'dagIri': 'urn:noocodec:dag:no-such-dag' }];
+    const result = await dispatcher.execute(SCATTER_BAD_DAG_IRI, state);
 
     // All items routed to their error output; scatter still reaches its terminal.
     assert.equal(result.terminalOutcome, 'completed');
@@ -513,38 +552,43 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     const itemCount = 10000;
     const candidateCount = 1000;
     const store = new InMemoryTopologyStore();
-    const candidates: [string, ...string[]] = ['scale-child-0'];
+    const candidates: [string, ...string[]] = ['https://example.test/dag/scale-child-0'];
     for (let index = 1; index < candidateCount; index += 1) {
-      candidates.push(`scale-child-${index}`);
+      candidates.push(`https://example.test/dag/scale-child-${index}`);
     }
-    const parentDag = new DAGBuilder('scatter-scale-parent', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', candidates } }, {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end',
-        'empty':       'end',
+    const parentDag = new DAGBuilder(SCATTER_SCALE_PARENT_DAG_IRI, '1', { 'name': 'scatter-scale-parent' })
+      .scatter(placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', candidates } }, {
+        'all-success': placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
+        'partial':     placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
+        'all-error':   placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
+        'empty':       placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
       }, {
-        'gather':    { 'strategy': 'discard' },
         'execution': { 'mode': 'item', 'concurrency': 128 },
+        'name': 'scatter',
       })
-      .terminal('end')
+      .terminal(placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
     for (const candidate of candidates) {
-      dispatcher.registerDAG(new DAGBuilder(candidate, '1').terminal('done').build());
+      dispatcher.registerDAG(
+        new DAGBuilder(candidate, '1', { 'name': candidate })
+          .terminal(placementIri(candidate, 'done'), { 'name': 'done' })
+          .entrypoints({ 'main': placementIri(candidate, 'done') })
+          .build(),
+      );
     }
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = Array.from({ 'length': itemCount }, () => ({ 'dagName': 'scale-child-0' }));
-    const result = await dispatcher.execute('scatter-scale-parent', state);
+    state.items = Array.from({ 'length': itemCount }, () => ({ 'dagIri': 'https://example.test/dag/scale-child-0' }));
+    const result = await dispatcher.execute(SCATTER_SCALE_PARENT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.state.errors.length, 0);
     assert.equal(DagGraphQueries.selectedDagRows(store).length, itemCount);
     assert.deepEqual(DagGraphQueries.selectedDagIris(store), [
-      'https://noocodex.dev/dag/default#scale-child-0',
+      'https://example.test/dag/scale-child-0',
     ]);
   });
 });
@@ -552,8 +596,8 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
 void describe('DagReferenceResolver', () => {
   void it('asserts selected DAG bindings into a topology store', () => {
     const store = new InMemoryTopologyStore();
-    const selectedDagIri = 'https://noocodex.dev/dag/default#selected-child';
-    const ownerPlacementIri = DagGraphProjector.placementIri('https://noocodex.dev/dag/default#parent', 'invoke');
+    const selectedDagIri = SELECTED_CHILD_DAG_IRI;
+    const ownerPlacementIri = 'urn:noocodec:dag:parent/node/invoke';
 
     DagReferenceResolver.bindSelectedDag({
       store,
@@ -570,30 +614,30 @@ void describe('DagReferenceResolver', () => {
 // The schema rejects `dagFrom`; dynamic references use `dag: DagReference`.
 
 void describe('DAGValidator: embedded dag reference shape', () => {
-  void it('schema rejects a node with legacy dagFrom set', () => {
+  void it('schema rejects a node with dynamic dag reference set', () => {
     const dispatcher = new Dagonizer<RoutingState>();
     // Register a child dag first (the dag:'some-child' reference must resolve);
     // its `run` node references `incr`, so that node must exist too.
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
-    dispatcher.registerDAG(TestDag.child('some-child'));
+    dispatcher.registerDAG(TestDag.child(SOME_CHILD_DAG_IRI, 'some-child'));
 
     const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:bogus-both',
+      '@id': BOGUS_BOTH_DAG_IRI,
       '@type':    'DAG',
       'name':     'bogus-both',
       'version':  '1',
-      'entrypoints': { 'main': 'embed' },
+      'entrypoints': { 'main': placementIri(BOGUS_BOTH_DAG_IRI, 'embed') },
       'nodes': [
         {
-          '@id':    'urn:noocodex:dag:bogus-both/node/embed',
+          '@id': placementIri(BOGUS_BOTH_DAG_IRI, 'embed'),
           '@type':  'EmbeddedDAGNode',
           'name':   'embed',
-          'dag':     'some-child',
+          'dag':     SOME_CHILD_DAG_IRI,
           'dagFrom': 'selectedDag',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'outputs': { 'success': placementIri(BOGUS_BOTH_DAG_IRI, 'end'), 'error': placementIri(BOGUS_BOTH_DAG_IRI, 'end') },
         },
-        TestDag.terminal('bogus-both'),
+        TestDag.terminal(BOGUS_BOTH_DAG_IRI),
       ],
     };
     assert.throws(() => Validator.dag.validate(bogusRaw));
@@ -604,19 +648,19 @@ void describe('DAGValidator: embedded dag reference shape', () => {
 
     const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:bogus-neither',
+      '@id': BOGUS_NEITHER_DAG_IRI,
       '@type':    'DAG',
       'name':     'bogus-neither',
       'version':  '1',
-      'entrypoints': { 'main': 'embed' },
+      'entrypoints': { 'main': placementIri(BOGUS_NEITHER_DAG_IRI, 'embed') },
       'nodes': [
         {
-          '@id':    'urn:noocodex:dag:bogus-neither/node/embed',
+          '@id': placementIri(BOGUS_NEITHER_DAG_IRI, 'embed'),
           '@type':  'EmbeddedDAGNode',
           'name':   'embed',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'outputs': { 'success': placementIri(BOGUS_NEITHER_DAG_IRI, 'end'), 'error': placementIri(BOGUS_NEITHER_DAG_IRI, 'end') },
         },
-        TestDag.terminal('bogus-neither'),
+        TestDag.terminal(BOGUS_NEITHER_DAG_IRI),
       ],
     };
     const bogus = Validator.dag.validate(bogusRaw);
@@ -626,12 +670,12 @@ void describe('DAGValidator: embedded dag reference shape', () => {
 
   void it('registerDAG accepts a node with only dag set', () => {
     const dispatcher = new Dagonizer<RoutingState>();
-    const childDag = TestDag.child('valid-child-literal');
+    const childDag = TestDag.child(VALID_CHILD_LITERAL_DAG_IRI, 'valid-child-literal');
 
-    const parentDag = new DAGBuilder('valid-literal', '1')
-      .embeddedDAG('embed', 'valid-child-literal', { 'success': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(VALID_LITERAL_DAG_IRI, '1', { 'name': 'valid-literal' })
+      .embed(placementIri(VALID_LITERAL_DAG_IRI, 'embed'), VALID_CHILD_LITERAL_DAG_IRI, { 'success': placementIri(VALID_LITERAL_DAG_IRI, 'end'), 'error': placementIri(VALID_LITERAL_DAG_IRI, 'end-fail') }, { 'name': 'embed' })
+      .terminal(placementIri(VALID_LITERAL_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(VALID_LITERAL_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     // The child's `run` node references `incr`, so that node must exist.
@@ -643,12 +687,12 @@ void describe('DAGValidator: embedded dag reference shape', () => {
   void it('registerDAG accepts a node with a dynamic dag reference and registered candidates', () => {
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
-    dispatcher.registerDAG(TestDag.child('valid-child-dynamic'));
+    dispatcher.registerDAG(TestDag.child(VALID_CHILD_DYNAMIC_DAG_IRI, 'valid-child-dynamic'));
 
-    const parentDag = new DAGBuilder('valid-from-only', '1')
-      .embeddedDAG('embed', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['valid-child-dynamic'] }, { 'success': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(VALID_FROM_ONLY_DAG_IRI, '1', { 'name': 'valid-from-only' })
+      .embed(placementIri(VALID_FROM_ONLY_DAG_IRI, 'embed'), { 'from': 'state', 'path': 'selectedDag', 'candidates': [VALID_CHILD_DYNAMIC_DAG_IRI] }, { 'success': placementIri(VALID_FROM_ONLY_DAG_IRI, 'end'), 'error': placementIri(VALID_FROM_ONLY_DAG_IRI, 'end-fail') }, { 'name': 'embed' })
+      .terminal(placementIri(VALID_FROM_ONLY_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(VALID_FROM_ONLY_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
 
     assert.doesNotThrow(() => dispatcher.registerDAG(parentDag));
@@ -657,25 +701,25 @@ void describe('DAGValidator: embedded dag reference shape', () => {
   void it('registerDAG rejects an embedded dynamic reference that reads from item', () => {
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
-    dispatcher.registerDAG(TestDag.child('embedded-mode-child'));
+    dispatcher.registerDAG(TestDag.child(EMBEDDED_MODE_CHILD_DAG_IRI, 'embedded-mode-child'));
 
     const parentDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:bad-embedded-reference-mode',
+      '@id': BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI,
       '@type': 'DAG',
       'name': 'bad-embedded-reference-mode',
       'version': '1',
-      'entrypoints': { 'main': 'embed' },
+      'entrypoints': { 'main': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'embed') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/embed',
+          '@id': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'embed'),
           '@type': 'EmbeddedDAGNode',
           'name': 'embed',
-          'dag': { '@type': 'DagReference', 'from': 'item', 'path': 'dagName', 'candidates': ['embedded-mode-child'] },
-          'outputs': { 'success': 'end', 'error': 'end-fail' },
+          'dag': { '@type': 'DagReference', 'from': 'item', 'path': 'dagIri', 'candidates': [EMBEDDED_MODE_CHILD_DAG_IRI] },
+          'outputs': { 'success': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'end'), 'error': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'end-fail') },
         },
-        { '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
-        { '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/end-fail', '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
+        { '@id': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': placementIri(BAD_EMBEDDED_REFERENCE_MODE_DAG_IRI, 'end-fail'), '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
       ],
     };
 
@@ -688,32 +732,31 @@ void describe('DAGValidator: embedded dag reference shape', () => {
   void it('registerDAG rejects a scatter dynamic reference that reads from state', () => {
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
-    dispatcher.registerDAG(TestDag.child('scatter-mode-child'));
+    dispatcher.registerDAG(TestDag.child(SCATTER_MODE_CHILD_DAG_IRI, 'scatter-mode-child'));
 
     const parentDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:bad-scatter-reference-mode',
+      '@id': BAD_SCATTER_REFERENCE_MODE_DAG_IRI,
       '@type': 'DAG',
       'name': 'bad-scatter-reference-mode',
       'version': '1',
-      'entrypoints': { 'main': 'scatter' },
+      'entrypoints': { 'main': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'scatter') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/scatter',
+          '@id': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'scatter'),
           '@type': 'ScatterNode',
           'name': 'scatter',
           'source': 'items',
-          'body': { 'dag': { '@type': 'DagReference', 'from': 'state', 'path': 'selectedDag', 'candidates': ['scatter-mode-child'] } },
-          'gather': { 'strategy': 'discard' },
+          'body': { 'dag': { '@type': 'DagReference', 'from': 'state', 'path': 'selectedDag', 'candidates': [SCATTER_MODE_CHILD_DAG_IRI] } },
           'outputs': {
-            'all-success': 'end',
-            'partial': 'end',
-            'all-error': 'end-fail',
-            'empty': 'end',
+            'all-success': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end'),
+            'partial': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end'),
+            'all-error': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end-fail'),
+            'empty': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end'),
           },
         },
-        { '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
-        { '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/end-fail', '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
+        { '@id': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': placementIri(BAD_SCATTER_REFERENCE_MODE_DAG_IRI, 'end-fail'), '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
       ],
     };
 

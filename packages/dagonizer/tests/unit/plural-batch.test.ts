@@ -214,6 +214,7 @@ void describe('RoutedBatch', () => {
 
 class TagNode extends MonadicNode<TestState, 'tagged' | 'skip'> {
   readonly name = 'tag';
+  readonly '@id' = 'urn:noocodec:node:tag';
   readonly outputs = ['tagged', 'skip'] as const;
   override get outputSchema(): Record<'tagged' | 'skip', SchemaObjectType> {
     return { 'tagged': { 'type': 'object' }, 'skip': { 'type': 'object' } };
@@ -239,6 +240,7 @@ class TagNode extends MonadicNode<TestState, 'tagged' | 'skip'> {
 
 class ErroringNode extends MonadicNode<TestState, 'done'> {
   readonly name = 'erroring';
+  readonly '@id' = 'urn:noocodec:node:erroring';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };

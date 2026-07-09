@@ -39,30 +39,30 @@ import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 
 const probeItemDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:probe-item',
+  '@id': 'urn:noocodec:dag:probe-item',
   '@type':     'DAG',
   "name":        'probe-item',
   "version":     '1',
-  "entrypoints": { "main": 'probe' },
+  "entrypoints": { "main": 'urn:noocodec:dag:probe-item/node/probe' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:probe-item/node/probe',
+      '@id': 'urn:noocodec:dag:probe-item/node/probe',
       '@type': 'SingleNode',
       "name":    'probe',
-      "node":    'probe',
+      "node":    'urn:noocodec:node:probe',
       // Route to distinct TerminalNodes so the parent scatter sees
       // 'success' (completed) vs 'error' (failed) per clone — enabling
       // the partition gather to split URLs into succeeded/failed.
-      "outputs": { "ok": 'item-ok', "fail": 'item-fail' },
+      "outputs": { "ok": 'urn:noocodec:dag:probe-item/node/item-ok', "fail": 'urn:noocodec:dag:probe-item/node/item-fail' },
     },
     {
-      '@id':     'urn:noocodex:dag:probe-item/node/item-ok',
+      '@id': 'urn:noocodec:dag:probe-item/node/item-ok',
       '@type':   'TerminalNode',
       "name":    'item-ok',
       "outcome": 'completed',
     },
     {
-      '@id':     'urn:noocodex:dag:probe-item/node/item-fail',
+      '@id': 'urn:noocodec:dag:probe-item/node/item-fail',
       '@type':   'TerminalNode',
       "name":    'item-fail',
       "outcome": 'failed',
@@ -73,35 +73,40 @@ const probeItemDag: DAGType = {
 // Parent DAG: scatter with container role 'io' declared.
 // To actually bind the container, pass WorkerThreadContainer to the dispatcher:
 //   new Dagonizer<ScrapeState>({ containers: { io: container } })
-// Without the binding the dispatcher falls back to in-process (this demo's path).
+// Without the binding the dispatcher uses in-process execution (this demo's path).
 const scrapeWithContainerDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:scrape-c',
+  '@id': 'urn:noocodec:dag:scrape-c',
   '@type':     'DAG',
   "name":        'scrape-c',
   "version":     '1',
-  "entrypoints": { "main": 'probe-all' },
+  "entrypoints": { "main": 'urn:noocodec:dag:scrape-c/node/probe-all' },
   "nodes": [
     {
-      '@id':        'urn:noocodex:dag:scrape-c/node/probe-all',
+      '@id': 'urn:noocodec:dag:scrape-c/node/probe-all',
       '@type':      'ScatterNode',
       "name":         'probe-all',
-      "body":         { "dag": 'probe-item' },  // sub-DAG body — required for containers
+      "body":         { "dag": 'urn:noocodec:dag:probe-item' },  // sub-DAG body — required for containers
       "source":       'urls',
       "itemKey":      'url',
       "execution": { "mode": "item", "concurrency": 2 },
       // container: 'io',                        // ← uncomment + bind WorkerThreadContainer
       //                                         //   to route each item to a worker thread
+      "outputs": { 'all-success': 'urn:noocodec:dag:scrape-c/node/gather-probes', "partial": 'urn:noocodec:dag:scrape-c/node/gather-probes', 'all-error': 'urn:noocodec:dag:scrape-c/node/gather-probes', "empty": 'urn:noocodec:dag:scrape-c/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:scrape-c/node/gather-probes',
+      '@type': 'GatherNode',
+      "name": 'gather-probes',
+      sources: { "urn:noocodec:dag:scrape-c/node/probe-all": {} },
       "gather": {
-        // dag-body scatter outputs 'success'/'error' per clone (not the inner
-        // node's 'ok'/'fail'); partition on those aggregate output tokens.
         "strategy":   GatherStrategyNames.PARTITION,
         "partitions": { "success": 'succeeded', "error": 'failed' },
       },
-      "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },
+      "outputs": { "success": 'urn:noocodec:dag:scrape-c/node/end', "error": 'urn:noocodec:dag:scrape-c/node/end', "empty": 'urn:noocodec:dag:scrape-c/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:scrape-c/node/end',
+      '@id': 'urn:noocodec:dag:scrape-c/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
@@ -125,7 +130,7 @@ state.urls = [
   'https://ccc.example',  // 19 chars → fail
   'https://dddd.example', // 20 chars → ok
 ];
-await dispatcher.execute('scrape-c', state);
+await dispatcher.execute('urn:noocodec:dag:scrape-c', state);
 
 process.stdout.write('\n04c-scatter-workers: same probe logic, dag-body scatter shape\n');
 process.stdout.write(`  succeeded: ${JSON.stringify(state.succeeded)}\n`);

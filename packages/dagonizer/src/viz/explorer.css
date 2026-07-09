@@ -8,13 +8,13 @@
  *   3. D-pad control grid — 3×3 navigation grid, hover-reveal, button styles.
  *   4. Fullscreen modal — overlay, stage, hint bar, animation.
  *
- * Custom property fallbacks:
- *   --dag-explorer-surface  fallback surface colour (set by MermaidExplorer.#applyTheme)
- *   --dag-explorer-stroke   fallback stroke / border colour
- *   --dag-explorer-accent   fallback accent / hover colour
+ * Custom property defaults:
+ *   --dag-explorer-surface  default surface colour (set by MermaidExplorer.#applyTheme)
+ *   --dag-explorer-stroke   default stroke / border colour
+ *   --dag-explorer-accent   default accent / hover colour
  *
  * All --vp-c-* references are VitePress design tokens; when this stylesheet is
- * used outside VitePress the --dag-explorer-* fallbacks apply.
+ * used outside VitePress the --dag-explorer-* defaults apply.
  */
 
 /* ==========================================================================
@@ -165,14 +165,14 @@
 /**
  * D-pad button: matches GraphDpad.vue `.dpad-btn` exactly.
  *
- * Colour fallback chain:
+ * Colour default chain:
  *   1. --dag-explorer-surface / --dag-explorer-stroke / --dag-explorer-accent
  *      (set as inline properties by MermaidExplorer.#applyTheme when the
  *       caller provides a `theme` option).
  *   2. --vp-c-bg-alt / --vp-c-divider / --vp-c-text-1 / --dagonizer-brand
  *      (VitePress / Dagonizer design tokens, present when hosted on the docs
  *       site).
- *   3. Hard-coded fallback literals (used outside VitePress context).
+ *   3. Hard-coded default literals (used outside VitePress context).
  */
 .dag-mermaid-dpad-btn {
   width:            32px;

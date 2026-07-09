@@ -10,7 +10,7 @@ seeAlso:
     description: 'MemoryCheckpointStore persist / recall round-trip'
   - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
-    description: 'scatter mechanics: source, body, gather, reduce'
+    description: 'scatter mechanics: source, body DAG, gather placement, reduce'
   - text: 'Reference: Checkpoint'
     link: '../reference/checkpoint'
 ---
@@ -90,5 +90,5 @@ The DAG snippet shows the scatter shape. The scenario snippet shows the determin
 
 - [Example 08: Checkpoint and Resume](./08-checkpoint) - checkpoint lifecycle: capture, persist, recall, resume
 - [Example 23: Checkpoint store](./23-checkpoint-store) - MemoryCheckpointStore persist / recall round-trip
-- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body DAG, gather placement, reduce
 - [Reference: Checkpoint](../reference/checkpoint)

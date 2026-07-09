@@ -76,7 +76,7 @@ The deployment binds the logical role to a backend at dispatcher construction:
 
 <<< @/../examples/12-workers.ts#dispatcher
 
-When the dispatcher reaches the `enrich` placement, it delegates the sub-DAG to the `cpu` backend. The child state crosses as a JSON snapshot; the worker runs the sub-DAG to completion; the terminal snapshot is applied in place. The DAG document and node code are identical in both paths. An unbound role falls back to in-process and fires `contractWarning` — the DAG still runs, the degradation is visible.
+When the dispatcher reaches the `enrich` placement, it delegates the sub-DAG to the `cpu` backend. The child state crosses as a JSON snapshot; the worker runs the sub-DAG to completion; the terminal snapshot is applied in place. The DAG document and node code are identical in both paths. An unbound role runs in-process and fires `contractWarning` so the DAG still runs and the condition is visible.
 
 #### Available Node.js backends
 
@@ -93,7 +93,7 @@ The browser package `@studnicky/dagonizer-executor-web` ships `WebWorkerContaine
 
 #### Pool sizing
 
-`NodeSystemInfo.recommendedWorkerCount(config)` returns a cgroup-aware default based on `os.availableParallelism()` and available memory. Spread `RecommendedWorkerCountConfigDefault` and override only the fields you want to clamp:
+`NodeSystemInfo.recommendedWorkerCount(config)` returns a cgroup-aware default based on `os.availableParallelism()` and available memory. Spread `RecommendedWorkerCountConfigDefault` and override only the fields you want to set:
 
 <<< @/../examples/12-workers.ts#pool-sizing
 
@@ -117,8 +117,8 @@ The `registryModule` path passed to a container backend is dynamically imported 
 
 When a top-level DAG completes at a terminal placement bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries:
 
-- `dagName` — the name of the DAG that just completed
-- `terminalName` — the placement name of the terminal
+- `dagName` — the DAG IRI/CURIE string that just completed
+- `terminalName` — the terminal placement label for observability
 - `terminalOutput` — the routing output string
 - `stateSnapshot` — by-value terminal state (or `stateSnapshotRef` for size-limited transports)
 - `registryVersion` — version the receiving host uses for its handshake

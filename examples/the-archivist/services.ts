@@ -257,7 +257,7 @@ export interface ArchivistServices {
    * ranking. Resolved at runtime via `EmbedderCascade.select()`. Set to
    * `null` when no embedder is reachable (browser without Ollama, no
    * API keys, etc.); every consumer is required to handle this
-   * gracefully and fall back to deterministic Jaccard / heuristics.
+   * gracefully and use deterministic Jaccard / heuristics.
    * Explicit-null sentinel (not optional) keeps V8 hidden-class stability.
    */
   readonly embedder: EmbedderInterface | null;

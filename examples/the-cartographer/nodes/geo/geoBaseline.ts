@@ -26,6 +26,7 @@ import {
 
 // #region geo-baseline-node
 export class GeoBaselineNode extends MonadicNode<CartographerState, 'baselined'> {
+  readonly '@id' = 'urn:noocodec:node:geo-baseline';
   readonly 'name' = 'geo-baseline';
   readonly 'outputs' = ['baselined'] as const;
 

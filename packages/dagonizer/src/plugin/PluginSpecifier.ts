@@ -1,5 +1,5 @@
 /**
- * PluginSpecifier: static helpers for resolving a DAG name to an import() specifier.
+ * PluginSpecifier: static helpers for resolving a DAG IRI to an import() specifier.
  *
  * Three canonical resolvers ship with the engine:
  * - `PluginSpecifier.bareName` — Node.js default. Returns the bare npm package name unchanged.

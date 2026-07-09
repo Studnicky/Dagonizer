@@ -49,6 +49,7 @@ export class PipelineState extends NodeStateBase {
 
 export class IngestNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'ingest';
+  readonly '@id' = 'urn:noocodec:node:ingest';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -65,6 +66,7 @@ export class IngestNode extends MonadicNode<PipelineState, 'success'> {
 
 export class ProcessNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'process';
+  readonly '@id' = 'urn:noocodec:node:process';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -81,6 +83,7 @@ export class ProcessNode extends MonadicNode<PipelineState, 'success'> {
 
 export class ExportNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'export';
+  readonly '@id' = 'urn:noocodec:node:export';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
@@ -101,35 +104,35 @@ export class ExportNode extends MonadicNode<PipelineState, 'success'> {
 
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:pipeline',
+  '@id': 'urn:noocodec:dag:pipeline',
   '@type':     'DAG',
   name:        'pipeline',
   version:     '1',
-  entrypoints: { main: 'ingest' },
+  entrypoints: { main: 'urn:noocodec:dag:pipeline/node/ingest' },
   nodes: [
     {
-      '@id':   'urn:noocodex:dag:pipeline/node/ingest',
+      '@id': 'urn:noocodec:dag:pipeline/node/ingest',
       '@type': 'SingleNode',
       name:    'ingest',
-      node:    'ingest',
-      outputs: { success: 'process' },
+      node:    'urn:noocodec:node:ingest',
+      outputs: { success: 'urn:noocodec:dag:pipeline/node/process' },
     },
     {
-      '@id':   'urn:noocodex:dag:pipeline/node/process',
+      '@id': 'urn:noocodec:dag:pipeline/node/process',
       '@type': 'SingleNode',
       name:    'process',
-      node:    'process',
-      outputs: { success: 'export' },
+      node:    'urn:noocodec:node:process',
+      outputs: { success: 'urn:noocodec:dag:pipeline/node/export' },
     },
     {
-      '@id':   'urn:noocodex:dag:pipeline/node/export',
+      '@id': 'urn:noocodec:dag:pipeline/node/export',
       '@type': 'SingleNode',
       name:    'export',
-      node:    'export',
-      outputs: { success: 'end' },
+      node:    'urn:noocodec:node:export',
+      outputs: { success: 'urn:noocodec:dag:pipeline/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:pipeline/node/end',
+      '@id': 'urn:noocodec:dag:pipeline/node/end',
       '@type':   'TerminalNode',
       name:      'end',
       outcome:   'completed',

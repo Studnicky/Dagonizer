@@ -20,7 +20,7 @@ export class DagReferenceGraph {
       for (const row of DagGraphQueries.candidateDagRows(topology)) {
         edges.push({
           sourceDagIri,
-          'sourcePlacement': DagReferenceGraph.placementNameOf(row.placementIri),
+          'sourcePlacement': row.placementIri,
           'targetDagIri': row.dagIri,
           'dynamic': row.dynamic,
         });
@@ -88,10 +88,5 @@ export class DagReferenceGraph {
     edges: readonly { readonly sourceDagIri: string; readonly targetDagIri: string }[],
   ): boolean {
     return edges.some((edge) => edge.sourceDagIri === dagIri && edge.targetDagIri === dagIri);
-  }
-
-  static placementNameOf(placementIri: string): string {
-    const marker = placementIri.lastIndexOf('#');
-    return marker >= 0 ? decodeURIComponent(placementIri.slice(marker + 1)) : placementIri;
   }
 }

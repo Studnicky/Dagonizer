@@ -13,10 +13,82 @@ import {
   Timeout,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/contracts';
+import { VirtualTimeCounter } from '@studnicky/clock';
+import * as SchedulerPkg from '@studnicky/scheduler';
 import { RoutedBatch } from '@studnicky/dagonizer';
 
 export { Scheduler } from '@studnicky/dagonizer/runtime';
-export { VirtualScheduler } from '@studnicky/dagonizer/testing';
+export { VirtualTimeCounter } from '@studnicky/clock';
+
+class SchedulerAbortError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AbortError';
+  }
+}
+
+type PendingRejectType = {
+  readonly reject: (reason: Error) => void;
+};
+
+export class VirtualScheduler extends SchedulerPkg.VirtualScheduler implements SchedulerProviderInterface {
+  readonly #counter: VirtualTimeCounter;
+  readonly #pending = new Map<string, PendingRejectType>();
+
+  constructor(initialAtMs: number = 0) {
+    const counter = VirtualTimeCounter.create({ 'startMs': initialAtMs });
+    super(counter);
+    this.#counter = counter;
+  }
+
+  after(delayMs: number, options?: { readonly signal?: AbortSignal }): Promise<void> {
+    return this.at(this.#counter.nowMs() + Math.max(0, delayMs), options);
+  }
+
+  at(atMs: number, options?: { readonly signal?: AbortSignal }): Promise<void> {
+    const signal = options?.signal;
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted === true) {
+        reject(signal.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
+        return;
+      }
+      const task = this.scheduleAt(atMs, () => {
+        this.#pending.delete(task.id);
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      });
+      this.#pending.set(task.id, { reject });
+      const onAbort = (): void => {
+        this.#pending.delete(task.id);
+        task.cancel();
+        signal?.removeEventListener('abort', onAbort);
+        reject(signal?.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
+      };
+      signal?.addEventListener('abort', onAbort, { 'once': true });
+    });
+  }
+
+  async *every(intervalMs: number, options?: { readonly signal?: AbortSignal }): AsyncIterable<void> {
+    const signal = options?.signal;
+    while (signal?.aborted !== true) {
+      try {
+        await this.after(intervalMs, options);
+      } catch {
+        return;
+      }
+      yield;
+    }
+  }
+
+  override cancelAll(): void {
+    super.cancelAll();
+    for (const entry of this.#pending.values()) {
+      entry.reject(new SchedulerAbortError('cancelled'));
+    }
+    this.#pending.clear();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -34,6 +106,7 @@ export class SlowState extends NodeStateBase {}
 // #region slow-node
 export class SlowNode extends MonadicNode<SlowState, 'success'> {
   readonly name = 'slow';
+  readonly '@id' = 'urn:noocodec:node:slow';
   readonly outputs = ['success'] as const;
   override readonly timeout = Timeout.ofMs(200);
   override get outputSchema(): Record<'success', SchemaObjectType> {
@@ -56,21 +129,21 @@ export class SlowNode extends MonadicNode<SlowState, 'success'> {
 
 export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:virtual-clock-dag',
+  '@id': 'urn:noocodec:dag:virtual-clock-dag',
   '@type':      'DAG',
   'name':       'virtual-clock-dag',
   'version':    '1',
-  'entrypoints': { 'main': 'slow' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:virtual-clock-dag/node/slow' },
   'nodes': [
     {
-      '@id':     'urn:noocodex:dag:virtual-clock-dag/node/slow',
+      '@id': 'urn:noocodec:dag:virtual-clock-dag/node/slow',
       '@type':   'SingleNode',
       'name':    'slow',
-      'node':    'slow',
-      'outputs': { 'success': 'end' },
+      'node':    'urn:noocodec:node:slow',
+      'outputs': { 'success': 'urn:noocodec:dag:virtual-clock-dag/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:virtual-clock-dag/node/end',
+      '@id': 'urn:noocodec:dag:virtual-clock-dag/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',

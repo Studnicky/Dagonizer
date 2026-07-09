@@ -69,6 +69,7 @@ export class WorkState extends NodeStateBase {
 // #region worker-node
 export class SquareWorkerNode extends MonadicNode<WorkState, 'done'> {
   readonly name = 'squareWorker';
+  readonly '@id' = 'urn:noocodec:node:squareWorker';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -96,21 +97,21 @@ export class SquareWorkerNode extends MonadicNode<WorkState, 'done'> {
 // #region worker-dag
 export const workerDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:square-item',
+  '@id': 'urn:noocodec:dag:square-item',
   '@type':     'DAG',
   "name":        'square-item',
   "version":     '1',
-  "entrypoints": { "main": 'square' },
+  "entrypoints": { "main": 'urn:noocodec:dag:square-item/node/square' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:square-item/node/square',
+      '@id': 'urn:noocodec:dag:square-item/node/square',
       '@type': 'SingleNode',
       "name":    'square',
-      "node":    'squareWorker',
-      "outputs": { "done": 'item-end' },
+      "node":    'urn:noocodec:node:squareWorker',
+      "outputs": { "done": 'urn:noocodec:dag:square-item/node/item-end' },
     },
     {
-      '@id':     'urn:noocodex:dag:square-item/node/item-end',
+      '@id': 'urn:noocodec:dag:square-item/node/item-end',
       '@type':   'TerminalNode',
       "name":    'item-end',
       "outcome": 'completed',
@@ -126,35 +127,42 @@ export const workerDag: DAGType = {
 // #region parent-dag
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:square-all',
+  '@id': 'urn:noocodec:dag:square-all',
   '@type':     'DAG',
   "name":        'square-all',
   "version":     '1',
-  "entrypoints": { "main": 'square-all' },
+  "entrypoints": { "main": 'urn:noocodec:dag:square-all/node/square-all' },
   "nodes": [
     {
-      '@id':        'urn:noocodex:dag:square-all/node/square-all',
+      '@id': 'urn:noocodec:dag:square-all/node/square-all',
       '@type':      'ScatterNode',
       "name":         'square-all',
-      "body":         { "dag": 'square-item' },   // scatter body: run this sub-DAG per item
+      "body":         { "dag": 'urn:noocodec:dag:square-item' },   // scatter body: run this sub-DAG per item
       "source":       'tasks',                     // state field holding the source array
       "itemKey":      'task',                      // metadata key each item is written under
       "execution": { "mode": "item", "concurrency": 2 },                           // run up to 2 items concurrently
-      "container":    'cpu',                       // route each item through the worker container
-      "gather": {
-        "strategy":   GatherStrategyNames.APPEND,     // collect results into a state array
-        "field":      'lastResult',                // scalar field on child state (per item)
-        "target":     'results',                   // target array on parent state
-      },
+      "container": 'cpu',                       // route each item through the worker container
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:square-all/node/collect-results',
+        "partial": 'urn:noocodec:dag:square-all/node/collect-results',
+        'all-error': 'urn:noocodec:dag:square-all/node/collect-results',
+        "empty":       'urn:noocodec:dag:square-all/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:square-all/node/end',
+      '@id': 'urn:noocodec:dag:square-all/node/collect-results',
+      '@type': 'GatherNode',
+      "name": 'collect-results',
+      sources: { "urn:noocodec:dag:square-all/node/square-all": {} },
+      "gather": {
+        "strategy": GatherStrategyNames.APPEND,
+        "field": 'lastResult',
+        "target": 'results',
+      },
+      "outputs": { "success": 'urn:noocodec:dag:square-all/node/end', "error": 'urn:noocodec:dag:square-all/node/end', "empty": 'urn:noocodec:dag:square-all/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:square-all/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

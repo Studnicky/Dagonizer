@@ -13,7 +13,6 @@ import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../co
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
-import type { GatherStrategy } from '../core/GatherStrategies.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
@@ -24,16 +23,14 @@ import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
-import type { ScatterAckedResultType, ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
+import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { Timeout } from '../entities/Timeout.js';
 import { DAGError } from '../errors/index.js';
-import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
 import { DagReferenceResolver } from './DagReferenceResolver.js';
-import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 
@@ -41,8 +38,10 @@ import { PlacementRouter } from './PlacementRouter.js';
 export type RunNodeResultType = {
   'nextStage': null | string;
   'result': NodeResultType<NodeStateInterface>;
-  'gatherRecord'?: GatherRecordType;
+  'gatherRecords'?: readonly GatherRecordType[];
 };
+
+export type GatherRecordSinkType = (record: GatherRecordType) => Promise<void>;
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
 export type RunOptionsType = { embedded: boolean };
@@ -227,16 +226,12 @@ export type ScatterRunContextType = {
   readonly placementPath: readonly string[];
   readonly itemKey: string;
   readonly inbox: ScatterInboxItemType[];
-  readonly ackedResults: ScatterAckedResultType[];
-  readonly ackedByIndex: Map<number, ScatterAckedResultType>;
-  readonly itemOutputs: Map<number, string>;
   readonly allFreshRecords: GatherRecordType[];
   readonly intermediateResults: Array<NodeResultType<NodeStateInterface>>;
-  readonly gatherStrategy: GatherStrategy | null;
-  readonly compactable: boolean;
   readonly watermarkRef: { value: number };
   readonly aheadAcked: Map<number, string>;
   readonly outcomeTally: Map<string, number>;
+  readonly gatherRecordSink: GatherRecordSinkType | null;
 }
 
 /**
@@ -253,7 +248,6 @@ export class ScatterPoolDriver
   readonly #ctx: ScatterRunContextType;
   readonly #bodyExecutor: BodyExecutor;
   readonly #dagContextValue: Record<string, unknown>;
-  readonly #dagIriValue: string;
   readonly #bodyCandidateIris: ReadonlySet<string> | null;
 
   constructor(
@@ -265,7 +259,6 @@ export class ScatterPoolDriver
     this.#ctx = ctx;
     this.#bodyExecutor = bodyExecutor;
     this.#dagContextValue = this.#composeDagContext();
-    this.#dagIriValue = this.#resolveDagIri();
     this.#bodyCandidateIris = 'dag' in ctx.scatter.body
       ? DagReferenceResolver.candidateIris(ctx.scatter.body.dag, this.#dagContextValue)
       : null;
@@ -291,7 +284,7 @@ export class ScatterPoolDriver
   }
 
   #composeDagContext(): Record<string, unknown> {
-    const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
+    const dag = this.#adapter.dags.get(this.#ctx.dagName);
     return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
   }
 
@@ -299,41 +292,28 @@ export class ScatterPoolDriver
     return this.#dagContextValue;
   }
 
-  #resolveDagIri(): string {
-    const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
-    return dag !== undefined ? DagGraphProjector.dagIri(dag) : ContextResolver.expand(this.#ctx.dagName, {});
+  #itemBodyIri(itemIndex: number): string {
+    return `${this.#ctx.scatter['@id']}/item/${String(itemIndex)}`;
   }
 
-  #dagIri(): string {
-    return this.#dagIriValue;
-  }
-
-  #itemBodyIri(scatterName: string, itemIndex: number): string {
-    return `${DagGraphProjector.placementIri(this.#dagIri(), scatterName)}/item/${String(itemIndex)}`;
-  }
-
-  #bindItemSelectedDag(scatterName: string, itemIndex: number, selectedDagIri: string): void {
+  #bindItemSelectedDag(itemIndex: number, selectedDagIri: string): void {
     DagReferenceResolver.bindSelectedDag({
       'store': this.#adapter.executionTopologyStore,
-      'ownerPlacementIri': this.#itemBodyIri(scatterName, itemIndex),
+      'ownerPlacementIri': this.#itemBodyIri(itemIndex),
       selectedDagIri,
     });
   }
 
   persistCheckpoint(): void {
-    const { scatter, state, inbox, ackedResults, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-    if (compactable) {
-      ScatterCheckpoint.writeBounded(
-        state,
-        scatter.name,
-        [...inbox],
-        watermarkRef.value,
-        [...aheadAcked.entries()].map(([index, output]) => ({ index, output })),
-        Object.fromEntries(outcomeTally),
-      );
-    } else {
-      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
-    }
+    const { scatter, state, inbox, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
+    ScatterCheckpoint.writeBounded(
+      state,
+      scatter['@id'],
+      [...inbox],
+      watermarkRef.value,
+      [...aheadAcked.entries()].map(([index, output]) => ({ index, output })),
+      Object.fromEntries(outcomeTally),
+    );
   }
 
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
@@ -412,7 +392,7 @@ export class ScatterPoolDriver
         return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone, 'selectedDagIri': null };
       }
 
-      this.#bindItemSelectedDag(scatter.name, itemIndex, bodyDagName);
+      this.#bindItemSelectedDag(itemIndex, bodyDagName);
 
       // Build the child clone using the body dag's registered factory (spawnChild
       // returns NodeStateInterface; isolation factory may produce a different class).
@@ -475,77 +455,38 @@ export class ScatterPoolDriver
 
   #freshRecord(res: ScatterItemResultType): GatherRecordType {
     const { scatter } = this.#ctx;
-    return GatherRecordProjector.project({
-      'source': scatter.name,
+    return {
+      'source': scatter['@id'],
       'index': res.index,
       'item': res.item,
       'output': res.output,
       'terminalOutcome': res.terminalOutcome,
-      'state': res.cloneState,
-      'accessor': this.#adapter.accessor,
-      'producer': scatter,
-    });
-  }
-
-  #selectedDagFields(res: ScatterItemResultType): { readonly selectedDag?: string } {
-    return res.selectedDagIri === null ? {} : { 'selectedDag': res.selectedDagIri };
+      'result': undefined,
+      'cloneState': res.cloneState,
+    };
   }
 
   async ackItem(res: ScatterItemResultType): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-    const { 'index': itemIndex, 'item': item, 'output': output, 'cloneState': cloneState } = res;
+    const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
+    const { 'index': itemIndex, 'output': output } = res;
 
     // Remove from inbox.
     const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
     if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
 
     const freshRecord = this.#freshRecord(res);
-
-    // Fold this record into state via reduce (exactly-once per item).
-    if (scatter.gather !== undefined && gatherStrategy !== null) {
-      const batchItems = [{ 'id': String(itemIndex), 'state': freshRecord }];
-      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
-    }
-
-    // Accumulate for the finalize pass and outcome-reducer.
-    // Compactable gathers fold all state into parent via reduce; finalize builds
-    // derived state from its own private accumulators and does not read records.
-    // Skip the push in compactable mode so each cloneState is GC-eligible
-    // immediately after reduce returns — preserving the bounded-memory guarantee.
-    if (!compactable) allFreshRecords.push(freshRecord);
-
-    if (compactable) {
-      // Bounded mode: advance watermark bookkeeping; skip full ackedResult storage.
-      // shape changed for compactable gathers; result assertion unchanged.
-      ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
-      ScatterCheckpoint.writeBounded(
-        state, scatter.name, [...inbox], watermarkRef.value,
-        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-        Object.fromEntries(outcomeTally),
-      );
+    if (gatherRecordSink === null) {
+      allFreshRecords.push(freshRecord);
     } else {
-      // Retained mode: persist full acked result for reconstruct on resume.
-      const ackedResult: ScatterAckedResultType = (() => {
-        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-          const snapshot: Record<string, unknown> = {};
-          for (const clonePath of Object.keys(scatter.gather.mapping)) {
-            snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-          }
-          return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-        }
-        if (
-          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-          scatter.gather.field !== undefined
-        ) {
-          return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-        }
-        return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-      })();
-      ackedResults.push(ackedResult);
-      ackedByIndex.set(itemIndex, ackedResult);
-      itemOutputs.set(itemIndex, output);
-      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
+      await gatherRecordSink(freshRecord);
     }
+
+    ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
+    ScatterCheckpoint.writeBounded(
+      state, scatter['@id'], [...inbox], watermarkRef.value,
+      [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
+      Object.fromEntries(outcomeTally),
+    );
   }
 
   /**
@@ -560,7 +501,7 @@ export class ScatterPoolDriver
    *   `terminalByItemId` seam), deriving each item's `terminalOutcome` from the map.
    * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDagBatch`
    *   when the container is a `DagContainerBase` instance (one transport round-trip
-   *   for all items); falls back to per-item `container.runDag` for plain
+   *   for all items); uses per-item `container.runDag` for plain
    *   `DagContainerInterface` implementations.
    *
    * Errors and warnings from each clone are collected into the parent state.
@@ -675,7 +616,7 @@ export class ScatterPoolDriver
         continue;
       }
 
-      this.#bindItemSelectedDag(scatter.name, buffered.index, selectedDagIri);
+      this.#bindItemSelectedDag(buffered.index, selectedDagIri);
 
       const factory = this.#adapter.stateFactories.get(selectedDagIri) ?? ChildStateFactory.cloneParent;
       const clone = this.#adapter.stateMapper.spawnChild(state, inputMapping, factory);
@@ -772,6 +713,7 @@ export class ScatterPoolDriver
       for (const outcome of outcomes) {
         if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
           const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
+          this.persistCheckpoint();
           throw new DAGError(
             `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
             { 'code': 'EXECUTION_ERROR' },
@@ -828,53 +770,26 @@ export class ScatterPoolDriver
   }
 
   /**
-   * Acknowledge a batch of items: remove all from inbox, build acked results,
-   * fold them into parent state via a SINGLE `gatherStrategy.reduce` call, and
-   * write the checkpoint ONCE for the entire batch.
+   * Acknowledge a batch of items: remove all from inbox, append exported
+   * gather records, advance scatter progress, and write the checkpoint once.
    */
   async ackBatch(batchResult: ScatterItemBatchResultType): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-
-    const freshRecordsForBatch: GatherRecordType[] = [];
+    const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
 
     // Collect all item indexes to remove up-front so the inbox scan is O(inbox)
     // total rather than O(inbox × batch) from per-item findIndex+splice.
     const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
 
     for (const res of batchResult.results) {
-      const { 'index': itemIndex, 'item': item, 'output': output, 'cloneState': cloneState } = res;
+      const { 'index': itemIndex, 'output': output } = res;
 
       const freshRecord = this.#freshRecord(res);
-      freshRecordsForBatch.push(freshRecord);
-      // Compactable mode: skip accumulation so each cloneState is GC-eligible
-      // after the batch reduce below — same bounded-memory invariant as ackItem.
-      if (!compactable) allFreshRecords.push(freshRecord);
-
-      if (compactable) {
-        // Bounded mode: advance watermark per item.
-        ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
+      if (gatherRecordSink === null) {
+        allFreshRecords.push(freshRecord);
       } else {
-        // Retained mode: build full acked result.
-        const ackedResult: ScatterAckedResultType = (() => {
-          if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-            const snapshot: Record<string, unknown> = {};
-            for (const clonePath of Object.keys(scatter.gather.mapping)) {
-              snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-            }
-            return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-          }
-          if (
-            (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-            scatter.gather.field !== undefined
-          ) {
-            return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-          }
-          return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
-        })();
-        ackedResults.push(ackedResult);
-        ackedByIndex.set(itemIndex, ackedResult);
-        itemOutputs.set(itemIndex, output);
+        await gatherRecordSink(freshRecord);
       }
+      ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
     }
 
     // Bulk-remove all batch items from inbox in a single O(inbox) pass.
@@ -889,22 +804,11 @@ export class ScatterPoolDriver
     }
     inbox.length = writeIdx;
 
-    // Single reduce call for the whole batch.
-    if (scatter.gather !== undefined && gatherStrategy !== null) {
-      const batchItems = freshRecordsForBatch.map((r) => ({ 'id': String(r.index), 'state': r }));
-      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
-    }
-
     // Single checkpoint write for the entire batch.
-    if (compactable) {
-      // shape changed for compactable gathers; result assertion unchanged.
-      ScatterCheckpoint.writeBounded(
-        state, scatter.name, [...inbox], watermarkRef.value,
-        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-        Object.fromEntries(outcomeTally),
-      );
-    } else {
-      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
-    }
+    ScatterCheckpoint.writeBounded(
+      state, scatter['@id'], [...inbox], watermarkRef.value,
+      [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
+      Object.fromEntries(outcomeTally),
+    );
   }
 }

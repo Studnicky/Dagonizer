@@ -20,10 +20,10 @@ void describe('PlacementDispatch', () => {
 
     await assert.rejects(
       () => dispatch.dispatch({
-        '@id':     'urn:noocodex:dag:test/node/join',
+        '@id': 'urn:noocodec:dag:test/node/join',
         '@type':   'GatherNode',
         'name':    'join',
-        'sources': ['main'],
+        'sources': { 'main': {} },
         'gather':  { 'strategy': 'discard' },
         'outputs': { 'success': 'done' },
       }, new NodeStateBase(), 'test', new AbortController().signal, [], true),

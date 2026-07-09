@@ -11,15 +11,15 @@
  *   terminal (completed) → double-circle: `nodeName(((name)))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name]`
  *
- * Output routes render as labeled edges. All routes must target named
- * placements — null routes are not permitted in the DAG model. Explicit
+ * Output routes render as labeled edges. All routes must target placement
+ * IRIs — null routes are not permitted in the DAG model. Explicit
  * `TerminalNode` placements render as their own distinct shapes and do
  * not emit edges (they are leaf placements; they end the flow).
  *
  * Rendering-correctness passes applied by default (configurable via options):
  *
  *   - Orientation: `flowchart TB` (top-bottom) by default.
- *   - Node-id sanitization: colons in placement names are replaced with `_`
+ *   - Node-id sanitization: colons in placement IRIs are replaced with `_`
  *     in bare ids while labels keep their original form, preventing Mermaid
  *     from lexing `:class`, `:end` etc. as reserved keywords.
  *   - Terminal-annotation strip: removes `\n(completed|failed|…)` suffixes
@@ -138,7 +138,7 @@ export class MermaidRenderer {
       lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idIndex.placementIds, opts.sanitizeNodeIds)}`);
     }
 
-    // Map from sanitized role token → list of placement names assigned that token.
+    // Map from sanitized role token → list of placement IDs assigned that token.
     const roleToIds = new Map<string, string[]>();
     // Map from sanitized role token → original role string (for color lookup).
     const roleTokenToRole = new Map<string, string>();
@@ -146,7 +146,7 @@ export class MermaidRenderer {
     const reservoirIds: string[] = [];
 
     for (const placement of PlacementUtils.narrowNodes(view)) {
-      const placementId = MermaidRenderer.idFor(placement.name, idIndex.placementIds, opts.sanitizeNodeIds);
+      const placementId = MermaidRenderer.idFor(placement['@id'], idIndex.placementIds, opts.sanitizeNodeIds);
       lines.push(`  ${MermaidRenderer.renderShape(placement, placementId)}`);
       for (const edge of MermaidRenderer.renderEdges(placement, placementId, idIndex.placementIds, opts.sanitizeNodeIds)) {
         lines.push(edge);
@@ -302,7 +302,7 @@ export class MermaidRenderer {
     // Each interior negated class excludes its OWN opening delimiter char(s), not
     // only the closing one. That removes overlapping start positions (e.g. a
     // second '[[' inside a '[[...]]' match), so every pattern is linear — no
-    // polynomial ReDoS on adversarial DAG names (CodeQL js/polynomial-redos).
+    // polynomial ReDoS on adversarial DAG labels (CodeQL js/polynomial-redos).
     const masked = line
       // triple-bracket subroutine: [[...]]
       .replace(/\[\[([^[\]]*)\]\]/gu, (_m, inner) => mask(`[[${inner}]]`))
@@ -412,7 +412,7 @@ export class MermaidRenderer {
     return candidate;
   }
 
-  /** Compose deterministic Mermaid-safe ids for every entrypoint and placement name. */
+  /** Compose deterministic Mermaid-safe ids for every entrypoint and placement IRI. */
   private static composeIdIndex(dag: MermaidDagViewType, sanitize: boolean): MermaidIdIndexType {
     const placementIds = new Map<string, string>();
     const entrypointIds = new Map<string, string>();
@@ -420,9 +420,9 @@ export class MermaidRenderer {
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const base = sanitize
-        ? MermaidRenderer.sanitizeNodeId(placement.name)
-        : placement.name;
-      placementIds.set(placement.name, MermaidRenderer.reserveId(base, occupied));
+        ? MermaidRenderer.sanitizeNodeId(placement['@id'])
+        : placement['@id'];
+      placementIds.set(placement['@id'], MermaidRenderer.reserveId(base, occupied));
     }
 
     for (const label of Object.keys(dag.entrypoints)) {
@@ -445,7 +445,7 @@ export class MermaidRenderer {
     return candidate;
   }
 
-  /** Return the rendered Mermaid id for a placement name or a dangling target. */
+  /** Return the rendered Mermaid id for a placement IRI or a dangling target. */
   private static idFor(
     name: string,
     ids: ReadonlyMap<string, string>,
@@ -517,7 +517,8 @@ export class MermaidRenderer {
 
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
   private static renderShape(placement: PlacementEntryType, id: string): string {
-    const label = MermaidRenderer.label(placement.name);
+    const displayLabel = PlacementUtils.displayLabel(placement);
+    const label = MermaidRenderer.label(displayLabel);
     const shapeDispatch: PlacementDispatchType<string> = {
       'SingleNode': () => `${id}[${label}]`,
       'ScatterNode': (sp) => {
@@ -526,7 +527,7 @@ export class MermaidRenderer {
           // Per-key fill and per-firing batch size are runtime values — the
           // animation layer renders them from observer buffer-size deltas.
           const reservoirLabel = MermaidRenderer.label(
-            `${placement.name}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
+            `${displayLabel}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
           );
           return `${id}[/${reservoirLabel}/]`;
         }
@@ -536,7 +537,7 @@ export class MermaidRenderer {
       'EmbeddedDAGNode': () => `${id}[[${label}]]`,
       'GatherNode': () => `${id}{${label}}`,
       'TerminalNode': (tp) => {
-        const outcomeLabel = MermaidRenderer.label(`${placement.name}\\n(${tp.outcome})`);
+        const outcomeLabel = MermaidRenderer.label(`${displayLabel}\\n(${tp.outcome})`);
         if (tp.outcome === 'completed') {
           // double-circle: connotes "final state" in Mermaid
           return `${id}(((${outcomeLabel})))`;
@@ -546,7 +547,7 @@ export class MermaidRenderer {
       },
       'PhaseNode': (pp) => {
         // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
-        return `${id}([${MermaidRenderer.label(`${placement.name} (${pp.phase})`)}])`;
+        return `${id}([${MermaidRenderer.label(`${displayLabel} (${pp.phase})`)}])`;
       },
     };
     return PlacementUtils.invoke(shapeDispatch, placement);

@@ -12,7 +12,24 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
+const DEMO_DAG_IRI = 'urn:noocodec:dag:demo';
+const DEMO_A_IRI = 'urn:noocodec:dag:demo/node/a';
+const DEMO_END_IRI = 'urn:noocodec:dag:demo/node/end';
+const DEMO_FAIL_END_IRI = 'urn:noocodec:dag:demo/node/fail-end';
+const TERM_COMPLETED_DAG_IRI = 'urn:noocodec:dag:term-completed';
+const TERM_COMPLETED_A_IRI = 'urn:noocodec:dag:term-completed/node/a';
+const TERM_COMPLETED_END_IRI = 'urn:noocodec:dag:term-completed/node/end';
+const TERM_FAILED_DAG_IRI = 'urn:noocodec:dag:term-failed';
+const TERM_FAILED_A_IRI = 'urn:noocodec:dag:term-failed/node/a';
+const TERM_FAILED_END_IRI = 'urn:noocodec:dag:term-failed/node/fail-end';
+const CHILD_TN_DAG_IRI = 'urn:noocodec:dag:child-tn';
+const PARENT_TN_DAG_IRI = 'urn:noocodec:dag:parent-tn';
+const CHILD_EXPLICIT_DAG_IRI = 'urn:noocodec:dag:child-explicit';
+const PARENT_EXPLICIT_DAG_IRI = 'urn:noocodec:dag:parent-explicit';
 
 // ── Observer subclass ─────────────────────────────────────────────────────
 
@@ -45,6 +62,7 @@ class TestErrorNode {
   private constructor() { /* static class */ }
   static of(nodeName: string): MonadicNode<NodeStateBase, 'done'> {
     class ErrorNode extends MonadicNode<NodeStateBase, 'done'> {
+      readonly '@id' = `urn:noocodec:node:${encodeURIComponent(nodeName)}`;
       readonly name = nodeName;
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
@@ -75,7 +93,7 @@ class TestErrorNode {
 void describe('TerminalNode: schema validation', () => {
   void it('accepts a well-formed TerminalNode object', () => {
     const valid = {
-      '@id':     'urn:noocodex:dag:demo/node/end',
+      '@id': 'urn:noocodec:dag:demo/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
@@ -85,7 +103,7 @@ void describe('TerminalNode: schema validation', () => {
 
   void it('accepts outcome=failed', () => {
     const valid = {
-      '@id':     'urn:noocodex:dag:demo/node/fail',
+      '@id': 'urn:noocodec:dag:demo/node/fail',
       '@type':   'TerminalNode',
       'name':    'fail',
       'outcome': 'failed',
@@ -95,7 +113,7 @@ void describe('TerminalNode: schema validation', () => {
 
   void it('rejects a TerminalNode missing outcome', () => {
     const noOutcome = {
-      '@id':   'urn:noocodex:dag:demo/node/end',
+      '@id': 'urn:noocodec:dag:demo/node/end',
       '@type': 'TerminalNode',
       'name':  'end',
     };
@@ -104,7 +122,7 @@ void describe('TerminalNode: schema validation', () => {
 
   void it('rejects outcome=cancelled (not in enum)', () => {
     const badOutcome = {
-      '@id':     'urn:noocodex:dag:demo/node/end',
+      '@id': 'urn:noocodec:dag:demo/node/end',
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'cancelled',
@@ -115,14 +133,14 @@ void describe('TerminalNode: schema validation', () => {
   void it('TerminalNode passes Validator.dag.is() when embedded in a DAG', () => {
     const dag: unknown = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:demo',
+      '@id': 'urn:noocodec:dag:demo',
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
       'entrypoints': { 'main': 'end' },
       'nodes': [
         {
-          '@id':     'urn:noocodex:dag:demo/node/end',
+          '@id': 'urn:noocodec:dag:demo/node/end',
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -135,15 +153,15 @@ void describe('TerminalNode: schema validation', () => {
   void it('rejects a SingleNode whose output value is null (null routes are schema-invalid)', () => {
     const bad: unknown = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:demo',
+      '@id': 'urn:noocodec:dag:demo',
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
       'entrypoints': { 'main': 's' },
       'nodes': [{
-        '@id':   'urn:noocodex:dag:demo/node/s',
+        '@id': 'urn:noocodec:dag:demo/node/s',
         '@type': 'SingleNode',
-        'name':  's', 'node': 's',
+        'name':  's', 'node': 'urn:noocodec:node:s',
         'outputs': { 'done': null },
       }],
     };
@@ -155,9 +173,9 @@ void describe('TerminalNode: schema validation', () => {
 
 void describe('TerminalNode: DAGBuilder.terminal()', () => {
   void it('produces a TerminalNode placement with @type and default outcome=completed', () => {
-    const dag = new DAGBuilder('demo', '1')
-      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'end' })
-      .terminal('end')
+    const dag = new DAGBuilder(DEMO_DAG_IRI, '1', { 'name': 'demo' })
+      .node(DEMO_A_IRI, TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'), { 'ok': DEMO_END_IRI }, { 'name': 'a' })
+      .terminal(DEMO_END_IRI, { 'name': 'end' })
       .build();
 
     const terminalPlacement = dag.nodes[1];
@@ -168,9 +186,9 @@ void describe('TerminalNode: DAGBuilder.terminal()', () => {
   });
 
   void it('produces a TerminalNode placement with outcome=failed', () => {
-    const dag = new DAGBuilder('demo', '1')
-      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'fail-end' })
-      .terminal('fail-end', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(DEMO_DAG_IRI, '1', { 'name': 'demo' })
+      .node(DEMO_A_IRI, TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'), { 'ok': DEMO_FAIL_END_IRI }, { 'name': 'a' })
+      .terminal(DEMO_FAIL_END_IRI, { 'name': 'fail-end', 'outcome': 'failed' })
       .build();
 
     const terminalPlacement = dag.nodes[1];
@@ -184,17 +202,17 @@ void describe('TerminalNode: DAGBuilder.terminal()', () => {
 void describe('TerminalNode: execution with outcome=completed', () => {
   void it('state ends completed, executedNodes includes terminal, onFlowEnd fires once', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('a', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'));
 
-    const dag = new DAGBuilder('term-completed', '1')
-      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'end' })
-      .terminal('end', { 'outcome': 'completed' })
+    const dag = new DAGBuilder(TERM_COMPLETED_DAG_IRI, '1', { 'name': 'term-completed' })
+      .node(TERM_COMPLETED_A_IRI, TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'), { 'ok': TERM_COMPLETED_END_IRI }, { 'name': 'a' })
+      .terminal(TERM_COMPLETED_END_IRI, { 'name': 'end', 'outcome': 'completed' })
       .build();
 
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('term-completed', state);
+    const result = await dispatcher.execute(TERM_COMPLETED_DAG_IRI, state);
 
     assert.equal(result.state.lifecycle.variant, 'completed', 'lifecycle is completed');
     assert.ok(result.executedNodes.includes('a'),   'a is in executedNodes');
@@ -211,17 +229,17 @@ void describe('TerminalNode: execution with outcome=completed', () => {
 void describe('TerminalNode: execution with outcome=failed', () => {
   void it('state ends failed when terminal has outcome=failed', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('a', ['ok'], () => 'ok'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'));
 
-    const dag = new DAGBuilder('term-failed', '1')
-      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'fail-end' })
-      .terminal('fail-end', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(TERM_FAILED_DAG_IRI, '1', { 'name': 'term-failed' })
+      .node(TERM_FAILED_A_IRI, TestNode.make('urn:noocodec:node:a', ['ok'], () => 'ok'), { 'ok': TERM_FAILED_END_IRI }, { 'name': 'a' })
+      .terminal(TERM_FAILED_END_IRI, { 'name': 'fail-end', 'outcome': 'failed' })
       .build();
 
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('term-failed', state);
+    const result = await dispatcher.execute(TERM_FAILED_DAG_IRI, state);
 
     assert.equal(result.state.lifecycle.variant, 'failed', 'lifecycle is failed');
     assert.ok(result.executedNodes.includes('fail-end'), 'terminal is in executedNodes');
@@ -233,21 +251,21 @@ void describe('TerminalNode: execution with outcome=failed', () => {
 void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () => {
   const childDAG: DAGType = {
     '@context': DAG_CONTEXT,
-    '@id':      'urn:noocodex:dag:child-tn',
+    '@id': CHILD_TN_DAG_IRI,
     '@type':    'DAG',
     'name':       'child-tn',
     'version':    '1',
-    'entrypoints': { 'main': 'child-step' },
+    'entrypoints': { 'main': placementIri(CHILD_TN_DAG_IRI, 'child-step') },
     'nodes': [
       {
-        '@id':   'urn:noocodex:dag:child-tn/node/child-step',
+        '@id': 'urn:noocodec:dag:child-tn/node/child-step',
         '@type': 'SingleNode',
         'name':  'child-step',
-        'node':  'child-step',
-        'outputs': { 'done': 'end' },
+        'node':  'urn:noocodec:node:child-step',
+        'outputs': { 'done': placementIri(CHILD_TN_DAG_IRI, 'end') },
       },
       {
-        '@id':     'urn:noocodex:dag:child-tn/node/end',
+        '@id': 'urn:noocodec:dag:child-tn/node/end',
         '@type':   'TerminalNode',
         'name':    'end',
         'outcome': 'completed',
@@ -257,34 +275,37 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
 
   void it('registers and executes cleanly when child ends at an explicit TerminalNode', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('parent-entry', ['next'], () => 'next'));
-    dispatcher.registerNode(TestNode.make('child-step', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:parent-entry', ['next'], () => 'next'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:child-step', ['done'], () => 'done'));
     dispatcher.registerDAG(childDAG);
 
     const parentDAG: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:parent-tn',
+      '@id': PARENT_TN_DAG_IRI,
       '@type':    'DAG',
       'name':       'parent-tn',
       'version':    '1',
-      'entrypoints': { 'main': 'parent-entry' },
+      'entrypoints': { 'main': placementIri(PARENT_TN_DAG_IRI, 'parent-entry') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:parent-tn/node/parent-entry',
+          '@id': 'urn:noocodec:dag:parent-tn/node/parent-entry',
           '@type': 'SingleNode',
           'name':  'parent-entry',
-          'node':  'parent-entry',
-          'outputs': { 'next': 'run-child' },
+          'node':  'urn:noocodec:node:parent-entry',
+          'outputs': { 'next': placementIri(PARENT_TN_DAG_IRI, 'run-child') },
         },
         {
-          '@id':   'urn:noocodex:dag:parent-tn/node/run-child',
+          '@id': 'urn:noocodec:dag:parent-tn/node/run-child',
           '@type': 'EmbeddedDAGNode',
           'name':  'run-child',
-          'dag':   'child-tn',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'dag':   CHILD_TN_DAG_IRI,
+          'outputs': {
+            'success': placementIri(PARENT_TN_DAG_IRI, 'end'),
+            'error': placementIri(PARENT_TN_DAG_IRI, 'end'),
+          },
         },
         {
-          '@id':     'urn:noocodex:dag:parent-tn/node/end',
+          '@id': 'urn:noocodec:dag:parent-tn/node/end',
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -292,10 +313,11 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
       ],
     };
 
-    assert.doesNotThrow(() => dispatcher.registerDAG(parentDAG));
+    dispatcher.registerDAG(parentDAG);
+    assert.ok(dispatcher.getDAG(PARENT_TN_DAG_IRI) !== undefined, 'parent DAG is registered');
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-tn', state);
+    const result = await dispatcher.execute(PARENT_TN_DAG_IRI, state);
 
     assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
     assert.equal(dispatcher.flowStartCount, 1, 'onFlowStart fires exactly once');
@@ -311,27 +333,30 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     static build(): DAGType {
       return {
         '@context': DAG_CONTEXT,
-        '@id':      'urn:noocodex:dag:parent-explicit',
+        '@id': PARENT_EXPLICIT_DAG_IRI,
         '@type':    'DAG',
         'name':       'parent-explicit',
         'version':    '1',
-        'entrypoints': { 'main': 'run-child' },
+        'entrypoints': { 'main': placementIri(PARENT_EXPLICIT_DAG_IRI, 'run-child') },
         'nodes': [
           {
-            '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
+            '@id': 'urn:noocodec:dag:parent-explicit/node/run-child',
             '@type': 'EmbeddedDAGNode',
             'name':  'run-child',
-            'dag':   'child-explicit',
-            'outputs': { 'success': 'end-ok', 'error': 'end-fail' },
+            'dag':   CHILD_EXPLICIT_DAG_IRI,
+            'outputs': {
+              'success': placementIri(PARENT_EXPLICIT_DAG_IRI, 'end-ok'),
+              'error': placementIri(PARENT_EXPLICIT_DAG_IRI, 'end-fail'),
+            },
           },
           {
-            '@id':     'urn:noocodex:dag:parent-explicit/node/end-ok',
+            '@id': 'urn:noocodec:dag:parent-explicit/node/end-ok',
             '@type':   'TerminalNode',
             'name':    'end-ok',
             'outcome': 'completed',
           },
           {
-            '@id':     'urn:noocodex:dag:parent-explicit/node/end-fail',
+            '@id': 'urn:noocodec:dag:parent-explicit/node/end-fail',
             '@type':   'TerminalNode',
             'name':    'end-fail',
             'outcome': 'failed',
@@ -343,25 +368,26 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
 
   void it('ends completed when child emits no errors (routes to end-ok)', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('child-work-ok', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:child-work-ok', ['done'], () => 'done'));
 
     // Register child DAG with ok-node
     const childOk: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:child-explicit',
+      '@id': CHILD_EXPLICIT_DAG_IRI,
       '@type':    'DAG',
       'name':       'child-explicit',
       'version':    '1',
-      'entrypoints': { 'main': 'child-work' },
+      'entrypoints': { 'main': placementIri(CHILD_EXPLICIT_DAG_IRI, 'child-work') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:child-explicit/node/child-work',
+          '@id': 'urn:noocodec:dag:child-explicit/node/child-work',
           '@type': 'SingleNode',
           'name':  'child-work',
-          'node':  'child-work-ok',
-          'outputs': { 'done': 'end' },
+          'node':  'urn:noocodec:node:child-work-ok',
+          'outputs': { 'done': placementIri(CHILD_EXPLICIT_DAG_IRI, 'end') },
         },
-        { '@id': 'urn:noocodex:dag:child-explicit/node/end', '@type': 'TerminalNode',
+        {
+          '@id': 'urn:noocodec:dag:child-explicit/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
@@ -369,7 +395,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     dispatcher.registerDAG(TestParentWithTerminals.build());
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-explicit', state);
+    const result = await dispatcher.execute(PARENT_EXPLICIT_DAG_IRI, state);
     assert.equal(result.state.lifecycle.variant, 'completed', 'routes to end-ok → completed');
   });
 
@@ -385,20 +411,21 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
 
     const childErr: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:child-explicit',
+      '@id': CHILD_EXPLICIT_DAG_IRI,
       '@type':    'DAG',
       'name':       'child-explicit',
       'version':    '1',
-      'entrypoints': { 'main': 'child-work' },
+      'entrypoints': { 'main': placementIri(CHILD_EXPLICIT_DAG_IRI, 'child-work') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:child-explicit/node/child-work',
+          '@id': 'urn:noocodec:dag:child-explicit/node/child-work',
           '@type': 'SingleNode',
           'name':  'child-work',
-          'node':  'child-work-err',
-          'outputs': { 'done': 'end' },
+          'node':  'urn:noocodec:node:child-work-err',
+          'outputs': { 'done': placementIri(CHILD_EXPLICIT_DAG_IRI, 'end') },
         },
-        { '@id': 'urn:noocodex:dag:child-explicit/node/end', '@type': 'TerminalNode',
+        {
+          '@id': 'urn:noocodec:dag:child-explicit/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'failed' },
       ],
     };
@@ -406,7 +433,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     dispatcher2.registerDAG(TestParentWithTerminals.build());
 
     const state = new NodeStateBase();
-    const result = await dispatcher2.execute('parent-explicit', state);
+    const result = await dispatcher2.execute(PARENT_EXPLICIT_DAG_IRI, state);
     assert.equal(result.state.lifecycle.variant, 'failed', 'routes to end-fail → failed');
   });
 });

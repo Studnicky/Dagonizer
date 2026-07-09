@@ -16,7 +16,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const StoreSnapshotEntrySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshotEntryType',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/StoreSnapshotEntryType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['key', 'value'],
@@ -31,7 +31,7 @@ export const StoreSnapshotEntrySchema = {
 export type StoreSnapshotEntryWireType = FromSchema<typeof StoreSnapshotEntrySchema>;
 
 export const StoreSnapshotSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshotType',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/StoreSnapshotType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['version', 'type', 'entries'],

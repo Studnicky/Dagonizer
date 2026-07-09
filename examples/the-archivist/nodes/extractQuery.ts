@@ -34,6 +34,7 @@ const RETRY_BUDGET = 2;
 export class ExtractQueryNode extends MonadicNode<ArchivistState, 'success' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'extract-query';
+  readonly '@id' = 'urn:noocodec:node:extract-query';
   constructor(services: ArchivistServices) {
     super();
     this.services = services;

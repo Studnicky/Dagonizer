@@ -18,7 +18,7 @@ import { ToolCallSchema } from './ToolCall.js';
  * JSON-expressible fields of what a provider returns (text, tools, or mixed).
  */
 export const ChatResponseMessageSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponseMessage',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/adapter/ChatResponseMessage',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     {

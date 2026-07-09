@@ -55,6 +55,7 @@ export class IncrementalState extends NodeStateBase {
 // #region worker-node
 export class ShoutNode extends MonadicNode<IncrementalState, 'done'> {
   readonly name = 'shout';
+  readonly '@id' = 'urn:noocodec:node:shout';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -86,6 +87,7 @@ export class ShoutNode extends MonadicNode<IncrementalState, 'done'> {
  */
 export class LoggingMapStrategy extends GatherStrategy {
   readonly name = 'logging-map';
+  readonly '@id' = 'urn:noocodec:node:logging-map';
 
   private readonly foldLog: string[];
 
@@ -125,6 +127,7 @@ export class LoggingMapStrategy extends GatherStrategy {
  */
 export class BatchOnlyStrategy extends GatherStrategy {
   readonly name = 'batch-only';
+  readonly '@id' = 'urn:noocodec:node:batch-only';
 
   private readonly foldLog: string[];
 
@@ -190,33 +193,40 @@ export class ObservableStrategies {
 // #region incremental-dag
 export const incrementalDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:gather-demo:incremental',
+  '@id': 'urn:noocodec:dag:gather-demo:incremental',
   '@type':     'DAG',
   "name":      'incremental',
   "version":   '1',
-  "entrypoints": { "main": 'scatter' },
+  "entrypoints": { "main": 'urn:noocodec:dag:gather-demo:incremental/node/scatter' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:gather-demo:incremental/node/scatter',
+      '@id': 'urn:noocodec:dag:gather-demo:incremental/node/scatter',
       '@type':     'ScatterNode',
       "name":      'scatter',
-      "body":      { "node": 'shout' },
+      "body":      { "node": 'urn:noocodec:node:shout' },
       "source":    'words',
       "itemKey":   'word',
       "execution": { "mode": "item", "concurrency": 1 },                     // serial so fold ordering is deterministic
-      "gather": {
-        "strategy": 'logging-map',              // consumer-registered strategy name
-        "mapping":  { "processed": 'results' }, // clone.processed (scalar) → parent.results
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
+        "partial": 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
+        'all-error': 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
+        "empty":       'urn:noocodec:dag:gather-demo:incremental/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:gather-demo:incremental/node/end',
+      '@id': 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
+      '@type': 'GatherNode',
+      "name": 'fold-incremental',
+      sources: { "urn:noocodec:dag:gather-demo:incremental/node/scatter": {} },
+      "gather": {
+        "strategy": 'logging-map',
+        "mapping": { "processed": 'results' },
+      },
+      "outputs": { "success": 'urn:noocodec:dag:gather-demo:incremental/node/end', "error": 'urn:noocodec:dag:gather-demo:incremental/node/end', "empty": 'urn:noocodec:dag:gather-demo:incremental/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:gather-demo:incremental/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
@@ -232,33 +242,40 @@ export const incrementalDag: DAGType = {
 // #region batch-dag
 export const batchDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:gather-demo:batch',
+  '@id': 'urn:noocodec:dag:gather-demo:batch',
   '@type':     'DAG',
   "name":      'batch',
   "version":   '1',
-  "entrypoints": { "main": 'scatter' },
+  "entrypoints": { "main": 'urn:noocodec:dag:gather-demo:batch/node/scatter' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:gather-demo:batch/node/scatter',
+      '@id': 'urn:noocodec:dag:gather-demo:batch/node/scatter',
       '@type':     'ScatterNode',
       "name":      'scatter',
-      "body":      { "node": 'shout' },
+      "body":      { "node": 'urn:noocodec:node:shout' },
       "source":    'words',
       "itemKey":   'word',
       "execution": { "mode": "item", "concurrency": 1 },
-      "gather": {
-        "strategy": 'batch-only',            // reduce is no-op → finalize handles all records at end
-        "mapping":  { "results": 'results' },
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',
+        "partial": 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',
+        'all-error': 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',
+        "empty": 'urn:noocodec:dag:gather-demo:batch/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:gather-demo:batch/node/end',
+      '@id': 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',
+      '@type': 'GatherNode',
+      "name": 'fold-batch',
+      sources: { "urn:noocodec:dag:gather-demo:batch/node/scatter": {} },
+      "gather": {
+        "strategy": 'batch-only',
+        "mapping":  { "results": 'results' },
+      },
+      "outputs": { "success": 'urn:noocodec:dag:gather-demo:batch/node/end', "error": 'urn:noocodec:dag:gather-demo:batch/node/end', "empty": 'urn:noocodec:dag:gather-demo:batch/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:gather-demo:batch/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

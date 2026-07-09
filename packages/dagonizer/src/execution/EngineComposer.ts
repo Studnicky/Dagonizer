@@ -76,8 +76,8 @@ export type EngineBundleType = {
  *
  *   - `bodyExecutor` is built first; both `embeddedDagExecutor` and
  *     `scatterExecutor` take it as a collaborator.
- *   - `gather` is built before `scatterExecutor`, which takes it for the
- *     finalize-pass gather composition.
+ *   - `gather` is built before `nodeScheduler`, which owns first-class
+ *     `GatherNode` execution.
  *   - `leafExecutor`, `embeddedDagExecutor`, and `scatterExecutor` are all built
  *     before `placementDispatch`, which routes per-`@type` across the three.
  *
@@ -94,7 +94,7 @@ export class EngineComposer {
     const gather = new Gather(host);
     const leafExecutor = new LeafExecutor(host);
     const embeddedDagExecutor = new EmbeddedDagExecutor(host, bodyExecutor);
-    const scatterExecutor = new ScatterExecutor(host, bodyExecutor, gather);
+    const scatterExecutor = new ScatterExecutor(host, bodyExecutor);
     const placementDispatch = new PlacementDispatch(leafExecutor, embeddedDagExecutor, scatterExecutor);
     const nodeScheduler = new NodeScheduler(host, gather);
     const dagRegistrar = new DagRegistrar(host);

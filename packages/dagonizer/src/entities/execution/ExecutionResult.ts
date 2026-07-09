@@ -31,7 +31,7 @@ import type { ParkedType } from './Parked.js';
  * represented by `interruptedAt: null` on `ExecutionResultSchema`.
  */
 export const InterruptionInfoSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/InterruptionInfo',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/InterruptionInfo',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['nodeName', 'reason'],
@@ -46,7 +46,7 @@ export const InterruptionInfoSchema = {
 export type InterruptionInfoType = FromSchema<typeof InterruptionInfoSchema>;
 
 export const ExecutionResultSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResult',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt', 'terminalOutcome'],

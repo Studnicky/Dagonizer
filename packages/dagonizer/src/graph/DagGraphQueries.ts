@@ -13,14 +13,6 @@ export class DagGraphQueries {
     return DagGraphQueries.unique(rows.map((row) => row['dag']?.value));
   }
 
-  static candidateDagNames(store: TripleStoreInterface): readonly string[] {
-    const rows = store.select({
-      'predicate': DagGraphTerms.predicate('candidateName'),
-      'object': '?name',
-    });
-    return DagGraphQueries.unique(rows.map((row) => row['name']?.value));
-  }
-
   static candidateDagRows(store: TripleStoreInterface): readonly {
     readonly placementIri: string;
     readonly referenceIri: string;
@@ -67,11 +59,7 @@ export class DagGraphQueries {
   }
 
   static reachableCandidateDagIris(store: TripleStoreInterface): readonly string[] {
-    return DagGraphQueries.candidatesFromReachablePlacements(store, 'candidateDag');
-  }
-
-  static reachableCandidateDagNames(store: TripleStoreInterface): readonly string[] {
-    return DagGraphQueries.candidatesFromReachablePlacements(store, 'candidateName');
+    return DagGraphQueries.candidatesFromReachablePlacements(store);
   }
 
   static reachablePlacementIris(store: TripleStoreInterface): readonly string[] {
@@ -212,7 +200,7 @@ export class DagGraphQueries {
     return result;
   }
 
-  private static candidatesFromReachablePlacements(store: TripleStoreInterface, predicate: 'candidateDag' | 'candidateName'): readonly string[] {
+  private static candidatesFromReachablePlacements(store: TripleStoreInterface): readonly string[] {
     const result: string[] = [];
     const seen = new Set<string>();
     for (const placementIri of DagGraphQueries.reachablePlacementIris(store)) {
@@ -226,7 +214,7 @@ export class DagGraphQueries {
         if (reference === undefined) continue;
         const candidateRows = store.select({
           'subject': DagGraphTerms.namedNode(reference.value),
-          'predicate': DagGraphTerms.predicate(predicate),
+          'predicate': DagGraphTerms.predicate('candidateDag'),
           'object': '?candidate',
         });
         for (const candidateRow of candidateRows) {

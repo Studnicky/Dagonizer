@@ -19,7 +19,7 @@ import type { ConversationTurnType } from '../DispatcherState.ts';
 import type { DispatcherLlmInterface } from '../services.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 
-const SYSTEM_CLASSIFY = `You are a customer support classifier for Noocodex, an online bookstore.
+const SYSTEM_CLASSIFY = `You are a customer support classifier for Nocodec, an online bookstore.
 Classify the customer message as exactly one of:
   routine   — general questions about orders, products, store hours, availability
   escalate  — refunds, billing disputes, account issues, complaints, angry tone, urgent requests
@@ -27,7 +27,7 @@ Classify the customer message as exactly one of:
 
 Reply with a single word: routine, escalate, or off-topic.`;
 
-const SYSTEM_SUPPORT = `You are the Noocodex Support Dispatcher.
+const SYSTEM_SUPPORT = `You are the Nocodec Support Dispatcher.
 Respond as a bookstore support agent for customer service questions about orders, shipping, returns, products, and store hours.
 When a request is outside support scope, redirect the customer to the main support queue and invite a follow-up.
 For store-hours questions, answer with the store schedule directly and keep the tone concise.

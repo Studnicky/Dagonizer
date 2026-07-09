@@ -42,7 +42,7 @@
 
 ### Minor Changes
 
-- 4234bc4: `GeminiApiAdapter` overrides `performChatStream` with real token streaming: calls the `streamGenerateContent` endpoint and drains the SSE body through the shared `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text delta on the caller's sink. A request carrying tools still falls back to the buffered default.
+- 4234bc4: `GeminiApiAdapter` overrides `performChatStream` with real token streaming: calls the `streamGenerateContent` endpoint and drains the SSE body through the shared `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text delta on the caller's sink. A request carrying tools uses the buffered default.
 
 ## 0.29.1
 
@@ -62,7 +62,7 @@
 
 ### Minor Changes
 
-- `GeminiApiAdapter` overrides `performChatStream` with real token streaming: it calls the `streamGenerateContent` endpoint and drains the SSE body through the shared `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text delta on the caller's sink (matching `chatStream`'s contract). A request carrying tools still falls back to the buffered default (`super.performChatStream`).
+- `GeminiApiAdapter` overrides `performChatStream` with real token streaming: it calls the `streamGenerateContent` endpoint and drains the SSE body through the shared `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text delta on the caller's sink (matching `chatStream`'s contract). A request carrying tools uses the buffered default (`super.performChatStream`).
 
 ### Patch Changes
 

@@ -22,7 +22,7 @@ export const NodeWarningProperties = {
 } as const;
 
 export const NodeWarningSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/NodeWarning',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/NodeWarning',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['code', 'message', 'operation', 'timestamp'],

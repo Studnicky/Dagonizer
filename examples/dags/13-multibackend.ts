@@ -79,6 +79,7 @@ export class MultiBackendState extends NodeStateBase {
 /** CPU node: squares the current scatter item. Runs inside the `cpu` container. */
 export class SquareNode extends MonadicNode<MultiBackendState, 'done'> {
   readonly name = 'squareNode';
+  readonly '@id' = 'urn:noocodec:node:squareNode';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -96,6 +97,7 @@ export class SquareNode extends MonadicNode<MultiBackendState, 'done'> {
 /** IO node: sums all results. Runs inside the `io` container. */
 export class SumNode extends MonadicNode<MultiBackendState, 'done'> {
   readonly name = 'sumNode';
+  readonly '@id' = 'urn:noocodec:node:sumNode';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -117,21 +119,21 @@ export class SumNode extends MonadicNode<MultiBackendState, 'done'> {
 // #region cpu-dag
 export const squareItemDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:square-item-mb',
+  '@id': 'urn:noocodec:dag:square-item-mb',
   '@type':     'DAG',
   "name":       'square-item-mb',
   "version":    '1',
-  "entrypoints": { "main": 'square' },
+  "entrypoints": { "main": 'urn:noocodec:dag:square-item-mb/node/square' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:square-item-mb/node/square',
+      '@id': 'urn:noocodec:dag:square-item-mb/node/square',
       '@type': 'SingleNode',
       "name":    'square',
-      "node":    'squareNode',
-      "outputs": { "done": 'item-end' },
+      "node":    'urn:noocodec:node:squareNode',
+      "outputs": { "done": 'urn:noocodec:dag:square-item-mb/node/item-end' },
     },
     {
-      '@id':     'urn:noocodex:dag:square-item-mb/node/item-end',
+      '@id': 'urn:noocodec:dag:square-item-mb/node/item-end',
       '@type':   'TerminalNode',
       "name":    'item-end',
       "outcome": 'completed',
@@ -147,21 +149,21 @@ export const squareItemDag: DAGType = {
 // #region io-dag
 export const sumResultsDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:sum-results',
+  '@id': 'urn:noocodec:dag:sum-results',
   '@type':     'DAG',
   "name":       'sum-results',
   "version":    '1',
-  "entrypoints": { "main": 'sum' },
+  "entrypoints": { "main": 'urn:noocodec:dag:sum-results/node/sum' },
   "nodes": [
     {
-      '@id':   'urn:noocodex:dag:sum-results/node/sum',
+      '@id': 'urn:noocodec:dag:sum-results/node/sum',
       '@type': 'SingleNode',
       "name":    'sum',
-      "node":    'sumNode',
-      "outputs": { "done": 'sum-end' },
+      "node":    'urn:noocodec:node:sumNode',
+      "outputs": { "done": 'urn:noocodec:dag:sum-results/node/sum-end' },
     },
     {
-      '@id':     'urn:noocodex:dag:sum-results/node/sum-end',
+      '@id': 'urn:noocodec:dag:sum-results/node/sum-end',
       '@type':   'TerminalNode',
       "name":    'sum-end',
       "outcome": 'completed',
@@ -177,38 +179,45 @@ export const sumResultsDag: DAGType = {
 // #region parent-dag
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:multibackend',
+  '@id': 'urn:noocodec:dag:multibackend',
   '@type':     'DAG',
   "name":       'multibackend',
   "version":    '1',
-  "entrypoints": { "main": 'square-all' },
+  "entrypoints": { "main": 'urn:noocodec:dag:multibackend/node/square-all' },
   "nodes": [
     {
-      '@id':        'urn:noocodex:dag:multibackend/node/square-all',
+      '@id': 'urn:noocodec:dag:multibackend/node/square-all',
       '@type':      'ScatterNode',
       "name":         'square-all',
-      "body":         { "dag": 'square-item-mb' },
+      "body":         { "dag": 'urn:noocodec:dag:square-item-mb' },
       "source":       'tasks',
       "itemKey":      'task',
       "execution": { "mode": "item", "concurrency": 2 },
       "container":    'cpu',                  // routes per-item body to the WorkerThreadContainer
+      "outputs": {
+        'all-success': 'urn:noocodec:dag:multibackend/node/collect-results',
+        "partial": 'urn:noocodec:dag:multibackend/node/collect-results',
+        'all-error': 'urn:noocodec:dag:multibackend/node/end',
+        "empty": 'urn:noocodec:dag:multibackend/node/end',
+      },
+    },
+    {
+      '@id': 'urn:noocodec:dag:multibackend/node/collect-results',
+      '@type': 'GatherNode',
+      "name": 'collect-results',
+      sources: { "urn:noocodec:dag:multibackend/node/square-all": {} },
       "gather": {
         "strategy":   GatherStrategyNames.APPEND,
         "field":      'lastResult',
         "target":     'results',
       },
-      "outputs": {
-        'all-success': 'sum-all',
-        "partial":     'sum-all',
-        'all-error':   'end',
-        "empty":       'end',
-      },
+      "outputs": { "success": 'urn:noocodec:dag:multibackend/node/sum-all', "error": 'urn:noocodec:dag:multibackend/node/end', "empty": 'urn:noocodec:dag:multibackend/node/end' },
     },
     {
-      '@id':       'urn:noocodex:dag:multibackend/node/sum-all',
+      '@id': 'urn:noocodec:dag:multibackend/node/sum-all',
       '@type':     'EmbeddedDAGNode',
       "name":       'sum-all',
-      "dag":        'sum-results',
+      "dag":        'urn:noocodec:dag:sum-results',
       "container":  'io',                     // routes the embedded DAG to the ForkContainer
       // The child clone preserves only metadata; domain fields cross the
       // boundary via state mapping. Seed the child's `results` from the
@@ -217,10 +226,10 @@ export const dag: DAGType = {
         "input":  { "results": 'results' },
         "output": { "total":   'total' },
       },
-      "outputs":    { "success": 'end' },
+      "outputs":    { "success": 'urn:noocodec:dag:multibackend/node/end' },
     },
     {
-      '@id':     'urn:noocodex:dag:multibackend/node/end',
+      '@id': 'urn:noocodec:dag:multibackend/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

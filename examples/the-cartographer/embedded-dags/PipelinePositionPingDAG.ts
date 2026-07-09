@@ -27,21 +27,26 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder } from '@studnicky/dagonizer';
+import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
 
-export const pipelinePositionPingDAG: DAGType = new DAGBuilder('pipeline-position-ping', '1.0')
+const pipelinePositionPingDagIri = 'urn:noocodec:dag:pipeline-position-ping' as const;
+const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
+const placement = (placementIdentifier: string): string =>
+  DAGIdentity.placementId(pipelinePositionPingDagIri, placementIdentifier);
+
+export const pipelinePositionPingDAG: DAGType = new DAGBuilder(pipelinePositionPingDagIri, '1.0')
 
   // 1. parse-variant: decode the event union into a typed position-ping shape.
-  .node('parse-variant', parseVariant, {
-    'parsed':  'geo-pipeline',
-    'invalid': 'invalid',
+  .node(placement('parse-variant'), parseVariant, {
+    'parsed':  placement('geo-pipeline'),
+    'invalid': placement('invalid'),
   })
 
   // 2. geo-pipeline: shared geo spine (route-geo / apply-geo / validate-coords /
   //    geo-resolve). Writes geoContext + resolvedGeo + routing onto state.
-  .embeddedDAG<CartographerState, CartographerState>('geo-pipeline', 'geo-pipeline', {
-    'success': 'canonicalize-core',
-    'error':   'rejected',
+  .embed<CartographerState, CartographerState>(placement('geo-pipeline'), geoPipelineDagIri, {
+    'success': placement('canonicalize-core'),
+    'error':   placement('rejected'),
   }, {
     'inputs': {
       'raw':            'raw',
@@ -58,26 +63,26 @@ export const pipelinePositionPingDAG: DAGType = new DAGBuilder('pipeline-positio
   })
 
   // 3. canonicalize-core: scalar canonicalization (timestamps, country codes,
-  //    weight units, carrier aliases) using the resolved geoContext timezone.
-  .node('canonicalize-core', canonicalizeCore, {
-    'normalized': 'enrich-leg',
-    'rejected':   'rejected',
+  //    weight units, carrier labels) using the resolved geoContext timezone.
+  .node(placement('canonicalize-core'), canonicalizeCore, {
+    'normalized': placement('enrich-leg'),
+    'rejected':   placement('rejected'),
   })
 
   // 4. enrich-leg: legFrom → scan distance measurement.
-  .node('enrich-leg', enrichLeg, {
-    'leg-measured': 'aggregate-event',
+  .node(placement('enrich-leg'), enrichLeg, {
+    'leg-measured': placement('aggregate-event'),
   })
 
   // 5. aggregate-event: write compact EnrichedShipment to state.enriched.
-  .node('aggregate-event', aggregateEvent, {
-    'done': 'done',
+  .node(placement('aggregate-event'), aggregateEvent, {
+    'done': placement('done'),
   })
 
   // Terminals
-  .terminal('done',    { outcome: 'completed' })
-  .terminal('rejected', { outcome: 'failed' })
-  .terminal('invalid',  { outcome: 'failed' })
+  .terminal(placement('done'),    { outcome: 'completed' })
+  .terminal(placement('rejected'), { outcome: 'failed' })
+  .terminal(placement('invalid'),  { outcome: 'failed' })
 
   .build();
 

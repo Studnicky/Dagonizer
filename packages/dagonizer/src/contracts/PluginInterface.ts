@@ -8,7 +8,7 @@
  * seam.
  *
  * The plugin id is the stable package/specifier identity. The bundle context
- * supplies the JSON-LD prefixes that scope node and DAG names, so plugins can
+ * supplies the JSON-LD prefixes that scope node and DAG IRIs, so plugins can
  * share local names without colliding in the IRI-keyed registries.
  */
 

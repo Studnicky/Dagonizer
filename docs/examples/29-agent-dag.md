@@ -27,7 +27,7 @@ import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
 
 ## What It Is
 
-Agent DAG with JSON-LD shows the agent loop as graph data rather than an opaque chat callback. `DAGBuilder` emits JSON-LD topology; concrete nodes, tools, memory, fallback paths, and final response assembly remain visible as placements and routes in the registered DAG.
+Agent DAG with JSON-LD shows the agent loop as graph data rather than an opaque chat callback. `DAGBuilder` emits JSON-LD topology; concrete nodes, tools, memory, routes, and final response assembly remain visible as placements and routes in the registered DAG.
 
 The practical lesson is simple: an LLM-powered application can still have inspectable topology. JSON-LD records what can happen; registered nodes decide what does happen for a specific turn.
 
@@ -45,7 +45,7 @@ The runnable agent graph is [The Archivist](./the-archivist). The diagram below 
 
 <DagJsonMermaid :dag="archivistDAG" title="Archivist agent DAG" aria-label="Archivist agent JSON-LD DAG beside Mermaid generated from it." />
 
-The topology, placement names, route maps, scatter configuration, embedded DAGs, and terminal outcomes stay visible at the authoring site. A user turn is not a hidden callback stack; it is a graph run.
+The topology, placement IRIs, display names, route maps, scatter configuration, embedded DAGs, gather barriers, and terminal outcomes stay visible at the authoring site. A user turn is not a hidden callback stack; it is a graph run.
 
 ### The reusable loop skeleton
 
@@ -58,7 +58,7 @@ build-request
                                           └─ decoded ──► normalize-tools
                                                └─ valid ──► worksets
                                                     └─ ready ──► dispatch-tools
-                                                         (scatter: DagReference item.dagName)
+                                                         (scatter: DagReference item.dagIri)
                                                          └─ collect-results ──► build-request
 ```
 
@@ -67,9 +67,9 @@ Terminals:
 - `end-error` (`failed`) — any unrecoverable error path.
 
 The scatter placement (`dispatch-tools`) uses a dynamic `DagReference`: each
-scatter item produced by `BuildToolWorksetsNode` carries a `dagName` field
-(`'tool:<name>'`), and the engine resolves the body DAG from that field after
-validating it against the declared candidates. `CollectToolResultsNode` runs after the gather and loops back to
+scatter item produced by `BuildToolWorksetsNode` carries a `dagIri` field
+(`'urn:noocodec:tool:<name>'`), and the engine resolves the body DAG reference from that field after
+validating it against the declared candidates. `CollectToolResultsNode` runs after the first-class gather and loops back to
 `build-request` for the next model turn.
 
 ### Run
@@ -128,7 +128,7 @@ execution, error wrapping, and output routing.
 
 ### Authoring the agent DAG
 
-Use distinct DAG names and versions when multiple agent loops coexist in the same dispatcher. Your `DAGBuilder` chain owns the model/tool loop topology; the concrete Archivist source in `Code Samples` shows the larger application graph with embedded DAGs and domain-specific branches.
+Use distinct DAG IRIs and versions when multiple agent loops coexist in the same dispatcher. Display names stay useful for humans, but registry identity is the expanded DAG IRI. Your `DAGBuilder` chain owns the model/tool loop topology; the concrete Archivist source in `Code Samples` shows the larger application graph with embedded DAGs and domain-specific branches.
 
 ### Wiring the dispatcher
 
@@ -139,7 +139,7 @@ The dispatcher wiring follows the same order throughout the docs: register concr
 - **Template-method pattern** — each abstract base node separates framework
   concerns (execution, error wrapping, routing) from domain concerns (state
   reads and writes). Subclasses override only the abstract template methods.
-- **Dynamic DAG reference scatter** — the `dispatch-tools` placement resolves the body DAG from each workset's `dagName` at runtime through the same `dag` field used by literal child DAGs. Register tool DAGs with `toolRegistry.bundle()` before the loop runs.
+- **Dynamic DAG reference scatter** — the `dispatch-tools` placement resolves the body DAG reference from each workset's `dagIri` at runtime through the same `dag` field used by literal child DAGs. Register tool DAGs with `toolRegistry.bundle()` before the loop runs.
 - **Loop-back edge** — `collect-results → done → build-request` is the turn
   boundary. After gathering tool results, the loop restarts with a new
   `build-request` so the model can see the results.

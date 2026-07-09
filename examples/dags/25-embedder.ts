@@ -55,6 +55,7 @@ export class VectorSimilarity {
 
 export class EmbedNode extends MonadicNode<EmbedderState, 'done'> {
   readonly name = 'embed';
+  readonly '@id' = 'urn:noocodec:node:embed';
   readonly outputs = ['done'] as const;
   readonly #execution: BatchExecutionOptionsType;
 
@@ -88,6 +89,7 @@ export class EmbedNode extends MonadicNode<EmbedderState, 'done'> {
 
 export class ReportNode extends MonadicNode<EmbedderState, 'done'> {
   readonly name = 'report';
+  readonly '@id' = 'urn:noocodec:node:report';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -107,28 +109,28 @@ export class ReportNode extends MonadicNode<EmbedderState, 'done'> {
 
 export const dag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:embedder-demo',
+  '@id': 'urn:noocodec:dag:embedder-demo',
   '@type':    'DAG',
   'name':       'embedder-demo',
   'version':    '1',
-  'entrypoints': { 'main': 'embed' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:embedder-demo/node/embed' },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:embedder-demo/node/embed',
+      '@id': 'urn:noocodec:dag:embedder-demo/node/embed',
       '@type': 'SingleNode',
       'name':    'embed',
-      'node':    'embed',
-      'outputs': { 'done': 'report' },
+      'node':    'urn:noocodec:node:embed',
+      'outputs': { 'done': 'urn:noocodec:dag:embedder-demo/node/report' },
     },
     {
-      '@id':   'urn:noocodex:dag:embedder-demo/node/report',
+      '@id': 'urn:noocodec:dag:embedder-demo/node/report',
       '@type': 'SingleNode',
       'name':    'report',
-      'node':    'report',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:report',
+      'outputs': { 'done': 'urn:noocodec:dag:embedder-demo/node/end' },
     },
     {
-      '@id':    'urn:noocodex:dag:embedder-demo/node/end',
+      '@id': 'urn:noocodec:dag:embedder-demo/node/end',
       '@type':  'TerminalNode',
       'name':     'end',
       'outcome':  'completed',

@@ -89,7 +89,7 @@ export class DraftShape {
   /**
    * Returns clean human-readable text from a JSON-shaped draft.
    * Strips code fences, extracts string values from the JSON structure
-   * (joining with ". "), and falls back to removing all JSON-special
+   * (joining with ". "), and otherwise removes all JSON-special
    * characters when the body is not parseable.
    */
   static strip(draft: string): string {
@@ -167,6 +167,7 @@ class ShortlistDigest {
 export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'compose-response';
+  readonly '@id' = 'urn:noocodec:node:compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
   constructor(services: ArchivistServices) {
@@ -405,6 +406,7 @@ export class ValidateResponseNode extends MonadicNode<
 > {
   private readonly services: ArchivistServices;
   readonly name = 'validate-response';
+  readonly '@id' = 'urn:noocodec:node:validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
 
   constructor(services: ArchivistServices) {

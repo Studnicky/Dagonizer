@@ -4,10 +4,10 @@
  * Imported by examples/24-llm-adapter.ts (the executable entry point).
  *
  * Demonstrates: LlmAdapterRegistry + LlmAdapterCascade with two OllamaApiAdapter
- * instances (primary at an unreachable port, fallback at the default loopback).
- * The primary adapter's probe() returns false, so the cascade skips it and
- * selects the fallback. A ChatNode calls the selected adapter and routes on
- * the response variant.
+ * instances (primary at an unreachable port, secondary at the default loopback).
+ * The primary adapter's probe() returns false, so the cascade selects the
+ * secondary adapter. A ChatNode calls the selected adapter and routes on the
+ * response variant.
  */
 
 import { Batch, DAG_CONTEXT, MonadicNode, NodeOutput, NodeStateBase,
@@ -34,6 +34,7 @@ export class ChatAdapterState extends NodeStateBase {
 
 export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
   readonly name = 'chat';
+  readonly '@id' = 'urn:noocodec:node:chat';
   readonly outputs = ['text', 'tools'] as const;
   override get outputSchema(): Record<'text' | 'tools', SchemaObjectType> {
     return { 'text': { 'type': 'object' }, 'tools': { 'type': 'object' } };
@@ -69,6 +70,7 @@ export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
 
 export class HandleTextNode extends MonadicNode<ChatAdapterState, 'done'> {
   readonly name = 'handleText';
+  readonly '@id' = 'urn:noocodec:node:handleText';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -84,6 +86,7 @@ export class HandleTextNode extends MonadicNode<ChatAdapterState, 'done'> {
 
 export class HandleToolsNode extends MonadicNode<ChatAdapterState, 'done'> {
   readonly name = 'handleTools';
+  readonly '@id' = 'urn:noocodec:node:handleTools';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -102,35 +105,35 @@ export class HandleToolsNode extends MonadicNode<ChatAdapterState, 'done'> {
 
 export const dag: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:llm-adapter-demo',
+  '@id': 'urn:noocodec:dag:llm-adapter-demo',
   '@type':    'DAG',
   'name':       'llm-adapter-demo',
   'version':    '1',
-  'entrypoints': { 'main': 'chat' },
+  'entrypoints': { 'main': 'urn:noocodec:dag:llm-adapter-demo/node/chat' },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:llm-adapter-demo/node/chat',
+      '@id': 'urn:noocodec:dag:llm-adapter-demo/node/chat',
       '@type': 'SingleNode',
       'name':    'chat',
-      'node':    'chat',
-      'outputs': { 'text': 'handleText', 'tools': 'handleTools' },
+      'node':    'urn:noocodec:node:chat',
+      'outputs': { 'text': 'urn:noocodec:dag:llm-adapter-demo/node/handleText', 'tools': 'urn:noocodec:dag:llm-adapter-demo/node/handleTools' },
     },
     {
-      '@id':   'urn:noocodex:dag:llm-adapter-demo/node/handleText',
+      '@id': 'urn:noocodec:dag:llm-adapter-demo/node/handleText',
       '@type': 'SingleNode',
       'name':    'handleText',
-      'node':    'handleText',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:handleText',
+      'outputs': { 'done': 'urn:noocodec:dag:llm-adapter-demo/node/end' },
     },
     {
-      '@id':   'urn:noocodex:dag:llm-adapter-demo/node/handleTools',
+      '@id': 'urn:noocodec:dag:llm-adapter-demo/node/handleTools',
       '@type': 'SingleNode',
       'name':    'handleTools',
-      'node':    'handleTools',
-      'outputs': { 'done': 'end' },
+      'node':    'urn:noocodec:node:handleTools',
+      'outputs': { 'done': 'urn:noocodec:dag:llm-adapter-demo/node/end' },
     },
     {
-      '@id':    'urn:noocodex:dag:llm-adapter-demo/node/end',
+      '@id': 'urn:noocodec:dag:llm-adapter-demo/node/end',
       '@type':  'TerminalNode',
       'name':     'end',
       'outcome':  'completed',

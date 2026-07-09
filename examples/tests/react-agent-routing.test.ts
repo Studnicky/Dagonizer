@@ -55,7 +55,7 @@ class Harness {
     const routingState = new RoutingState();
     routingState.source = channel;
 
-    const routingDone = routingDispatcher.execute('react-agent-routing', routingState);
+    const routingDone = routingDispatcher.execute('urn:noocodec:dag:react-agent-routing', routingState);
 
     const stateFor = (conversationId: string, prompt: string): AgentState => {
       const state = new AgentState();
@@ -65,8 +65,8 @@ class Harness {
     };
 
     await Promise.all([
-      agentDispatcher.execute('react-agent', stateFor('c1', 'Tell me about dagonizer.')),
-      agentDispatcher.execute('react-agent', stateFor('c2', 'Tell me about dagonizer, briefly.')),
+      agentDispatcher.execute('urn:noocodec:dag:react-agent', stateFor('c1', 'Tell me about dagonizer.')),
+      agentDispatcher.execute('urn:noocodec:dag:react-agent', stateFor('c2', 'Tell me about dagonizer, briefly.')),
     ]);
 
     channel.close();
@@ -111,7 +111,7 @@ describe('react-agent-routing: one shared sink demultiplexes concurrent conversa
     const { chunks } = await Harness.run();
     assert.ok(chunks.length > 0, 'at least one chunk must be routed');
     for (const chunk of chunks) {
-      assert.equal(chunk.source.dagName, 'react-agent');
+      assert.equal(chunk.source.dagName, 'urn:noocodec:dag:react-agent');
       assert.equal(chunk.source.nodeName, 'call-model');
       assert.ok(chunk.routeKey === 'c1' || chunk.routeKey === 'c2', `unexpected routeKey: ${chunk.routeKey}`);
     }

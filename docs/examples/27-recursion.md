@@ -23,7 +23,7 @@ import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 
 ## What It Is
 
-Runtime DAG Dispatch lets one placement choose a registered child DAG from state or item data at execution time. The Archivist uses a dynamic `DagReference` inside its book-search scatter so each workset can run the tool DAG named by that item.
+Runtime DAG Dispatch lets one placement choose a registered child DAG from state or item data at execution time. The Archivist uses a dynamic `DagReference` inside its book-search scatter so each workset can run the tool DAG referenced by that item.
 
 This is the embedding interface for heterogeneous work. The parent graph stays stable, while data selects whether a clone runs Open Library search, Google Books search, Wikipedia enrichment, or another registered tool flow.
 
@@ -37,15 +37,15 @@ Because lookup goes through the registry, runtime dispatch still has a closed wo
 
 ### DAG registration and diagram
 
-The [Archivist](./the-archivist) uses a dynamic `DagReference` in its book-search scatter. `build-book-worksets` prepares worksets where each item carries the registered tool DAG name. The scatter then resolves the embedded body from item state at runtime, so the same placement can fan out to Open Library, Google Books, Wikipedia, or subject search without a plugin-specific node type.
+The [Archivist](./the-archivist) uses a dynamic `DagReference` in its book-search scatter. `build-book-worksets` prepares worksets where each item carries the registered tool DAG reference. The scatter then resolves the embedded body from item state at runtime, so the same placement can fan out to Open Library, Google Books, Wikipedia, or subject search without a plugin-specific node type.
 
 <DagJsonMermaid :dag="BookSearchScatterDAG" title="Archivist runtime DagReference scatter" aria-label="Archivist runtime DagReference JSON-LD DAG beside Mermaid generated from it." />
 
 This is the production shape behind recursive or heterogeneous embedded calls:
 
 - The parent DAG registers all candidate child DAGs once.
-- Each scattered item provides a `dagName`.
-- The scatter body declares `{ dag: { from: 'item', path: 'dagName', candidates: [...] } }`.
+- Each scattered item provides a `dagIri`.
+- The scatter body declares `{ dag: { from: 'item', path: 'dagIri', candidates: [...] } }`.
 - The engine resolves the child DAG from the registry for that item.
 - State mapping keeps child work isolated and copies only declared outputs back.
 
@@ -61,11 +61,11 @@ Open [The Archivist](./the-archivist) and ask a book question that needs externa
 
 Runtime DAG dispatch lets applications select an embedded child DAG from state at execution time. Use it when one placement fans out heterogeneous work items, plugin-provided DAGs, or tool-specific flows that share the same parent scatter and gather contract.
 
-This is also the bridge between plugins and embedding: if a plugin registers a DAG name, a host DAG can place it statically with a literal `dag` or select it dynamically with a `DagReference`.
+This is also the bridge between plugins and embedding: if a plugin registers a DAG IRI/reference, a host DAG can place it statically with a literal `dag` or select it dynamically with a `DagReference`.
 
 ## Code Samples
 
-The embedded DAG owns runtime DAG-name resolution:
+The embedded DAG owns runtime DAG-reference resolution:
 
 <<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 
@@ -75,7 +75,7 @@ The browser demo registers the same tool DAGs before registering the parent Arch
 
 ## Details for Nerds
 
-- **Runtime child selection.** `DagReference` reads the child DAG name from state or item data instead of baking one `dag` string into the placement.
+- **Runtime child selection.** `DagReference` reads the child DAG reference from state or item data instead of baking one literal `dag` string into the placement.
 - **One placement, many bodies.** The graph has one scatter placement even though different items can execute different registered DAGs.
 - **Registry as assembly boundary.** Tool DAGs are registered before the parent DAG, so JSON-LD stays canonical and runtime lookup is deterministic.
 - **Embedded isolation.** Each item runs in a child state; declared outputs merge back into the parent workset flow.

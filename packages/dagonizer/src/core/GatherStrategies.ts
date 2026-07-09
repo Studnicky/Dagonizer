@@ -124,6 +124,7 @@ export abstract class GatherStrategy {
 
 class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
+  readonly '@id' = 'urn:noocodec:node:map';
 
   reduce(
     config: GatherConfigType,
@@ -145,6 +146,7 @@ class MapGatherStrategy extends GatherStrategy {
 
 class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
+  readonly '@id' = 'urn:noocodec:node:append';
 
   reduce(
     config: GatherConfigType,
@@ -168,6 +170,7 @@ class AppendGatherStrategy extends GatherStrategy {
 
 class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
+  readonly '@id' = 'urn:noocodec:node:partition';
 
   reduce(
     config: GatherConfigType,
@@ -191,6 +194,7 @@ class PartitionGatherStrategy extends GatherStrategy {
 
 class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
+  readonly '@id' = 'urn:noocodec:node:custom';
 
   // Custom finalize reads the full per-clone record set, so the engine must
   // retain every acked record across resume (retained checkpoint).
@@ -227,11 +231,12 @@ class CustomGatherStrategy extends GatherStrategy {
  * back into the parent state. Use this when a scatter body is purely
  * effectful and no clone state should flow to the parent.
  *
- * `gather` is required on every `ScatterNode`. Declare `{ strategy: 'discard' }`
- * to make the no-merge intent explicit.
+ * Attach this to a `GatherNode` when producer records should be observed for
+ * routing but not folded into parent state.
  */
 class DiscardGatherStrategy extends GatherStrategy {
   readonly name = 'discard';
+  readonly '@id' = 'urn:noocodec:node:discard';
 
   reduce(): void {
     // Intentional no-op: discard strategy folds nothing.
@@ -254,6 +259,7 @@ class DiscardGatherStrategy extends GatherStrategy {
  */
 class CollectGatherStrategy extends GatherStrategy {
   readonly name = 'collect';
+  readonly '@id' = 'urn:noocodec:node:collect';
 
   reduce(
     config: GatherConfigType,

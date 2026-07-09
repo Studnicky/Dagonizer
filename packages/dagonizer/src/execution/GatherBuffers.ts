@@ -6,53 +6,101 @@ import type { GatherProgressType, GatherRecordProgressType } from '../entities/g
 import { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import type { GatherRouteRecordType } from './Gather.js';
+
+export type GatherReadyRecordsType = {
+  readonly records: readonly GatherRecordType[];
+  readonly routeRecords: readonly GatherRouteRecordType[];
+  readonly preReduced: boolean;
+};
+
+type GatherReducedSummaryType = {
+  readonly source: string;
+  readonly output: string;
+  readonly terminalOutcome: 'completed' | 'failed' | null;
+};
+
 export class GatherBuffers {
   static readonly #BASE_SNAPSHOT_FIELDS = new Set(['metadata', 'retries', 'warnings']);
 
   readonly #records = new Map<string, Map<string, GatherRecordType>>();
+  readonly #reduced = new Map<string, Map<string, GatherReducedSummaryType>>();
   #scalarOrdinal = 0;
 
-  add(gatherName: string, record: GatherRecordType): void {
-    let records = this.#records.get(gatherName);
+  add(gatherKey: string, record: GatherRecordType): void {
+    let records = this.#records.get(gatherKey);
     if (records === undefined) {
       records = new Map<string, GatherRecordType>();
-      this.#records.set(gatherName, records);
+      this.#records.set(gatherKey, records);
     }
     records.set(this.#recordKey(record), record);
   }
 
+  addReduced(gatherKey: string, record: GatherRecordType, retainRecord: boolean): void {
+    if (retainRecord) {
+      this.add(gatherKey, record);
+      return;
+    }
+
+    let records = this.#reduced.get(gatherKey);
+    if (records === undefined) {
+      records = new Map<string, GatherReducedSummaryType>();
+      this.#reduced.set(gatherKey, records);
+    }
+    records.set(this.#recordKey(record), {
+      'source': record.source,
+      'output': record.output,
+      'terminalOutcome': record.terminalOutcome,
+    });
+  }
+
   isEmpty(): boolean {
-    return this.#records.size === 0;
+    return this.#records.size === 0 && this.#reduced.size === 0;
   }
 
-  ready(node: GatherNodeType): boolean {
-    const records = this.#records.get(node.name);
-    if (records === undefined) return false;
+  ready(node: GatherNodeType, gatherKey: string): boolean {
+    const records = this.#combinedRecords(gatherKey);
+    if (records.length === 0) return false;
     const policy = GatherNodeDefaults.policy(node);
-    const seenSources = new Set([...records.values()].map((record) => record.source));
+    const sources = Object.keys(node.sources);
+    const seenSources = new Set(
+      records
+        .map((record) => record.source)
+        .filter((source) => sources.includes(source)),
+    );
     if (policy.mode === 'any') return seenSources.size > 0;
-    if (policy.mode === 'quorum') return seenSources.size >= (policy.quorum ?? node.sources.length);
-    return node.sources.every((source) => seenSources.has(source));
+    if (policy.mode === 'quorum') return seenSources.size >= (policy.quorum ?? sources.length);
+    return sources.every((source) => seenSources.has(source));
   }
 
-  takeReady(node: GatherNodeType): GatherRecordType[] {
-    if (!this.ready(node)) return [];
-    const records = this.#records.get(node.name);
-    this.#records.delete(node.name);
-    if (records === undefined) return [];
+  takeReady(node: GatherNodeType, gatherKey: string): GatherReadyRecordsType {
+    if (!this.ready(node, gatherKey)) return { 'records': [], 'routeRecords': [], 'preReduced': false };
+    const fullRecords = this.#records.get(gatherKey);
+    const reducedRecords = this.#reduced.get(gatherKey);
+    this.#records.delete(gatherKey);
+    this.#reduced.delete(gatherKey);
+    const records = fullRecords === undefined ? [] : [...fullRecords.values()];
+    const reduced = reducedRecords === undefined ? [] : [...reducedRecords.values()];
     const policy = GatherNodeDefaults.policy(node);
-    const selectedSources = GatherBuffers.selectedSources(node.sources, [...records.values()], policy.mode, policy.quorum);
-    return GatherBuffers.recordsForSources([...records.values()], selectedSources, policy.includeErrors);
+    const allRouteRecords = [...records, ...reduced];
+    const selectedSources = GatherBuffers.selectedSources(Object.keys(node.sources), allRouteRecords, policy.mode, policy.quorum);
+    const selectedRecords = GatherBuffers.recordsForSources(records, selectedSources, policy.includeErrors);
+    const routeRecords = GatherBuffers.routeRecordsForSources(allRouteRecords, selectedSources, policy.includeErrors);
+    return {
+      'records': selectedRecords,
+      routeRecords,
+      'preReduced': reduced.length > 0,
+    };
   }
 
   restore(progress: GatherProgressType, state: NodeStateInterface): void {
-    for (const [gatherName, records] of Object.entries(progress.entries)) {
+    for (const [gatherKey, records] of Object.entries(progress.entries)) {
       for (const record of records) {
         const cloneState = state.clone();
         const snapshot = JsonObject.is(record.snapshot) ? record.snapshot : {};
         cloneState.applySnapshot(snapshot);
         GatherBuffers.restoreSnapshotFields(cloneState, snapshot);
-        this.add(gatherName, {
+        this.add(gatherKey, {
           'source': record.source,
           'index': record.index,
           'item': record.item,
@@ -65,12 +113,22 @@ export class GatherBuffers {
     }
   }
 
-  toProgress(strategyForGather: (gatherName: string) => GatherConfigType | undefined): GatherProgressType {
+  toProgress(strategyForGather: (gatherKey: string) => GatherConfigType | undefined): GatherProgressType {
     const entries: GatherProgressType['entries'] = {};
-    for (const [gatherName, records] of this.#records) {
-      const gather = strategyForGather(gatherName);
-      entries[gatherName] = [...records.values()]
+    for (const [gatherKey, records] of this.#records) {
+      const gather = strategyForGather(gatherKey);
+      entries[gatherKey] = [...records.values()]
         .map((record) => GatherBuffers.toProgressRecord(record, gather));
+    }
+    for (const [gatherKey, records] of this.#reduced) {
+      if (entries[gatherKey] !== undefined) continue;
+      entries[gatherKey] = [...records.values()].map((record) => ({
+        'source': record.source,
+        'index': null,
+        'output': record.output,
+        'terminalOutcome': record.terminalOutcome,
+        'result': null,
+      }));
     }
     return { entries };
   }
@@ -117,7 +175,7 @@ export class GatherBuffers {
 
   private static selectedSources(
     declaredSources: readonly string[],
-    records: readonly GatherRecordType[],
+    records: readonly { readonly source: string }[],
     mode: 'all' | 'any' | 'quorum',
     quorum: number | null,
   ): readonly string[] {
@@ -147,6 +205,30 @@ export class GatherBuffers {
       selected.push(...sourceRecords);
     }
     return selected;
+  }
+
+  private static routeRecordsForSources(
+    records: readonly GatherRouteRecordType[],
+    sources: readonly string[],
+    includeErrors: boolean,
+  ): GatherRouteRecordType[] {
+    const selected: GatherRouteRecordType[] = [];
+    for (const source of sources) {
+      const sourceRecords = records
+        .filter((record) => record.source === source)
+        .filter((record) => includeErrors || (record.output !== 'error' && record.terminalOutcome !== 'failed'));
+      selected.push(...sourceRecords);
+    }
+    return selected;
+  }
+
+  #combinedRecords(gatherName: string): Array<{ readonly source: string }> {
+    const full = this.#records.get(gatherName);
+    const reduced = this.#reduced.get(gatherName);
+    return [
+      ...(full === undefined ? [] : [...full.values()]),
+      ...(reduced === undefined ? [] : [...reduced.values()]),
+    ];
   }
 
   private static indexOf(record: GatherRecordType): number {

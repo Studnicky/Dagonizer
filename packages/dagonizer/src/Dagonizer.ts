@@ -10,7 +10,6 @@ import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.
 import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
 import type { TripleStoreInterface } from './contracts/TripleStoreInterface.js';
-import { ContextResolver } from './dag/ContextResolver.js';
 import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
@@ -212,20 +211,16 @@ export interface DagonizerInterface<
     options?: ExecuteOptionsType,
   ): Execution<TState>;
 
-  /**
-   * Look up a registered DAG by reference. The reference is expanded to the
-   * registry IRI before lookup.
-   */
-  getDAG(name: string): DAGType | undefined;
+  /** Look up a registered DAG by exact registry IRI. */
+  getDAG(iri: string): DAGType | undefined;
 
   /**
-   * Look up a registered node by reference. The reference is expanded to the
-   * registry IRI before lookup. Returns `NodeInterface<NodeStateInterface,...>`
+   * Look up a registered node by exact registry IRI. Returns `NodeInterface<NodeStateInterface,...>`
    * because the registry stores heterogeneous node types at the base interface.
    * Consumers that registered a `NodeInterface<MyState,...>` and need to call it
    * directly should retain their own typed reference rather than looking it up here.
    */
-  getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined;
+  getNode(iri: string): NodeInterface<NodeStateInterface, string> | undefined;
 
   /**
    * Look up the child-state factory registered for a DAG reference. The reference
@@ -234,23 +229,7 @@ export interface DagonizerInterface<
    * supplied at `registerDAG` time). Returns `undefined` when the DAG has not
    * been registered.
    */
-  getChildStateFactory(dagName: string): ChildStateFactoryType | undefined;
-
-  /**
-   * True when a node with this reference is registered.
-   */
-  hasNode(name: string): boolean;
-
-  /**
-   * True when a DAG with this reference is registered.
-   */
-  hasDag(name: string): boolean;
-
-  /** True when a DAG registry IRI exists exactly as supplied. */
-  hasDagIri(iri: string): boolean;
-
-  /** True when a node registry IRI exists exactly as supplied. */
-  hasNodeIri(iri: string): boolean;
+  getChildStateFactory(dagIri: string): ChildStateFactoryType | undefined;
 
   /**
    * List every registered DAG. Useful for visualization, contract checks,
@@ -264,18 +243,6 @@ export interface DagonizerInterface<
    * `getNode`: the registry stores nodes with potentially heterogeneous state types.
    */
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[];
-
-  /**
-   * Expanded IRI keys of every registered DAG. Cheaper than `listDAGs()` when
-   * only the keys are needed (registry size checks, existence tooling).
-   */
-  dagNames(): readonly string[];
-
-  /**
-   * Expanded IRI keys of every registered node. Cheaper than `listNodes()` when
-   * only the keys are needed (registry size checks, existence tooling).
-   */
-  nodeNames(): readonly string[];
 
   /** IRI keys of every registered DAG. */
   dagIris(): readonly string[];
@@ -293,7 +260,7 @@ export interface DagonizerInterface<
   pluginPrefixSpecifiers(): ReadonlyMap<string, string>;
 
   /**
-   * Resume a DAG from a given node name. The caller is responsible for
+   * Resume a DAG from a given placement IRI. The caller is responsible for
    * rehydrating `state` before the call (typically via `Checkpoint.load(raw).restoreState(fn)`).
    */
   resume(
@@ -330,7 +297,7 @@ export interface DagonizerInterface<
    * called immediately with this dispatcher as the receiver.
    *
    * Plugin registration order matches call order. Register embedded-DAG plugin
-   * bundles before the parent DAG that references their names.
+   * bundles before the parent DAG that references their IRIs.
    */
   registerPlugin(plugin: PluginInterface): void;
 }
@@ -372,17 +339,19 @@ export interface DagonizerInterface<
  * const dispatcher = new Dagonizer<MyState>();
  * dispatcher.registerNode(new IncrementNode());
  * dispatcher.registerDAG({
- *   '@context': DAG_CONTEXT, '@id': 'urn:noocodex:dag:demo', '@type': 'DAG',
- *   name: 'demo', version: '1', entrypoints: { main: 'increment' },
+ *   '@context': DAG_CONTEXT, '@id': 'urn:noocodec:dag:demo', '@type': 'DAG',
+ *   name: 'demo', version: '1',
+ *   entrypoints: { main: 'urn:noocodec:dag:demo/node/increment' },
  *   nodes: [
- *     { '@id': 'urn:noocodex:dag:demo/node/increment', '@type': 'SingleNode',
- *       name: 'increment', node: 'increment', outputs: { done: 'end' } },
- *     { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode',
+ *     { '@id': 'urn:noocodec:dag:demo/node/increment', '@type': 'SingleNode',
+ *       name: 'increment', node: 'urn:noocodec:node:increment',
+ *       outputs: { done: 'urn:noocodec:dag:demo/node/end' } },
+ *     { '@id': 'urn:noocodec:dag:demo/node/end', '@type': 'TerminalNode',
  *       name: 'end', outcome: 'completed' },
  *   ],
  * });
  *
- * const result = await dispatcher.execute('demo', new MyState());
+ * const result = await dispatcher.execute('urn:noocodec:dag:demo', new MyState());
  * // result.state.value === 1
  * // result.cursor === null (completed via TerminalNode)
  * ```
@@ -654,10 +623,10 @@ implements DagonizerInterface<TState> {
 
         const childCtrl = new AbortController();
         // The child signal represents the same logical run scope as `parentSignal`,
-        // just under a narrower cancellation budget — alias it so a timed node's
+        // just under a narrower cancellation budget. Anchor it so a timed node's
         // `context.signal` resolves `DagExecutionContext.tryGet` identically to an
         // untimed node's.
-        DagExecutionContext.alias(childCtrl.signal, parentSignal);
+        DagExecutionContext.anchor(childCtrl.signal, parentSignal);
         const onParentAbort = (): void => { childCtrl.abort(parentSignal.reason); };
 
         if (parentSignal.aborted) {
@@ -721,8 +690,9 @@ implements DagonizerInterface<TState> {
         signal: AbortSignal,
         placementPath: readonly string[],
         bufferIntermediates: boolean = true,
+        gatherRecordSink = null,
       ): Promise<RunNodeResultType> {
-        return self.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates);
+        return self.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates, gatherRecordSink);
       }
 
       /**
@@ -899,52 +869,27 @@ implements DagonizerInterface<TState> {
     this.registeredPlugins.clear();
   }
 
-  /**
-   * Look up a registered DAG by reference. The reference is expanded to the
-   * registry IRI before lookup. Returns `undefined` when the DAG is not registered.
-   */
-  getDAG(name: string): DAGType | undefined {
-    return this.#host.dags.get(ContextResolver.expand(name, {}));
+  /** Look up a registered DAG by exact registry IRI. */
+  getDAG(iri: string): DAGType | undefined {
+    return this.#host.dags.get(iri);
   }
 
   /**
-   * Look up a registered node by reference. The reference is expanded to the
-   * registry IRI before lookup. Returns `undefined` when the node is not registered.
+   * Look up a registered node by exact registry IRI. Returns `undefined` when
+   * the node is not registered.
    */
-  getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined {
-    return this.#host.nodes.get(ContextResolver.expand(name, {}));
+  getNode(iri: string): NodeInterface<NodeStateInterface, string> | undefined {
+    return this.#host.nodes.get(iri);
   }
 
   /**
-   * Look up the child-state factory registered for a DAG reference. The reference
-   * is expanded to the registry IRI before lookup. Every registered DAG has an
-   * entry (`ChildStateFactory.cloneParent` when no override is supplied at
-   * `registerDAG` time). Returns `undefined` when the DAG is not registered.
+   * Look up the child-state factory registered for a DAG IRI. Every registered
+   * DAG has an entry (`ChildStateFactory.cloneParent` when no override is
+   * supplied at `registerDAG` time). Returns `undefined` when the DAG is not
+   * registered.
    */
-  getChildStateFactory(dagName: string): ChildStateFactoryType | undefined {
-    return this.#host.stateFactories.get(ContextResolver.expand(dagName, {}));
-  }
-
-  /**
-   * True when a node with this reference is registered.
-   */
-  hasNode(name: string): boolean {
-    return this.dagRegistrar.hasNode(ContextResolver.expand(name, {}));
-  }
-
-  /**
-   * True when a DAG with this reference is registered.
-   */
-  hasDag(name: string): boolean {
-    return this.dagRegistrar.hasDAG(ContextResolver.expand(name, {}));
-  }
-
-  hasDagIri(iri: string): boolean {
-    return this.dagRegistrar.hasDAG(iri);
-  }
-
-  hasNodeIri(iri: string): boolean {
-    return this.dagRegistrar.hasNode(iri);
+  getChildStateFactory(dagIri: string): ChildStateFactoryType | undefined {
+    return this.#host.stateFactories.get(dagIri);
   }
 
   /**
@@ -961,22 +906,6 @@ implements DagonizerInterface<TState> {
    */
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[] {
     return this.dagRegistrar.listNodes();
-  }
-
-  /**
-   * Expanded IRI keys of every registered DAG. Cheaper than `listDAGs()` when
-   * only the keys are needed.
-   */
-  dagNames(): readonly string[] {
-    return this.dagRegistrar.dagIris();
-  }
-
-  /**
-   * Expanded IRI keys of every registered node. Cheaper than `listNodes()` when
-   * only the keys are needed.
-   */
-  nodeNames(): readonly string[] {
-    return this.dagRegistrar.nodeIris();
   }
 
   dagIris(): readonly string[] {
@@ -1076,7 +1005,7 @@ implements DagonizerInterface<TState> {
   /**
    * Compose `options` into this run's root `AbortSignal`, guaranteeing a
    * fresh, distinct `AbortSignal` OBJECT even when `options` supplies neither
-   * `signal` nor `deadlineMs` — `Signal.compose` falls back to `Signal.never()`
+   * `signal` nor `deadlineMs` — `Signal.compose` uses `Signal.never()`
    * in that case, a memoized SHARED singleton reused across every call with
    * no options. Reusing that shared object as a `DagExecutionContext` scope
    * anchor would collide across every concurrent no-options `execute()` call
@@ -1097,7 +1026,7 @@ implements DagonizerInterface<TState> {
    * and anchored to `signal` — the SAME `AbortSignal` object the caller
    * threads down into `runNodes`. Every node body and lifecycle hook that
    * fires during the run carries that identical signal (directly, or via
-   * `DagExecutionScope.alias` for a `withNodeTimeout`-derived child signal),
+   * `DagExecutionScope.anchor` for a `withNodeTimeout`-derived child signal),
    * so `DagExecutionContext.tryGet(signal, key)` resolves this scope from
    * anywhere, correct across any `await` boundary or interleaved concurrent
    * run — see `runtime/DagExecutionContext.ts` for the full design.
@@ -1147,7 +1076,7 @@ implements DagonizerInterface<TState> {
   /**
    * Register a DAG configuration.
    *
-   * Throws `DAGError` immediately when a DAG with the same expanded IRI is already registered.
+   * Throws `DAGError` immediately when a DAG with the same IRI is already registered.
    *
    * Runs shape, semantic, container-binding, and graph-reference validation
    * before mutating the live registry.
@@ -1188,7 +1117,7 @@ implements DagonizerInterface<TState> {
    * `NodeInterface<TState, string>`; narrow → wide is sound covariantly on
    * both `outputs` and the result `output`.
    *
-   * Throws `DAGError` when a node with the same expanded IRI is already registered.
+   * Throws `DAGError` when a node with the same IRI is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput>,
@@ -1210,7 +1139,7 @@ implements DagonizerInterface<TState> {
    * called immediately with this dispatcher as the receiver.
    *
    * Plugin registration order matches call order. Register embedded-DAG plugin
-   * bundles before the parent DAG that references their names.
+   * bundles before the parent DAG that references their IRIs.
    */
   registerPlugin(plugin: PluginInterface): void {
     const existing = this.registeredPlugins.get(plugin.id);

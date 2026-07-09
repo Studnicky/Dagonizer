@@ -128,7 +128,7 @@ The DAG module contains the canonical agent loop, the trace-memory DAG, the dete
 ### Topology
 
 ```
-dispatcher.execute('react-agent', agentState)     → Execution (AsyncIterable<NodeResultType>)
+dispatcher.execute('urn:noocodec:dag:react-agent', agentState)     → Execution (AsyncIterable<NodeResultType>)
   → new ReActTraceProducer(execution)               → DagStreamProducer<ReasoningTraceItemType>
     → StreamChannel.driven(producer)                  → AsyncIterable<ReasoningTraceItemType>
       → traceState.source
@@ -137,7 +137,7 @@ dispatcher.execute('react-agent', agentState)     → Execution (AsyncIterable<N
             → asserts kind/value/wasGeneratedBy/wasInformedBy quads into the shared RdfStore
 ```
 
-Draining `outerDispatcher.execute('react-agent-memory-trace', traceState)` is
+Draining `outerDispatcher.execute('urn:noocodec:dag:react-agent-memory-trace', traceState)` is
 what pulls the agent loop forward — the inner `agentDispatcher.execute(...)`
 call is never awaited or drained directly.
 

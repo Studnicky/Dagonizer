@@ -33,8 +33,8 @@ void describe('PluginSpecifier.rootedAt', () => {
 void describe('PluginSpecifier.byIriPrefix', () => {
   void it('resolves hash and slash namespace IRIs through the namespace lookup source', () => {
     const namespaces = new Map([
-      ['https://noocodex.dev/plugins/retrieval#', '@example/retrieval-plugin'],
-      ['https://noocodex.dev/plugins/tools/', '@example/tools-plugin'],
+      ['https://noocodec.dev/plugins/retrieval#', '@example/retrieval-plugin'],
+      ['https://noocodec.dev/plugins/tools/', '@example/tools-plugin'],
     ]);
     const resolve = PluginSpecifier.byIriPrefix({
       pluginSpecifierForNamespace(namespaceIri: string): string | undefined {
@@ -42,9 +42,9 @@ void describe('PluginSpecifier.byIriPrefix', () => {
       },
     });
 
-    assert.equal(resolve('https://noocodex.dev/plugins/retrieval#search'), '@example/retrieval-plugin');
-    assert.equal(resolve('https://noocodex.dev/plugins/tools/search'), '@example/tools-plugin');
+    assert.equal(resolve('https://noocodec.dev/plugins/retrieval#search'), '@example/retrieval-plugin');
+    assert.equal(resolve('https://noocodec.dev/plugins/tools/search'), '@example/tools-plugin');
     assert.equal(resolve('retrieval:search'), undefined);
-    assert.equal(resolve('https://noocodex.dev/plugins/unknown#search'), undefined);
+    assert.equal(resolve('https://noocodec.dev/plugins/unknown#search'), undefined);
   });
 });

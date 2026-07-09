@@ -6,7 +6,7 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
@@ -27,12 +27,14 @@ class CounterState extends NodeStateBase {
 // One increment node per level; each adds a distinct power of ten so the
 // final total proves every level executed exactly once and in order.
 class IncNode extends MonadicNode<CounterState, string> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly string[];
   private readonly delta: number;
 
   constructor(name: string, outputs: readonly string[], delta: number) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.outputs = outputs;
     this.delta = delta;
@@ -61,34 +63,59 @@ class IncNode extends MonadicNode<CounterState, string> {
 // back out. Applied at every embed boundary so the accumulator survives the
 // full descent and ascent.
 const VALUE_MAPPING = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
+const INNER_FAIL_DAG_IRI = 'urn:noocodec:dag:inner-fail';
+const PARENT_FAIL_DAG_IRI = 'urn:noocodec:dag:parent';
+const INNER_OK_DAG_IRI = 'urn:noocodec:dag:inner-ok';
+const PARENT_OK_DAG_IRI = 'urn:noocodec:dag:parent-ok';
+const INNER_NULL_DAG_IRI = 'urn:noocodec:dag:inner-null';
+const PARENT_COMPLETED_DAG_IRI = 'urn:noocodec:dag:parent-completed';
+const INNER_TOLERANT_DAG_IRI = 'urn:noocodec:dag:inner-tolerant';
+const PARENT_TOLERANT_DAG_IRI = 'urn:noocodec:dag:parent-tolerant';
+const TOP_DAG_IRI = 'urn:noocodec:dag:top';
+const DEEP_CORE_DAG_IRI = 'urn:noocodec:dag:deep-core';
+const DEEP_INNER_DAG_IRI = 'urn:noocodec:dag:deep-inner';
+const DEEP_MID_DAG_IRI = 'urn:noocodec:dag:deep-mid';
+const DEEP_OUTER_DAG_IRI = 'urn:noocodec:dag:deep-outer';
+const CYC_A_DAG_IRI = 'urn:noocodec:dag:cyc-a';
+const CYC_B_DAG_IRI = 'urn:noocodec:dag:cyc-b';
+const LIFECYCLE_CHILD_DAG_IRI = 'urn:noocodec:dag:lifecycle-child';
+const LIFECYCLE_PARENT_DAG_IRI = 'urn:noocodec:dag:lifecycle-parent';
+const HELPER_DAG_IRI = 'urn:noocodec:dag:helper';
+const NULL_PARENT_DAG_IRI = 'urn:noocodec:dag:null-parent';
+const MIXED_PARENT_DAG_IRI = 'urn:noocodec:dag:mixed-parent';
+const VALID_PARENT_DAG_IRI = 'urn:noocodec:dag:valid-parent';
 
 class PlacementFixture {
   private constructor() {}
 
-  static single(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+  static iri(dagIri: string, placementSegment: string): string {
+    return DAGIdentity.placementId(dagIri, placementSegment);
+  }
+
+  static single(dag: string, placementSegment: string, outputs: Record<string, string>): DAGType['nodes'][number] {
     return {
-      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': PlacementFixture.iri(dag, placementSegment),
       '@type': 'SingleNode',
-      name,
-      'node':  name,
+      'name': placementSegment,
+      'node': `urn:noocodec:node:${placementSegment}`,
       outputs,
     };
   }
 
-  static embed(dag: string, name: string, childDag: string): DAGType['nodes'][number] {
+  static embed(dag: string, placementSegment: string, childDag: string): DAGType['nodes'][number] {
     return {
-      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': PlacementFixture.iri(dag, placementSegment),
       '@type': 'EmbeddedDAGNode',
-      name,
+      'name': placementSegment,
       'dag':   childDag,
       'stateMapping': VALUE_MAPPING,
-      'outputs': { 'success': 'end', 'error': 'end' },
+      'outputs': { 'success': PlacementFixture.iri(dag, 'end'), 'error': PlacementFixture.iri(dag, 'end') },
     };
   }
 
   static terminal(dag: string): DAGType['nodes'][number] {
     return {
-      '@id':     `urn:noocodex:dag:${dag}/node/end`,
+      '@id': PlacementFixture.iri(dag, 'end'),
       '@type':   'TerminalNode',
       'name':    'end',
       'outcome': 'completed',
@@ -97,25 +124,25 @@ class PlacementFixture {
 }
 
 // core ← inner ← mid ← outer  (three levels of embedding: nested in nested in nested)
-const coreDAG  = TestDag.of('deep-core',  'inc-core',  [
-  PlacementFixture.single('deep-core', 'inc-core', { 'success': 'end' }),
-  PlacementFixture.terminal('deep-core'),
-]);
-const innerDAG = TestDag.of('deep-inner', 'inc-inner', [
-  PlacementFixture.single('deep-inner', 'inc-inner', { 'success': 'embed-core' }),
-  PlacementFixture.embed('deep-inner', 'embed-core', 'deep-core'),
-  PlacementFixture.terminal('deep-inner'),
-]);
-const midDAG = TestDag.of('deep-mid', 'inc-mid', [
-  PlacementFixture.single('deep-mid', 'inc-mid', { 'success': 'embed-inner' }),
-  PlacementFixture.embed('deep-mid', 'embed-inner', 'deep-inner'),
-  PlacementFixture.terminal('deep-mid'),
-]);
-const outerDAG = TestDag.of('deep-outer', 'inc-outer', [
-  PlacementFixture.single('deep-outer', 'inc-outer', { 'success': 'embed-mid' }),
-  PlacementFixture.embed('deep-outer', 'embed-mid', 'deep-mid'),
-  PlacementFixture.terminal('deep-outer'),
-]);
+const coreDAG  = TestDag.of(DEEP_CORE_DAG_IRI,  PlacementFixture.iri(DEEP_CORE_DAG_IRI, 'inc-core'),  [
+  PlacementFixture.single(DEEP_CORE_DAG_IRI, 'inc-core', { 'success': PlacementFixture.iri(DEEP_CORE_DAG_IRI, 'end') }),
+  PlacementFixture.terminal(DEEP_CORE_DAG_IRI),
+], { 'name': 'deep-core' });
+const innerDAG = TestDag.of(DEEP_INNER_DAG_IRI, PlacementFixture.iri(DEEP_INNER_DAG_IRI, 'inc-inner'), [
+  PlacementFixture.single(DEEP_INNER_DAG_IRI, 'inc-inner', { 'success': PlacementFixture.iri(DEEP_INNER_DAG_IRI, 'embed-core') }),
+  PlacementFixture.embed(DEEP_INNER_DAG_IRI, 'embed-core', DEEP_CORE_DAG_IRI),
+  PlacementFixture.terminal(DEEP_INNER_DAG_IRI),
+], { 'name': 'deep-inner' });
+const midDAG = TestDag.of(DEEP_MID_DAG_IRI, PlacementFixture.iri(DEEP_MID_DAG_IRI, 'inc-mid'), [
+  PlacementFixture.single(DEEP_MID_DAG_IRI, 'inc-mid', { 'success': PlacementFixture.iri(DEEP_MID_DAG_IRI, 'embed-inner') }),
+  PlacementFixture.embed(DEEP_MID_DAG_IRI, 'embed-inner', DEEP_INNER_DAG_IRI),
+  PlacementFixture.terminal(DEEP_MID_DAG_IRI),
+], { 'name': 'deep-mid' });
+const outerDAG = TestDag.of(DEEP_OUTER_DAG_IRI, PlacementFixture.iri(DEEP_OUTER_DAG_IRI, 'inc-outer'), [
+  PlacementFixture.single(DEEP_OUTER_DAG_IRI, 'inc-outer', { 'success': PlacementFixture.iri(DEEP_OUTER_DAG_IRI, 'embed-mid') }),
+  PlacementFixture.embed(DEEP_OUTER_DAG_IRI, 'embed-mid', DEEP_MID_DAG_IRI),
+  PlacementFixture.terminal(DEEP_OUTER_DAG_IRI),
+], { 'name': 'deep-outer' });
 
 void describe('EmbeddedDAGNode: deep recursive nesting', () => {
   void it('threads state down and back through three nesting levels (nested in nested in nested)', async () => {
@@ -126,7 +153,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     dispatcher.registerNode(IncNode.of('inc-core',     1));
     for (const dag of [coreDAG, innerDAG, midDAG, outerDAG]) dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('deep-outer', new CounterState());
+    const result = await dispatcher.execute(DEEP_OUTER_DAG_IRI, new CounterState());
 
     // 1000 (outer) → seed mid → +100 → seed inner → +10 → seed core → +1,
     // then 1111 copied back up through every output mapping.
@@ -148,7 +175,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     dispatcher.registerNode(IncNode.of('inc-core',     1));
     for (const dag of [coreDAG, innerDAG, midDAG, outerDAG]) dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('deep-outer', new CounterState());
+    await dispatcher.execute(DEEP_OUTER_DAG_IRI, new CounterState());
 
     // The deepest node ran three embed levels down.
     assert.deepEqual(seen.get('inc-outer'), []);
@@ -162,33 +189,37 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     dispatcher.registerNode(IncNode.of('na', 1));
 
     // a (standalone) ← b embeds a. Acyclic.
-    dispatcher.registerDAG(TestDag.of('cyc-a', 'na', [
-      PlacementFixture.single('cyc-a', 'na', { 'success': 'end' }),
-      PlacementFixture.terminal('cyc-a'),
-    ]));
-    dispatcher.registerDAG(TestDag.of('cyc-b', 'embed-a', [
-      PlacementFixture.embed('cyc-b', 'embed-a', 'cyc-a'),
-      PlacementFixture.terminal('cyc-b'),
-    ]));
+    dispatcher.registerDAG(TestDag.of(CYC_A_DAG_IRI, PlacementFixture.iri(CYC_A_DAG_IRI, 'na'), [
+      PlacementFixture.single(CYC_A_DAG_IRI, 'na', { 'success': PlacementFixture.iri(CYC_A_DAG_IRI, 'end') }),
+      PlacementFixture.terminal(CYC_A_DAG_IRI),
+    ], { 'name': 'cyc-a' }));
+    dispatcher.registerDAG(TestDag.of(CYC_B_DAG_IRI, PlacementFixture.iri(CYC_B_DAG_IRI, 'embed-a'), [
+      PlacementFixture.embed(CYC_B_DAG_IRI, 'embed-a', CYC_A_DAG_IRI),
+      PlacementFixture.terminal(CYC_B_DAG_IRI),
+    ], { 'name': 'cyc-b' }));
 
     // The only way to close a cross-variant cycle (a SCATTERS into b → b embeds a)
     // is to re-register 'cyc-a' so it references 'cyc-b'. Because every sub-DAG
     // reference must resolve to an already-registered DAG, references are
-    // backward-only; the sole route to a cycle is mutating an existing
+    // constrained to registered DAGs; the sole route to a cycle is mutating an existing
     // registration. The registry is append-only, so this re-registration is
     // refused with 'already registered' before any cyclic state can install —
     // a cross-variant cycle is structurally unconstructable through the registry.
-    const cyclicA = TestDag.of('cyc-a', 'fork-b', [{
-      '@id':    'urn:noocodex:dag:cyc-a/node/fork-b',
+    const cyclicA = TestDag.of(CYC_A_DAG_IRI, PlacementFixture.iri(CYC_A_DAG_IRI, 'fork-b'), [{
+      '@id': PlacementFixture.iri(CYC_A_DAG_IRI, 'fork-b'),
       '@type':  'ScatterNode',
       'name':   'fork-b',
       'source': 'items',
-      'body':   { 'dag': 'cyc-b' },
-      'gather': { 'strategy': 'discard' },
-      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      'body': { 'dag': CYC_B_DAG_IRI },
+      'outputs': {
+        'all-success': PlacementFixture.iri(CYC_A_DAG_IRI, 'end'),
+        'partial': PlacementFixture.iri(CYC_A_DAG_IRI, 'end'),
+        'all-error': PlacementFixture.iri(CYC_A_DAG_IRI, 'end'),
+        'empty': PlacementFixture.iri(CYC_A_DAG_IRI, 'end'),
+      },
     },
-      PlacementFixture.terminal('cyc-a'),
-    ]);
+      PlacementFixture.terminal(CYC_A_DAG_IRI),
+    ], { 'name': 'cyc-a' });
 
     assert.throws(() => dispatcher.registerDAG(cyclicA), /already registered/u);
   });
@@ -222,61 +253,64 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 // Child DAG (two nodes: start → finish).
 const childDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:child',
+  '@id': LIFECYCLE_CHILD_DAG_IRI,
   '@type':    'DAG',
   'name':       'child',
   'version':    '1',
-  'entrypoints': { 'main': 'child-start' },
+  'entrypoints': { 'main': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'child-start') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:child/node/child-start',
+      '@id': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'child-start'),
       '@type': 'SingleNode',
       'name':  'child-start',
-      'node':  'child-start',
-      'outputs': { 'done': 'child-finish' },
+      'node':  'urn:noocodec:node:child-start',
+      'outputs': { 'done': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'child-finish') },
     },
     {
-      '@id':   'urn:noocodex:dag:child/node/child-finish',
+      '@id': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'child-finish'),
       '@type': 'SingleNode',
       'name':  'child-finish',
-      'node':  'child-finish',
-      'outputs': { 'done': 'end' },
+      'node':  'urn:noocodec:node:child-finish',
+      'outputs': { 'done': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'end') },
     },
-    { '@id': 'urn:noocodex:dag:child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': PlacementFixture.iri(LIFECYCLE_CHILD_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
 // Parent DAG: entry → run-child (embedded-DAG node) → parent-end.
 const parentDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:parent',
+  '@id': LIFECYCLE_PARENT_DAG_IRI,
   '@type':    'DAG',
   'name':       'parent',
   'version':    '1',
-  'entrypoints': { 'main': 'parent-entry' },
+  'entrypoints': { 'main': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'parent-entry') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:parent/node/parent-entry',
+      '@id': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'parent-entry'),
       '@type': 'SingleNode',
       'name':  'parent-entry',
-      'node':  'parent-entry',
-      'outputs': { 'next': 'run-child' },
+      'node':  'urn:noocodec:node:parent-entry',
+      'outputs': { 'next': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'run-child') },
     },
     {
-      '@id':   'urn:noocodex:dag:parent/node/run-child',
+      '@id': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'run-child'),
       '@type': 'EmbeddedDAGNode',
       'name':  'run-child',
-      'dag':   'child',
-      'outputs': { 'success': 'parent-end', 'error': 'parent-end' },
+      'dag':   LIFECYCLE_CHILD_DAG_IRI,
+      'outputs': {
+        'success': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'parent-end'),
+        'error': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'parent-end'),
+      },
     },
     {
-      '@id':   'urn:noocodex:dag:parent/node/parent-end',
+      '@id': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'parent-end'),
       '@type': 'SingleNode',
       'name':  'parent-end',
-      'node':  'parent-end',
-      'outputs': { 'done': 'end' },
+      'node':  'urn:noocodec:node:parent-end',
+      'outputs': { 'done': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'end') },
     },
-    { '@id': 'urn:noocodex:dag:parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': PlacementFixture.iri(LIFECYCLE_PARENT_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -285,10 +319,10 @@ class LifecycleFixture {
 
   /** Register the shared lifecycle node set + both DAGs on a fresh dispatcher. */
   static register(dispatcher: CountingDagonizer<NodeStateBase>): void {
-    dispatcher.registerNode(TestNode.make('child-start',  ['done']));
-    dispatcher.registerNode(TestNode.make('child-finish', ['done']));
-    dispatcher.registerNode(TestNode.make('parent-entry', ['next']));
-    dispatcher.registerNode(TestNode.make('parent-end',   ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:child-start',  ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:child-finish', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:parent-entry', ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:parent-end',   ['done']));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
   }
@@ -302,7 +336,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     const state = new NodeStateBase();
     assert.equal(state.lifecycle.variant, 'pending');
 
-    const result = await dispatcher.execute('parent', state);
+    const result = await dispatcher.execute(LIFECYCLE_PARENT_DAG_IRI, state);
 
     // Run completes cleanly; the state lifecycle transitions only once through
     // running → completed. No spurious markRunning / markCompleted from the
@@ -336,7 +370,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
     LifecycleFixture.register(dispatcher);
 
-    const result = await dispatcher.execute('parent', new NodeStateBase());
+    const result = await dispatcher.execute(LIFECYCLE_PARENT_DAG_IRI, new NodeStateBase());
 
     // The top-level runNodes only records the placements it dispatches:
     // parent-entry, run-child (the embedded-DAG placement), parent-end, end.
@@ -367,6 +401,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 
 class PassNode extends MonadicNode<NodeStateBase, 'ok'> {
   readonly name = 'pass';
+  readonly '@id' = 'urn:noocodec:node:pass';
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
   override async execute(batch: Batch<NodeStateBase>): Promise<Map<'ok', Batch<NodeStateBase>>> { return new Map([['ok', batch]]); }
@@ -381,6 +416,7 @@ const passNode = new PassNode();
 // state for observability without flipping the placement's terminal decision.
 class TolerantNode extends MonadicNode<NodeStateBase, 'ok'> {
   readonly name = 'tolerant';
+  readonly '@id' = 'urn:noocodec:node:tolerant';
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
   override async execute(batch: Batch<NodeStateBase>): Promise<Map<'ok', Batch<NodeStateBase>>> {
@@ -407,22 +443,25 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     dispatcher.registerNode(passNode);
 
     // Inner DAG: pass → terminal(failed). No collectError anywhere.
-    const innerDag = new DAGBuilder('inner-fail', '1')
-      .node('pass', passNode, { 'ok': 'end-fail' })
-      .terminal('end-fail', { 'outcome': 'failed' })
+    const innerDag = new DAGBuilder(INNER_FAIL_DAG_IRI, '1', { 'name': 'inner-fail' })
+      .node(PlacementFixture.iri(INNER_FAIL_DAG_IRI, 'pass'), passNode, { 'ok': PlacementFixture.iri(INNER_FAIL_DAG_IRI, 'end-fail') }, { 'name': 'pass' })
+      .terminal(PlacementFixture.iri(INNER_FAIL_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
     // Parent DAG: embedded-DAG node, success/error routing to distinct terminals.
-    const parentDag = new DAGBuilder('parent', '1')
-      .embeddedDAG('run-inner', 'inner-fail', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', { 'outcome': 'completed' })
-      .terminal('end-bad', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(PARENT_FAIL_DAG_IRI, '1', { 'name': 'parent' })
+      .embed(PlacementFixture.iri(PARENT_FAIL_DAG_IRI, 'run-inner'), INNER_FAIL_DAG_IRI, {
+        'success': PlacementFixture.iri(PARENT_FAIL_DAG_IRI, 'end-ok'),
+        'error': PlacementFixture.iri(PARENT_FAIL_DAG_IRI, 'end-bad'),
+      }, { 'name': 'run-inner' })
+      .terminal(PlacementFixture.iri(PARENT_FAIL_DAG_IRI, 'end-ok'), { 'name': 'end-ok', 'outcome': 'completed' })
+      .terminal(PlacementFixture.iri(PARENT_FAIL_DAG_IRI, 'end-bad'), { 'name': 'end-bad', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent', state);
+    const result = await dispatcher.execute(PARENT_FAIL_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'failed', 'parent terminal outcome is failed');
     assert.equal(result.state.lifecycle.variant, 'failed', 'parent lifecycle is failed');
@@ -434,21 +473,24 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(passNode);
 
-    const innerDag = new DAGBuilder('inner-ok', '1')
-      .node('pass', passNode, { 'ok': 'end-ok' })
-      .terminal('end-ok', { 'outcome': 'completed' })
+    const innerDag = new DAGBuilder(INNER_OK_DAG_IRI, '1', { 'name': 'inner-ok' })
+      .node(PlacementFixture.iri(INNER_OK_DAG_IRI, 'pass'), passNode, { 'ok': PlacementFixture.iri(INNER_OK_DAG_IRI, 'end-ok') }, { 'name': 'pass' })
+      .terminal(PlacementFixture.iri(INNER_OK_DAG_IRI, 'end-ok'), { 'name': 'end-ok', 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
-    const parentDag = new DAGBuilder('parent-ok', '1')
-      .embeddedDAG('run-inner', 'inner-ok', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', { 'outcome': 'completed' })
-      .terminal('end-bad', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(PARENT_OK_DAG_IRI, '1', { 'name': 'parent-ok' })
+      .embed(PlacementFixture.iri(PARENT_OK_DAG_IRI, 'run-inner'), INNER_OK_DAG_IRI, {
+        'success': PlacementFixture.iri(PARENT_OK_DAG_IRI, 'end-ok'),
+        'error': PlacementFixture.iri(PARENT_OK_DAG_IRI, 'end-bad'),
+      }, { 'name': 'run-inner' })
+      .terminal(PlacementFixture.iri(PARENT_OK_DAG_IRI, 'end-ok'), { 'name': 'end-ok', 'outcome': 'completed' })
+      .terminal(PlacementFixture.iri(PARENT_OK_DAG_IRI, 'end-bad'), { 'name': 'end-bad', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-ok', state);
+    const result = await dispatcher.execute(PARENT_OK_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.state.lifecycle.variant, 'completed');
@@ -460,21 +502,24 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     dispatcher.registerNode(passNode);
 
     // Inner DAG exits via TerminalNode(completed) with no errors.
-    const innerDag = new DAGBuilder('inner-null', '1')
-      .node('pass', passNode, { 'ok': 'inner-done' })
-      .terminal('inner-done', { 'outcome': 'completed' })
+    const innerDag = new DAGBuilder(INNER_NULL_DAG_IRI, '1', { 'name': 'inner-null' })
+      .node(PlacementFixture.iri(INNER_NULL_DAG_IRI, 'pass'), passNode, { 'ok': PlacementFixture.iri(INNER_NULL_DAG_IRI, 'inner-done') }, { 'name': 'pass' })
+      .terminal(PlacementFixture.iri(INNER_NULL_DAG_IRI, 'inner-done'), { 'name': 'inner-done', 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
-    const parentDag = new DAGBuilder('parent-completed', '1')
-      .embeddedDAG('run-inner', 'inner-null', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', { 'outcome': 'completed' })
-      .terminal('end-bad', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(PARENT_COMPLETED_DAG_IRI, '1', { 'name': 'parent-completed' })
+      .embed(PlacementFixture.iri(PARENT_COMPLETED_DAG_IRI, 'run-inner'), INNER_NULL_DAG_IRI, {
+        'success': PlacementFixture.iri(PARENT_COMPLETED_DAG_IRI, 'end-ok'),
+        'error': PlacementFixture.iri(PARENT_COMPLETED_DAG_IRI, 'end-bad'),
+      }, { 'name': 'run-inner' })
+      .terminal(PlacementFixture.iri(PARENT_COMPLETED_DAG_IRI, 'end-ok'), { 'name': 'end-ok', 'outcome': 'completed' })
+      .terminal(PlacementFixture.iri(PARENT_COMPLETED_DAG_IRI, 'end-bad'), { 'name': 'end-bad', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-completed', state);
+    const result = await dispatcher.execute(PARENT_COMPLETED_DAG_IRI, state);
 
     // Inner TerminalNode(completed) + no errors → parent routes via success.
     assert.equal(result.state.lifecycle.variant, 'completed');
@@ -491,21 +536,24 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(tolerantNode);
 
-    const innerDag = new DAGBuilder('inner-tolerant', '1')
-      .node('tolerant', tolerantNode, { 'ok': 'found' })
-      .terminal('found', { 'outcome': 'completed' })
+    const innerDag = new DAGBuilder(INNER_TOLERANT_DAG_IRI, '1', { 'name': 'inner-tolerant' })
+      .node(PlacementFixture.iri(INNER_TOLERANT_DAG_IRI, 'tolerant'), tolerantNode, { 'ok': PlacementFixture.iri(INNER_TOLERANT_DAG_IRI, 'found') }, { 'name': 'tolerant' })
+      .terminal(PlacementFixture.iri(INNER_TOLERANT_DAG_IRI, 'found'), { 'name': 'found', 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
-    const parentDag = new DAGBuilder('parent-tolerant', '1')
-      .embeddedDAG('run-inner', 'inner-tolerant', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', { 'outcome': 'completed' })
-      .terminal('end-bad', { 'outcome': 'failed' })
+    const parentDag = new DAGBuilder(PARENT_TOLERANT_DAG_IRI, '1', { 'name': 'parent-tolerant' })
+      .embed(PlacementFixture.iri(PARENT_TOLERANT_DAG_IRI, 'run-inner'), INNER_TOLERANT_DAG_IRI, {
+        'success': PlacementFixture.iri(PARENT_TOLERANT_DAG_IRI, 'end-ok'),
+        'error': PlacementFixture.iri(PARENT_TOLERANT_DAG_IRI, 'end-bad'),
+      }, { 'name': 'run-inner' })
+      .terminal(PlacementFixture.iri(PARENT_TOLERANT_DAG_IRI, 'end-ok'), { 'name': 'end-ok', 'outcome': 'completed' })
+      .terminal(PlacementFixture.iri(PARENT_TOLERANT_DAG_IRI, 'end-bad'), { 'name': 'end-bad', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-tolerant', state);
+    const result = await dispatcher.execute(PARENT_TOLERANT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed', 'completed terminal wins over a tolerated error');
     assert.equal(result.state.lifecycle.variant, 'completed');
@@ -524,13 +572,13 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(passNode);
 
-    const dag = new DAGBuilder('top', '1')
-      .node('pass', passNode, { 'ok': 'flow-end' })
-      .terminal('flow-end', { 'outcome': 'completed' })
+    const dag = new DAGBuilder(TOP_DAG_IRI, '1', { 'name': 'top' })
+      .node(PlacementFixture.iri(TOP_DAG_IRI, 'pass'), passNode, { 'ok': PlacementFixture.iri(TOP_DAG_IRI, 'flow-end') }, { 'name': 'pass' })
+      .terminal(PlacementFixture.iri(TOP_DAG_IRI, 'flow-end'), { 'name': 'flow-end', 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('top', new NodeStateBase());
+    const result = await dispatcher.execute(TOP_DAG_IRI, new NodeStateBase());
     assert.equal(result.terminalOutcome, 'completed');
   });
 });
@@ -540,156 +588,159 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
 // Sub-DAG used as a reusable component.
 const helperDAG: DAGType = {
   '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:helper',
+  '@id': HELPER_DAG_IRI,
   '@type':    'DAG',
   'name':       'helper',
   'version':    '1',
-  'entrypoints': { 'main': 'step' },
+  'entrypoints': { 'main': PlacementFixture.iri(HELPER_DAG_IRI, 'step') },
   'nodes': [
     {
-      '@id':   'urn:noocodex:dag:helper/node/step',
+      '@id': PlacementFixture.iri(HELPER_DAG_IRI, 'step'),
       '@type': 'SingleNode',
       'name':  'step',
-      'node':  'step',
-      'outputs': { 'done': 'end' },
+      'node':  'urn:noocodec:node:step',
+      'outputs': { 'done': PlacementFixture.iri(HELPER_DAG_IRI, 'end') },
     },
-    { '@id': 'urn:noocodex:dag:helper/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+    { '@id': PlacementFixture.iri(HELPER_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
 void describe('registerDAG: embedded-DAG null-route acceptance', () => {
   void it('accepts embedded-DAG placement with success → end (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('step', ['done']));
-    dispatcher.registerNode(TestNode.make('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
     // Parent DAG where the embedded-DAG body routes 'success' → end (terminate-completed)
     const parentWithNullScatter: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:null-parent',
+      '@id': NULL_PARENT_DAG_IRI,
       '@type':    'DAG',
       'name':       'null-parent',
       'version':    '1',
-      'entrypoints': { 'main': 'entry' },
+      'entrypoints': { 'main': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'entry') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:null-parent/node/entry',
+          '@id': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'entry'),
           '@type': 'SingleNode',
           'name':  'entry',
-          'node':  'entry',
-          'outputs': { 'next': 'run-helper' },
+          'node':  'urn:noocodec:node:entry',
+          'outputs': { 'next': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'run-helper') },
         },
         {
-          '@id':   'urn:noocodex:dag:null-parent/node/run-helper',
+          '@id': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'run-helper'),
           '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'dag':   'helper',
-          'outputs': { 'success': 'end', 'error': 'end' },
+          'dag':   HELPER_DAG_IRI,
+          'outputs': {
+            'success': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'end'),
+            'error': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'end'),
+          },
         },
-        { '@id': 'urn:noocodex:dag:null-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': PlacementFixture.iri(NULL_PARENT_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
     assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullScatter));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('null-parent', state);
+    const result = await dispatcher.execute(NULL_PARENT_DAG_IRI, state);
     assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
   });
 
   void it('accepts embedded-DAG placement with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('step', ['done']));
-    dispatcher.registerNode(TestNode.make('entry', ['next']));
-    dispatcher.registerNode(TestNode.make('after', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:entry', ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:after', ['done']));
 
     dispatcher.registerDAG(helperDAG);
 
     const parentWithMixedRoutes: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:mixed-parent',
+      '@id': MIXED_PARENT_DAG_IRI,
       '@type':    'DAG',
       'name':       'mixed-parent',
       'version':    '1',
-      'entrypoints': { 'main': 'entry' },
+      'entrypoints': { 'main': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'entry') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:mixed-parent/node/entry',
+          '@id': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'entry'),
           '@type': 'SingleNode',
           'name':  'entry',
-          'node':  'entry',
-          'outputs': { 'next': 'run-helper' },
+          'node':  'urn:noocodec:node:entry',
+          'outputs': { 'next': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'run-helper') },
         },
         {
-          '@id':   'urn:noocodex:dag:mixed-parent/node/after',
+          '@id': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'after'),
           '@type': 'SingleNode',
           'name':  'after',
-          'node':  'after',
-          'outputs': { 'done': 'end' },
+          'node':  'urn:noocodec:node:after',
+          'outputs': { 'done': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'end') },
         },
         {
-          '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
+          '@id': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'run-helper'),
           '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'dag':   'helper',
+          'dag':   HELPER_DAG_IRI,
           'outputs': {
-            'error':   'after',  // routes to a parent placement
-            'success': 'end',     // terminate-completed
+            'error':   PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'after'),  // routes to a parent placement
+            'success': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'end'),     // terminate-completed
           },
         },
-        { '@id': 'urn:noocodex:dag:mixed-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': PlacementFixture.iri(MIXED_PARENT_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
     assert.doesNotThrow(() => dispatcher.registerDAG(parentWithMixedRoutes));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('mixed-parent', state);
+    const result = await dispatcher.execute(MIXED_PARENT_DAG_IRI, state);
     assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
   });
 
   void it('accepts valid embedded-DAG placements where all outputs route to parent placements', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('step', ['done']));
-    dispatcher.registerNode(TestNode.make('entry', ['next']));
-    dispatcher.registerNode(TestNode.make('terminal', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:step', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:entry', ['next']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
     // All embedded-DAG outputs route to a real parent placement; no nulls
     const validParent: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:valid-parent',
+      '@id': VALID_PARENT_DAG_IRI,
       '@type':    'DAG',
       'name':       'valid-parent',
       'version':    '1',
-      'entrypoints': { 'main': 'entry' },
+      'entrypoints': { 'main': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'entry') },
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:valid-parent/node/entry',
+          '@id': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'entry'),
           '@type': 'SingleNode',
           'name':  'entry',
-          'node':  'entry',
-          'outputs': { 'next': 'run-helper' },
+          'node':  'urn:noocodec:node:entry',
+          'outputs': { 'next': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'run-helper') },
         },
         {
-          '@id':   'urn:noocodex:dag:valid-parent/node/terminal',
+          '@id': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'terminal'),
           '@type': 'SingleNode',
           'name':  'terminal',
-          'node':  'terminal',
-          'outputs': { 'done': 'end' },
+          'node':  'urn:noocodec:node:terminal',
+          'outputs': { 'done': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'end') },
         },
         {
-          '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
+          '@id': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'run-helper'),
           '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'dag':   'helper',
+          'dag':   HELPER_DAG_IRI,
           'outputs': {
-            'success': 'terminal',
-            'error':   'terminal',
+            'success': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'terminal'),
+            'error':   PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'terminal'),
           },
         },
-        { '@id': 'urn:noocodex:dag:valid-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': PlacementFixture.iri(VALID_PARENT_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -703,8 +754,8 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
       'version':    '1',
       'entrypoints': { 'main': 'step' },
       'nodes': [
-        { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': 'end' } },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { 'type': 'single', 'name': 'step', 'node': 'urn:noocodec:node:step', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodec:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.throws(() => Validator.dag.validate(flatDag));
@@ -713,10 +764,10 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
   void it('rejects a node placement using the old discriminator string (not ScatterNode)', () => {
     // Placements must use @type: 'ScatterNode'; the 'EmbeddedDAGNode' discriminator is invalid.
     const oldStylePlacement = {
-      '@id':   'urn:noocodex:dag:x/node/run-helper',
+      '@id': 'urn:noocodec:dag:x/node/run-helper',
       '@type': 'EmbeddedDAGNode',
       'name':  'run-helper',
-      'dag':   'helper',
+      'dag':   'urn:noocodec:dag:helper',
       'outputs': { 'success': 'next', 'error': 'next' },
     };
     assert.equal(Validator.scatterNode.is(oldStylePlacement), false);

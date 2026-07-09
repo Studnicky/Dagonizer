@@ -43,7 +43,7 @@ The host owns transport concerns. The DAG owns control flow. Each inbound event 
 1. A raw host message or request.
 2. A typed runner input.
 3. A fresh state instance with correlation data, user text, and injected context.
-4. One `dispatcher.execute(dagName, state, options)` call through `DagRunner`.
+4. One `dispatcher.execute(dagIri, state, options)` call through `DagRunner`.
 5. A projected output returned to the host, published to a socket, or written to a stream.
 
 Long-lived subscriptions use `EventTrigger`. Request/response APIs use `RequestTrigger`. Both surfaces run the same registered DAG; they differ only in how the host decides when to fire.
@@ -88,86 +88,11 @@ The same agent graph can serve:
 
 ### Author the agent DAG
 
-The framework does not own a prebuilt agent loop. Use `DAGBuilder` to author the graph your application needs, then register concrete node subclasses with matching names.
+The framework does not own a prebuilt agent loop. Use `DAGBuilder` to author the graph your application needs, then register concrete node subclasses referenced by that JSON-LD. Core gives you the assembly language (`DAGBuilder` and JSON-LD), the registry, and the host trigger surfaces; your application owns the topology.
 
-That is deliberate API design: reusable shapes belong in docs, examples, or plugin packages. Core gives you the assembly language (`DAGBuilder` and JSON-LD), the registry, and the host trigger surfaces; your application owns the topology.
+[Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) is the runnable reference for this section. It shows the full agent loop, explicit placement IRIs, the first-class `GatherNode` after tool scatter, and the registered tool DAG candidates. The diagram above is generated from that same source, so the topology and prose share one grimoire instead of a hand-copied spell.
 
-```typescript
-import { DAGBuilder } from '@studnicky/dagonizer/builder';
-
-const agentDag = new DAGBuilder('support-agent', '1')
-  .node('build-request', nodes.chatRequest, {
-    ready: 'call-model',
-    error: 'end-error',
-  })
-  .node('call-model', nodes.callModel, {
-    text: 'normalize-response',
-    tools: 'normalize-response',
-    mixed: 'normalize-response',
-    error: 'end-error',
-  })
-  .node('normalize-response', nodes.normalizeResponse, {
-    text: 'append-assistant',
-    tools: 'decode-tools',
-    mixed: 'decode-tools',
-    empty: 'end-error',
-    error: 'end-error',
-  })
-  .node('append-assistant', nodes.appendAssistant, {
-    done: 'end-done',
-    error: 'end-error',
-  })
-  .node('decode-tools', nodes.decodeTextToolCalls, {
-    decoded: 'normalize-tools',
-    empty: 'end-error',
-    error: 'end-error',
-  })
-  .node('normalize-tools', nodes.normalizeToolCalls, {
-    valid: 'worksets',
-    empty: 'end-error',
-    error: 'end-error',
-  })
-  .node('worksets', nodes.toolWorksets, {
-    ready: 'dispatch-tools',
-    empty: 'end-error',
-    error: 'end-error',
-  })
-  .scatter('dispatch-tools', 'safeWorkset', {
-    dag: {
-      from: 'item',
-      path: 'dagName',
-      candidates: ['tool:calculator', 'tool:search'],
-    },
-  }, {
-    'all-success': 'collect-results',
-    partial: 'collect-results',
-    'all-error': 'collect-results',
-    empty: 'collect-results',
-  }, {
-    itemKey: 'currentItem',
-    gather: { strategy: 'map', mapping: { output: 'toolOutputs' } },
-  })
-  .node('collect-results', nodes.collectToolResults, {
-    done: 'build-request',
-    empty: 'build-request',
-    error: 'end-error',
-  })
-  .terminal('end-done')
-  .terminal('end-error', { outcome: 'failed' })
-  .build();
-
-dispatcher.registerNode(nodes.chatRequest);
-dispatcher.registerNode(nodes.callModel);
-dispatcher.registerNode(nodes.normalizeResponse);
-dispatcher.registerNode(nodes.decodeTextToolCalls);
-dispatcher.registerNode(nodes.normalizeToolCalls);
-dispatcher.registerNode(nodes.toolWorksets);
-dispatcher.registerNode(nodes.collectToolResults);
-dispatcher.registerNode(nodes.appendAssistant);
-dispatcher.registerDAG(agentDag);
-```
-
-The tool scatter reads `safeWorkset`, dispatches each item through a dynamic `DagReference`, gathers `output` into `toolOutputs`, and loops through `collect-results -> build-request`. Change those names directly in your builder chain when your state shape uses different fields.
+The tool scatter reads `safeWorkset`, dispatches each item through a dynamic `DagReference`, gathers `output` into `toolOutputs` via a `GatherNode`, and loops through `collect-results -> build-request`. State field names are application-owned; DAG and placement identity stays IRI-owned.
 
 ### Put host code behind `DagRunner`
 
@@ -237,7 +162,7 @@ class ChatMessageTrigger extends EventTrigger<InboundChatMessage, ChatTurnInput,
   }
 
   protected override selectDag(_message: InboundChatMessage): string {
-    return 'support-agent';
+    return 'workflow:support-agent';
   }
 }
 ```
@@ -266,7 +191,7 @@ class ChatRequestTrigger extends RequestTrigger<ChatHttpRequest, ChatTurnInput, 
   }
 
   protected override selectDag(_request: ChatHttpRequest): string {
-    return 'support-agent';
+    return 'workflow:support-agent';
   }
 
   protected override requestOptions(request: ChatHttpRequest): ExecuteOptionsType {
@@ -305,8 +230,8 @@ The [ReAct routing example](../examples/react-agent-routing) demonstrates the si
 ### Registration checklist
 
 - Register every concrete node instance once on the dispatcher.
-- Register tool DAGs or plugin bundles before the agent DAG if `dispatch-tools` resolves them by `dagName`.
-- Register the `DAGBuilder` DAG under the same name the trigger returns from `selectDag`.
+- Register tool DAGs or plugin bundles before the agent DAG if `dispatch-tools` resolves them from an item field such as `dagIri`; the field value is a DAG IRI/CURIE.
+- Return the DAG IRI from `selectDag`; the TypeScript parameter is named `dagName`, but registry lookup expands it as an IRI/CURIE.
 - Seed a fresh state per event or request; do not reuse a state object across concurrent runs.
 - Put per-run ids on state and use them for stream routing, trace persistence, and response correlation.
 

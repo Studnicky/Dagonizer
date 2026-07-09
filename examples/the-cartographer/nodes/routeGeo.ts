@@ -19,6 +19,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region route-geo-node
 export class RouteGeoNode extends MonadicNode<CartographerState, 'has-geo' | 'needs-geo'> {
+  readonly '@id' = 'urn:noocodec:node:route-geo';
   readonly 'name' = 'route-geo';
   readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
 

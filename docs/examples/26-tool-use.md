@@ -1,6 +1,6 @@
 ---
 title: 'Example 26: Tool Use'
-description: 'Tool-use surface: Tool definition with JSON-Schema ToolDefinition, OllamaApiAdapter driving the native tool_calls channel, ToolCallCodec for text-channel fallback extraction, and DAG routing on tool dispatch success or failure.'
+description: 'Tool-use surface: Tool definition with JSON-Schema ToolDefinition, OllamaApiAdapter driving the native tool_calls channel, ToolCallCodec for text-channel extraction, and DAG routing on tool dispatch success or failure.'
 seeAlso:
   - text: 'Example 24: LLM Adapter'
     link: './24-llm-adapter'
@@ -30,9 +30,9 @@ The boundary is important: the model chooses a capability and arguments; the app
 
 ## How It Works
 
-The model returns tool calls through the adapter response. The host decodes those calls into worksets, each workset names the registered tool DAG to run, and the scatter body resolves that name via a dynamic `DagReference` with explicit candidates. The model chooses intent; the dispatcher still owns node execution, route outcomes, gathering, and terminal behavior.
+The model returns tool calls through the adapter response. The host decodes those calls into worksets, each workset carries a `urn:noocodec:tool:<name>` DAG IRI, and the scatter body resolves that reference via a dynamic `DagReference` with explicit candidates. The model chooses intent; the dispatcher still owns node execution, route outcomes, gathering, and terminal behavior.
 
-This makes tool use compositional. A tool can be a typed function, but the runnable Archivist packages each tool as an embeddable `tool:<name>` DAG so scatter, gather, retry, checkpoint, and visualization all work through the same runtime surface.
+This makes tool use compositional. A tool can be a typed function, but the runnable Archivist packages each tool as an embeddable tool DAG IRI so scatter, gather, retry, checkpoint, and visualization all work through the same runtime surface.
 
 ## Diagrams, Examples, and Outputs
 
@@ -42,7 +42,7 @@ The graph shows the model/tool dispatch boundary. [The Archivist](./the-archivis
 
 <DagJsonMermaid :dag="BookSearchScatterDAG" title="Archivist tool-use scatter DAG" aria-label="Archivist tool-use JSON-LD DAG beside Mermaid generated from it." />
 
-The Archivist registers book-search tools once, converts each tool into an embeddable `tool:<name>` DAG, then scatters worksets whose `dagName` field selects the right tool DAG at runtime.
+The Archivist registers book-search tools once, converts each tool into an embeddable tool DAG IRI, then scatters worksets whose `dagIri` field carries the target tool DAG IRI at runtime.
 
 ### Run
 
@@ -70,8 +70,8 @@ The browser registry snippet shows tool DAG registration. The scatter DAG snippe
 
 - **`Tool<TInput, TOutput>`.** Declares `name`, a JSON-Schema `ToolDefinition` (forwarded to the model via the adapter's `tools` parameter), and an `execute(input)` method that returns `TOutput`. The type parameters enforce that the decoded call input matches the schema.
 - **`ToolDefinition`.** JSON Schema–compatible object forwarded to the LLM's `tools` parameter. The schema describes the tool's input shape so the model can emit a valid call.
-- **Tool registry bundle.** The browser runner registers the tool bundle before the parent DAG so `tool:<name>` bodies resolve.
-- **Dynamic DAG dispatch.** Each workset carries the tool DAG name; the scatter body resolves it at runtime and validates it against the declared candidate DAG set.
+- **Tool registry bundle.** The browser runner registers the tool bundle before the parent DAG so tool DAG IRIs resolve.
+- **Dynamic DAG dispatch.** Each workset carries the tool DAG reference; the scatter body resolves it at runtime and validates it against the declared candidate DAG set.
 - **Tool dispatch.** The selected tool DAG calls the matching tool implementation and gathers candidates back into the parent state.
 
 ## Related Concepts

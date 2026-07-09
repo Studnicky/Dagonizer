@@ -58,7 +58,7 @@ class CandidateRecord {
       typeof Reflect.get(v, 'lat')         === 'number' &&
       typeof Reflect.get(v, 'lng')         === 'number' &&
       typeof Reflect.get(v, 'status')      === 'string' &&
-      typeof Reflect.get(v, 'fallbackUsed') === 'boolean'
+      typeof Reflect.get(v, 'secondaryLookupUsed') === 'boolean'
     );
   }
 }
@@ -75,6 +75,7 @@ class GeoResolutionArray {
 
 export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
+  readonly '@id' = 'urn:noocodec:node:geo-weighted-fusion';
 
   // ── initial: reset geoCandidates accumulator in parent state ─────────────
 

@@ -7,7 +7,7 @@ import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType, JsonValueType } from '../../src/entities/json.js';
@@ -16,6 +16,7 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const STRATEGY_NAME = 'test-tracking-gather';
+const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
 
 /** Records the call order of `initial`, `reduce`, and `finalize` hooks. */
 class TrackingGatherStrategy extends GatherStrategy {
@@ -84,32 +85,47 @@ class TestGatherInitialDag {
   private constructor() { /* static class */ }
 
   static of(dagName: string, strategyName: string): DAGType {
+    const dagIri = `urn:noocodec:dag:${dagName}`;
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@id': dagIri,
       '@type':    'DAG',
       'name':     dagName,
       'version':  '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': fanIri },
       'nodes': [
         {
-          '@id':   `urn:noocodex:dag:${dagName}/node/fan`,
+          '@id': fanIri,
           '@type': 'ScatterNode',
           'name':  'fan',
-          'body':  { 'node': 'worker' },
+          'body':  { 'node': 'urn:noocodec:node:worker' },
           'source':  'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': { 'strategy': strategyName },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
           },
         },
         {
-          '@id':    `urn:noocodex:dag:${dagName}/node/end`,
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': { 'strategy': strategyName },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        {
+          '@id': endIri,
           '@type':  'TerminalNode',
           'name':   'end',
           'outcome': 'completed',
@@ -130,13 +146,13 @@ void describe('GatherStrategy.initial() lifecycle hook', () => {
     GatherStrategies.register(strategy);
 
     const dispatcher = new Dagonizer<GatherInitialState>();
-    dispatcher.registerNode(TestNode.make<GatherInitialState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<GatherInitialState>('urn:noocodec:node:worker', ['success']));
     dispatcher.registerDAG(TestGatherInitialDag.of('gather-initial-fresh', STRATEGY_NAME));
 
     const state = new GatherInitialState();
     state.items = [1, 2, 3];
 
-    await dispatcher.execute('gather-initial-fresh', state);
+    await dispatcher.execute('urn:noocodec:dag:gather-initial-fresh', state);
 
     // initial() must be called exactly once.
     const initialCount = markers.filter((m) => m === 'initial').length;
@@ -164,16 +180,17 @@ void describe('GatherStrategy.initial() lifecycle hook', () => {
     GatherStrategies.register(strategy);
 
     const dispatcher = new Dagonizer<GatherInitialState>();
-    dispatcher.registerNode(TestNode.make<GatherInitialState>('worker', ['success']));
+    dispatcher.registerNode(TestNode.make<GatherInitialState>('urn:noocodec:node:worker', ['success']));
     dispatcher.registerDAG(TestGatherInitialDag.of('gather-initial-resume', STRATEGY_NAME));
 
     // Pre-seed a bounded checkpoint: items 0 and 1 "already done".
     const state = new GatherInitialState();
     state.items = [1, 2, 3, 4, 5];
+    const fanIri = placementIri('urn:noocodec:dag:gather-initial-resume', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
+      [fanIri]: {
         'mode': 'bounded' as const,
-        'placementName': 'fan',
+        'placementName': fanIri,
         'inbox': [],
         'watermark': 2,
         'aheadAcked': [],
@@ -181,7 +198,7 @@ void describe('GatherStrategy.initial() lifecycle hook', () => {
       },
     });
 
-    await dispatcher.resume('gather-initial-resume', state, 'fan');
+    await dispatcher.resume('urn:noocodec:dag:gather-initial-resume', state, fanIri);
 
     // initial() must NOT be called on resume.
     const initialCount = markers.filter((m) => m === 'initial').length;

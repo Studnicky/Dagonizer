@@ -1,7 +1,7 @@
 # Dagonizer: Project Standards
 
 `@studnicky/dagonizer` is a DAG dispatcher. Type-safe nodes, abortable
-execution, deterministic resume. Backbone of the noocodex orchestration
+execution, deterministic resume. Backbone of the noocodec orchestration
 stack; consumers extend and compose, never patch.
 
 ## Operating principles
@@ -65,7 +65,7 @@ stack; consumers extend and compose, never patch.
   after construction; never assign a value of a different type to a
   property. Optional/undefined breaks shape consistency: every
   instance with the property has one hidden class, every instance
-  without has another, and V8 falls back to dictionary mode. The
+  without has another, and V8 enters dictionary mode. The
   required-with-defaults rule above is the primary lever; classes for
   hot-path entities, consistent constructor order, and avoiding `as
   any` casts close the rest of the gap.

@@ -1,11 +1,11 @@
 /**
  * WorkSet: the scheduler's pending-work table for the batch-native DAG walk.
  *
- * Holds a map of node-name → pending Batch — the items waiting at each node.
- * The walk repeatedly takes the lowest-rank node that still holds items, fires
- * it, and routes its output items into the downstream nodes' entries. The walk
- * is initialized by adding the input batch at the entry node and ends when no
- * node holds items.
+ * Holds a map of placement IRI → pending Batch — the items waiting at each placement.
+ * The walk repeatedly takes the lowest-rank placement that still holds items,
+ * fires it, and routes its output items into the downstream placement entries.
+ * The walk is initialized by adding the input batch at the entrypoint placement
+ * and ends when no placement holds items.
  *
  * V8 shape stability: single `#entries` field set in constructor, never
  * deleted or retyped. All methods operate on the stable map reference.
@@ -21,51 +21,53 @@ export class WorkSet<TState> {
   }
 
   /**
-   * Add `batch` to the work pending at `node`, concatenating with any batch
-   * already held there. Creates a new entry when `node` is not yet present.
+   * Add `batch` to the work pending at `placementIri`, concatenating with any
+   * batch already held there. Creates a new entry when `placementIri` is not
+   * yet present.
    * Preserves item order: existing items first, then new items.
    */
-  add(node: string, batch: Batch<TState>): void {
-    const existing = this.#entries.get(node);
+  add(placementIri: string, batch: Batch<TState>): void {
+    const existing = this.#entries.get(placementIri);
     if (existing !== undefined) {
-      this.#entries.set(node, existing.concat(batch));
+      this.#entries.set(placementIri, existing.concat(batch));
     } else {
-      this.#entries.set(node, batch);
+      this.#entries.set(placementIri, batch);
     }
   }
 
   /**
-   * Remove and return the batch pending at `node`.
+   * Remove and return the batch pending at `placementIri`.
    * Returns `undefined` when no batch is held there.
    */
-  take(node: string): Batch<TState> | undefined {
-    const batch = this.#entries.get(node);
+  take(placementIri: string): Batch<TState> | undefined {
+    const batch = this.#entries.get(placementIri);
     if (batch !== undefined) {
-      this.#entries.delete(node);
+      this.#entries.delete(placementIri);
     }
     return batch;
   }
 
   /**
-   * Return the node with the lowest rank among all nodes that hold items.
+   * Return the placement IRI with the lowest rank among all placements that
+   * hold items.
    * Ties in rank are broken by the lowest declaration index (provided by
    * `declIndexOf`).
    *
-   * Returns the node name, or `null` when no node holds items.
+   * Returns the placement IRI, or `null` when no placement holds items.
    */
   nextReady(
-    rankOf: (name: string) => number,
-    declIndexOf: (name: string) => number,
+    rankOf: (placementIri: string) => number,
+    declIndexOf: (placementIri: string) => number,
   ): string | null {
     let best: string | null = null;
     let bestRank = Number.MAX_SAFE_INTEGER;
     let bestDecl = Number.MAX_SAFE_INTEGER;
 
-    for (const name of this.#entries.keys()) {
-      const rank = rankOf(name);
-      const decl = declIndexOf(name);
+    for (const placementIri of this.#entries.keys()) {
+      const rank = rankOf(placementIri);
+      const decl = declIndexOf(placementIri);
       if (rank < bestRank || (rank === bestRank && decl < bestDecl)) {
-        best = name;
+        best = placementIri;
         bestRank = rank;
         bestDecl = decl;
       }
@@ -74,36 +76,36 @@ export class WorkSet<TState> {
     return best;
   }
 
-  /** Returns true when no node holds pending work. */
+  /** Returns true when no placement holds pending work. */
   isEmpty(): boolean {
     return this.#entries.size === 0;
   }
 
-  /** Returns the number of nodes that currently hold pending work. */
+  /** Returns the number of placements that currently hold pending work. */
   get size(): number {
     return this.#entries.size;
   }
 
   /**
-   * Peek at the batch pending at `node` without removing it.
+   * Peek at the batch pending at `placementIri` without removing it.
    * Returns `undefined` when no batch is present.
    */
-  peek(node: string): Batch<TState> | undefined {
-    return this.#entries.get(node);
+  peek(placementIri: string): Batch<TState> | undefined {
+    return this.#entries.get(placementIri);
   }
 
   /**
-   * Remove and return the batch pending at `node`. Throws when no batch is
-   * held there. Use only at call sites that have verified the entry exists
-   * (e.g. immediately after `nextReady` returns the name) — the throw is a
+   * Remove and return the batch pending at `placementIri`. Throws when no batch
+   * is held there. Use only at call sites that have verified the entry exists
+   * (e.g. immediately after `nextReady` returns the IRI) — the throw is a
    * programming-error guard, not expected control flow.
    */
-  takeExpected(node: string): Batch<TState> {
-    const batch = this.#entries.get(node);
+  takeExpected(placementIri: string): Batch<TState> {
+    const batch = this.#entries.get(placementIri);
     if (batch === undefined) {
-      throw new Error(`WorkSet.takeExpected: no batch at '${node}'`);
+      throw new Error(`WorkSet.takeExpected: no batch at '${placementIri}'`);
     }
-    this.#entries.delete(node);
+    this.#entries.delete(placementIri);
     return batch;
   }
 

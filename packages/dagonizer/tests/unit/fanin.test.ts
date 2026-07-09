@@ -10,7 +10,32 @@ import type { JsonObjectType } from '../../src/entities/json.js';
 import { GatherBuffers } from '../../src/execution/GatherBuffers.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
+const entrypointIri = TestDag.entrypointIri;
+
+const MULTI_ENTRY_GATHER_DAG_IRI = 'urn:noocodex:dag:multi-entry-gather';
+const MAIN_SOURCE_GATHER_DAG_IRI = 'urn:noocodex:dag:main-source-gather';
+const GATHER_ANY_POLICY_DAG_IRI = 'urn:noocodex:dag:gather-any-policy';
+const GATHER_QUORUM_POLICY_DAG_IRI = 'urn:noocodex:dag:gather-quorum-policy';
+const GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI = 'urn:noocodex:dag:gather-include-errors-policy';
+const MULTI_ENTRY_GATHER_RESUME_DAG_IRI = 'urn:noocodex:dag:multi-entry-gather-resume';
+const CHILD_ANSWER_DAG_IRI = 'urn:noocodex:dag:child-answer';
+const EMBEDDED_GATHER_RESULT_DAG_IRI = 'urn:noocodex:dag:embedded-gather-result';
+const COMPACT_CHILD_ANSWER_DAG_IRI = 'urn:noocodex:dag:compact-child-answer';
+const COMPACT_GATHER_RESULT_DAG_IRI = 'urn:noocodex:dag:compact-gather-result';
+const RETAINED_CHILD_ANSWER_DAG_IRI = 'urn:noocodex:dag:retained-child-answer';
+const RETAINED_GATHER_RESULT_DAG_IRI = 'urn:noocodex:dag:retained-gather-result';
+const SOURCE_LABEL_RESUME_DAG_IRI = 'urn:noocodex:dag:source-label-resume';
+const MIXED_CHILD_ANSWER_DAG_IRI = 'urn:noocodex:dag:mixed-child-answer';
+const MIXED_PRODUCER_GATHER_DAG_IRI = 'urn:noocodex:dag:mixed-producer-gather';
+const PARTITION_DAG_IRI = 'urn:noocodex:dag:partition';
+const CUSTOM_FAN_DAG_IRI = 'urn:noocodex:dag:customfan';
+const APPEND_FAN_DAG_IRI = 'urn:noocodex:dag:appendfan';
+const MAP_FAN_DAG_IRI = 'urn:noocodex:dag:mapfan';
+const CONC_DAG_IRI = 'urn:noocodex:dag:conc';
 
 void describe('GatherBuffers', () => {
   void it('preserves multiple scalar records from the same producer source', () => {
@@ -19,8 +44,8 @@ void describe('GatherBuffers', () => {
       '@id':     'urn:test:join',
       '@type':   'GatherNode',
       'name':    'join',
-      'sources': ['producer'],
-      'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
+      'sources': { 'producer': {} },
+      'gather':  { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge' },
       'outputs': { 'success': 'end', 'error': 'failed' },
     } satisfies GatherNodeType;
 
@@ -47,11 +72,12 @@ void describe('GatherBuffers', () => {
       },
     ];
 
-    for (const record of records) buffers.add('join', record);
+    const gatherKey = 'urn:noocodex:dag:test/node/join/execution/0';
+    for (const record of records) buffers.add(gatherKey, record);
 
-    assert.equal(buffers.ready(gather), true);
+    assert.equal(buffers.ready(gather, gatherKey), true);
     assert.deepEqual(
-      buffers.takeReady(gather).map((record) => record.result),
+      buffers.takeReady(gather, gatherKey).records.map((record) => record.result),
       ['first', 'second'],
     );
   });
@@ -66,15 +92,15 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<MultiEntryState>();
-    const left = TestNode.make<MultiEntryState>('left', ['success'], (state) => {
+    const left = TestNode.make<MultiEntryState>('urn:noocodec:node:left', ['success'], (state) => {
       state.leftValue = 'left-ready';
       return 'success';
     });
-    const right = TestNode.make<MultiEntryState>('right', ['success'], (state) => {
+    const right = TestNode.make<MultiEntryState>('urn:noocodec:node:right', ['success'], (state) => {
       state.rightValue = 'right-ready';
       return 'success';
     });
-    const merge = TestNode.make<MultiEntryState>('merge', ['success'], (state) => {
+    const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -85,21 +111,30 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(right);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('multi-entry-gather', '1')
-      .node('left', left, { 'success': 'join' })
-      .node('right', right, { 'success': 'join' })
-      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'left': 'left', 'right': 'right' })
+    const dag = new DAGBuilder(MULTI_ENTRY_GATHER_DAG_IRI, '1', { 'name': 'multi-entry-gather' })
+      .node(placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'left'), left, { 'success': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'join') }, { 'name': 'left' })
+      .node(placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'right'), right, { 'success': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'join') }, { 'name': 'right' })
+      .gather(placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'join'), {
+        [placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'left')]: {},
+        [placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'right')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge' }, {
+        'success': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'end'),
+        'error': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({ 'left': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'left'), 'right': placementIri(MULTI_ENTRY_GATHER_DAG_IRI, 'right') })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new MultiEntryState();
-    const result = await dispatcher.execute('multi-entry-gather', state);
+    const result = await dispatcher.execute(MULTI_ENTRY_GATHER_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['left', 'right']);
+    assert.deepEqual(state.seenSources, [
+      'urn:noocodex:dag:multi-entry-gather/node/left',
+      'urn:noocodex:dag:multi-entry-gather/node/right',
+    ]);
   });
 
   void it('first-class gather uses main as the scalar entrypoint producer label', async () => {
@@ -108,8 +143,8 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<MainSourceState>();
-    const work = TestNode.make<MainSourceState>('work-main-source', ['success']);
-    const merge = TestNode.make<MainSourceState>('merge-main-source', ['success'], (state) => {
+    const work = TestNode.make<MainSourceState>('urn:noocodec:node:work-main-source', ['success']);
+    const merge = TestNode.make<MainSourceState>('urn:noocodec:node:merge-main-source', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source']));
@@ -119,19 +154,22 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(work);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('main-source-gather', '1')
-      .node('work-placement', work, { 'success': 'join' })
-      .gather('join', ['main'], { 'strategy': 'custom', 'customNode': 'merge-main-source' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
+    const dag = new DAGBuilder(MAIN_SOURCE_GATHER_DAG_IRI, '1', { 'name': 'main-source-gather' })
+      .node(placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'work-placement'), work, { 'success': placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'join') }, { 'name': 'work-placement' })
+      .gather(placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'join'), { [entrypointIri(MAIN_SOURCE_GATHER_DAG_IRI, 'main')]: {} }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-main-source' }, {
+        'success': placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'end'),
+        'error': placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(MAIN_SOURCE_GATHER_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new MainSourceState();
-    const result = await dispatcher.execute('main-source-gather', state);
+    const result = await dispatcher.execute(MAIN_SOURCE_GATHER_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['main']);
+    assert.deepEqual(state.seenSources, ['urn:noocodex:dag:main-source-gather/entrypoint/main']);
   });
 
   void it('first-class gather any policy keeps only the first arrived source', async () => {
@@ -140,9 +178,9 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<AnyState>();
-    const left = TestNode.make<AnyState>('left-any', ['success']);
-    const right = TestNode.make<AnyState>('right-any', ['success']);
-    const merge = TestNode.make<AnyState>('merge-any', ['success'], (state) => {
+    const left = TestNode.make<AnyState>('urn:noocodec:node:left-any', ['success']);
+    const right = TestNode.make<AnyState>('urn:noocodec:node:right-any', ['success']);
+    const merge = TestNode.make<AnyState>('urn:noocodec:node:merge-any', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -153,23 +191,30 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(right);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('gather-any-policy', '1')
-      .node('left-node', left, { 'success': 'join' })
-      .node('right-node', right, { 'success': 'join' })
-      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge-any' }, { 'success': 'end', 'error': 'failed' }, {
+    const dag = new DAGBuilder(GATHER_ANY_POLICY_DAG_IRI, '1', { 'name': 'gather-any-policy' })
+      .node(placementIri(GATHER_ANY_POLICY_DAG_IRI, 'left-node'), left, { 'success': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'join') }, { 'name': 'left-node' })
+      .node(placementIri(GATHER_ANY_POLICY_DAG_IRI, 'right-node'), right, { 'success': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'join') }, { 'name': 'right-node' })
+      .gather(placementIri(GATHER_ANY_POLICY_DAG_IRI, 'join'), {
+        [entrypointIri(GATHER_ANY_POLICY_DAG_IRI, 'left')]: {},
+        [entrypointIri(GATHER_ANY_POLICY_DAG_IRI, 'right')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-any' }, {
+        'success': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'end'),
+        'error': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'failed'),
+      }, {
+        'name': 'join',
         'policy': { 'mode': 'any' },
       })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'left': 'left-node', 'right': 'right-node' })
+      .terminal(placementIri(GATHER_ANY_POLICY_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(GATHER_ANY_POLICY_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({ 'left': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'left-node'), 'right': placementIri(GATHER_ANY_POLICY_DAG_IRI, 'right-node') })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new AnyState();
-    const result = await dispatcher.execute('gather-any-policy', state);
+    const result = await dispatcher.execute(GATHER_ANY_POLICY_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['left']);
+    assert.deepEqual(state.seenSources, ['urn:noocodex:dag:gather-any-policy/entrypoint/left']);
   });
 
   void it('first-class gather quorum policy keeps the first quorum source groups', async () => {
@@ -178,10 +223,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<QuorumState>();
-    const first = TestNode.make<QuorumState>('first-quorum', ['success']);
-    const second = TestNode.make<QuorumState>('second-quorum', ['success']);
-    const third = TestNode.make<QuorumState>('third-quorum', ['success']);
-    const merge = TestNode.make<QuorumState>('merge-quorum', ['success'], (state) => {
+    const first = TestNode.make<QuorumState>('urn:noocodec:node:first-quorum', ['success']);
+    const second = TestNode.make<QuorumState>('urn:noocodec:node:second-quorum', ['success']);
+    const third = TestNode.make<QuorumState>('urn:noocodec:node:third-quorum', ['success']);
+    const merge = TestNode.make<QuorumState>('urn:noocodec:node:merge-quorum', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -193,24 +238,39 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(third);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('gather-quorum-policy', '1')
-      .node('first-node', first, { 'success': 'join' })
-      .node('second-node', second, { 'success': 'join' })
-      .node('third-node', third, { 'success': 'join' })
-      .gather('join', ['first', 'second', 'third'], { 'strategy': 'custom', 'customNode': 'merge-quorum' }, { 'success': 'end', 'error': 'failed' }, {
+    const dag = new DAGBuilder(GATHER_QUORUM_POLICY_DAG_IRI, '1', { 'name': 'gather-quorum-policy' })
+      .node(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'first-node'), first, { 'success': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'join') }, { 'name': 'first-node' })
+      .node(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'second-node'), second, { 'success': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'join') }, { 'name': 'second-node' })
+      .node(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'third-node'), third, { 'success': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'join') }, { 'name': 'third-node' })
+      .gather(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'join'), {
+        [entrypointIri(GATHER_QUORUM_POLICY_DAG_IRI, 'first')]: {},
+        [entrypointIri(GATHER_QUORUM_POLICY_DAG_IRI, 'second')]: {},
+        [entrypointIri(GATHER_QUORUM_POLICY_DAG_IRI, 'third')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-quorum' }, {
+        'success': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'end'),
+        'error': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'failed'),
+      }, {
+        'name': 'join',
         'policy': { 'mode': 'quorum', 'quorum': 2 },
       })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'first': 'first-node', 'second': 'second-node', 'third': 'third-node' })
+      .terminal(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'first': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'first-node'),
+        'second': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'second-node'),
+        'third': placementIri(GATHER_QUORUM_POLICY_DAG_IRI, 'third-node'),
+      })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new QuorumState();
-    const result = await dispatcher.execute('gather-quorum-policy', state);
+    const result = await dispatcher.execute(GATHER_QUORUM_POLICY_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['first', 'second']);
+    assert.deepEqual(state.seenSources, [
+      'urn:noocodex:dag:gather-quorum-policy/entrypoint/first',
+      'urn:noocodex:dag:gather-quorum-policy/entrypoint/second',
+    ]);
   });
 
   void it('first-class gather can exclude error records from strategy input', async () => {
@@ -219,9 +279,9 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<IncludeErrorsState>();
-    const bad = TestNode.make<IncludeErrorsState>('bad-source', ['error'], () => 'error');
-    const good = TestNode.make<IncludeErrorsState>('good-source', ['success']);
-    const merge = TestNode.make<IncludeErrorsState>('merge-include-errors', ['success'], (state) => {
+    const bad = TestNode.make<IncludeErrorsState>('urn:noocodec:node:bad-source', ['error'], () => 'error');
+    const good = TestNode.make<IncludeErrorsState>('urn:noocodec:node:good-source', ['success']);
+    const merge = TestNode.make<IncludeErrorsState>('urn:noocodec:node:merge-include-errors', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -232,23 +292,30 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(good);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('gather-include-errors-policy', '1')
-      .node('bad-node', bad, { 'error': 'join' })
-      .node('good-node', good, { 'success': 'join' })
-      .gather('join', ['bad', 'good'], { 'strategy': 'custom', 'customNode': 'merge-include-errors' }, { 'success': 'end', 'error': 'failed' }, {
+    const dag = new DAGBuilder(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, '1', { 'name': 'gather-include-errors-policy' })
+      .node(placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'bad-node'), bad, { 'error': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'join') }, { 'name': 'bad-node' })
+      .node(placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'good-node'), good, { 'success': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'join') }, { 'name': 'good-node' })
+      .gather(placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'join'), {
+        [entrypointIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'bad')]: {},
+        [entrypointIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'good')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-include-errors' }, {
+        'success': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'end'),
+        'error': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'failed'),
+      }, {
+        'name': 'join',
         'policy': { 'includeErrors': false },
       })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'bad': 'bad-node', 'good': 'good-node' })
+      .terminal(placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({ 'bad': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'bad-node'), 'good': placementIri(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, 'good-node') })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new IncludeErrorsState();
-    const result = await dispatcher.execute('gather-include-errors-policy', state);
+    const result = await dispatcher.execute(GATHER_INCLUDE_ERRORS_POLICY_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['good']);
+    assert.deepEqual(state.seenSources, ['urn:noocodex:dag:gather-include-errors-policy/entrypoint/good']);
   });
 
   void it('first-class gather resumes after one producer is buffered', async () => {
@@ -258,12 +325,12 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     const controller = new AbortController();
     const dispatcher = new Dagonizer<MultiEntryState>();
-    const left = TestNode.make<MultiEntryState>('left', ['success'], () => {
+    const left = TestNode.make<MultiEntryState>('urn:noocodec:node:left', ['success'], () => {
       controller.abort();
       return 'success';
     });
-    const right = TestNode.make<MultiEntryState>('right', ['success']);
-    const merge = TestNode.make<MultiEntryState>('merge', ['success'], (state) => {
+    const right = TestNode.make<MultiEntryState>('urn:noocodec:node:right', ['success']);
+    const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -274,29 +341,38 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(right);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('multi-entry-gather-resume', '1')
-      .node('left', left, { 'success': 'join' })
-      .node('right', right, { 'success': 'join' })
-      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'left': 'left', 'right': 'right' })
+    const dag = new DAGBuilder(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, '1', { 'name': 'multi-entry-gather-resume' })
+      .node(placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'left'), left, { 'success': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'join') }, { 'name': 'left' })
+      .node(placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right'), right, { 'success': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'join') }, { 'name': 'right' })
+      .gather(placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'join'), {
+        [placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'left')]: {},
+        [placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge' }, {
+        'success': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'end'),
+        'error': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({ 'left': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'left'), 'right': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right') })
       .build();
     dispatcher.registerDAG(dag);
 
-    const partial = await dispatcher.execute('multi-entry-gather-resume', new MultiEntryState(), {
+    const partial = await dispatcher.execute(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, new MultiEntryState(), {
       'signal': controller.signal,
     });
 
     assert.equal(partial.terminalOutcome, null);
-    assert.deepEqual(partial.interruptedAt, { 'nodeName': 'right', 'reason': 'abort' });
-    assert.equal(partial.cursor, 'right');
+    assert.deepEqual(partial.interruptedAt, { 'nodeName': placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right'), 'reason': 'abort' });
+    assert.equal(partial.cursor, placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right'));
     assert.ok(partial.state.getMetadata(GATHER_PROGRESS_KEY));
 
-    const resumed = await dispatcher.resume('multi-entry-gather-resume', partial.state, partial.cursor);
+    const resumed = await dispatcher.resume(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, partial.state, partial.cursor);
 
     assert.equal(resumed.terminalOutcome, 'completed');
-    assert.deepEqual(partial.state.seenSources, ['left', 'right']);
+    assert.deepEqual(partial.state.seenSources, [
+      placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'left'),
+      placementIri(MULTI_ENTRY_GATHER_RESUME_DAG_IRI, 'right'),
+    ]);
     assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
   });
 
@@ -309,29 +385,38 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<ParentState>();
-    const answer = TestNode.make<ChildState>('answer', ['success'], (state) => {
+    const answer = TestNode.make<ChildState>('urn:noocodec:node:answer', ['success'], (state) => {
       state.answer = 'forty-two';
       return 'success';
     });
-    const merge = TestNode.make<ParentState>('merge', ['success'], (state) => {
+    const merge = TestNode.make<ParentState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenResults = records.map((record) => record['result']);
       return 'success';
     });
 
-    const childDag = new DAGBuilder('child-answer', '1')
-      .node('answer', answer, { 'success': 'done' })
-      .terminal('done')
+    const childDag = new DAGBuilder(CHILD_ANSWER_DAG_IRI, '1', { 'name': 'child-answer' })
+      .node(placementIri(CHILD_ANSWER_DAG_IRI, 'answer'), answer, { 'success': placementIri(CHILD_ANSWER_DAG_IRI, 'done') }, { 'name': 'answer' })
+      .terminal(placementIri(CHILD_ANSWER_DAG_IRI, 'done'), { 'name': 'done' })
       .build();
 
-    const parentDag = new DAGBuilder('embedded-gather-result', '1')
-      .embed<ChildState, ParentState>('invoke', 'child-answer', { 'success': 'join', 'error': 'join' }, {
+    const parentDag = new DAGBuilder(EMBEDDED_GATHER_RESULT_DAG_IRI, '1', { 'name': 'embedded-gather-result' })
+      .embed<ChildState, ParentState>(placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'invoke'), CHILD_ANSWER_DAG_IRI, {
+        'success': placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'join'),
+        'error': placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'join'),
+      }, {
         'gatherResult': { 'resultField': 'answer' },
+        'name': 'invoke',
       })
-      .gather('join', ['invoke'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
+      .gather(placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'join'), {
+        [placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'invoke')]: { 'resultField': 'answer' },
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge' }, {
+        'success': placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'end'),
+        'error': placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(EMBEDDED_GATHER_RESULT_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
       .build();
 
     dispatcher.registerNode(answer);
@@ -340,7 +425,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new ParentState();
-    const result = await dispatcher.execute('embedded-gather-result', state);
+    const result = await dispatcher.execute(EMBEDDED_GATHER_RESULT_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.seenResults, ['forty-two']);
@@ -357,15 +442,15 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     const controller = new AbortController();
     const dispatcher = new Dagonizer<ParentState>();
-    const answer = TestNode.make<ChildState>('answer-compact', ['success'], (state) => {
+    const answer = TestNode.make<ChildState>('urn:noocodec:node:answer-compact', ['success'], (state) => {
       state.answer = 'forty-two';
       return 'success';
     });
-    const pause = TestNode.make<ParentState>('pause-compact', ['success'], () => {
+    const pause = TestNode.make<ParentState>('urn:noocodec:node:pause-compact', ['success'], () => {
       controller.abort();
       return 'success';
     });
-    const merge = TestNode.make<ParentState>('merge-compact', ['success'], (state) => {
+    const merge = TestNode.make<ParentState>('urn:noocodec:node:merge-compact', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenResults = records.map((record) => record['result']);
@@ -373,20 +458,33 @@ void describe('Dagonizer scatter gather strategies', () => {
       return 'success';
     });
 
-    const childDag = new DAGBuilder('compact-child-answer', '1')
-      .node('answer', answer, { 'success': 'done' })
-      .terminal('done')
+    const childDag = new DAGBuilder(COMPACT_CHILD_ANSWER_DAG_IRI, '1', { 'name': 'compact-child-answer' })
+      .node(placementIri(COMPACT_CHILD_ANSWER_DAG_IRI, 'answer'), answer, { 'success': placementIri(COMPACT_CHILD_ANSWER_DAG_IRI, 'done') }, { 'name': 'answer' })
+      .terminal(placementIri(COMPACT_CHILD_ANSWER_DAG_IRI, 'done'), { 'name': 'done' })
       .build();
 
-    const parentDag = new DAGBuilder('compact-gather-result', '1')
-      .embed<ChildState, ParentState>('invoke', 'compact-child-answer', { 'success': 'join', 'error': 'join' }, {
+    const parentDag = new DAGBuilder(COMPACT_GATHER_RESULT_DAG_IRI, '1', { 'name': 'compact-gather-result' })
+      .embed<ChildState, ParentState>(placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'invoke'), COMPACT_CHILD_ANSWER_DAG_IRI, {
+        'success': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'join'),
+        'error': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'join'),
+      }, {
         'gatherResult': { 'resultField': 'answer' },
+        'name': 'invoke',
       })
-      .node('pause', pause, { 'success': 'join' })
-      .gather('join', ['embedded-answer', 'plain-answer'], { 'strategy': 'custom', 'customNode': 'merge-compact' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'embedded-answer': 'invoke', 'plain-answer': 'pause' })
+      .node(placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'pause'), pause, { 'success': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'join') }, { 'name': 'pause' })
+      .gather(placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'join'), {
+        [entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'embedded-answer')]: { 'resultField': 'answer' },
+        [entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'plain-answer')]: { 'resultField': 'answer' },
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-compact' }, {
+        'success': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'end'),
+        'error': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'embedded-answer': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'invoke'),
+        'plain-answer': placementIri(COMPACT_GATHER_RESULT_DAG_IRI, 'pause'),
+      })
       .build();
 
     dispatcher.registerNode(answer);
@@ -395,7 +493,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerDAG(childDag, () => new ChildState());
     dispatcher.registerDAG(parentDag);
 
-    const partial = await dispatcher.execute('compact-gather-result', new ParentState(), {
+    const partial = await dispatcher.execute(COMPACT_GATHER_RESULT_DAG_IRI, new ParentState(), {
       'signal': controller.signal,
     });
 
@@ -403,18 +501,21 @@ void describe('Dagonizer scatter gather strategies', () => {
     const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
     assert.ok(rawProgress !== undefined, 'gather checkpoint should be present after abort');
     const progress = Validator.gatherProgress.validate(rawProgress);
-    const buffered = progress.entries['join'] ?? [];
-    const compacted = buffered.find((record) => record.source === 'embedded-answer');
+    const buffered = Object.values(progress.entries).flat();
+    const compacted = buffered.find((record) => record.source === entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'embedded-answer'));
     assert.ok(compacted !== undefined, 'embedded producer record should be checkpointed');
     assert.equal(compacted.result, 'forty-two');
     assert.equal('snapshot' in compacted, false, 'projected result record should not retain clone snapshot');
 
     assert.ok(partial.cursor !== null);
-    const resumed = await dispatcher.resume('compact-gather-result', partial.state, partial.cursor);
+    const resumed = await dispatcher.resume(COMPACT_GATHER_RESULT_DAG_IRI, partial.state, partial.cursor);
 
     assert.equal(resumed.terminalOutcome, 'completed');
-    assert.deepEqual(partial.state.seenSources, ['embedded-answer', 'plain-answer']);
-    assert.deepEqual(partial.state.seenResults, ['forty-two', undefined]);
+    assert.deepEqual(partial.state.seenSources, [
+      entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'embedded-answer'),
+      entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'plain-answer'),
+    ]);
+    assert.deepEqual(partial.state.seenResults, ['forty-two', null]);
     assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
   });
 
@@ -438,33 +539,46 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     const controller = new AbortController();
     const dispatcher = new Dagonizer<ParentState>();
-    const answer = TestNode.make<ChildState>('answer-retained', ['success'], (state) => {
+    const answer = TestNode.make<ChildState>('urn:noocodec:node:answer-retained', ['success'], (state) => {
       state.answer = 'forty-two';
       return 'success';
     });
-    const pause = TestNode.make<ParentState>('pause-retained', ['success'], () => {
+    const pause = TestNode.make<ParentState>('urn:noocodec:node:pause-retained', ['success'], () => {
       controller.abort();
       return 'success';
     });
 
-    const childDag = new DAGBuilder('retained-child-answer', '1')
-      .node('answer', answer, { 'success': 'done' })
-      .terminal('done')
+    const childDag = new DAGBuilder(RETAINED_CHILD_ANSWER_DAG_IRI, '1', { 'name': 'retained-child-answer' })
+      .node(placementIri(RETAINED_CHILD_ANSWER_DAG_IRI, 'answer'), answer, { 'success': placementIri(RETAINED_CHILD_ANSWER_DAG_IRI, 'done') }, { 'name': 'answer' })
+      .terminal(placementIri(RETAINED_CHILD_ANSWER_DAG_IRI, 'done'), { 'name': 'done' })
       .build();
 
-    const parentDag = new DAGBuilder('retained-gather-result', '1')
-      .embed<ChildState, ParentState>('invoke', 'retained-child-answer', { 'success': 'join', 'error': 'join' }, {
+    const parentDag = new DAGBuilder(RETAINED_GATHER_RESULT_DAG_IRI, '1', { 'name': 'retained-gather-result' })
+      .embed<ChildState, ParentState>(placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'invoke'), RETAINED_CHILD_ANSWER_DAG_IRI, {
+        'success': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'join'),
+        'error': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'join'),
+      }, {
         'gatherResult': { 'resultField': 'answer' },
+        'name': 'invoke',
       })
-      .node('pause', pause, { 'success': 'join' })
-      .gather('join', ['embedded-answer', 'plain-answer'], {
+      .node(placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'pause'), pause, { 'success': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'join') }, { 'name': 'pause' })
+      .gather(placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'join'), {
+        [entrypointIri(RETAINED_GATHER_RESULT_DAG_IRI, 'embedded-answer')]: { 'resultField': 'answer' },
+        [entrypointIri(RETAINED_GATHER_RESULT_DAG_IRI, 'plain-answer')]: { 'resultField': 'answer' },
+      }, {
         'strategy': 'append',
         'target':   'answers',
         'field':    'answer',
-      }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'embedded-answer': 'invoke', 'plain-answer': 'pause' })
+      }, {
+        'success': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'end'),
+        'error': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'embedded-answer': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'invoke'),
+        'plain-answer': placementIri(RETAINED_GATHER_RESULT_DAG_IRI, 'pause'),
+      })
       .build();
 
     dispatcher.registerNode(answer);
@@ -472,21 +586,21 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerDAG(childDag, () => new ChildState());
     dispatcher.registerDAG(parentDag);
 
-    const partial = await dispatcher.execute('retained-gather-result', new ParentState(), {
+    const partial = await dispatcher.execute(RETAINED_GATHER_RESULT_DAG_IRI, new ParentState(), {
       'signal': controller.signal,
     });
 
     const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
     assert.ok(rawProgress !== undefined, 'gather checkpoint should be present after abort');
     const progress = Validator.gatherProgress.validate(rawProgress);
-    const buffered = progress.entries['join'] ?? [];
-    const retained = buffered.find((record) => record.source === 'embedded-answer');
+    const buffered = Object.values(progress.entries).flat();
+    const retained = buffered.find((record) => record.source === entrypointIri(RETAINED_GATHER_RESULT_DAG_IRI, 'embedded-answer'));
     assert.ok(retained !== undefined, 'embedded producer record should be checkpointed');
     assert.equal(retained.result, 'forty-two');
     assert.equal('snapshot' in retained, true, 'built-in reducers need clone state for resume');
 
     assert.ok(partial.cursor !== null);
-    const resumed = await dispatcher.resume('retained-gather-result', partial.state, partial.cursor);
+    const resumed = await dispatcher.resume(RETAINED_GATHER_RESULT_DAG_IRI, partial.state, partial.cursor);
 
     assert.equal(resumed.terminalOutcome, 'completed');
     assert.ok(partial.state.answers.includes('forty-two'));
@@ -500,12 +614,12 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     const controller = new AbortController();
     const dispatcher = new Dagonizer<MultiEntryState>();
-    const left = TestNode.make<MultiEntryState>('left-source-node', ['success'], () => {
+    const left = TestNode.make<MultiEntryState>('urn:noocodec:node:left-source-node', ['success'], () => {
       controller.abort();
       return 'success';
     });
-    const right = TestNode.make<MultiEntryState>('right-source-node', ['success']);
-    const merge = TestNode.make<MultiEntryState>('merge-source-labels', ['success'], (state) => {
+    const right = TestNode.make<MultiEntryState>('urn:noocodec:node:right-source-node', ['success']);
+    const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge-source-labels', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
@@ -516,29 +630,41 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(right);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('source-label-resume', '1')
-      .node('left-node', left, { 'success': 'join' })
-      .node('right-node', right, { 'success': 'join' })
-      .gather('join', ['left-label', 'right-label'], { 'strategy': 'custom', 'customNode': 'merge-source-labels' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'left-label': 'left-node', 'right-label': 'right-node' })
+    const dag = new DAGBuilder(SOURCE_LABEL_RESUME_DAG_IRI, '1', { 'name': 'source-label-resume' })
+      .node(placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'left-node'), left, { 'success': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'join') }, { 'name': 'left-node' })
+      .node(placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-node'), right, { 'success': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'join') }, { 'name': 'right-node' })
+      .gather(placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'join'), {
+        [entrypointIri(SOURCE_LABEL_RESUME_DAG_IRI, 'left-label')]: {},
+        [entrypointIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-label')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-source-labels' }, {
+        'success': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'end'),
+        'error': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'left-label': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'left-node'),
+        'right-label': placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-node'),
+      })
       .build();
     dispatcher.registerDAG(dag);
 
-    const partial = await dispatcher.execute('source-label-resume', new MultiEntryState(), {
+    const partial = await dispatcher.execute(SOURCE_LABEL_RESUME_DAG_IRI, new MultiEntryState(), {
       'signal': controller.signal,
     });
 
     assert.equal(partial.terminalOutcome, null);
-    assert.equal(partial.cursor, 'right-node');
+    assert.equal(partial.cursor, placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-node'));
     assert.ok(partial.state.getMetadata(GATHER_PROGRESS_KEY));
 
     assert.ok(partial.cursor !== null);
-    const resumed = await dispatcher.resume('source-label-resume', partial.state, partial.cursor);
+    const resumed = await dispatcher.resume(SOURCE_LABEL_RESUME_DAG_IRI, partial.state, partial.cursor);
 
     assert.equal(resumed.terminalOutcome, 'completed');
-    assert.deepEqual(partial.state.seenSources, ['left-label', 'right-label']);
+    assert.deepEqual(partial.state.seenSources, [
+      entrypointIri(SOURCE_LABEL_RESUME_DAG_IRI, 'left-label'),
+      entrypointIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-label'),
+    ]);
   });
 
   void it('first-class gather joins embedded and scatter producers', async () => {
@@ -552,40 +678,51 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<ParentState>();
-    const answer = TestNode.make<ChildState>('answer-mixed', ['success'], (state) => {
+    const answer = TestNode.make<ChildState>('urn:noocodec:node:answer-mixed', ['success'], (state) => {
       state.answer = 'embedded-ready';
       return 'success';
     });
-    const classify = TestNode.make<ParentState>('classify-mixed', ['success'], () => 'success');
-    const merge = TestNode.make<ParentState>('merge-mixed', ['success'], (state) => {
+    const classify = TestNode.make<ParentState>('urn:noocodec:node:classify-mixed', ['success'], () => 'success');
+    const merge = TestNode.make<ParentState>('urn:noocodec:node:merge-mixed', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
-      state.seenSources = records.map((record) => String(record['source'])).sort();
-      state.seenOutputs = records.map((record) => String(record['output'])).sort();
+      state.seenSources = [...new Set(records.map((record) => String(record['source'])))].sort();
+      state.seenOutputs = [...new Set(records.map((record) => String(record['output'])))].sort();
       return 'success';
     });
 
-    const childDag = new DAGBuilder('mixed-child-answer', '1')
-      .node('answer', answer, { 'success': 'done' })
-      .terminal('done')
+    const childDag = new DAGBuilder(MIXED_CHILD_ANSWER_DAG_IRI, '1', { 'name': 'mixed-child-answer' })
+      .node(placementIri(MIXED_CHILD_ANSWER_DAG_IRI, 'answer'), answer, { 'success': placementIri(MIXED_CHILD_ANSWER_DAG_IRI, 'done') }, { 'name': 'answer' })
+      .terminal(placementIri(MIXED_CHILD_ANSWER_DAG_IRI, 'done'), { 'name': 'done' })
       .build();
 
-    const parentDag = new DAGBuilder('mixed-producer-gather', '1')
-      .embed<ChildState, ParentState>('invoke', 'mixed-child-answer', { 'success': 'join', 'error': 'join' }, {
-        'gatherResult': { 'resultField': 'answer' },
-      })
-      .scatter('fan', 'items', classify, {
-        'all-success': 'join',
-        'partial':     'join',
-        'all-error':   'join',
-        'empty':       'join',
+    const parentDag = new DAGBuilder(MIXED_PRODUCER_GATHER_DAG_IRI, '1', { 'name': 'mixed-producer-gather' })
+      .embed<ChildState, ParentState>(placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'invoke'), MIXED_CHILD_ANSWER_DAG_IRI, {
+        'success': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
+        'error': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
       }, {
-        'gather': { 'strategy': 'discard' },
+        'gatherResult': { 'resultField': 'answer' },
+        'name': 'invoke',
       })
-      .gather('join', ['embedded', 'scatter'], { 'strategy': 'custom', 'customNode': 'merge-mixed' }, { 'success': 'end', 'error': 'failed' })
-      .terminal('end')
-      .terminal('failed', { 'outcome': 'failed' })
-      .entrypoints({ 'embedded': 'invoke', 'scatter': 'fan' })
+      .scatter(placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'fan'), 'items', classify, {
+        'all-success': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
+        'partial':     placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
+        'all-error':   placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
+        'empty':       placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'),
+      }, { 'name': 'fan' })
+      .gather(placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'join'), {
+        [entrypointIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'embedded')]: { 'resultField': 'answer' },
+        [entrypointIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'scatter')]: {},
+      }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge-mixed' }, {
+        'success': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'end'),
+        'error': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'failed'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'failed'), { 'name': 'failed', 'outcome': 'failed' })
+      .entrypoints({
+        'embedded': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'invoke'),
+        'scatter': placementIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'fan'),
+      })
       .build();
 
     dispatcher.registerNode(answer);
@@ -595,11 +732,14 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new ParentState();
-    const result = await dispatcher.execute('mixed-producer-gather', state);
+    const result = await dispatcher.execute(MIXED_PRODUCER_GATHER_DAG_IRI, state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.deepEqual(state.seenSources, ['embedded', 'scatter']);
-    assert.deepEqual(state.seenOutputs, ['all-success', 'success']);
+    assert.deepEqual(state.seenSources, [
+      entrypointIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'embedded'),
+      entrypointIri(MIXED_PRODUCER_GATHER_DAG_IRI, 'scatter'),
+    ]);
+    assert.deepEqual(state.seenOutputs, ['success']);
   });
 
   void it('partition routes items by output into distinct target paths', async () => {
@@ -609,24 +749,34 @@ void describe('Dagonizer scatter gather strategies', () => {
       odds: number[] = [];
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const classify = TestNode.make<NodeStateBase>('classify', ['even', 'odd'], (state) => {
+    const classify = TestNode.make<NodeStateBase>('urn:noocodec:node:classify', ['even', 'odd'], (state) => {
       const n = state.getter.number('item');
       return n % 2 === 0 ? 'even' : 'odd';
     });
     dispatcher.registerNode(classify);
 
-    const dag = new DAGBuilder('partition', '1')
+    const dag = new DAGBuilder(PARTITION_DAG_IRI, '1', { 'name': 'partition' })
       .scatter(
-        'fan',
+        placementIri(PARTITION_DAG_IRI, 'fan'),
         'items',
         classify,
-        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {
+          'all-success': placementIri(PARTITION_DAG_IRI, 'join'),
+          'partial':     placementIri(PARTITION_DAG_IRI, 'join'),
+          'all-error':   placementIri(PARTITION_DAG_IRI, 'join'),
+          'empty':       placementIri(PARTITION_DAG_IRI, 'end'),
+        },
         {
           'itemKey': 'item',
-          'gather':  { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } },
+          'name':    'fan',
         },
       )
-      .terminal('end')
+      .gather(placementIri(PARTITION_DAG_IRI, 'join'), { [placementIri(PARTITION_DAG_IRI, 'fan')]: {} }, { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } }, {
+        'success': placementIri(PARTITION_DAG_IRI, 'end'),
+        'error':   placementIri(PARTITION_DAG_IRI, 'end'),
+        'empty':   placementIri(PARTITION_DAG_IRI, 'end'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(PARTITION_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
@@ -634,7 +784,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     state.items = [1, 2, 3, 4, 5];
     state.evens = [];
     state.odds  = [];
-    await dispatcher.execute('partition', state);
+    await dispatcher.execute(PARTITION_DAG_IRI, state);
     assert.deepEqual(state.evens.sort(), [2, 4]);
     assert.deepEqual(state.odds.sort(), [1, 3, 5]);
   });
@@ -668,12 +818,12 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
 
     const dispatcher = new Dagonizer<CustomFanState>();
-    const cls = TestNode.make<CustomFanState>('classify', ['success'], (state) => {
+    const cls = TestNode.make<CustomFanState>('urn:noocodec:node:classify', ['success'], (state) => {
       const item = state.getMetadata('item');
       state.doubled = typeof item === 'number' ? item * 2 : 0;
       return 'success';
     });
-    const merge = TestNode.make<CustomFanState>('merge', ['success'], (state) => {
+    const merge = TestNode.make<CustomFanState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       seenResults = GatherResultRecordGuard.isArray(raw) ? raw : undefined;
       return 'success';
@@ -681,24 +831,34 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(cls);
     dispatcher.registerNode(merge);
 
-    const dag = new DAGBuilder('customfan', '1')
+    const dag = new DAGBuilder(CUSTOM_FAN_DAG_IRI, '1', { 'name': 'customfan' })
       .scatter(
-        'fan',
+        placementIri(CUSTOM_FAN_DAG_IRI, 'fan'),
         'items',
         cls,
-        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {
+          'all-success': placementIri(CUSTOM_FAN_DAG_IRI, 'join'),
+          'partial':     placementIri(CUSTOM_FAN_DAG_IRI, 'join'),
+          'all-error':   placementIri(CUSTOM_FAN_DAG_IRI, 'join'),
+          'empty':       placementIri(CUSTOM_FAN_DAG_IRI, 'end'),
+        },
         {
           'itemKey': 'item',
-          'gather':  { 'strategy': 'custom', 'customNode': 'merge', 'resultField': 'doubled' },
+          'name':    'fan',
         },
       )
-      .terminal('end')
+      .gather(placementIri(CUSTOM_FAN_DAG_IRI, 'join'), { [placementIri(CUSTOM_FAN_DAG_IRI, 'fan')]: { 'resultField': 'doubled' } }, { 'strategy': 'custom', 'customNode': 'urn:noocodec:node:merge' }, {
+        'success': placementIri(CUSTOM_FAN_DAG_IRI, 'end'),
+        'error':   placementIri(CUSTOM_FAN_DAG_IRI, 'end'),
+        'empty':   placementIri(CUSTOM_FAN_DAG_IRI, 'end'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(CUSTOM_FAN_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new CustomFanState();
     state.items = [1, 2, 3];
-    await dispatcher.execute('customfan', state);
+    await dispatcher.execute(CUSTOM_FAN_DAG_IRI, state);
 
     assert.ok(seenResults !== undefined);
     assert.equal(seenResults?.length, 3);
@@ -706,7 +866,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const items = seenResults?.map((r) => r.item).sort((a, b) => Number(a) - Number(b));
     assert.deepEqual(items, [1, 2, 3]);
     assert.ok(seenResults?.every((r) => r.output === 'success'));
-    assert.ok(seenResults?.every((r) => r.source === 'fan'));
+    assert.ok(seenResults?.every((r) => r.source === placementIri(CUSTOM_FAN_DAG_IRI, 'fan')));
     assert.deepEqual(
       seenResults?.map((r) => r.result).sort((a, b) => Number(a) - Number(b)),
       [2, 4, 6],
@@ -717,28 +877,38 @@ void describe('Dagonizer scatter gather strategies', () => {
     class AppendState extends NodeStateBase { items: number[] = []; out: number[] = []; }
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const passThrough = TestNode.make('passThrough', ['success']);
+    const passThrough = TestNode.make('urn:noocodec:node:passThrough', ['success']);
     dispatcher.registerNode(passThrough);
 
-    const dag = new DAGBuilder('appendfan', '1')
+    const dag = new DAGBuilder(APPEND_FAN_DAG_IRI, '1', { 'name': 'appendfan' })
       .scatter(
-        'fan',
+        placementIri(APPEND_FAN_DAG_IRI, 'fan'),
         'items',
         passThrough,
-        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {
+          'all-success': placementIri(APPEND_FAN_DAG_IRI, 'join'),
+          'partial':     placementIri(APPEND_FAN_DAG_IRI, 'join'),
+          'all-error':   placementIri(APPEND_FAN_DAG_IRI, 'join'),
+          'empty':       placementIri(APPEND_FAN_DAG_IRI, 'end'),
+        },
         {
           'itemKey': 'item',
-          'gather':  { 'strategy': 'append', 'target': 'out' },
+          'name':    'fan',
         },
       )
-      .terminal('end')
+      .gather(placementIri(APPEND_FAN_DAG_IRI, 'join'), { [placementIri(APPEND_FAN_DAG_IRI, 'fan')]: {} }, { 'strategy': 'append', 'target': 'out' }, {
+        'success': placementIri(APPEND_FAN_DAG_IRI, 'end'),
+        'error':   placementIri(APPEND_FAN_DAG_IRI, 'end'),
+        'empty':   placementIri(APPEND_FAN_DAG_IRI, 'end'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(APPEND_FAN_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new AppendState();
     state.items = [10, 20, 30];
     state.out   = [];
-    await dispatcher.execute('appendfan', state);
+    await dispatcher.execute(APPEND_FAN_DAG_IRI, state);
     // append with no `field` uses the source item; order follows source index
     assert.deepEqual([...state.out].sort((a, b) => a - b), [10, 20, 30]);
     assert.equal(state.out.length, 3);
@@ -750,7 +920,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     // so the target is always an array. This is the documented behavior change
     // introduced with native streaming scatter (§A.3.4).
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const produce = TestNode.make('produce', ['success'], (state) => {
+    const produce = TestNode.make('urn:noocodec:node:produce', ['success'], (state) => {
       state.setMetadata('answer', 'hello');
       return 'success';
     });
@@ -761,28 +931,35 @@ void describe('Dagonizer scatter gather strategies', () => {
     // that is accessible as a metadata field directly via cloneState.
     // The accessor reads dotted paths off the state object itself; metadata is
     // stored under the 'metadata' property on NodeStateBase.
-    const dag = new DAGBuilder('mapfan', '1')
+    const dag = new DAGBuilder(MAP_FAN_DAG_IRI, '1', { 'name': 'mapfan' })
       .scatter(
-        'fan',
+        placementIri(MAP_FAN_DAG_IRI, 'fan'),
         'items',
         produce,
-        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {
+          'all-success': placementIri(MAP_FAN_DAG_IRI, 'join'),
+          'partial':     placementIri(MAP_FAN_DAG_IRI, 'join'),
+          'all-error':   placementIri(MAP_FAN_DAG_IRI, 'join'),
+          'empty':       placementIri(MAP_FAN_DAG_IRI, 'end'),
+        },
         {
           'itemKey': 'item',
-          'gather': {
-            'strategy': 'map',
-            'mapping':  { 'metadata.answer': 'metadata.result' },
-          },
+          'name':    'fan',
         },
       )
-      .terminal('end')
+      .gather(placementIri(MAP_FAN_DAG_IRI, 'join'), { [placementIri(MAP_FAN_DAG_IRI, 'fan')]: {} }, { 'strategy': 'map', 'mapping': { 'metadata.answer': 'metadata.result' } }, {
+        'success': placementIri(MAP_FAN_DAG_IRI, 'end'),
+        'error':   placementIri(MAP_FAN_DAG_IRI, 'end'),
+        'empty':   placementIri(MAP_FAN_DAG_IRI, 'end'),
+      }, { 'name': 'join' })
+      .terminal(placementIri(MAP_FAN_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
     class MapFanState extends NodeStateBase { items: number[] = []; }
     const state = new MapFanState();
     state.items = [1];
-    await dispatcher.execute('mapfan', state);
+    await dispatcher.execute(MAP_FAN_DAG_IRI, state);
     // Incremental gather always produces an array; single-item → ['hello'].
     assert.deepEqual(state.getMetadata('result'), ['hello']);
   });
@@ -792,7 +969,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     let inFlight = 0;
     let peak = 0;
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const slow = TestNode.make('slow', ['success'], async () => {
+    const slow = TestNode.make('urn:noocodec:node:slow', ['success'], async () => {
       inFlight++;
       peak = Math.max(peak, inFlight);
       await new Promise<void>((r) => setImmediate(r));
@@ -801,25 +978,30 @@ void describe('Dagonizer scatter gather strategies', () => {
     });
     dispatcher.registerNode(slow);
 
-    const dag = new DAGBuilder('conc', '1')
+    const dag = new DAGBuilder(CONC_DAG_IRI, '1', { 'name': 'conc' })
       .scatter(
-        'fan',
+        placementIri(CONC_DAG_IRI, 'fan'),
         'items',
         slow,
-        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {
+          'all-success': placementIri(CONC_DAG_IRI, 'end'),
+          'partial':     placementIri(CONC_DAG_IRI, 'end'),
+          'all-error':   placementIri(CONC_DAG_IRI, 'end'),
+          'empty':       placementIri(CONC_DAG_IRI, 'end'),
+        },
         {
           'execution': { 'mode': 'item', 'concurrency': 2 },
-          'gather':      { 'strategy': 'append', 'target': 'out' },
+          'name':      'fan',
         },
       )
-      .terminal('end')
+      .terminal(placementIri(CONC_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
     dispatcher.registerDAG(dag);
 
     const state = new ConcState();
     state.items = [1, 2, 3, 4, 5, 6];
     state.out   = [];
-    await dispatcher.execute('conc', state);
+    await dispatcher.execute(CONC_DAG_IRI, state);
     assert.ok(peak <= 2, `expected peak <= 2 but got ${peak}`);
   });
 });

@@ -22,7 +22,8 @@
  *
  * Supplies the fields a node needs but that don't vary by domain: `timeout`
  * (defaults to `Timeout.none()`), and `validate`/`destroy` defaults. Subclasses
- * declare `abstract readonly name`, `abstract readonly outputs`, and
+ * declare `abstract readonly '@id'`, `abstract readonly name`,
+ * `abstract readonly outputs`, and
  * `abstract execute`.
  *
  * @typeParam TState          the node state the dispatcher threads through the batch.
@@ -58,7 +59,10 @@ export abstract class MonadicNode<
     return schema;
   }
 
-  /** Stable identifier used at registration with the dispatcher. */
+  /** Canonical node IRI used by the dispatcher registry. */
+  abstract readonly '@id': string;
+
+  /** Human-readable display name used for observability. */
   abstract readonly name: string;
 
   /** Literal union of output port names. Narrows placement routing. */

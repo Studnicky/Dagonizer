@@ -118,8 +118,8 @@ export class DagHost {
 
     // Dispatch map over variant: handlers are keyed by message variant.
     // DagHost receives only parent→host messages; host→parent messages are
-    // unexpected on this side but must not crash the host — the fallback
-    // sends an UNEXPECTED_MESSAGE error for any unknown variant.
+    // unexpected on this side but must not crash the host; unknown variants
+    // receive an UNEXPECTED_MESSAGE error.
     type HostMsg = typeof message;
     const variantDispatch: Partial<{ [K in HostMsg['variant']]: (m: Extract<HostMsg, { variant: K }>) => Promise<void> | void }> = {
       'init': async (m) => {
@@ -155,8 +155,7 @@ export class DagHost {
 
     // Exhaustive switch over the discriminant narrows `message` per case, so each
     // handler call typechecks cast-free. Variants DagHost does not handle
-    // (host→parent messages arriving on this side) fall to `default`, which sends
-    // the UNEXPECTED_MESSAGE error — the prior fallback semantics, preserved exactly.
+    // (host→parent messages arriving on this side) receive UNEXPECTED_MESSAGE.
     switch (message.variant) {
       case 'init':     await variantDispatch.init?.(message);     break;
       case 'execute':  await variantDispatch.execute?.(message);  break;

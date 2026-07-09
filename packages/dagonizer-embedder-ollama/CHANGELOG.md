@@ -89,7 +89,7 @@
 ### Changed
 
 - `OllamaEmbedResponse.embedding` is now a required field; response body is narrowed at the ingest boundary via a typed `isOllamaEmbedResponse` guard, replacing the unchecked `as OllamaEmbedResponse` cast.
-- Dimension resolution chain removes the dead trailing `?? 768` literal; a module-level `DEFAULT_DIMENSIONS` constant now serves as the explicit final fallback, symmetric with `GeminiApiEmbedder` and `MistralEmbedder`.
+- Dimension resolution chain removes the dead trailing `?? 768` literal; a module-level `DEFAULT_DIMENSIONS` constant now serves as the explicit final default, symmetric with `GeminiApiEmbedder` and `MistralEmbedder`.
 - JSDoc on `OllamaEmbedderOptions` and the constructor documents the no-API-key constructor asymmetry relative to the other two embedders.
 
 ## 0.17.0

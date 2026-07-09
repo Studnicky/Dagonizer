@@ -58,7 +58,7 @@ class FixtureCandidate {
   static of(overrides: Partial<GeoResolution>): GeoResolution {
     return {
       'source':       'coords',
-      'fallbackUsed': false,
+      'secondaryLookupUsed': false,
       'timezone':     '',
       'country':      '',
       'countryName':  '',

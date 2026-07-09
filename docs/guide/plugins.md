@@ -18,13 +18,13 @@ import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../.vitepres
 
 ## What It Is
 
-Plugins package reusable Dagonizer parts without creating a second execution model. A plugin can ship nodes, DAG JSON-LD, namespace context, and named exports. The host registers the plugin once, then embeds exported DAG names exactly like locally-authored child DAGs.
+Plugins package reusable Dagonizer parts without creating a second execution model. A plugin can ship nodes, DAG JSON-LD, namespace context, and exported DAG IRIs. The host registers the plugin once, then composes those exported DAGs exactly like locally-authored child DAGs, tool DAGs, or runtime-selected `DagReference` candidates.
 
 Adapters, tools, and patterns are still plugin tiers, but the main assembly rule is simpler: if a reusable flow can be embedded, ship it as a DAG.
 
 ## How It Works
 
-A plugin declares an ID, optional context, nodes, DAGs, and exports. `registerPlugin` scopes and registers those parts into the same registries used by local bundles. Higher-level DAGs embed plugin DAG names through normal `EmbeddedDAGNode` placements; there is no plugin-specific execution path.
+A plugin declares an ID, optional context, nodes, DAGs, and exports. `registerPlugin` scopes and registers those parts into the same registries used by local bundles. Higher-level DAGs reference plugin DAG IRIs through normal `EmbeddedDAGNode`, scatter DAG body, or dynamic `DagReference` placements; there is no plugin-specific execution path.
 
 Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@studnicky/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
 
@@ -34,7 +34,7 @@ The plugin packages are GitHub-only and not yet published to npm. Install via th
 
 ## Diagrams, Examples, and Outputs
 
-The Cartographer packages source-normalization child DAGs as a plugin. The ingest DAG embeds those plugin-provided DAG names through normal `EmbeddedDAGNode` placements:
+The Cartographer packages source-normalization child DAGs as a plugin. The ingest DAG embeds those plugin-provided DAG IRIs through normal `EmbeddedDAGNode` placements:
 
 <DagJsonMermaid :dag="ingestSourceDAG" title="Cartographer ingest DAG embedding plugin DAGs" aria-label="Cartographer ingest JSON-LD DAG beside Mermaid generated from it." />
 
@@ -49,7 +49,7 @@ The Cartographer packages source-normalization child DAGs as a plugin. The inges
 
 ## What It Lets You Do
 
-Use plugins when reusable nodes, DAGs, adapters, tools, or abstract patterns should be packaged independently and installed into a higher-level DAG. Plugin-defined DAGs and hand-authored embedded DAGs use the same registry and the same JSON-LD assembly interface.
+Use plugins when reusable nodes, DAGs, adapters, tools, or abstract patterns should be packaged independently and installed into a higher-level DAG. Plugin-defined DAGs, hand-authored embedded DAGs, tools-as-DAGs, and dynamic DAG references use the same registry and the same JSON-LD assembly interface.
 
 ## Code Samples
 
@@ -188,7 +188,7 @@ export class NormalizePlugin implements PluginInterface {
 
 #### `defineDagonizerPlugin`
 
-`defineDagonizerPlugin()` is the high-level authoring helper for plugin packages. It returns a valid `PluginInterface` plus typed `exports` that point at DAG names inside the plugin bundle.
+`defineDagonizerPlugin()` is the high-level authoring helper for plugin packages. It returns a valid `PluginInterface` plus typed `exports` that point at DAG IRIs inside the plugin bundle.
 
 Use it when the plugin packages reusable DAGs:
 
@@ -198,7 +198,7 @@ import { defineDagonizerPlugin } from '@studnicky/dagonizer/plugin';
 export const retrievalPlugin = defineDagonizerPlugin({
   id: '@acme/dagonizer-retrieval',
   context: {
-    retrieval: 'https://noocodex.dev/plugins/retrieval#',
+    retrieval: 'https://noocodec.dev/plugins/retrieval#',
   },
   nodes: [
     new EmbedQueryNode(),
@@ -213,12 +213,12 @@ export const retrievalPlugin = defineDagonizerPlugin({
 });
 ```
 
-The `id` is the plugin package/specifier owner for its context prefixes. The export values are plain DAG names. The helper validates that every exported DAG name exists in `dags` before it returns.
+The `id` is the plugin package/specifier owner for its context prefixes. The export values are DAG IRIs or CURIEs. The helper validates that every exported DAG reference exists in `dags` before it returns.
 
 Authoring rule:
 
 - If an application can embed it, it should be a DAG.
-- If a plugin ships it, it exports the DAG name.
+- If a plugin ships it, it exports the DAG IRI or CURIE.
 - There is no separate plugin runtime object graph.
 
 Collision rule:
@@ -226,18 +226,18 @@ Collision rule:
 - Registered DAGs are keyed by their resolved IRI.
 - The same IRI with a different implementation is a hard registration error.
 - The same IRI with the same object is idempotent.
-- To compose plugins that would otherwise overlap on internal names, give each plugin its own namespace prefix in `@context` and export names through that prefix.
+- To compose plugins that would otherwise overlap on internal labels, give each plugin its own namespace prefix in `@context` and export DAG references through that prefix.
 
 #### `Dagonizer.registerPlugin(plugin)`
 
-The caller installs a plugin with a single call. Order matters: register plugins before the parent DAG that references their sub-DAG names.
+The caller installs a plugin with a single call. Order matters: register plugins before the parent DAG that references their sub-DAG IRIs.
 
 ```ts
 import { Dagonizer } from '@studnicky/dagonizer';
 
 const dispatcher = new Dagonizer<MyState>();
 dispatcher.registerPlugin(new NormalizePlugin());   // installs nodes + sub-DAG
-dispatcher.registerDAG(parentDag);                  // parent references plugin's sub-DAG
+dispatcher.registerDAG(parentDag);                  // parent references the plugin sub-DAG IRI
 ```
 
 #### `PluginDiscovery` (static DAG-walker)
@@ -248,8 +248,7 @@ dispatcher.registerDAG(parentDag);                  // parent references plugin'
 import { DagGraphProjector } from '@studnicky/dagonizer/graph';
 import { PluginDiscovery } from '@studnicky/dagonizer/plugin';
 
-// Immediate literal and dynamic candidate references in one DAG's placement graph
-const names = PluginDiscovery.referencedDagNames(myDag);
+// Immediate literal and dynamic candidate IRIs in one DAG's placement graph
 const iris = PluginDiscovery.referencedDagIris(myDag);
 
 // Breadth-first walk of the full reachable forest
@@ -273,17 +272,7 @@ const plugin = await PluginLoader.load('my-dagonizer-plugin');
 dispatcher.registerPlugin(plugin);
 ```
 
-Three entry points are available:
-
-| Method | Signature | Purpose |
-|--------|-----------|---------|
-| `PluginLoader.load(specifier)` | `(specifier: string) => Promise<PluginInterface>` | Dynamic import + validation in one call |
-| `PluginLoader.validate(mod, specifier?)` | `(mod: unknown) => PluginInterface` | Validate an already-imported module namespace |
-| `PluginLoader.isPlugin(value)` | `(value: unknown) => value is PluginInterface` | Structural type-guard predicate |
-
-`PluginLoader.validate` accepts a module namespace object (`{ default: plugin }`) or the plugin object directly. `PluginLoader.isPlugin` is the schema-validation boundary: it checks that the value is a non-null object with a non-empty string `id` and a callable `register` method. JSON Schema cannot express "has a method", so the structural predicate is the correct approach.
-
-On failure, both `load` and `validate` throw a `DAGError` with `code: 'PLUGIN_INVALID'`.
+`PluginLoader.load(specifier)` is the only plugin-module ingest path. It imports the module, validates the default export structurally, and returns a `PluginInterface`. On failure it throws a `DAGError` with `code: 'PLUGIN_INVALID'`.
 
 #### `PluginDiscovery.loadAll` — batch walk + register
 

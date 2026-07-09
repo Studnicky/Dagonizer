@@ -1,10 +1,10 @@
 # @studnicky/dagonizer-adapter-anthropic
 
-> **Beta:** not yet published to npm. Ships as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format checks use intercepted fetch. Expect minor adjustments before 1.0.
 
 Anthropic Messages API adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Targets `claude-haiku-4-5` by default.
 
-Unlike the OpenAI-compatible adapters (Groq, Mistral, etc.), this adapter extends `BaseAdapter` directly because Anthropic's Messages API has a distinct wire format: a top-level `system` field for system prompts, `tool_result` content blocks for tool responses, `input_schema` in tool definitions, and typed `content[]` response blocks.
+Unlike the OpenAI-compatible adapters (Groq, Mistral, etc.), this adapter extends `BaseAdapter` directly because Anthropic's Messages API uses a distinct wire format: a top-level `system` field for system prompts, `tool_result` content blocks for tool responses, `input_schema` in tool definitions, and typed `content[]` response blocks.
 
 ## Install
 

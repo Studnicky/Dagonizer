@@ -3,7 +3,7 @@
  * instances in unit tests.
  *
  * The single source for trivial test nodes across test files. Every test that
- * needs a trivial node uses `TestNode.make(name, outputs, exec?)` rather than
+ * needs a trivial node uses `TestNode.make(iri, outputs, exec?)` rather than
  * defining a local helper.
  */
 
@@ -19,12 +19,22 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 export class TestNode {
   private constructor() { /* static class */ }
 
+  private static displayName(iri: string): string {
+    const hashIndex = iri.lastIndexOf('#');
+    if (hashIndex >= 0) return iri.slice(hashIndex + 1);
+    const slashIndex = iri.lastIndexOf('/');
+    if (slashIndex >= 0) return iri.slice(slashIndex + 1);
+    const colonIndex = iri.lastIndexOf(':');
+    return colonIndex >= 0 ? iri.slice(colonIndex + 1) : iri;
+  }
+
   /**
    * Create a minimal `NodeInterface<TState>` that returns `outputs[0]`
    * by default, or invokes the optional `exec` callback and returns its result
    * as the output token.
    *
-   * @param name     - Node name (must match the DAG placement `node` reference).
+   * @param name     - Node IRI. The display name mirrors it unless the test
+   *                   authors a concrete node class.
    * @param outputs  - Declared output tokens; `outputs[0]` is the default route.
    * @param exec     - Optional callback receiving `(state, context)` and
    *                   returning a token string (sync or async). The context
@@ -32,15 +42,17 @@ export class TestNode {
    *                   abort. Defaults to `() => outputs[0]`.
    */
   static make<TState extends NodeStateInterface>(
-    name: string,
+    iri: string,
     outputs: readonly string[],
     exec?: (state: TState, context: NodeContextType) => string | Promise<string>,
   ): NodeInterface<TState> {
     const first = outputs[0];
     const defaultOutput = first !== undefined ? first : '';
+    const displayName = TestNode.displayName(iri);
 
     class MakeNode extends MonadicNode<TState, string> {
-      override readonly name = name;
+      override readonly '@id' = iri;
+      override readonly name = displayName;
       override readonly outputs = outputs;
 
       override get outputSchema(): Record<string, SchemaObjectType> {

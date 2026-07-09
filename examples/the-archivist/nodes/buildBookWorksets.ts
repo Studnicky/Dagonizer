@@ -3,8 +3,8 @@
  *
  * Reads `state.toolPlan` (populated by decideTools) and `state.terms`, and
  * emits a `bookWorksets` array where each entry is a JSON-serialisable
- * `{ dagName: string; arguments: Record<string, unknown> }` object. The
- * `dagName` field names the embedded `tool:<name>` DAG registered by
+ * `{ dagIri: string; arguments: Record<string, unknown> }` object. The
+ * `dagIri` field carries the embedded tool DAG IRI registered by
  * ToolRegistry; the scatter placement uses an item-scoped DagReference to
  * resolve the body DAG at runtime.
  *
@@ -31,12 +31,13 @@ import { ScoutUtils } from './scouts.ts';
 
 /** A single scatter workset entry: names the tool DAG and its call arguments. */
 export type BookWorksetItemType = {
-  readonly dagName: string;
+  readonly dagIri: string;
   readonly arguments: JsonObjectType;
 };
 
 export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> {
   readonly name = 'build-book-worksets';
+  readonly '@id' = 'urn:noocodec:node:build-book-worksets';
   readonly outputs = ['ready'] as const;
 
   override get outputSchema(): Record<'ready', SchemaObjectType> {
@@ -81,7 +82,7 @@ export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> 
       }
 
       if (toolArguments !== null) {
-        worksets.push({ 'dagName': 'tool:web_search_books', 'arguments': toolArguments });
+        worksets.push({ 'dagIri': 'urn:noocodec:tool:web_search_books', 'arguments': toolArguments });
       }
     }
 
@@ -98,7 +99,7 @@ export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> 
       if (query.length > 0) {
         const langRestrict = UserLanguage.normalize(state.userLanguage);
         worksets.push({
-          'dagName': 'tool:google_books_search',
+          'dagIri': 'urn:noocodec:tool:google_books_search',
           'arguments': { 'query': query, 'maxResults': typeof rawMax === 'number' ? rawMax : 8, 'langRestrict': langRestrict },
         });
       }
@@ -117,7 +118,7 @@ export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> 
       if (subject.length > 0) {
         const lang = UserLanguage.toIso6392(state.userLanguage);
         worksets.push({
-          'dagName': 'tool:subject_search',
+          'dagIri': 'urn:noocodec:tool:subject_search',
           'arguments': { 'subject': subject, 'limit': typeof rawLimit === 'number' ? rawLimit : 8, 'lang': lang },
         });
       }
@@ -131,7 +132,7 @@ export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> 
       if (query.length > 0) {
         const lang = UserLanguage.normalize(state.userLanguage);
         worksets.push({
-          'dagName': 'tool:wikipedia_summary',
+          'dagIri': 'urn:noocodec:tool:wikipedia_summary',
           'arguments': { 'query': query, 'lang': lang },
         });
       }

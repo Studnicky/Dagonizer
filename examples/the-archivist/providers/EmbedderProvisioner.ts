@@ -46,7 +46,7 @@ type CandidateEntry = {
  * served asset paths (from the `virtual:transformers-embedder-assets` module the
  * package's Vite plugin exposes) so the model + WASM load from the app's own
  * bundle — fully offline, no CDN. Absent (node, or no plugin) the embedder
- * falls back to its package-local vendored `models/`.
+ * uses its package-local vendored `models/`.
  */
 export type EmbedderProvisionOptionsType = {
   readonly transformersLocalModelPath?: string;
@@ -119,7 +119,7 @@ export class EmbedderProvisioner {
       const intentClassifier = await IntentClassifier.create(embedder);
       return { embedder, intentClassifier };
     } catch (err) {
-      console.warn('[EmbedderProvisioner] embedder unavailable; falling back to LLM-only intent classification:', err);
+      console.warn('[EmbedderProvisioner] embedder unavailable; using LLM-only intent classification:', err);
       return { 'embedder': null, 'intentClassifier': null };
     }
   }

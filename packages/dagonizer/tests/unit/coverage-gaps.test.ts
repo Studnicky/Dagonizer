@@ -38,7 +38,10 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
+
+const placementIri = TestDag.placementIri;
 
 // ── TST-16: NodeStateBase.restoreData with malformed snapshot ─────────────────
 
@@ -144,21 +147,21 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:ref-handoff',
+      '@id': 'urn:noocodec:dag:ref-handoff',
       '@type': 'DAG',
       'name': 'ref-handoff',
       'version': '1',
-      'entrypoints': { 'main': 'noop' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:ref-handoff', 'noop') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:ref-handoff/node/noop',
+          '@id': 'urn:noocodec:dag:ref-handoff/node/noop',
           '@type': 'SingleNode',
           'name': 'noop',
-          'node': 'noop',
-          'outputs': { 'done': 'done-terminal' },
+          'node': 'urn:noocodec:node:noop',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:ref-handoff', 'done-terminal') },
         },
         {
-          '@id': 'urn:noocodex:dag:ref-handoff/node/done-terminal',
+          '@id': 'urn:noocodec:dag:ref-handoff/node/done-terminal',
           '@type': 'TerminalNode',
           'name': 'done-terminal',
           'outcome': 'completed',
@@ -169,10 +172,10 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
     const dispatcher = new Dagonizer<NodeStateBase>({
       'channels': { 'done-terminal': new ByRefChannel() },
     });
-    dispatcher.registerNode(TestNode.make('noop', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:noop', ['done']));
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('ref-handoff', new NodeStateBase());
+    await dispatcher.execute('urn:noocodec:dag:ref-handoff', new NodeStateBase());
 
     // One envelope published.
     assert.equal(receivedEnvelopes.length, 1, 'exactly one envelope must be published');
@@ -206,35 +209,40 @@ void describe('TST-18: registerBundle node-body scatter without container role',
   void it('registers a node-body scatter (no container declared) without throwing', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
-    const noop = TestNode.make('noop-bundle', ['done']);
+    const noop = TestNode.make('urn:noocodec:node:noop-bundle', ['done']);
 
     // DAG with a scatter placement declaring an unbound container role.
     const dag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:warn-test',
+      '@id': 'urn:noocodec:dag:warn-test',
       '@type': 'DAG',
       'name': 'warn-test',
       'version': '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:warn-test', 'fan') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:warn-test/node/fan',
+          '@id': 'urn:noocodec:dag:warn-test/node/fan',
           '@type': 'ScatterNode',
           'name': 'fan',
-          'body': { 'node': 'noop-bundle' },
+          'body': { 'node': 'urn:noocodec:node:noop-bundle' },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': { 'strategy': 'discard' },
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodec:dag:warn-test', 'end'),
+            'partial': placementIri('urn:noocodec:dag:warn-test', 'end'),
+            'all-error': placementIri('urn:noocodec:dag:warn-test', 'end'),
+            'empty': placementIri('urn:noocodec:dag:warn-test', 'end'),
+          },
         },
-        { '@id': 'urn:noocodex:dag:warn-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:warn-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
     // A node-body scatter declares no container role, so it never trips the
-    // unbound-role check: registration succeeds without throwing.
-    assert.doesNotThrow(() => dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] }));
+    // unbound-role check and the bundle registers the DAG.
+    dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] });
+    assert.ok(dispatcher.getDAG('urn:noocodec:dag:warn-test') !== undefined);
   });
 
   void it('DAG with explicit unbound container role throws DAGError on registerDAG', () => {
@@ -249,25 +257,25 @@ void describe('TST-18: registerBundle node-body scatter without container role',
       'containers': { 'bound-worker-role': fakeContainer },
     });
 
-    dispatcher.registerNode(TestNode.make('noop-unbound', ['done']));
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:noop-unbound', ['done']));
 
     // Register a minimal inner DAG so the semantic validator accepts the dag-body reference.
     const innerDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:inner-worker',
+      '@id': 'urn:noocodec:dag:inner-worker',
       '@type': 'DAG',
       'name': 'inner-worker',
       'version': '1',
-      'entrypoints': { 'main': 'noop-unbound' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:inner-worker', 'noop-unbound') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:inner-worker/node/noop-unbound',
+          '@id': 'urn:noocodec:dag:inner-worker/node/noop-unbound',
           '@type': 'SingleNode',
           'name': 'noop-unbound',
-          'node': 'noop-unbound',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:noop-unbound',
+          'outputs': { 'done': placementIri('urn:noocodec:dag:inner-worker', 'end') },
         },
-        { '@id': 'urn:noocodex:dag:inner-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:inner-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(innerDag);
@@ -275,25 +283,29 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // DAG with a dag-body scatter declaring an explicit container role that is NOT bound.
     const dag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:dag:unbound-role-test',
+      '@id': 'urn:noocodec:dag:unbound-role-test',
       '@type': 'DAG',
       'name': 'unbound-role-test',
       'version': '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:unbound-role-test', 'fan') },
       'nodes': [
         {
-          '@id': 'urn:noocodex:dag:unbound-role-test/node/fan',
+          '@id': 'urn:noocodec:dag:unbound-role-test/node/fan',
           '@type': 'ScatterNode',
           'name': 'fan',
-          'body': { 'dag': 'inner-worker' },
+          'body': { 'dag': 'urn:noocodec:dag:inner-worker' },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': { 'strategy': 'discard' },
           'container': 'unbound-worker-role',
-          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+          'outputs': {
+            'all-success': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
+            'partial': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
+            'all-error': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
+            'empty': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
+          },
         },
-        { '@id': 'urn:noocodex:dag:unbound-role-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': 'urn:noocodec:dag:unbound-role-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -460,6 +472,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
 
     class CounterNode extends MonadicNode<ScatterAbortState, 'done'> {
       readonly name = 'counter';
+      readonly '@id' = 'urn:noocodec:node:counter';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<'done', SchemaObjectType> {
         return { 'done': { 'type': 'object' } };
@@ -482,52 +495,52 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       }
     }
 
-    const bodyDagName = 'abort-body-dag';
+    const bodyDagIri = 'urn:noocodec:dag:abort-body-dag';
+    const parentDagIri = 'urn:noocodec:dag:abort-parent-dag';
     const bodyDag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': 'urn:test:abort-body-dag',
+      '@id': bodyDagIri,
       '@type': 'DAG',
-      'name': bodyDagName,
+      'name': 'abort-body-dag',
       'version': '1',
-      'entrypoints': { 'main': 'counter' },
+      'entrypoints': { 'main': placementIri(bodyDagIri, 'counter') },
       'nodes': [
         {
-          '@id': 'urn:test:abort-body-dag/node/counter',
+          '@id': placementIri(bodyDagIri, 'counter'),
           '@type': 'SingleNode',
           'name': 'counter',
-          'node': 'counter',
-          'outputs': { 'done': 'end' },
+          'node': 'urn:noocodec:node:counter',
+          'outputs': { 'done': placementIri(bodyDagIri, 'end') },
         },
-        { '@id': 'urn:test:abort-body-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': placementIri(bodyDagIri, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
     // Parent scatter DAG: concurrency=1, dag-body scatter, no container (in-process).
     const parentDag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id': 'urn:test:abort-parent-dag',
+      '@id': parentDagIri,
       '@type': 'DAG',
       'name': 'abort-parent-dag',
       'version': '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': placementIri(parentDagIri, 'fan') },
       'nodes': [
         {
-          '@id': 'urn:test:abort-parent-dag/node/fan',
+          '@id': placementIri(parentDagIri, 'fan'),
           '@type': 'ScatterNode',
           'name': 'fan',
-          'body': { 'dag': bodyDagName },
+          'body': { 'dag': bodyDagIri },
           'source': 'items',
           'itemKey': 'item',
           'execution': { 'mode': 'item', 'concurrency': 1 },
-          'gather': { 'strategy': 'discard' },
           'outputs': {
-            'all-success': 'end',
-            'partial': 'end',
-            'all-error': 'end',
-            'empty': 'end',
+            'all-success': placementIri(parentDagIri, 'end'),
+            'partial': placementIri(parentDagIri, 'end'),
+            'all-error': placementIri(parentDagIri, 'end'),
+            'empty': placementIri(parentDagIri, 'end'),
           },
         },
-        { '@id': 'urn:test:abort-parent-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+        { '@id': placementIri(parentDagIri, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -540,15 +553,16 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     state.items = [1, 2, 3, 4, 5];
 
     const ctl = new AbortController();
-    const execution = dispatcher.execute('abort-parent-dag', state, { 'signal': ctl.signal });
+    const execution = dispatcher.execute('urn:noocodec:dag:abort-parent-dag', state, { 'signal': ctl.signal });
 
     // Abort once the second item's body node is suspended.
     secondReady.then(() => { ctl.abort(new Error('mid-scatter-abort')); });
     const result = await execution;
 
     // (a) Cursor must be on the scatter placement.
-    assert.equal(result.cursor, 'fan',
-      `cursor must land on scatter node 'fan' after abort; got '${result.cursor}'`);
+    const fanIri = placementIri(parentDagIri, 'fan');
+    assert.equal(result.cursor, fanIri,
+      `cursor must land on scatter node '${fanIri}' after abort; got '${result.cursor}'`);
 
     // (b) SCATTER_PROGRESS_KEY must be preserved (not cleared by scatter clear logic).
     const rawProgress = result.state.getMetadata(SCATTER_PROGRESS_KEY);
@@ -557,8 +571,8 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
 
     // (c) Fewer than all items were acked.
     const progress: StoredScatterProgressType = Validator.storedScatterProgress.validate(rawProgress);
-    assert.ok(progress['fan'] !== undefined, 'progress must have an entry for placement "fan"');
-    const entry = Validator.scatterProgress.validate(progress['fan']);
+    assert.ok(progress[fanIri] !== undefined, `progress must have an entry for placement "${fanIri}"`);
+    const entry = Validator.scatterProgress.validate(progress[fanIri]);
     const ackedCount = entry.mode === 'bounded'
       ? entry.watermark + entry.aheadAcked.length
       : entry.ackedResults.length;

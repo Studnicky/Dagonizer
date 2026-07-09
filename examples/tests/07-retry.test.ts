@@ -17,7 +17,7 @@ describe('07-retry: RetryPolicy and FibonacciRetry', () => {
     dispatcher.registerDAG(dag);
 
     const state = new FetchState();
-    const result = await dispatcher.execute('retry-dag', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:retry-dag', state);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.result, 'OK');

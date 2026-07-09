@@ -1,13 +1,13 @@
 ---
 title: 'Example 14: Gather Strategies'
-description: "Cartographer's real gather strategies: streaming insight folds and a first-class geo-weighted-fusion gather barrier over embedded resolver DAG producers."
+description: "Cartographer's real gather strategies: streaming insight folds and first-class gather barriers over scatter and embedded resolver producers."
 seeAlso:
   - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
-    description: 'scatter mechanics: source, body, gather, reduce'
+    description: 'scatter mechanics: source, body DAG, gather placement, reduce'
   - text: 'Example 04B: Scatter Collect'
     link: './04b-scatter-collect'
-    description: 'map gather: generate-and-select pattern'
+    description: 'first-class gather: generate-and-select pattern'
   - text: 'Example 15: Incremental gather'
     link: './15-incremental-gather'
     description: 'incremental vs batch gather timing'
@@ -31,15 +31,15 @@ const geoSourceResolveDAG = GeoSourceResolveDAG.build(
 
 ## What It Is
 
-Gather Strategies decide how producer results become parent state. The Cartographer uses them as application logic: one scatter-local gather folds stream insights into bounded aggregates, and one first-class `GatherNode` fuses embedded geo resolver outputs into a selected location.
+Gather Strategies decide how producer results become parent state. The Cartographer uses them as application logic: the top-level `fold-insights` gather folds stream records into bounded aggregates, and the `geo-weighted-fusion` gather fuses embedded geo resolver outputs into a selected location.
 
-This page is about merge policy, not fan-out. Scatter runs clone work; gather decides what the parent sees after each clone, after the whole scatter, or at an explicit graph-visible barrier.
+This page is about merge policy, not fan-out. Scatter runs clone work; first-class gather placements decide what the parent sees after each clone, after the whole scatter, or at an explicit graph-visible barrier.
 
 ## How It Works
 
-A scatter produces clone outcomes. A scatter-local gather strategy reads each completed clone's state through the dispatcher accessor and writes the parent fields named in the placement's `gather` config. The reducer is a separate decision: gather mutates parent state, then the reducer chooses the scatter output route (`all-success`, `partial`, `all-error`, or `empty`).
+A scatter produces clone outcomes. A first-class gather strategy reads completed clone records through the dispatcher accessor and writes the parent fields named by the gather placement. The reducer is a separate decision: gather mutates parent state, then the route map chooses the next placement (`all-success`, `partial`, `all-error`, or `empty`).
 
-A first-class `GatherNode` is a normal DAG placement. Producers route into it by placement name; the gather node names the producer labels it waits for, applies its strategy, then routes on `success`, `error`, or `empty`. In the Cartographer geo resolver, six embedded resolver DAGs project `state.candidate` into gather records; the `geo-weighted-fusion` gather node is the explicit barrier that turns those records into `state.resolvedGeo` and `state.geoContext`.
+A first-class `GatherNode` is a normal DAG placement. Producers route into it by placement IRI; the gather node lists the producer placement IRIs it waits for, applies its strategy, then routes on `success`, `error`, or `empty`. In the Cartographer geo resolver, six embedded resolver DAGs project `state.candidate` into gather records; the `geo-weighted-fusion` gather node is the explicit barrier that turns those records into `state.resolvedGeo` and `state.geoContext`.
 
 Keeping gather separate from outcome reduction matters for application code. A scatter can fold partial data into state and still route `partial`, `all-error`, or `empty` based on the outcome set.
 
@@ -47,7 +47,7 @@ Keeping gather separate from outcome reduction matters for application code. A s
 
 ### DAG registration and diagram
 
-The in-browser [Cartographer](./the-cartographer) owns the real gather examples. Its top-level `process-stream` scatter folds enriched records into bounded insight state with `insights-fold`; its `geo-source-resolve` sub-DAG makes fusion graph-visible with a first-class `geo-weighted-fusion` gather node.
+The in-browser [Cartographer](./the-cartographer) owns the real gather examples. Its top-level `process-stream` scatter routes to `fold-insights`, which uses `insights-fold` to update bounded insight state; its `geo-source-resolve` sub-DAG makes fusion graph-visible with a first-class `geo-weighted-fusion` gather node.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer insights-fold gather DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
@@ -77,15 +77,15 @@ Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD g
 
 ## Details for Nerds
 
-- **Gather is placement policy.** Scatter placements and first-class gather nodes declare `gather` by strategy name; worker/body nodes do not own parent merge behavior.
+- **Gather is placement policy.** First-class gather nodes declare a strategy key; worker/body nodes do not own parent merge behavior.
 - **Streaming fold.** `insights-fold` updates parent aggregates as stream clones complete.
 - **Explicit fusion barrier.** `geo-source-resolve` starts six embedded resolver DAGs from labeled entrypoints, then routes their projected candidates into a `GatherNode` named `geo-weighted-fusion`.
 - **Weighted selection.** `geo-weighted-fusion` folds multiple resolver candidates into one canonical geo result.
-- **Same engine surface.** Both strategies are just names in JSON-LD and registry entries in the runnable demo.
+- **Same engine surface.** Both strategies are JSON-LD strategy keys and registry entries in the runnable demo.
 
 ## Related Concepts
 
-- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
-- [Example 04B: Scatter Collect](./04b-scatter-collect) - map gather: generate-and-select pattern
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body DAG, gather placement, reduce
+- [Example 04B: Scatter Collect](./04b-scatter-collect) - first-class gather: generate-and-select pattern
 - [Example 15: Incremental gather](./15-incremental-gather) - incremental vs batch gather timing
 - [Reference: Core, GatherStrategies](../reference/core)

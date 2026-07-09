@@ -469,7 +469,7 @@ void test('performChatStream emits the single chunk of a one-chunk promptStreami
 void test('performChat resolves outputLanguage to "en" when no option is set and no navigator global exists', async () => {
   // Modern Node ships its own getter-only `navigator` global, so this test
   // explicitly removes it (rather than assuming absence) to exercise the
-  // fallback path in OutputLanguage.detect() when neither an explicit option
+  // default path in OutputLanguage.detect() when neither an explicit option
   // nor a browser locale is available. `Object.defineProperty` with
   // `configurable: true` replaces the getter-only descriptor; the original
   // is restored in `finally`.
@@ -600,7 +600,7 @@ void test('performChatStream forwards the resolved outputLanguage to LanguageMod
   assert.equal(createOptions['outputLanguage'], 'ja');
 });
 
-void test('performChatStream falls back to the buffered default for a tool-bearing request', async () => {
+void test('performChatStream uses the buffered default for a tool-bearing request', async () => {
   let promptCalled = false;
   let promptStreamingCalled = false;
   LanguageModelStub.install({

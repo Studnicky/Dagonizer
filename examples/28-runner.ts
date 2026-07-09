@@ -110,7 +110,7 @@ class WordCountHarness {
 // #region once-trigger
 const onceRunner  = WordCountHarness.build();
 const onceTrigger = new OnceTrigger<WordCountInput, WordState, WordCountOutput>(
-  'word-count',
+  'urn:noocodec:dag:word-count',
   { 'text': '  The quick brown fox jumps over the lazy dog  ' },
 );
 
@@ -133,8 +133,7 @@ process.stdout.write(`  status = ${onceResult?.lifecycle}\n`);
  * `{ text }` input for the runner.
  *
  * Consumers override `parseArgs` to produce the concrete `TInput` shape;
- * `selectDag` maps the command token to a registered DAG name (defaults to
- * the command token when not overridden, so 'word-count' selects directly).
+ * `selectDag` maps the command token to a registered DAG IRI.
  */
 class WordCountCliTrigger extends CliTrigger<WordCountInput, WordState, WordCountOutput> {
   protected override parseArgs(_command: string, args: string[]): WordCountInput {
@@ -144,7 +143,7 @@ class WordCountCliTrigger extends CliTrigger<WordCountInput, WordState, WordCoun
   }
 
   protected override selectDag(_command: string): string {
-    return 'word-count';
+    return 'urn:noocodec:dag:word-count';
   }
 }
 // #endregion cli-trigger
@@ -191,7 +190,7 @@ class WordCountEventTrigger extends EventTrigger<WordCountMessage, WordCountInpu
   }
 
   protected override selectDag(_message: WordCountMessage): string {
-    return 'word-count';
+    return 'urn:noocodec:dag:word-count';
   }
 
   /** Emit a synthetic message to the attached handlers. */
@@ -227,7 +226,7 @@ class WordCountRequestTrigger extends RequestTrigger<WordCountRequest, WordCount
   }
 
   protected override selectDag(_request: WordCountRequest): string {
-    return 'word-count';
+    return 'urn:noocodec:dag:word-count';
   }
 }
 // #endregion request-trigger

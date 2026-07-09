@@ -27,6 +27,7 @@ const CTX: NodeContextType = NodeContext.create(
 
 class NormalNode extends MonadicNode<NodeStateBase, 'done'> {
   readonly name = 'normal-node';
+  readonly '@id' = 'urn:noocodec:node:normal-node';
   readonly outputs: readonly ['done'] = ['done'];
 
   override get outputSchema(): Record<'done', SchemaObjectType> {
@@ -43,6 +44,7 @@ class NormalNode extends MonadicNode<NodeStateBase, 'done'> {
 
 class ErrorRoutingNode extends MonadicNode<NodeStateBase, 'done' | 'error'> {
   readonly name = 'error-routing-node';
+  readonly '@id' = 'urn:noocodec:node:error-routing-node';
   readonly outputs: readonly ['done', 'error'] = ['done', 'error'];
 
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {

@@ -20,6 +20,7 @@ import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, Schema
 
 // #region select-source-node
 export class SelectSourceNode extends MonadicNode<CartographerState, 'compressed' | 'plain' | 'invalid'> {
+  readonly '@id' = 'urn:noocodec:node:select-source';
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 

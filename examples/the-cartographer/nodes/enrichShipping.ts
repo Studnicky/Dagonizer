@@ -23,6 +23,7 @@ import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-shipping-node
 export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted'> {
+  readonly '@id' = 'urn:noocodec:node:enrich-shipping';
   readonly 'name' = 'enrich-shipping';
   readonly 'outputs' = ['shipping-quoted'] as const;
 

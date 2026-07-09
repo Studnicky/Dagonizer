@@ -90,7 +90,7 @@ Choose turn-termination for conversational flows (the resume-generator use case)
 
 #### How it works
 
-A conversational DAG runs per HTTP request. The LLM (or a state machine) updates the conversation state. If more information is needed, the node returns a specific output that routes to a named terminal, ending the turn. The caller reads `state.getMetadata('assistantMessage')` and sends it to the user. The user's next message starts a fresh DAG execution with the persisted state object.
+A conversational DAG runs per HTTP request. The LLM (or a state machine) updates the conversation state. If more information is needed, the node returns a specific output that routes to a terminal placement IRI, ending the turn. The caller reads `state.getMetadata('assistantMessage')` and sends it to the user. The user's next message starts a fresh DAG execution with the persisted state object.
 
 #### Example: slot-filling trip planner
 
@@ -216,14 +216,14 @@ export class TripOrchestrator {
 
     const tripPlannerDag: DAGType = {
       '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodex:trip-planner:dag',
+      '@id': 'urn:noocodec:trip-planner:dag',
       '@type': 'DAG',
       'name': 'trip-planner',
       'version': '1.0',
       'entrypoints': { 'main': 'intake' },
       'nodes': [
         {
-          '@id': 'urn:noocodex:trip-planner:dag/intake',
+          '@id': 'urn:noocodec:trip-planner:dag/intake',
           '@type': 'SingleNode',
           'name': 'intake',
           'node': 'intake',
@@ -234,7 +234,7 @@ export class TripOrchestrator {
           },
         },
         {
-          '@id': 'urn:noocodex:trip-planner:dag/retrieve',
+          '@id': 'urn:noocodec:trip-planner:dag/retrieve',
           '@type': 'SingleNode',
           'name': 'retrieve',
           'node': 'retrieve',
@@ -244,7 +244,7 @@ export class TripOrchestrator {
           },
         },
         {
-          '@id': 'urn:noocodex:trip-planner:dag/propose',
+          '@id': 'urn:noocodec:trip-planner:dag/propose',
           '@type': 'SingleNode',
           'name': 'propose',
           'node': 'propose',
@@ -254,19 +254,19 @@ export class TripOrchestrator {
           },
         },
         {
-          '@id': 'urn:noocodex:trip-planner:dag/end-incomplete',
+          '@id': 'urn:noocodec:trip-planner:dag/end-incomplete',
           '@type': 'TerminalNode',
           'name': 'end-incomplete',
           'outcome': 'completed',
         },
         {
-          '@id': 'urn:noocodex:trip-planner:dag/end-success',
+          '@id': 'urn:noocodec:trip-planner:dag/end-success',
           '@type': 'TerminalNode',
           'name': 'end-success',
           'outcome': 'completed',
         },
         {
-          '@id': 'urn:noocodex:trip-planner:dag/end-error',
+          '@id': 'urn:noocodec:trip-planner:dag/end-error',
           '@type': 'TerminalNode',
           'name': 'end-error',
           'outcome': 'failed',
@@ -293,7 +293,7 @@ export class TripOrchestrator {
     state.setMetadata('userMessage', userMessage);
 
     // Execute the DAG
-    await this.dispatcher.execute('trip-planner', state);
+    await this.dispatcher.execute('urn:noocodec:dag:trip-planner', state);
 
     // Read response from metadata (raw unknown → narrow to your message shape)
     const raw = state.getMetadata('assistantMessage');
@@ -480,7 +480,7 @@ export class ConversationEngine {
     state.setMetadata('userMessage', userMessage);
 
     // Execute the DAG
-    const result = await dispatcher.execute('refund-turn', state);
+    const result = await dispatcher.execute('urn:noocodec:dag:refund-turn', state);
 
     // Read output (raw unknown → narrow to your message shape)
     const raw = state.getMetadata('assistantMessage');
@@ -661,7 +661,7 @@ build-request
                                           └─ decoded ──► normalize-tools
                                                └─ valid ──► worksets
                                                     └─ ready ──► dispatch-tools
-                                                         (scatter: DagReference item.dagName)
+                                                         (scatter: DagReference item.dagIri)
                                                          └─ collect-results ──► build-request
 ```
 
@@ -701,19 +701,22 @@ const dispatcher = new Dagonizer<AgentState>();
 dispatcher.registerNode(nodes.chatRequest);
 dispatcher.registerNode(nodes.callModel);
 // … register remaining nodes …
-dispatcher.registerBundle(toolRegistry.bundle()); // tool:<name> DAGs
+dispatcher.registerBundle(toolRegistry.bundle()); // urn:noocodec:tool:<name> DAGs
 
-const agentDag = new DAGBuilder('my-agent', '1')
-  .node('build-request', nodes.chatRequest, {
-    ready: 'call-model',
-    error: 'end-error',
-  })
-  .node('call-model', nodes.callModel, {
-    text: 'normalize-response',
-    tools: 'normalize-response',
-    mixed: 'normalize-response',
-    error: 'end-error',
-  })
+const dagIri = 'workflow:my-agent';
+const p = (placement: string) => `${dagIri}/node/${placement}`;
+
+const agentDag = new DAGBuilder(dagIri, '1', { name: 'my-agent' })
+  .node(p('build-request'), nodes.chatRequest, {
+    ready: p('call-model'),
+    error: p('end-error'),
+  }, { name: 'build-request' })
+  .node(p('call-model'), nodes.callModel, {
+    text: p('normalize-response'),
+    tools: p('normalize-response'),
+    mixed: p('normalize-response'),
+    error: p('end-error'),
+  }, { name: 'call-model' })
   // Continue with normalize, decode, worksets, scatter, collect, terminals.
   .build();
 dispatcher.registerDAG(agentDag);
@@ -757,9 +760,9 @@ class MyCallModelNode extends CallModelNode<AgentState> {
 
 #### Tool dispatch via DagReference
 
-`BuildToolWorksetsNode` stamps each scatter item with
-`dagName: 'tool:' + call.name`. The scatter placement uses
-`{ dag: { from: 'item', path: 'dagName', candidates: [...] } }` so the engine
+`BuildToolWorksetsNode` stamps each scatter item with `dagIri: 'urn:noocodec:tool:' + encodeURIComponent(call.name)`.
+The field value is a tool DAG IRI/CURIE. The scatter placement uses
+`{ dag: { from: 'item', path: 'dagIri', candidates: [...] } }` so the engine
 resolves the body DAG from each item at runtime and validates it against the
 registered tool candidates. Register tool DAGs with `toolRegistry.bundle()`:
 

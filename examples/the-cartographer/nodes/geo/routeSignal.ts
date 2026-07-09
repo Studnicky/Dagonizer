@@ -15,6 +15,7 @@ type SignalRoute = 'coords' | 'address' | 'ip' | 'code' | 'phone' | 'locale' | '
 
 // #region route-signal-node
 export class RouteSignalNode extends MonadicNode<CartographerState, SignalRoute> {
+  readonly '@id' = 'urn:noocodec:node:route-signal';
   readonly 'name' = 'route-signal';
   readonly 'outputs' = ['coords', 'address', 'ip', 'code', 'phone', 'locale', 'none'] as const;
 

@@ -8,7 +8,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const ValidationResultSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/ValidationResult',
+  '$id': 'https://noocodec.dev/schemas/dagonizer/ValidationResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['errors', 'valid'],

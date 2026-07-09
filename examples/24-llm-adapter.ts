@@ -16,8 +16,8 @@
  *     list; override the choice with the OLLAMA_MODEL env var.
  *
  * Cascade shape: the primary adapter targets a deliberately unreachable port
- * (1), so probe() returns false and the cascade skips it. The fallback targets
- * the default loopback and is selected when Ollama is running.
+ * (1), so probe() returns false and the cascade skips it. The local adapter
+ * targets the default loopback and is selected when Ollama is running.
  *
  * DAG definition: examples/dags/24-llm-adapter.ts
  *
@@ -69,18 +69,18 @@ process.stdout.write(`Discovered Ollama chat model: "${OLLAMA_MODEL}"\n`);
 //    cascade skips it. This models the real-world shape: a cloud or remote
 //    endpoint that is down or unreachable at runtime.
 //
-//    Fallback (ollama-local): points at the default loopback (127.0.0.1:11434).
+//    Local (ollama-local): points at the default loopback (127.0.0.1:11434).
 //    probe() returns true when Ollama is running — cascade selects it.
 // ---------------------------------------------------------------------------
 
 const catalogue: CatalogueEntryType[] = [
   {
     'descriptor': { 'provider': 'ollama-remote', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
-    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL, 'baseUrl': 'http://127.0.0.1:1' }),  // unreachable → probe false
+    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL, 'baseUrl': 'http://127.0.0.1:1' }),  // unreachable → skipped
   },
   {
     'descriptor': { 'provider': 'ollama-local', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
-    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL }),  // default loopback → probe true when Ollama is running
+    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL }),  // default loopback → selected when Ollama is running
   },
 ];
 
@@ -93,7 +93,7 @@ const cascade = LlmAdapterCascade.create(catalogue);
 const adapter = await cascade.select();
 process.stdout.write(`\nLLM Adapter cascade selected: "${adapter.displayName}" (${adapter.id})\n`);
 process.stdout.write(`  Registered adapters: [${catalogue.map((e) => `${e.descriptor.provider}:${e.descriptor.model}`).join(', ')}]\n`);
-process.stdout.write(`  Cascade preferences: ollama-remote (skipped, probe=false) → ollama-local (selected)\n\n`);
+process.stdout.write(`  Cascade preferences: ollama-remote (skipped) → ollama-local (selected)\n\n`);
 
 // ---------------------------------------------------------------------------
 // 3. DAG execution: inject adapter into state; chat node calls .chat() and
@@ -111,7 +111,7 @@ const state = new ChatAdapterState();
 state.prompt  = 'What is a DAG?';
 state.adapter = adapter;
 
-await dispatcher.execute('llm-adapter-demo', state);
+await dispatcher.execute('urn:noocodec:dag:llm-adapter-demo', state);
 // #endregion adapter-usage
 
 process.stdout.write(`\nDAG result:\n`);

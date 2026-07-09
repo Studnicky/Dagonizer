@@ -17,6 +17,7 @@ void describe('MonadicNode.permissiveSchema', () => {
   void it('provides a permissive inputSchema by default', () => {
     class DefaultInputNode extends MonadicNode<NodeStateBase, 'ok'> {
       readonly name = 'default-input';
+      readonly '@id' = 'urn:noocodec:node:default-input';
       readonly outputs: readonly ['ok'] = ['ok'];
 
       override get outputSchema(): Record<'ok', SchemaObjectType> {
@@ -50,6 +51,7 @@ void describe('MonadicNode.permissiveSchema', () => {
   void it('produces a record usable directly as outputSchema on a concrete subclass', () => {
     class PermissiveNode extends MonadicNode<NodeStateBase, 'ok' | 'fail'> {
       readonly name = 'permissive';
+      readonly '@id' = 'urn:noocodec:node:permissive';
       readonly outputs: readonly ['ok', 'fail'] = ['ok', 'fail'];
       override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
         return MonadicNode.permissiveSchema(this.outputs);

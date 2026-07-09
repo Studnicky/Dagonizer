@@ -29,7 +29,7 @@ Nothing clever happens here, and that is why the page matters. Before scatter, p
 
 ## How It Works
 
-The dispatcher owns registries, not application globals. The runner gives it a `DispatcherBundleType` containing node instances and canonical DAG documents. Once the bundle is registered, `dispatcher.execute('the-archivist', visitor)` starts at the DAG entrypoint and follows the named output route from each node.
+The dispatcher owns registries, not application globals. The runner gives it a `DispatcherBundleType` containing node instances and canonical DAG documents. Once the bundle is registered, `dispatcher.execute('urn:noocodec:dag:the-archivist', visitor)` starts at the DAG entrypoint and follows the declared output route from each node.
 
 The result is one `ExecutionResult<ArchivistState>`: final state, lifecycle variant, cursor, executed nodes, skipped nodes, warnings, and errors. This is the shape to copy when embedding Dagonizer inside a CLI, request handler, test harness, or browser runner.
 
@@ -37,7 +37,7 @@ The result is one `ExecutionResult<ArchivistState>`: final state, lifecycle vari
 
 The diagram is the live Archivist parent DAG. It is large because Example 01 intentionally does not simplify the domain: this is the real graph, with embedded search and compose sub-DAG placements visible in the JSON-LD and Mermaid pairing.
 
-Use it to connect registration order to graph resolution. The parent DAG references sub-DAG names, so those sub-DAGs must be present in the registry before execution starts.
+Use it to connect registration order to graph resolution. The parent DAG references embedded DAG IRIs, so those sub-DAGs must be present in the registry before execution starts.
 
 ### DAG registration and diagram
 
@@ -69,13 +69,13 @@ The `#linear-run` region covers the dispatcher construction, sub-DAG registratio
 
 ## Details for Nerds
 
-The important detail is that registration is validation, not just storage. DAG registration checks that placement references resolve, node outputs have routes, and embedded DAG names do not form circular references.
+The important detail is that registration is validation, not just storage. DAG registration checks that placement IRIs resolve, node outputs have routes, and embedded DAG references do not form circular references.
 
 That makes Example 01 a useful smoke test: if this host boots, the registry and the parent graph agree. Later examples add richer placement types, but they still rely on this same startup contract.
 
 ### What it demonstrates
 - **Registration order.** Each sub-DAG ships as a canonical JSON-LD DAG constant; the caller registers a literal `DispatcherBundleType` with the concrete node group and that DAG. Register the embedded DAGs (`bookSearchScatterDAG`, `composeRetryLoopDAG`) before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
-- **Single execute call.** `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
+- **Single execute call.** `dispatcher.execute('urn:noocodec:dag:the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
 - **Lifecycle result.** `result.state.lifecycle.variant` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
 - **Constructor injection.** Every node receives its dependencies (LLM adapter, search tools, memory, logger) through its constructor. Nodes hold them as private fields and never construct their own clients.
 

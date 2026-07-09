@@ -39,7 +39,7 @@ const MEMORY_SNAPSHOT_VERSION = 1;
 /** Single snapshot entry key: the whole quad store serialised as N-Quads. */
 const MEMORY_SNAPSHOT_KEY = 'nquads';
 
-export const DAG_NS = 'https://noocodex.dev/ontology/dagonizer/';
+export const DAG_NS = 'https://noocodec.dev/ontology/dagonizer/';
 export const BOOK_NS = 'urn:dagonizer:book:';
 export const RUN_NS  = 'urn:dagonizer:run:';
 

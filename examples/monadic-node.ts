@@ -24,25 +24,25 @@ import { CatalogueState, SearchCatalogueNode } from './dags/monadic-node.js';
 
 const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:catalogue-search',
+  '@id': 'urn:noocodec:dag:catalogue-search',
   '@type':     'DAG',
   name:        'catalogue-search',
   version:     '1',
-  entrypoints: { main: 'search' },
+  entrypoints: { main: 'urn:noocodec:dag:catalogue-search/node/search' },
   nodes: [
     {
-      '@id':   'urn:noocodex:dag:catalogue-search/node/search',
+      '@id': 'urn:noocodec:dag:catalogue-search/node/search',
       '@type': 'SingleNode',
       name:    'search',
-      node:    'search-catalogue',
+      node:    'urn:noocodec:node:search-catalogue',
       outputs: {
-        success: 'end',
-        empty:   'end',
-        error:   'end',
+        success: 'urn:noocodec:dag:catalogue-search/node/end',
+        empty:   'urn:noocodec:dag:catalogue-search/node/end',
+        error:   'urn:noocodec:dag:catalogue-search/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:catalogue-search/node/end',
+      '@id': 'urn:noocodec:dag:catalogue-search/node/end',
       '@type':   'TerminalNode',
       name:      'end',
       outcome:   'completed',
@@ -62,7 +62,7 @@ process.stdout.write('\n=== MonadicNode: concrete subclass in a live DAG ===\n\n
 
 const validState = new CatalogueState();
 validState.query = 'Mechanicus Codex';
-await dispatcher.execute('catalogue-search', validState);
+await dispatcher.execute('urn:noocodec:dag:catalogue-search', validState);
 
 process.stdout.write(`results: ${JSON.stringify(validState.results)}\n`);
 
@@ -70,7 +70,7 @@ process.stdout.write(`results: ${JSON.stringify(validState.results)}\n`);
 
 const emptyState = new CatalogueState();
 emptyState.query = '';
-await dispatcher.execute('catalogue-search', emptyState);
+await dispatcher.execute('urn:noocodec:dag:catalogue-search', emptyState);
 
 process.stdout.write(`results (empty query): ${JSON.stringify(emptyState.results)}\n`);
 

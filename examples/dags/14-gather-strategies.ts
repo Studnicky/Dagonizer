@@ -61,6 +61,7 @@ export class GatherDemoState extends NodeStateBase {
  */
 export class TagNode extends MonadicNode<GatherDemoState, 'done'> {
   readonly name = 'tag';
+  readonly '@id' = 'urn:noocodec:node:tag';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -94,40 +95,47 @@ export class TagNode extends MonadicNode<GatherDemoState, 'done'> {
  * Gather config: collect each clone's output token ('done') into
  * `state.tokens` in source-index order. Also collects from `sideEffects`
  * because the clone wrote to it and the `collect` merge folds the
- * clone's state fields (here via mapping fallback — token is the default).
+ * clone's state fields (here via mapping defaults — token is the default).
  *
  * After execution:
  *   tokens = ['done', 'done', 'done', 'done']  (one per source item)
  */
 export const collectDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:gather-demo:collect-run',
+  '@id': 'urn:noocodec:dag:gather-demo:collect-run',
   '@type':     'DAG',
   "name":      'collect-run',
   "version":   '1',
-  "entrypoints": { "main": 'scatter-collect' },
+  "entrypoints": { "main": 'urn:noocodec:dag:gather-demo:collect-run/node/scatter-collect' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:gather-demo:collect-run/node/scatter-collect',
+      '@id': 'urn:noocodec:dag:gather-demo:collect-run/node/scatter-collect',
       '@type':     'ScatterNode',
       "name":      'scatter-collect',
-      "body":      { "node": 'tag' },
+      "body":      { "node": 'urn:noocodec:node:tag' },
       "source":    'items',
       "itemKey":   'item',
       "execution": { "mode": "item", "concurrency": 2 },
-      "gather": {
-        "strategy": GatherStrategyNames.COLLECT,
-        "target":   'tokens',           // collect each clone's output token here
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
+        "partial": 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
+        'all-error': 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
+        "empty": 'urn:noocodec:dag:gather-demo:collect-run/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:gather-demo:collect-run/node/end',
+      '@id': 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
+      '@type': 'GatherNode',
+      "name": 'collect-tokens',
+      sources: { "urn:noocodec:dag:gather-demo:collect-run/node/scatter-collect": {} },
+      "gather": {
+        "strategy": GatherStrategyNames.COLLECT,
+        "target": 'tokens',
+      },
+      "outputs": { "success": 'urn:noocodec:dag:gather-demo:collect-run/node/end', "error": 'urn:noocodec:dag:gather-demo:collect-run/node/end', "empty": 'urn:noocodec:dag:gather-demo:collect-run/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:gather-demo:collect-run/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',
@@ -158,32 +166,29 @@ export const collectDag: DAGType = {
  */
 export const discardDag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:gather-demo:discard-run',
+  '@id': 'urn:noocodec:dag:gather-demo:discard-run',
   '@type':     'DAG',
   "name":      'discard-run',
   "version":   '1',
-  "entrypoints": { "main": 'scatter-discard' },
+  "entrypoints": { "main": 'urn:noocodec:dag:gather-demo:discard-run/node/scatter-discard' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:gather-demo:discard-run/node/scatter-discard',
+      '@id': 'urn:noocodec:dag:gather-demo:discard-run/node/scatter-discard',
       '@type':     'ScatterNode',
       "name":      'scatter-discard',
-      "body":      { "node": 'tag' },
+      "body":      { "node": 'urn:noocodec:node:tag' },
       "source":    'items',
       "itemKey":   'item',
       "execution": { "mode": "item", "concurrency": 2 },
-      "gather": {
-        "strategy": GatherStrategyNames.DISCARD,   // explicit no-op merge
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:gather-demo:discard-run/node/end',
+        "partial":     'urn:noocodec:dag:gather-demo:discard-run/node/end',
+        'all-error':   'urn:noocodec:dag:gather-demo:discard-run/node/end',
+        "empty":       'urn:noocodec:dag:gather-demo:discard-run/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:gather-demo:discard-run/node/end',
+      '@id': 'urn:noocodec:dag:gather-demo:discard-run/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

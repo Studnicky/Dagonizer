@@ -32,7 +32,7 @@ export interface EmbedderInterface {
    * Output vector dimensionality. Consumers verify this matches their
    * pre-computed corpus embeddings before computing similarity; a
    * dimensionality mismatch is a configuration bug, not a runtime
-   * fallback case.
+   * default case.
    */
   readonly dimensions: number;
 
@@ -46,7 +46,7 @@ export interface EmbedderInterface {
   /**
    * Embed a single text. Returns a `number[]` of length `dimensions`.
    * Throws `LlmError` on failure; the caller decides whether to retry
-   * or fall back. Retry plumbing is provided by `BaseEmbedder`.
+   * or select another route. Retry plumbing is provided by `BaseEmbedder`.
    * `options.signal` aborts in-flight requests and retry-loop waits.
    */
   embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]>;

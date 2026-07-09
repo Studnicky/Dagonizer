@@ -82,6 +82,7 @@ export class AsyncSourceState extends NodeStateBase {
 // #region worker-node
 export class ConsumeNode extends MonadicNode<AsyncSourceState, 'done'> {
   readonly name = 'consume';
+  readonly '@id' = 'urn:noocodec:node:consume';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
@@ -106,33 +107,40 @@ export class ConsumeNode extends MonadicNode<AsyncSourceState, 'done'> {
 // #region dag
 export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:async-source',
+  '@id': 'urn:noocodec:dag:async-source',
   '@type':     'DAG',
   "name":      'async-source',
   "version":   '1',
-  "entrypoints": { "main": 'scatter-stream' },
+  "entrypoints": { "main": 'urn:noocodec:dag:async-source/node/scatter-stream' },
   "nodes": [
     {
-      '@id':       'urn:noocodex:dag:async-source/node/scatter-stream',
+      '@id': 'urn:noocodec:dag:async-source/node/scatter-stream',
       '@type':     'ScatterNode',
       "name":      'scatter-stream',
-      "body":      { "node": 'consume' },
+      "body":      { "node": 'urn:noocodec:node:consume' },
       "source":    'stream',            // async-iterable field; engine normalises it
       "itemKey":   'stream-item',       // metadata key each pulled item is bound to
       "execution": { "mode": "item", "concurrency": 2 },                 // max 2 items in-flight simultaneously
-      "gather": {
-        "strategy": GatherStrategyNames.MAP,
-        "mapping":  { "item": 'results' }, // clone.item (scalar) → parent.results[]
-      },
       "outputs": {
-        'all-success': 'end',
-        "partial":     'end',
-        'all-error':   'end',
-        "empty":       'end',
+        'all-success': 'urn:noocodec:dag:async-source/node/collect-results',
+        "partial": 'urn:noocodec:dag:async-source/node/collect-results',
+        'all-error': 'urn:noocodec:dag:async-source/node/collect-results',
+        "empty": 'urn:noocodec:dag:async-source/node/end',
       },
     },
     {
-      '@id':     'urn:noocodex:dag:async-source/node/end',
+      '@id': 'urn:noocodec:dag:async-source/node/collect-results',
+      '@type': 'GatherNode',
+      "name": 'collect-results',
+      sources: { "urn:noocodec:dag:async-source/node/scatter-stream": {} },
+      "gather": {
+        "strategy": GatherStrategyNames.MAP,
+        "mapping": { "item": 'results' },
+      },
+      "outputs": { "success": 'urn:noocodec:dag:async-source/node/end', "error": 'urn:noocodec:dag:async-source/node/end', "empty": 'urn:noocodec:dag:async-source/node/end' },
+    },
+    {
+      '@id': 'urn:noocodec:dag:async-source/node/end',
       '@type':   'TerminalNode',
       "name":    'end',
       "outcome": 'completed',

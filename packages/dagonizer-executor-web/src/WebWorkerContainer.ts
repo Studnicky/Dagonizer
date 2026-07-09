@@ -65,7 +65,7 @@ export type WebWorkerContainerOptionsType = {
    * Number of workers in the pool.
    * Defaults to `WebSystemInfo.recommendedWorkerCount` with
    * `RecommendedWorkerCountConfigDefault` and `hardwareConcurrency`
-   * from `navigator` when available, falling back to 2.
+   * from `navigator` when available, otherwise 2.
    */
   readonly poolSize?: number;
 };

@@ -52,7 +52,7 @@ import {
 import { Validator } from '@studnicky/dagonizer/validation';
 
 export const CanonicalEventVariantSchema = {
-  '$id':     'https://noocodex.dev/schemas/cartographer/CanonicalEventVariant',
+  '$id': 'https://noocodec.dev/schemas/cartographer/CanonicalEventVariant',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     PositionPingEventSchema,
@@ -546,7 +546,7 @@ export class CanonicalEventVariantBuilder {
 
   private static resolveFromSourcePayloadHandler(eventType: string): (ctx: FromSourcePayloadContext) => CanonicalEventVariant {
     const positionPingHandler = CanonicalEventVariantBuilder.fromSourcePayloadDispatch['position-ping'];
-    const fallback = (ctx: FromSourcePayloadContext): CanonicalEventVariant => {
+    const positionPingDefault = (ctx: FromSourcePayloadContext): CanonicalEventVariant => {
       const body: PositionPingEvent['body'] = {
         'scanSeq':      ctx.sharedGeo.scanSeq,
         'latitude':     ctx.sharedGeo.latitude,
@@ -568,7 +568,7 @@ export class CanonicalEventVariantBuilder {
       };
       return { ...ctx.envelope, 'eventType': 'position-ping', 'body': body, ...(ctx.preResolvedGeo !== undefined && { 'geo': ctx.preResolvedGeo }) };
     };
-    return CanonicalEventVariantBuilder.fromSourcePayloadDispatch[eventType] ?? positionPingHandler ?? fallback;
+    return CanonicalEventVariantBuilder.fromSourcePayloadDispatch[eventType] ?? positionPingHandler ?? positionPingDefault;
   }
 }
 // #endregion canonical-event-variant-entity

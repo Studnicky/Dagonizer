@@ -66,6 +66,7 @@ class EmbedMemState extends NodeStateBase {
 // ── nodes ─────────────────────────────────────────────────────────────────────
 
 class IncValueNode extends MonadicNode<EmbedMemState, 'done'> {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
@@ -73,6 +74,7 @@ class IncValueNode extends MonadicNode<EmbedMemState, 'done'> {
 
   constructor(name: string, delta: number) {
     super();
+    this['@id'] = `urn:noocodec:node:${encodeURIComponent(name)}`;
     this.name = name;
     this.delta = delta;
   }
@@ -85,6 +87,7 @@ class IncValueNode extends MonadicNode<EmbedMemState, 'done'> {
 
 class IncCounterNode extends MonadicNode<EmbedMemState, 'done'> {
   readonly name = 'inc-counter';
+  readonly '@id' = 'urn:noocodec:node:inc-counter';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
@@ -106,17 +109,26 @@ const COUNTER_MAPPING = {
   'output': { 'counter': 'counter' },
 } as const;
 
+const EMB3_INNER_DAG = 'urn:noocodec:dag:emb3-inner';
+const EMB3_MID_DAG = 'urn:noocodec:dag:emb3-mid';
+const EMB3_OUTER_DAG = 'urn:noocodec:dag:emb3-outer';
+const EMB_SCATTER_BODY_DAG = 'urn:noocodec:dag:emb-scatter-body';
+
 // ── DAG builders ──────────────────────────────────────────────────────────────
 
 class PlacementFixture {
   private constructor() {}
 
+  static iri(dag: string, name: string): string {
+    return `urn:noocodec:dag:${dag}/node/${name}`;
+  }
+
   static single(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
     return {
-      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': PlacementFixture.iri(dag, name),
       '@type': 'SingleNode',
       name,
-      'node':  name,
+      'node':  `urn:noocodec:node:${name}`,
       outputs,
     };
   }
@@ -128,17 +140,20 @@ class PlacementFixture {
     stateMapping: { input: Record<string, string>; output: Record<string, string> },
   ): DAGType['nodes'][number] {
     return {
-      '@id':          `urn:noocodex:dag:${dag}/node/${name}`,
+      '@id': `urn:noocodec:dag:${dag}/node/${name}`,
       '@type':        'EmbeddedDAGNode',
       name,
       'dag':          childDag,
       stateMapping,
-      'outputs':      { 'success': 'end', 'error': 'end' },
+      'outputs':      {
+        'success': PlacementFixture.iri(dag, 'end'),
+        'error': PlacementFixture.iri(dag, 'end'),
+      },
     };
   }
 
   static terminal(dag: string): DAGType['nodes'][number] {
-    return { '@id': `urn:noocodex:dag:${dag}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
+    return { '@id': PlacementFixture.iri(dag, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
   }
 }
 
@@ -148,20 +163,20 @@ class PlacementFixture {
 // mid:   inc-mid(+100)    → embed-inner
 // inner: inc-inner(+1)    → terminal
 
-const innerDAG3 = Validator.dag.validate(TestDag.of('emb3-inner', 'inc-inner', [
-  PlacementFixture.single('emb3-inner', 'inc-inner', { 'done': 'end' }),
+const innerDAG3 = Validator.dag.validate(TestDag.of(EMB3_INNER_DAG, PlacementFixture.iri('emb3-inner', 'inc-inner'), [
+  PlacementFixture.single('emb3-inner', 'inc-inner', { 'done': PlacementFixture.iri('emb3-inner', 'end') }),
   PlacementFixture.terminal('emb3-inner'),
 ]));
 
-const midDAG3 = Validator.dag.validate(TestDag.of('emb3-mid', 'inc-mid', [
-  PlacementFixture.single('emb3-mid', 'inc-mid', { 'done': 'embed-inner' }),
-  PlacementFixture.embed('emb3-mid', 'embed-inner', 'emb3-inner', VALUE_MAPPING),
+const midDAG3 = Validator.dag.validate(TestDag.of(EMB3_MID_DAG, PlacementFixture.iri('emb3-mid', 'inc-mid'), [
+  PlacementFixture.single('emb3-mid', 'inc-mid', { 'done': PlacementFixture.iri('emb3-mid', 'embed-inner') }),
+  PlacementFixture.embed('emb3-mid', 'embed-inner', EMB3_INNER_DAG, VALUE_MAPPING),
   PlacementFixture.terminal('emb3-mid'),
 ]));
 
-const outerDAG3 = Validator.dag.validate(TestDag.of('emb3-outer', 'inc-outer', [
-  PlacementFixture.single('emb3-outer', 'inc-outer', { 'done': 'embed-mid' }),
-  PlacementFixture.embed('emb3-outer', 'embed-mid', 'emb3-mid', VALUE_MAPPING),
+const outerDAG3 = Validator.dag.validate(TestDag.of(EMB3_OUTER_DAG, PlacementFixture.iri('emb3-outer', 'inc-outer'), [
+  PlacementFixture.single('emb3-outer', 'inc-outer', { 'done': PlacementFixture.iri('emb3-outer', 'embed-mid') }),
+  PlacementFixture.embed('emb3-outer', 'embed-mid', EMB3_MID_DAG, VALUE_MAPPING),
   PlacementFixture.terminal('emb3-outer'),
 ]));
 
@@ -169,6 +184,7 @@ const outerDAG3 = Validator.dag.validate(TestDag.of('emb3-outer', 'inc-outer', [
 
 class EmbedCounterGather extends GatherStrategy {
   readonly name = 'embed-counter-gather';
+  readonly '@id' = 'urn:noocodec:node:embed-counter-gather';
 
   reduce(
     _config: GatherConfigType,
@@ -196,9 +212,9 @@ GatherStrategies.register(new EmbedCounterGather());
 // The scatter body DAG references `emb3-mid` (which itself embeds `emb3-inner`).
 // This creates depth-2 nesting inside the scatter body.
 
-const scatterBodyDAG = Validator.dag.validate(TestDag.of('emb-scatter-body', 'inc-counter', [
-  PlacementFixture.single('emb-scatter-body', 'inc-counter', { 'done': 'embed-mid' }),
-  PlacementFixture.embed('emb-scatter-body', 'embed-mid', 'emb3-mid', COUNTER_MAPPING),
+const scatterBodyDAG = Validator.dag.validate(TestDag.of(EMB_SCATTER_BODY_DAG, PlacementFixture.iri('emb-scatter-body', 'inc-counter'), [
+  PlacementFixture.single('emb-scatter-body', 'inc-counter', { 'done': PlacementFixture.iri('emb-scatter-body', 'embed-mid') }),
+  PlacementFixture.embed('emb-scatter-body', 'embed-mid', EMB3_MID_DAG, COUNTER_MAPPING),
   PlacementFixture.terminal('emb-scatter-body'),
 ]));
 
@@ -208,30 +224,41 @@ class TestEmbedDag {
   static scatterOverEmbed(name: string, concurrency: number): DAGType {
     return Validator.dag.validate({
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${name}`,
+      '@id': `urn:noocodec:dag:${name}`,
       '@type':    'DAG',
       name,
       'version':  '1',
-      'entrypoints': { 'main': 'fan' },
+      'entrypoints': { 'main': PlacementFixture.iri(name, 'fan') },
       'nodes': [
         {
-          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@id': `urn:noocodec:dag:${name}/node/fan`,
           '@type':       'ScatterNode',
           'name':        'fan',
-          'body':        { 'dag': 'emb-scatter-body' },
+          'body':        { 'dag': EMB_SCATTER_BODY_DAG },
           'source':      'items',
           'itemKey':     'item',
-          'execution':   { 'mode': 'item', concurrency },
-          'gather':      { 'strategy': 'embed-counter-gather' },
+          'execution': { 'mode': 'item', concurrency },
           'outputs': {
-            'all-success': 'end',
-            'partial':     'end',
-            'all-error':   'end',
-            'empty':       'end',
+            'all-success': PlacementFixture.iri(name, 'join'),
+            'partial': PlacementFixture.iri(name, 'join'),
+            'all-error': PlacementFixture.iri(name, 'join'),
+            'empty':       PlacementFixture.iri(name, 'end'),
           },
         },
         {
-          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@id': `urn:noocodec:dag:${name}/node/join`,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [PlacementFixture.iri(name, 'fan')]: {} },
+          'gather': { 'strategy': 'embed-counter-gather' },
+          'outputs': {
+            'success': PlacementFixture.iri(name, 'end'),
+            'error': PlacementFixture.iri(name, 'end'),
+            'empty': PlacementFixture.iri(name, 'end'),
+          },
+        },
+        {
+          '@id': `urn:noocodec:dag:${name}/node/end`,
           '@type':   'TerminalNode',
           'name':    'end',
           'outcome': 'completed',
@@ -273,7 +300,7 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     const state = new EmbedMemState();
 
     const seen: string[] = [];
-    const execution = d.execute('emb3-outer', state);
+    const execution = d.execute('urn:noocodec:dag:emb3-outer', state);
     // Iteration yields heterogeneous per-node results typed `NodeStateInterface`;
     // `nodeName` is on the base. The final state is read from the awaited result,
     // whose `state` is typed `EmbedMemState` — no downcast needed.
@@ -304,7 +331,7 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     const state = new EmbedMemState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const execution = d.execute('emb-scatter-n2000', state);
+    const execution = d.execute('urn:noocodec:dag:emb-scatter-n2000', state);
     let scatterResult: NodeResultType<NodeStateInterface> | null = null;
     for await (const stage of execution) {
       if (stage.nodeName === 'fan') {
