@@ -31,7 +31,7 @@ const registry: RegistryModuleInterface = {
         "dags":  [workerDag, dag],
       },
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapter.wrap((snapshot: JsonObjectType) => WorkState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapter.wrap(() => new WorkState()),
     };
   },
 };

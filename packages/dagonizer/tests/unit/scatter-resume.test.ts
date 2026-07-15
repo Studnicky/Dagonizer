@@ -5,14 +5,14 @@ import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Check
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 /** State carrying a typed items / processed array plus an optional second
  *  scatter source, and a `results` array for the map-gather fix scenario.
@@ -25,31 +25,7 @@ class ScatterState extends NodeStateBase {
   produced = 0;
   results: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'items':     [...this.items],
-      'items2':    [...this.items2],
-      'processed': [...this.processed],
-      'processed2': [...this.processed2],
-      'produced':  this.produced,
-      'results':   [...this.results],
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const items = snap['items'];
-    if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
-    const items2 = snap['items2'];
-    if (Array.isArray(items2)) this.items2 = items2.filter((x): x is number => typeof x === 'number');
-    const processed = snap['processed'];
-    if (Array.isArray(processed)) this.processed = processed.filter((x): x is number => typeof x === 'number');
-    const processed2 = snap['processed2'];
-    if (Array.isArray(processed2)) this.processed2 = processed2.filter((x): x is number => typeof x === 'number');
-    const produced = snap['produced'];
-    if (typeof produced === 'number') this.produced = produced;
-    const results = snap['results'];
-    if (Array.isArray(results)) this.results = results.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 void describe('Dagonizer scatter per-item resume bookkeeping', () => {
@@ -351,8 +327,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
-    const snap = partial.state.snapshot();
-    const restored = ScatterState.restore(snap);
+    const snap = graphStateDocument(partial.state);
+    const restored = new ScatterState();
+    await restored.restoreJsonLd(partial.state.runIri, snap);
     // The two incremental results survive the snapshot.
     assert.equal(restored.results.length, 2);
 
@@ -593,8 +570,9 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
         'outcomeTally': { 'success': 2 },
       },
     });
-    const snap = state.snapshot();
-    const restored = ScatterState.restore(snap);
+    const snap = graphStateDocument(state);
+    const restored = new ScatterState();
+    await restored.restoreJsonLd(state.runIri, snap);
     const storedRestoredRaw = restored.getMetadata(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestoredRaw !== undefined);
     const storedRestored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRestoredRaw);
@@ -672,7 +650,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed: unknown = JSON.parse(round);
     const ckpt2 = Checkpoint.load(parsed);
-    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => ScatterState.restore(snap)));
+    const { 'state': rehydrated, cursor, dagName } = await ckpt2.restoreState(CheckpointRestoreAdapter.wrap(() => new ScatterState()));
     assert.equal(cursor, fanIri);
 
     const storedRaw2 = rehydrated.getMetadata(SCATTER_PROGRESS_KEY);

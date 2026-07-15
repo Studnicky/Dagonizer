@@ -45,6 +45,7 @@
  * ```
  */
 
+import type { GraphStateLifecycleInterface } from './contracts/GraphStateLifecycleInterface.js';
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
@@ -105,6 +106,7 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
         const next = await gen.next();
         if (next.done === true) {
           this.#cachedResult = next.value;
+          if (Execution.isGraphLifecycle(next.value.state)) next.value.state.closeGraph();
           return next.value;
         }
         yield next.value;
@@ -125,5 +127,9 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
       const next = await it.next();
       if (next.done === true) return next.value;
     }
+  }
+
+  private static isGraphLifecycle(state: NodeStateInterface): state is NodeStateInterface & GraphStateLifecycleInterface {
+    return 'closeGraph' in state && typeof state.closeGraph === 'function';
   }
 }

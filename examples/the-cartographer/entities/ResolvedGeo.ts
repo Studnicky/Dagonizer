@@ -1,24 +1,29 @@
 /**
  * ResolvedGeo: the final location output of the geo-source-resolve sub-DAG,
- * materialised by the `geo-weighted-fusion` gather from the highest-weight
- * resolved signal candidate. All valid signal modalities are scored and
- * resolved in parallel; the gather picks the winner by weight, back-fills
- * empty fields from lower-weight candidates, and writes this record.
+ * assembled by a layered-consensus node chain (`resolve-country-consensus` →
+ * `verify-point-containment` → `assemble-resolved-geo`) from every resolved
+ * signal candidate. All valid signal modalities are scored and resolved in
+ * parallel; the chain groups candidates by agreement rather than crowning a
+ * single highest-weight winner, verifies the best available point against the
+ * consensus country, and writes this record.
  *
  * Fields:
  *   - country / countryName : ISO-2 code + human name (empty over open water).
  *   - region / locality     : subdivision + place name (back-filled from the
- *                             next-highest-weight candidate when the winner's
- *                             field is empty).
- *   - lat / lng             : the resolved position (from the winning candidate).
+ *                             next-highest-weight candidate that AGREES with
+ *                             the consensus country).
+ *   - lat / lng             : the verified point (or consensus-country
+ *                             centroid fallback when no point candidate
+ *                             resolved).
  *   - status                : land | water | coastal (water → high seas).
- *   - jurisdiction          : privacy regime derived from the winning country
- *                             (international-waters over open water, baseline
- *                             when no country resolved).
- *   - confidence            : the winning signal's base weight (0..1). Override:
- *                             when a `code` and a `locale` candidate both resolve
- *                             and agree on the same ISO-2 country, confidence is
- *                             max(winnerWeight, 0.45) (composite code+locale).
+ *   - jurisdiction          : privacy regime derived from the consensus
+ *                             country (international-waters over open water,
+ *                             baseline when no country resolved).
+ *   - confidence            : a noisy-OR combination of the consensus group's
+ *                             member weights (`1 - Π(1 - weight)`), so several
+ *                             independent agreeing signals score higher than
+ *                             one strong signal alone; reduced by 0.7× when
+ *                             point verification found a conflicting country.
  *   - provenance            : contributing source kinds, ordered highest-weight
  *                             first, de-duplicated.
  *   - modalities            : 'gps' if any contributing source is 'coords';

@@ -2,7 +2,7 @@
  * DomArchivistSession: DOM-connected subclass of ArchivistSession.
  *
  * Wires every abstract seam method to the browser UI:
- *   - onGreetingReady / onSampleReplyReady → chat bubbles / input value
+ *   - onGreetingReady / onSampleReplyReady → chat bubbles
  *   - onVisitorTurn / onArchivistTurn → conversation panel
  *   - onRunEnd → IndexedDB durability (HITL park persist or memory n-quads)
  *   - onError → styled error line in the log panel
@@ -21,7 +21,7 @@
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import { IndexedDbCheckpointStore, IndexedDbStore } from '@studnicky/dagonizer-store-indexeddb';
 
-import type { SessionDagEvent, SessionNodeEvent } from './ArchivistSession.ts';
+import type { SessionDagEvent, SessionNodeEvent, SessionTraceEntry } from './ArchivistSession.ts';
 import { ArchivistSession } from './ArchivistSession.ts';
 import type { ArchivistSessionOptions } from './ArchivistSession.ts';
 import { ArchivistState } from './ArchivistState.ts';
@@ -36,15 +36,41 @@ class ChatBubble {
   static visitor(text: string): HTMLDivElement {
     const el = document.createElement('div');
     el.className = 'bubble bubble-visitor';
-    el.textContent = text;
+    el.textContent = MessageText.clean(text);
     return el;
   }
 
   static archivist(text: string): HTMLDivElement {
     const el = document.createElement('div');
     el.className = 'bubble bubble-archivist';
-    el.textContent = text;
+    el.textContent = MessageText.clean(text);
     return el;
+  }
+}
+
+class MessageText {
+  static clean(value: string): string {
+    let text = value.trim();
+    let next = MessageText.stripOneQuotePair(text);
+    while (next !== text) {
+      text = next.trim();
+      next = MessageText.stripOneQuotePair(text);
+    }
+    return text;
+  }
+
+  private static stripOneQuotePair(value: string): string {
+    if (value.length < 2) return value;
+    const first = value[0];
+    const last = value[value.length - 1];
+    const pairs: Readonly<Record<string, string>> = {
+      '"':      '"',
+      "'":      "'",
+      '`':      '`',
+      '\u201c': '\u201d',
+      '\u2018': '\u2019',
+    };
+    return first !== undefined && last === pairs[first] ? value.slice(1, -1) : value;
   }
 }
 
@@ -87,6 +113,13 @@ export interface DomArchivistStores {
   readonly ckptStore: IndexedDbCheckpointStore;
 }
 
+/** Optional DOM-facing callbacks for panels that are not direct session refs. */
+export interface DomArchivistCallbacks {
+  readonly onBackendsReady?: (backends: readonly BackendAvailability[], noModel: boolean) => void;
+  readonly onTraceEntry?: (trace: SessionTraceEntry) => void;
+  readonly onMemoryChanged?: () => void;
+}
+
 /**
  * Constructor options for `DomArchivistSession`.
  *
@@ -96,6 +129,7 @@ export interface DomArchivistStores {
 export interface DomArchivistSessionOptions extends ArchivistSessionOptions {
   readonly dom: DomArchivistRefs;
   readonly stores: DomArchivistStores;
+  readonly callbacks?: DomArchivistCallbacks;
 }
 
 // ── DomArchivistSession ───────────────────────────────────────────────────────
@@ -111,12 +145,14 @@ export class DomArchivistSession extends ArchivistSession {
   readonly #dom: DomArchivistRefs;
   readonly #kvStore: IndexedDbStore;
   readonly #ckptStore: IndexedDbCheckpointStore;
+  readonly #callbacks: DomArchivistCallbacks;
 
   constructor(store: MemoryStore, logger: DomConsoleLogger, options: DomArchivistSessionOptions) {
     super(store, logger, options);
     this.#dom      = options.dom;
     this.#kvStore  = options.stores.kvStore;
     this.#ckptStore = options.stores.ckptStore;
+    this.#callbacks = options.callbacks ?? {};
   }
 
   // ── Abstract seam overrides ───────────────────────────────────────────────
@@ -126,10 +162,14 @@ export class DomArchivistSession extends ArchivistSession {
       this.#dom.button.disabled = true;
       this.#dom.input.disabled  = true;
       this.appendErrorLine('No runnable LLM backend detected. Supply ?apiKey= or run Ollama locally.');
+    } else {
+      this.#dom.button.disabled = false;
+      this.#dom.input.disabled  = false;
     }
     if (backends.length > 0) {
       this.logger.note(`backends detected: ${backends.map((b) => b.id).join(', ')}`);
     }
+    this.#callbacks.onBackendsReady?.(backends, noModel);
   }
 
   protected override onGreetingReady(greeting: string): void {
@@ -137,7 +177,8 @@ export class DomArchivistSession extends ArchivistSession {
   }
 
   protected override onSampleReplyReady(reply: string): void {
-    this.#dom.input.value = reply;
+    ConversationView.pushVisitor(this.#dom.conversationEl, reply);
+    this.#dom.input.value = '';
   }
 
   protected override onVisitorTurn(query: string): void {
@@ -155,6 +196,9 @@ export class DomArchivistSession extends ArchivistSession {
    * additional log lines.
    */
   protected override onNodeEvent(event: SessionNodeEvent): void {
+    if (event.trace !== null) {
+      this.#callbacks.onTraceEntry?.(event.trace);
+    }
     if (event.trace?.variant === 'note') {
       this.logger.note(event.trace.message);
     }
@@ -184,7 +228,7 @@ export class DomArchivistSession extends ArchivistSession {
   }
 
   protected override onMemoryChanged(): void {
-    // No live memory graph in the standalone DOM demo.
+    this.#callbacks.onMemoryChanged?.();
   }
 
   protected override onError(error: Error): void {
@@ -217,8 +261,9 @@ export class DomArchivistSession extends ArchivistSession {
         return;
       }
       await recalled.restoreStores({ 'memory': this.store });
-      const { dagName, state, cursor } = recalled.restoreState(
-        CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+      this.#callbacks.onMemoryChanged?.();
+      const { dagName, state, cursor } = await recalled.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
       );
       state.query = humanText;
       this.#dom.hitlInput.value = '';

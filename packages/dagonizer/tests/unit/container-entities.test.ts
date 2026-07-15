@@ -15,6 +15,7 @@ import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionRe
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -76,7 +77,7 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'items':         [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [] } }],
+  'items':         [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer() }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
 };
@@ -121,7 +122,7 @@ void describe('ExecutionRequest schema', () => {
 
 const validResponse = {
   'correlationId': 'child:1',
-  'items': [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [], 'value': 10 }, 'terminalOutcome': 'success' }],
+  'items': [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'success' }],
   'errors': [],
   'intermediates': [
     { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
@@ -134,7 +135,7 @@ void describe('ExecutionResponse schema', () => {
   });
 
   void it('accepts null item snapshot', () => {
-    assert.equal(responseValidator({ ...validResponse, 'items': [{ 'id': 'child:1', 'snapshot': null, 'terminalOutcome': 'success' }] }), true);
+    assert.equal(responseValidator({ ...validResponse, 'items': [{ 'id': 'child:1', 'graphState': null, 'terminalOutcome': 'success' }] }), false);
   });
 
   void it('accepts an error item in errors array', () => {

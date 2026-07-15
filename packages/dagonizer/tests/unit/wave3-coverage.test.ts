@@ -12,7 +12,7 @@
  *   TST-W3-3: Validator.interruptionInfo — valid/invalid/errors
  *   TST-W3-4: Validator.openAiResponseBody — valid/invalid/errors
  *
- *   TST-W3-5: DAGIdentity.id and DAGIdentity.placementId canonical URN helpers
+ *   TST-W3-5: DAGIdentity.id validates explicit DAG IRIs
  *
  *   TST-W3-6: StoreError extends DAGError, code, classification preserved
  *
@@ -36,6 +36,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -73,7 +74,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-1',
-        'items': [{ 'id': 'test-1', 'snapshot': null, 'terminalOutcome': 'completed' }],
+        'items': [{ 'id': 'test-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
         'errors': [validNodeError],
         'intermediates': [],
       },
@@ -102,7 +103,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-2',
-        'items': [{ 'id': 'test-2', 'snapshot': null, 'terminalOutcome': 'completed' }],
+        'items': [{ 'id': 'test-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
         'errors': [withExtra],
         'intermediates': [],
       },
@@ -128,7 +129,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-3',
-        'items': [{ 'id': 'test-3', 'snapshot': null, 'terminalOutcome': 'completed' }],
+        'items': [{ 'id': 'test-3', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
         'errors': [missingTimestamp],
         'intermediates': [],
       },
@@ -143,7 +144,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const validRequest = {
       'dagName': 'pipeline',
       'placementPath': ['parent', 'child'],
-      'items': [{ 'id': 'corr-1', 'snapshot': { 'count': 0 } }],
+      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer() }],
       'timeoutMs': 5000,
       'correlationId': 'corr-1',
     };
@@ -163,7 +164,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const withExtra = {
       'dagName': 'pipeline',
       'placementPath': [],
-      'items': [{ 'id': 'corr-x', 'snapshot': {} }],
+      'items': [{ 'id': 'corr-x', 'graphState': {} }],
       'timeoutMs': null,
       'correlationId': 'corr-x',
       'nodeName': 'step1',   // additionalProperties: false must reject this
@@ -185,7 +186,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a value valid per ExecutionResponseSchema is accepted in the result.response branch', () => {
     const validResponse = {
       'correlationId': 'corr-1',
-      'items': [{ 'id': 'corr-1', 'snapshot': { 'done': true }, 'terminalOutcome': 'completed' }],
+      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
       'errors': [],
       'intermediates': [{ 'output': 'ok', 'skipped': false, 'nodeName': 'step1' }],
     };
@@ -204,7 +205,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a response with extra field on intermediate item is rejected by both', () => {
     const withExtra = {
       'correlationId': 'corr-2',
-      'items': [{ 'id': 'corr-2', 'snapshot': null, 'terminalOutcome': 'failed' }],
+      'items': [{ 'id': 'corr-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
       'errors': [],
       'intermediates': [{
         'output': 'done',
@@ -488,27 +489,16 @@ void describe('TST-W3-4: Validator.openAiResponseBody', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TST-W3-5: DAGIdentity.id and DAGIdentity.placementId explicit IRI helpers
+// TST-W3-5: DAGIdentity.id explicit IRI validation
 // ---------------------------------------------------------------------------
 
-void describe('TST-W3-5: DAGIdentity.id and DAGIdentity.placementId IRI helpers', () => {
+void describe('TST-W3-5: DAGIdentity.id explicit IRI validation', () => {
   void it('DAGIdentity.id validates and returns explicit DAG IRIs', () => {
     assert.equal(DAGIdentity.id('urn:noocodec:dag:demo'), 'urn:noocodec:dag:demo');
   });
 
-  void it('DAGIdentity.placementId composes from an explicit DAG IRI', () => {
-    assert.equal(DAGIdentity.placementId('urn:noocodec:dag:demo', 'increment'), 'urn:noocodec:dag:demo/node/increment');
-  });
-
   void it('DAGIdentity.id rejects display names', () => {
     assert.throws(() => DAGIdentity.id('my-workflow_v2'), /requires an absolute IRI/u);
-  });
-
-  void it('DAGIdentity.placementId handles explicit placement identifiers under an explicit DAG IRI', () => {
-    assert.equal(
-      DAGIdentity.placementId('urn:noocodec:dag:pipeline', 'fetch-data'),
-      'urn:noocodec:dag:pipeline/node/fetch-data',
-    );
   });
 
   void it('DAGIdentity (namespace object) is frozen — mutations are silently ignored', () => {

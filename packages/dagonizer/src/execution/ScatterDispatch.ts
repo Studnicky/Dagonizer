@@ -7,12 +7,13 @@ import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.j
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
+import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../contracts/ReservoirDriver.js';
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
-import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
@@ -26,6 +27,7 @@ import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { Timeout } from '../entities/Timeout.js';
 import { DAGError } from '../errors/index.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
@@ -78,7 +80,7 @@ export interface ScatterDispatchAdapterInterface {
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
-  readonly executionTopologyStore: TripleStoreInterface;
+  readonly executionTopologyStore: GraphDatasetInterface;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -114,7 +116,7 @@ export interface ScatterDispatchSourceInterface {
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
-  readonly executionTopologyStore: TripleStoreInterface;
+  readonly executionTopologyStore: GraphDatasetInterface;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -155,7 +157,7 @@ export class ScatterDispatchAdapter
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
-  readonly executionTopologyStore: TripleStoreInterface;
+  readonly executionTopologyStore: GraphDatasetInterface;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   readonly #source: ScatterDispatchSourceInterface;
 
@@ -168,6 +170,11 @@ export class ScatterDispatchAdapter
     this.executionTopologyStore = source.executionTopologyStore;
     this.outputSchemaValidator = source.outputSchemaValidator;
     this.#source = source;
+  }
+
+  static isGraphState(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
+    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
+      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
   }
 
   withNodeTimeout<TResult>(
@@ -742,8 +749,9 @@ export class ScatterPoolDriver
           continue;
         }
 
-        if (outcome.stateSnapshot !== null) {
-          clone.applySnapshot(outcome.stateSnapshot);
+        if (outcome.graphState !== undefined) {
+          if (!ScatterDispatchAdapter.isGraphState(clone)) throw new Error('Graph-state outcome requires a graph-backed clone');
+          await GraphStateTransferCodec.restore(clone, outcome.graphState);
         }
         for (const err of outcome.errors) clone.collectError(err);
 

@@ -7,11 +7,11 @@
  * topology by name.
  */
 
-import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType, NodeStateInterface } from '@studnicky/dagonizer';
 
 export const dagIri = 'urn:noocodec:dag:my-agent' as const;
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 const topologyNodes = {
   'chatRequest':         new PlaceholderNode<NodeStateInterface, 'ready' | 'error'>('urn:noocodec:node:build-request', ['ready', 'error']),

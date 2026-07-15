@@ -23,14 +23,13 @@ import { describe, it } from 'node:test';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
+const placementIri = (dagName: string, placementName: string): string => `${dagName}/node/${placementName}`;
 
 // ── test state ────────────────────────────────────────────────────────────────
 
@@ -42,20 +41,7 @@ class AbortState extends NodeStateBase {
   items: ScatterSource<number> = [];
   processed: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    // items may be an AsyncIterable at runtime; only array form is JSON-serialisable.
-    const itemsSnap = Array.isArray(this.items) ? [...this.items] : [];
-    return { 'items': itemsSnap, 'processed': [...this.processed] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const iv = snap['items'];
-    if (Array.isArray(iv)) this.items = iv.filter((x): x is number => typeof x === 'number');
-    const v = snap['processed'];
-    if (Array.isArray(v)) {
-      this.processed = v.filter((x): x is number => typeof x === 'number');
-    }
-  }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

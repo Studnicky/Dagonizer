@@ -52,8 +52,8 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
 
     // Parse, restore, resume
     const ckpt = Checkpoint.load(JSON.parse(persisted));
-    const { state, dagName, cursor } = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),
+    const { state, dagName, cursor } = await ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new CountingState()),
     );
 
     assert.equal(dagName, 'urn:noocodec:dag:count');

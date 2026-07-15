@@ -28,12 +28,43 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, posix, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
-
 /** Caller options for `transformersEmbedderAssets()`. Both fields are optional overrides for testing; the primary flow resolves both from this plugin module's own location. */
 export type TransformersEmbedderAssetsOptionsType = {
   readonly modelsDir?: string;
   readonly ortDistDir?: string;
+};
+
+type TransformersEmbedderAssetsResolvedConfigType = {
+  readonly base: string;
+};
+
+type TransformersEmbedderAssetsResponseType = {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(body?: Buffer): void;
+};
+
+type TransformersEmbedderAssetsDevServerType = {
+  readonly middlewares: {
+    use(handler: (
+      req: { readonly url?: string | undefined },
+      res: TransformersEmbedderAssetsResponseType,
+      next: () => void,
+    ) => void): void;
+  };
+};
+
+type TransformersEmbedderAssetsEmitContextType = {
+  emitFile(asset: { type: 'asset'; fileName: string; source: Buffer }): string;
+};
+
+type TransformersEmbedderAssetsPluginType = {
+  readonly name: string;
+  configResolved(config: TransformersEmbedderAssetsResolvedConfigType): void;
+  resolveId(id: string): string | undefined;
+  load(id: string): string | undefined;
+  configureServer(server: TransformersEmbedderAssetsDevServerType): void;
+  generateBundle(this: TransformersEmbedderAssetsEmitContextType): void;
 };
 
 const VIRTUAL_MODULE_ID = 'virtual:transformers-embedder-assets';
@@ -160,7 +191,7 @@ class TransformersEmbedderAssets {
    * When `dir` is missing or empty, fails the build with `missingDirMessage` — offline model
    * assets are required input, not an optional extra to silently skip.
    */
-  static emitAssetSet(context: { emitFile(asset: { type: 'asset'; fileName: string; source: Buffer }): string }, dir: string, segment: string, missingDirMessage: string | undefined): void {
+  static emitAssetSet(context: TransformersEmbedderAssetsEmitContextType, dir: string, segment: string, missingDirMessage: string | undefined): void {
     const files = TransformersEmbedderAssets.listFilesRelative(dir);
     if (files.length === 0 && missingDirMessage !== undefined) {
       throw new Error(missingDirMessage);
@@ -182,7 +213,7 @@ class TransformersEmbedderAssets {
    * never `this.…`), so the exported `transformersEmbedderAssets` const below can safely
    * be a detached reference to this method.
    */
-  static plugin(options: TransformersEmbedderAssetsOptionsType = {}): Plugin {
+  static plugin(options: TransformersEmbedderAssetsOptionsType = {}): TransformersEmbedderAssetsPluginType {
     const modelsDir = TransformersEmbedderAssets.resolveModelsDir(options);
     const ortDistDirRef: { current: string } = { 'current': '' };
     let base = '/';
@@ -190,7 +221,7 @@ class TransformersEmbedderAssets {
     return {
       'name': 'transformers-embedder-assets',
 
-      configResolved(config: ResolvedConfig) {
+      configResolved(config: TransformersEmbedderAssetsResolvedConfigType) {
         base = config.base;
         ortDistDirRef.current = TransformersEmbedderAssets.resolveOrtDistDir(options);
       },
@@ -208,7 +239,7 @@ class TransformersEmbedderAssets {
         return `export const localModelPath = ${JSON.stringify(localModelPath)};\nexport const wasmPaths = ${JSON.stringify(wasmPaths)};\n`;
       },
 
-      configureServer(server: ViteDevServer) {
+      configureServer(server: TransformersEmbedderAssetsDevServerType) {
         TransformersEmbedderAssets.configureServer(server, base, modelsDir, ortDistDirRef);
       },
 
@@ -226,7 +257,7 @@ class TransformersEmbedderAssets {
   }
 
   /** Dev-server middleware: serve `models/**` and `ort/**` under `{base}@transformers-embedder/`. */
-  static configureServer(server: ViteDevServer, base: string, modelsDir: string, ortDistDirRef: { current: string }): void {
+  static configureServer(server: TransformersEmbedderAssetsDevServerType, base: string, modelsDir: string, ortDistDirRef: { current: string }): void {
     const prefix = `${base}${URL_PREFIX}`;
     server.middlewares.use((req, res, next) => {
       const url = req.url ?? '';

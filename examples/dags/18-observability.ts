@@ -7,8 +7,7 @@
 import {
   Batch,
   DAGBuilder,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -61,7 +60,7 @@ export class TransformNode extends MonadicNode<PipelineState, 'done'> {
 // ---------------------------------------------------------------------------
 
 export const dagIri = 'urn:noocodec:dag:observe-demo' as const;
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 const validateNode = new ValidateNode();
 const transformNode = new TransformNode();

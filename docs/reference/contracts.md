@@ -344,18 +344,18 @@ interface RegistryModuleInterface {
 ### DagOutcomeType
 
 ```ts twoslash
-import type { NodeErrorWireType, ExecutorIntermediateType } from '@studnicky/dagonizer';
+import type { NodeErrorWireType, ExecutorIntermediateType, GraphStateTransferType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface DagOutcomeType {
   readonly terminalOutput: string;
   readonly errors:         readonly NodeErrorWireType[];
-  readonly stateSnapshot:  JsonObjectType | null;
+  readonly graphState:  GraphStateTransferType;
   readonly intermediates:  readonly ExecutorIntermediateType[];
 }
 ```
 
-Result returned by `DagContainerInterface.runDag()` after a child DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `stateSnapshot` is the terminal child state snapshot (`null` when the container cannot produce one, e.g. transport failure); the parent calls `cloneState.applySnapshot(stateSnapshot)` when non-null. `intermediates` are per-node results forwarded to the parent execution stream.
+Result returned by `DagContainerInterface.runDag()` after a child DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `graphState` is the terminal child graph transfer restored through the shared graph-state port. `intermediates` are per-node results forwarded to the parent execution stream.
 
 ### DagTaskInterface
 

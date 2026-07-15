@@ -25,6 +25,7 @@ import type { JourneyInsights, RegionInsights } from '../../../../examples/the-c
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
 import { cartographerWorkersDAG, CartographerWorkersDag, cartographerWorkerRuntimeBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
+import { producerFeedBundle } from '../../../../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts';
 import { GeoSourceResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
@@ -33,6 +34,7 @@ import { normalizeSourcesPlugin } from '../../../../examples/the-cartographer/pl
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
 import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
+import type { CytoscapeGraphOptionsType } from '../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 
 import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
 import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
@@ -45,10 +47,9 @@ import type { AboxEntity } from './AboxAccordion.vue';
 import Spinner from './Spinner.vue';
 
 // ── Web-worker container ───────────────────────────────────────────────────────
-// Runs the CPU-heavy stream-event scatter body (decode → route → per-type
-// pipelines) off the main thread. `spawnWorker` is the consumer seam Vite needs
-// to chunk the worker entry; the entry statically injects its registry so no
-// dynamic import runs in the worker.
+// Runs the CPU-heavy typed event pipeline off the main thread. `spawnWorker` is
+// the consumer seam Vite needs to chunk the worker entry; the entry statically
+// injects its registry so no dynamic import runs in the worker.
 class CartographerWorkerContainer extends WebWorkerContainer {
   protected override spawnWorker(): WebWorkerLikeInterface {
     return new Worker(
@@ -85,7 +86,7 @@ const streamFeed = ref<StreamLine[]>([]);
 /** 0–100 progress percentage, driven by records/total. */
 const progressPct = ref(0);
 
-/** Total canonical events (set once merge-events fires). */
+/** Total canonical events requested for the run. */
 let totalEvents = 0;
 
 /** Ref for auto-scroll of the stream feed container. */
@@ -100,11 +101,10 @@ const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 
-// Every sub-DAG the cartographer DAG embeds, keyed by name, derived from the
-// worker-runtime bundle so it never drifts. Lets the graph expand the full
-// topology (process-stream → stream-event → 5 per-type pipelines → geo-pipeline
-// → leaves, plus summarize-insights → insights-summary) and animate inner nodes
-// as the worker relay reports them.
+// Every sub-DAG the cartographer DAG embeds, keyed by canonical IRI and display
+// name. The renderer expands literal DAG references by IRI while click handlers
+// use display labels. This includes the producer feed DAGs, their ingest-source
+// unpack/normalize body, the shared typed event pipeline, and the summary body.
 //
 // geo-source-resolve and its inner resolve-one-signal scatter body are built
 // per-call by GeoSourceResolveDAG.build (they carry injected transports), so
@@ -118,8 +118,26 @@ const geoDocBundle = GeoSourceResolveDAG.build(
   geoDocServices.addressGeocoder,
 );
 const embeddedDagRegistry = new Map(
-  [...cartographerWorkerRuntimeBundle.dags, ...geoDocBundle.dags].map((d) => [d.name, d] as const),
+  [
+    ...producerFeedBundle.dags,
+    ...ingestSourceBundle.dags,
+    ...cartographerWorkerRuntimeBundle.dags,
+    ...geoDocBundle.dags,
+  ]
+    .flatMap((dag) => [[dag['@id'], dag], [dag.name, dag]] as const),
 );
+
+const cartographerGraphLayoutOptions = {
+  rankSep: 126,
+  nodeSep: 24,
+  nodeWidth: 150,
+  nodeHeight: 44,
+  compoundPadding: 28,
+  margin: 12,
+  ranker: 'longest-path',
+  edgeMinLen: 2,
+  edgeWeight: 4,
+} satisfies CytoscapeGraphOptionsType['layoutOptions'];
 
 // ── Feed configuration ───────────────────────────────────────────────────────
 
@@ -155,7 +173,7 @@ const typeRows = ref<TypeRow[]>([
 ]);
 
 /** Total events to stream this run; clamped to [1, 1,000,000] at run time. */
-const totalEventsInput = ref(100000);
+const totalEventsInput = ref(100);
 
 /** Worker pool size; clamped to [1, 32] at run time. */
 const poolSizeInput = ref(
@@ -328,13 +346,13 @@ const leftTabs = computed(() => [
 const rightTabs = computed(() => [
   {
     'key': 'dag',
-    'label': 'DAG',
+    'label': 'DAG Topology',
     'badge': isRunning.value ? 'live' : '',
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
   },
   {
     'key': 'config',
-    'label': 'Config',
+    'label': 'Configuration',
     'badge': String(clampedTotal.value),
     'tone': 'default' as const,
   },
@@ -432,10 +450,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     // Final synchronous flush — capture the terminal state exactly.
     latestRunState = state;
     records.value = [...state.sampleRecords];
-    // The streaming flow decodes inline; there is no materialised
-    // canonical-event array. The Compare accordion's pre-stream source
-    // panel is wired in the separate UI follow-up.
-    canonicalEvents.value = [];
+    canonicalEvents.value = [...state.canonicalEvents];
     insightsMap.value = new Map(state.insights);
     journeysMap.value = new Map(state.journeys);
     trace.value = traceBuffer.slice(-MAX_TRACE);
@@ -608,7 +623,7 @@ async function run(): Promise<void> {
     activeAbortController = new AbortController();
 
     // #region cartographer-streaming-execution
-    const execution = dispatcher.execute('cartographer', state, { 'signal': activeAbortController.signal });
+    const execution = dispatcher.execute(cartographerWorkersDAG['@id'], state, { 'signal': activeAbortController.signal });
     for await (const stage of execution) {
       // Each yielded stage lights up a node via the observer hooks above.
       // Consume silently; the observer drives the UI.
@@ -879,6 +894,9 @@ onMounted(() => {
                 :dag="cartographerWorkersDAG"
                 :embedded-d-a-gs="embeddedDagRegistry"
                 :expand-all="true"
+                id-mode="iri"
+                initial-view="fit"
+                :layout-options="cartographerGraphLayoutOptions"
                 aria-label="Cartographer DAG live execution"
               />
             </div>

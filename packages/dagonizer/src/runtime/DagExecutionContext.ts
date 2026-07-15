@@ -107,6 +107,8 @@ import type { BindingType, QuadType, SlotPatternType, TermType } from '../contra
 export const DagExecutionContextKeys = {
   'CORRELATION_ID': 'correlationId',
   'DAG_NAME': 'dagName',
+  'DAG_IRI': 'dagIri',
+  'RUN_IRI': 'runIri',
 } as const;
 
 /** Subject IRI prefix for scope nodes. */
@@ -432,5 +434,13 @@ export class DagExecutionContext {
    */
   static dagNameOf(signal: AbortSignal): string | undefined {
     return DagExecutionScope.tryGet(signal, DagExecutionContextKeys.DAG_NAME);
+  }
+
+  static dagIriOf(signal: AbortSignal): string | undefined {
+    return DagExecutionScope.tryGet(signal, DagExecutionContextKeys.DAG_IRI);
+  }
+
+  static runIriOf(signal: AbortSignal): string | undefined {
+    return DagExecutionScope.tryGet(signal, DagExecutionContextKeys.RUN_IRI);
   }
 }

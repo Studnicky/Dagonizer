@@ -12,7 +12,7 @@ import type { MetadataReadableInterface } from './contracts/MetadataReadableInte
  * Every state exposes one of these as `state.getter`, constructed in
  * `NodeStateBase` against the state itself. The getter reads through
  * `getMetadata` (not the backing record) so it survives the record being
- * replaced on `clone()` / `applySnapshot()`.
+ * replaced when graph state is restored or cloned.
  */
 export class MetadataGetter {
   readonly #source: MetadataReadableInterface;

@@ -19,13 +19,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -46,7 +46,7 @@ const intermediateValidator = (() => {
   return existing ?? sharedAjv.compile(ExecutorIntermediateSchema);
 })();
 
-const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
+const placementIri = (dagName: string, placementName: string): string => `${dagName}/node/${placementName}`;
 
 // ---------------------------------------------------------------------------
 // ExecutorIntermediate
@@ -89,7 +89,7 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'items':         [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [] } }],
+  'items':         [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer() }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
 };
@@ -134,7 +134,7 @@ void describe('ExecutionRequest schema', () => {
 
 const validResponse = {
   'correlationId': 'child:1',
-  'items': [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [], 'value': 10 }, 'terminalOutcome': 'success' }],
+  'items': [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'success' }],
   'errors': [],
   'intermediates': [
     { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
@@ -146,12 +146,12 @@ void describe('ExecutionResponse schema', () => {
     assert.equal(responseValidator(validResponse), true);
   });
 
-  void it('accepts null snapshot in items[0]', () => {
+  void it('rejects a missing graph transfer in items[0]', () => {
     const withNullSnapshot = {
       ...validResponse,
-      'items': [{ 'id': 'child:1', 'snapshot': null, 'terminalOutcome': 'failed' }],
+      'items': [{ 'id': 'child:1', 'graphState': null }],
     };
-    assert.equal(responseValidator(withNullSnapshot), true);
+    assert.equal(responseValidator(withNullSnapshot), false);
   });
 
   void it('accepts an error item in errors array', () => {
@@ -256,7 +256,7 @@ const validExecute: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 42 } }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
   },
@@ -267,7 +267,7 @@ const validExecuteNullTimeout: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'items': [{ 'id': 'req-2', 'snapshot': {} }],
+    'items': [{ 'id': 'req-2', 'graphState': emptyGraphStateTransfer() }],
     'timeoutMs': null,
     'correlationId': 'req-2',
   },
@@ -293,7 +293,7 @@ const validResult: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 99 }, 'terminalOutcome': 'completed' }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
     'errors': [],
     'intermediates': [
       { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
@@ -305,7 +305,7 @@ const validResultNullSnapshot: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'failed' }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
     'errors': [{
       'code': 'ERR',
       'context': {},
@@ -371,11 +371,11 @@ describe('BridgeMessageType schema — valid branches', () => {
     assert.ok(Validator.bridgeMessage.is(validReady));
   });
 
-  it('validates result branch with stateSnapshot', () => {
+  it('validates result branch with graphState', () => {
     assert.ok(Validator.bridgeMessage.is(validResult));
   });
 
-  it('validates result branch with null stateSnapshot', () => {
+  it('validates result branch with null graphState', () => {
     assert.ok(Validator.bridgeMessage.is(validResultNullSnapshot));
   });
 
@@ -399,7 +399,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
         'nodeName': 'step1',   // must be rejected: no per-node routing
@@ -415,7 +415,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'variant': 'dag',          // must be rejected: no variant in dag-only request
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -428,7 +428,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'variant': 'execute',
       'request': {
         'placementPath': [],
-        'stateSnapshot': {},
+        'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -442,7 +442,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'graphState': {},
         'timeoutMs': null,
       },
     };
@@ -469,7 +469,7 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
         'correlationId': 'req-1',
         'terminalOutput': 'completed',
         'errors': [],
-        'stateSnapshot': null,
+        'graphState': null,
         'intermediates': [
           { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },
         ],

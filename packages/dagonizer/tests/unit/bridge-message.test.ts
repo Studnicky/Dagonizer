@@ -14,8 +14,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Valid branch fixtures
@@ -33,7 +35,7 @@ const validExecute: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 42 } }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
   },
@@ -44,7 +46,7 @@ const validExecuteNullTimeout: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'items': [{ 'id': 'req-2', 'snapshot': {} }],
+    'items': [{ 'id': 'req-2', 'graphState': emptyGraphStateTransfer() }],
     'timeoutMs': null,
     'correlationId': 'req-2',
   },
@@ -70,7 +72,7 @@ const validResult: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 99 }, 'terminalOutcome': 'completed' }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
     'errors': [],
     'intermediates': [
       { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
@@ -82,7 +84,7 @@ const validResultNullSnapshot: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'failed' }],
+    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
     'errors': [{
       'code': 'ERR',
       'context': {},
@@ -180,7 +182,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'items': [{ 'id': 'req-1', 'snapshot': {} }],
+        'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
         'timeoutMs': null,
         'correlationId': 'req-1',
         'nodeName': 'step1',   // must be rejected: no per-node routing
@@ -196,7 +198,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'variant': 'dag',          // must be rejected: no variant in dag-only request
         'dagName': 'my-dag',
         'placementPath': [],
-        'items': [{ 'id': 'req-1', 'snapshot': {} }],
+        'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -209,7 +211,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'variant': 'execute',
       'request': {
         'placementPath': [],
-        'items': [{ 'id': 'req-1', 'snapshot': {} }],
+        'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -223,7 +225,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'items': [{ 'id': 'req-1', 'snapshot': {} }],
+        'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
         'timeoutMs': null,
       },
     };
@@ -248,7 +250,7 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
       'variant': 'result',
       'response': {
         'correlationId': 'req-1',
-        'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'completed' }],
+        'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
         'errors': [],
         'intermediates': [
           { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },

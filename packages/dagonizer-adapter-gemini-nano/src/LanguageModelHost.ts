@@ -67,11 +67,23 @@ export type LanguageModelStaticBaseType = FromSchema<typeof LanguageModelStaticS
 /** Base object type derived from the session schema (member presence only). */
 export type LanguageModelSessionBaseType = FromSchema<typeof LanguageModelSessionSchema>;
 
+/** Text language expectation descriptor accepted by Chrome's Prompt API. */
+export type LanguageModelTextExpectationType = {
+  readonly type: 'text';
+  readonly languages: readonly string[];
+};
+
+/** Language expectations shared by availability, session creation, and prompt requests. */
+export type LanguageModelLanguageOptionsType = {
+  readonly expectedInputs?: readonly LanguageModelTextExpectationType[];
+  readonly expectedOutputs?: readonly LanguageModelTextExpectationType[];
+};
+
 /**
  * Options accepted by `LanguageModelSession.prompt`. Built incrementally
  * by the adapter before each prompt, so `responseConstraint` is mutable.
  */
-export type PromptOptionsType = {
+export type PromptOptionsType = LanguageModelLanguageOptionsType & {
   responseConstraint?: Record<string, unknown>;
   signal?: AbortSignal;
 };
@@ -100,15 +112,13 @@ export interface LanguageModelSessionInterface extends LanguageModelSessionBaseT
  * Adds the callable signatures the schema validates only structurally.
  */
 export interface LanguageModelStaticInterface extends LanguageModelStaticBaseType {
-  availability(): Promise<GeminiNanoAvailabilityType>;
-  create(options?: {
+  availability(options?: LanguageModelLanguageOptionsType): Promise<GeminiNanoAvailabilityType>;
+  create(options?: LanguageModelLanguageOptionsType & {
     initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
     /**
-     * BCP-47 output-language code attested at session creation (`de`, `en`,
-     * `es`, `fr`, or `ja`, per Chrome's Prompt API). Chrome logs a console
-     * warning on every `create()` call that omits it.
+     * Session abort signal. The base adapter composes caller cancellation and
+     * per-request timeout into this one signal.
      */
-    outputLanguage?: string;
     signal?: AbortSignal;
   }): Promise<LanguageModelSessionInterface>;
 }
@@ -116,7 +126,7 @@ export interface LanguageModelStaticInterface extends LanguageModelStaticBaseTyp
 /**
  * Entity-narrowing type for the browser's `navigator` global, narrowed to
  * the single member this package reads: the BCP-47 UI-language tag used to
- * derive a default Prompt API `outputLanguage`.
+ * derive default Prompt API language expectations.
  */
 export type NavigatorLanguageType = {
   readonly language: string;

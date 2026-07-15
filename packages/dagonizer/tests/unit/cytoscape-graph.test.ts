@@ -247,6 +247,36 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posB.y < posC.y, `B.y (${posB.y}) must be < C.y (${posC.y})`);
   });
 
+  void it('edgeMinLen increases causal rank distance for vertical timeline layouts', async () => {
+    const dag = TestDag.of(LINEAR_DAG_IRI, placementIri(LINEAR_DAG_IRI, 'A'), [
+      PlacementFixture.single(LINEAR_DAG_IRI, 'A', { "next": placementIri(LINEAR_DAG_IRI, 'B') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'B', { "next": placementIri(LINEAR_DAG_IRI, 'C') }),
+      PlacementFixture.single(LINEAR_DAG_IRI, 'C', { "done": placementIri(LINEAR_DAG_IRI, 'end') }),
+      { '@id': placementIri(LINEAR_DAG_IRI, 'end'), '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
+    ]);
+
+    const compact = await CompositeLayout.compute(dag, new Map(), { "rankSep": 40, "edgeMinLen": 1 });
+    const stretched = await CompositeLayout.compute(dag, new Map(), { "rankSep": 40, "edgeMinLen": 3 });
+
+    const compactA = compact.positions.get(placementIri(LINEAR_DAG_IRI, 'A'));
+    const compactB = compact.positions.get(placementIri(LINEAR_DAG_IRI, 'B'));
+    const stretchedA = stretched.positions.get(placementIri(LINEAR_DAG_IRI, 'A'));
+    const stretchedB = stretched.positions.get(placementIri(LINEAR_DAG_IRI, 'B'));
+
+    assert.ok(compactA !== undefined, 'compact A must have a position');
+    assert.ok(compactB !== undefined, 'compact B must have a position');
+    assert.ok(stretchedA !== undefined, 'stretched A must have a position');
+    assert.ok(stretchedB !== undefined, 'stretched B must have a position');
+
+    const compactDelta = compactB.y - compactA.y;
+    const stretchedDelta = stretchedB.y - stretchedA.y;
+
+    assert.ok(
+      stretchedDelta > compactDelta,
+      `edgeMinLen=3 must create a larger vertical delta than edgeMinLen=1 (${stretchedDelta} > ${compactDelta})`,
+    );
+  });
+
   void it('2-level nesting: sibling compounds do not overlap each other', async () => {
     // inner DAGs: each has two leaf nodes
     const innerA = TestDag.of(INNER_A_DAG_IRI, placementIri(INNER_A_DAG_IRI, 'a1'), [

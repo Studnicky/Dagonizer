@@ -28,12 +28,12 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Shared state: both DAGs operate on the same shape so the snapshot round-
-// trip is transparent. snapshotData/restoreData carry the domain fields.
+// trip is transparent because the graph carries the domain fields.
 // ---------------------------------------------------------------------------
 
 // #region state
@@ -41,21 +41,7 @@ export class PipelineState extends NodeStateBase {
   items:   string[] = [];   // items accumulated by DAG A
   summary: string   = '';   // written by DAG B
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      "items":   [...this.items],
-      "summary": this.summary,
-    };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const items = snapshot['items'];
-    if (Array.isArray(items)) {
-      this.items = items.filter((x): x is string => typeof x === 'string');
-    }
-    const summary = snapshot['summary'];
-    if (typeof summary === 'string') this.summary = summary;
-  }
 }
 // #endregion state
 

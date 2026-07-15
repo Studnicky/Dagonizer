@@ -77,8 +77,13 @@ export type {
 // GRAPH
 // =============================================================================
 
-export { DagGraphProjector, DagGraphQueries, DagGraphTerms, DagReferenceGraph, InMemoryTopologyStore } from './graph/index.js';
+export { DagGraphProjector, DagGraphQueries, DagGraphTerms, DagReferenceGraph, GraphDatasetRevision, GraphRetentionManager, GraphRetentionQueryService, GraphStateJsonLdCodec, GraphStateQueryService, GraphStateTerms, GraphStateTransferCodec, InMemoryGraphDataset, InMemoryGraphDatasetProvider, InMemoryGraphStateTransferStore, InMemoryTopologyStore, N3GraphDatasetProvider, Rdf12JsonLdCodec } from './graph/index.js';
+export type { GraphStateFieldDefinitionType, GraphStateNestedFieldDefinitionType } from './contracts/GraphStateFieldDefinition.js';
+export type { GraphRetentionPolicyType } from './contracts/GraphRetentionPolicy.js';
+export { DEFAULT_GRAPH_RETENTION_POLICY } from './contracts/GraphRetentionPolicy.js';
+export type { GraphRetentionPlanType, GraphRetentionReportType } from './contracts/index.js';
 export type { DagReferenceEdgeType } from './graph/index.js';
+export type { GraphDatasetInterface, GraphDatasetProviderInterface, GraphScopeType, GraphStateDeltaInterface, GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStateJsonLdNodeType, GraphStateJsonLdValueType, GraphStateLifecycleInterface, GraphStateSnapshotReferenceType, GraphStateSnapshotInterface, GraphStateTransferIdentityType, GraphStateTransferLeaseType, GraphStateTransferMetadataType, GraphStateTransferStoreInterface, GraphStateTransferType } from './contracts/index.js';
 
 // =============================================================================
 // SCHEMA
@@ -152,6 +157,7 @@ export {
   ReasoningTraceItem,
   ReasoningTraceItemSchema,
 } from './entities/index.js';
+export { DagonizerContexts } from './context/index.js';
 export type {
   BackoffStrategyType,
   DAGNodeType,
@@ -336,7 +342,7 @@ export type { DagLifecycleEventType } from './progress/BusObserver.js';
 
 export type { DagonizerInterface } from './Dagonizer.js';
 export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
-export type { NodeStateInterface, StateFieldType, StateFieldsType } from './NodeStateBase.js';
+export type { NodeStateInterface } from './NodeStateBase.js';
 
 // Child-state factory: class with clone-parent default.
 export { ChildStateFactory } from './runtime/ChildStateFactory.js';

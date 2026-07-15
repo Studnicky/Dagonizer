@@ -5,10 +5,10 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -25,14 +25,7 @@ class DomainState extends NodeStateBase {
     this.domainValue = 0;
   }
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'domainValue': this.domainValue };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>): void {
-    const v = snap['domainValue'];
-    if (typeof v === 'number') this.domainValue = v;
-  }
 }
 
 // Minimal metadata-backed StateAccessorInterface for the StateMapper path.
@@ -172,20 +165,19 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     );
   });
 
-  void it('domain field round-trips through clone + applySnapshot (restoreData runs)', () => {
+  void it('domain field round-trips through graph JSON-LD', async () => {
     const state = new DomainState();
     state.domainValue = 99;
 
     const cloned = state.clone();
     // Domain field starts at default (0) in the fresh clone — it hasn't been
-    // populated yet. After applySnapshot with the original snapshot, restoreData
-    // runs and restores the field.
+    // populated yet. Restoring the original graph populates the field.
     assert.strictEqual(cloned.domainValue, 0, 'fresh clone should have default domainValue');
 
-    const snap = state.snapshot();
-    cloned.applySnapshot(snap);
+    const snap = graphStateDocument(state);
+    await cloned.restoreJsonLd(state.runIri, snap);
 
-    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive clone→applySnapshot round-trip');
+    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive graph restore');
   });
 
   void it('metadata is preserved; lifecycle and errors reset on clone', () => {

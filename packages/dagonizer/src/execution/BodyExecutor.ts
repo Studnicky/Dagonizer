@@ -2,11 +2,13 @@ import { DagTask } from '../container/DagTask.js';
 import { TransportErrorCode } from '../container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
+import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import { Timeout } from '../entities/Timeout.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
@@ -84,6 +86,10 @@ export type BodyRunResultType = {
  * the caller applies the routing policy its cardinality requires.
  */
 export class BodyExecutor {
+  private static isGraphState(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
+    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
+      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
+  }
   readonly #source: BodyRunPortInterface;
 
   constructor(source: BodyRunPortInterface) {
@@ -192,14 +198,15 @@ export class BodyExecutor {
     const relay = this.#source.relayFor(parentState);
     const outcome = await container.runDag(task, { relay });
 
-    // Apply terminal state snapshot back to clone for domain state (in-place;
+    // Apply terminal graph state back to clone for domain state (in-place;
     // parent state identity is preserved). outcome.errors is the single
     // authoritative error channel — always collect it regardless of whether a
-    // snapshot is present. Errors are intentionally not serialized into the
-    // snapshot; the snapshot carries domain state only (metadata, retries,
+    // graph state is present. Errors are intentionally not serialized into the
+    // graph state; it carries domain state only (metadata, retries,
     // warnings, subclass fields).
-    if (outcome.stateSnapshot !== null) {
-      cloneState.applySnapshot(outcome.stateSnapshot);
+    if (outcome.graphState !== undefined) {
+      if (!BodyExecutor.isGraphState(cloneState)) throw new Error('Graph-state outcome requires a graph-backed clone');
+      await GraphStateTransferCodec.restore(cloneState, outcome.graphState);
     }
     for (const err of outcome.errors) cloneState.collectError(err);
 

@@ -16,6 +16,7 @@ import { Batch } from '@studnicky/dagonizer';
 import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
+import type { SourcePayload } from '../../entities/SourcePayload.ts';
 import { SignalWeight } from '../../entities/SignalWeight.ts';
 import { ScoreSignalsNode } from '../../nodes/geo/scoreSignals.ts';
 
@@ -56,6 +57,25 @@ class CartographerStateFixture {
         'address':      bodyOverride.address ?? '',
         'phone':        bodyOverride.phone   ?? '',
       },
+    });
+    return state;
+  }
+
+  static deliveryWithRecipientCountry(recipientCountry: string): CartographerState {
+    const state = new CartographerState();
+    const payload: SourcePayload = {
+      'sourceId': 'test-source',
+      'format': 'json',
+      'compression': 'none',
+      'mappingKey': 'test',
+      'eventType': 'delivery-confirmation',
+      'payload': '{}',
+    };
+    state.canonical = CanonicalEventVariantBuilder.fromSourcePayload(payload, {
+      'shipmentId': 'SHP-000001',
+      'eventId': 'EV-000001',
+      'epochMs': 1,
+      'recipientCountry': recipientCountry,
     });
     return state;
   }
@@ -240,6 +260,20 @@ describe('ScoreSignalsNode', () => {
 
     it('geoSignals is an empty array', () => {
       assert.deepEqual(state.geoSignals, []);
+    });
+  });
+
+  describe('recipientCountry never substitutes for the event\'s own code signal', () => {
+    let state: CartographerState;
+
+    before(async () => {
+      state = CartographerStateFixture.deliveryWithRecipientCountry('United States');
+      await executeSingle(node, state);
+    });
+
+    it('emits no code descriptor — this is a travel log, recipientCountry is destination data, not where the event happened', () => {
+      const code = state.geoSignals.find((d) => d.kind === 'code');
+      assert.equal(code, undefined);
     });
   });
 

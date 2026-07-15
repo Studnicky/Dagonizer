@@ -103,19 +103,18 @@
 import type { ArchivistState } from './ArchivistState.ts';
 import './nodes/scouts.ts'; // registers 'tool-candidate-merge' gather strategy
 
-import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 // #region dispatcher-bundle
 //
 // IRI identity: DAGBuilder embeds the canonical DAG_CONTEXT in every built
-// DAG's `@context` field. The archivist uses explicit placement IRIs via
-// DAGIdentity.placementId(dagIri, placementIdentifier) so route targets,
-// gather sources, and entrypoint wiring all stay on canonical IRIs while the
-// placement `name` field remains display-only.
+// DAG's `@context` field. Every placement uses an explicit absolute IRI so
+// route targets, gather sources, and entrypoint wiring stay canonical while
+// the placement `name` field remains display-only.
 //
-// @id values on each node placement follow the urn:noocodec:dag:<dagName>/node/<placementName>
-// convention produced by DAGIdentity.placementId(), e.g.:
+// @id values on each node placement are explicit absolute IRIs; placement names are labels.
+// Example placement IRI:
 //   urn:noocodec:dag:the-archivist/node/recall-context
 //
 // A plugin shipping nodes under its own namespace would declare a prefix in
@@ -133,7 +132,7 @@ const BOOK_SEARCH_TOOL_DAGS = [
 const ARCHIVIST_DAG_IRI = 'urn:noocodec:dag:the-archivist';
 const BOOK_SEARCH_SCATTER_DAG_IRI = 'urn:noocodec:dag:book-search-scatter';
 const COMPOSE_RETRY_LOOP_DAG_IRI = 'urn:noocodec:dag:compose-retry-loop';
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(ARCHIVIST_DAG_IRI, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${ARCHIVIST_DAG_IRI}/node/${placementIdentifier}`;
 const display = <T extends string>(name: T): { name: T } => ({ name });
 
 const nodes = {

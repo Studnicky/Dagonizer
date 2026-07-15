@@ -52,6 +52,9 @@ export type RoleColorsType = {
   text:   string;
 }
 
+/** Cytoscape id strategy for expanded embedded-DAG placements. */
+export type CytoscapeIdModeType = 'path' | 'iri';
+
 /**
  * Per-role color palette for container-bound (worker/isolate) placements.
  *
@@ -244,7 +247,8 @@ export class PlacementUtils {
   }
 
   /** Build a placement-IRI id, optionally prefixed by an enclosing scope. */
-  static idIn(prefix: string, placementIri: string): string {
+  static idIn(prefix: string, placementIri: string, mode: CytoscapeIdModeType = 'path'): string {
+    if (mode === 'iri') return placementIri;
     return prefix === '' ? placementIri : `${prefix}/${placementIri}`;
   }
 }

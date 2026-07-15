@@ -3,7 +3,7 @@
  * checkpoint round-trip.
  *
  * Demonstrates:
- *   1. A NodeStateBase subclass with snapshotData / restoreData overrides.
+ *   1. A NodeStateBase subclass with graph-owned state fields.
  *   2. A simple TickNode that mutates CountState.
  *   3. A checkpoint/resume round-trip: abort after one node, capture, restore.
  *
@@ -24,23 +24,13 @@ import {
 } from '@studnicky/dagonizer';
 import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // #region full-example
 class CountState extends NodeStateBase {
   count = 0;
   log: string[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { count: this.count, log: [...this.log] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const c = snap['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snap['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
 }
 
 class TickNode extends MonadicNode<CountState, 'success'> {
@@ -94,14 +84,14 @@ const partial = await execution;
 if (partial.cursor === null) {
   process.stdout.write('\nsubclassing: run completed before abort; no cursor to checkpoint\n');
 } else {
-  process.stdout.write('\nsubclassing: CountState with snapshotData/restoreData\n');
+  process.stdout.write('\nsubclassing: CountState with graph-owned fields\n');
   process.stdout.write(`  after abort:  count=${partial.state.count} cursor="${partial.cursor}"\n`);
 
   const ckpt  = await Checkpoint.capture('urn:noocodec:dag:count', partial);
   const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()));
 
-  const { state: s2, dagName, cursor } = ckpt2.restoreState(
-    CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),
+  const { state: s2, dagName, cursor } = await ckpt2.restoreState(
+    CheckpointRestoreAdapter.wrap(() => new CountState()),
   );
 
   const final = await dispatcher.resume(dagName, s2, cursor);

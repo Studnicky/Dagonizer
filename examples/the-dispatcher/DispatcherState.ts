@@ -4,11 +4,11 @@
  * Carries the current inbound customer message, the composed response,
  * escalation context, the trolley switch flag, and full conversation history.
  * Extends `NodeStateBase` so the dispatcher owns the lifecycle FSM and
- * `snapshot()` round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
+ * Graph JSON-LD round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
  */
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
+import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 /**
  * A single turn in the customer–agent conversation.
@@ -21,16 +21,6 @@ export type ConversationTurnType = {
 };
 
 export class DispatcherState extends NodeStateBase {
-  /** Declared scalar fields for schema-driven snapshot/restore. */
-  static readonly FIELDS: StateFieldsType = {
-    'message':            'string',
-    'response':           'string',
-    'escalationReason':   'string',
-    'humanMode':          'boolean',
-    'classificationMode': 'string',
-    'language':           'string',
-  };
-
   /** Current inbound customer message. */
   message: string = '';
   /** Composed response (AI or human). */
@@ -59,31 +49,15 @@ export class DispatcherState extends NodeStateBase {
   conversation: ConversationTurnType[] = [];
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObjectType {
-    return {
-      ...NodeStateBase.snapshotFields(this, DispatcherState.FIELDS),
-      'conversation': this.conversation.map(DispatcherState.turnToJson),
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    NodeStateBase.restoreFields(this, snap, DispatcherState.FIELDS);
-    this.classificationMode = DispatcherState.isClassificationMode(snap['classificationMode'])
-      ? snap['classificationMode']
-      : 'embedder';
-    const rawConversation = snap['conversation'];
-    if (Array.isArray(rawConversation)) {
-      this.conversation = DispatcherState.filterConversation(rawConversation);
-    }
-  }
   // #endregion snapshot-restore
 
   // #region type-guards
-  private static turnToJson(t: ConversationTurnType): JsonObjectType {
+  static turnToJson(t: ConversationTurnType): JsonObjectType {
     return { 'role': t.role, 'text': t.text, 'ts': t.ts };
   }
 
-  private static isClassificationMode(v: unknown): v is 'embedder' | 'llm' {
+  static isClassificationMode(v: unknown): v is 'embedder' | 'llm' {
     return v === 'embedder' || v === 'llm';
   }
 
@@ -95,7 +69,7 @@ export class DispatcherState extends NodeStateBase {
       && typeof v.ts   === 'number';
   }
 
-  private static filterConversation(arr: unknown[]): ConversationTurnType[] {
+  static filterConversation(arr: unknown[]): ConversationTurnType[] {
     const out: ConversationTurnType[] = [];
     for (const item of arr) {
       if (DispatcherState.isConversationTurn(item)) out.push(item);

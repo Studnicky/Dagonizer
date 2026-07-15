@@ -15,6 +15,14 @@ import type { ResolvedGeo } from '../entities/ResolvedGeo.ts';
 export class GeoBaseline {
   private constructor() { /* static-only */ }
 
+  /**
+   * Sentinel timezone value. Used both as the empty-case GeoContext.timezone
+   * (nothing resolved) and as the interim placeholder assemble-resolved-geo
+   * writes before resolve-timezone computes the real geography-derived zone
+   * from the final assembled position.
+   */
+  static readonly TIMEZONE_SENTINEL = 'UTC';
+
   /** Baseline ResolvedGeo: no country, zero confidence, no provenance or modalities. */
   static resolvedGeo(): ResolvedGeo {
     return {
@@ -45,7 +53,7 @@ export class GeoBaseline {
       'hub':         'Unknown',
       'status':      'unmapped',
       'waterBodies': [],
-      'timezone':    'UTC',
+      'timezone':    GeoBaseline.TIMEZONE_SENTINEL,
       'jurisdiction': 'baseline',
     };
   }

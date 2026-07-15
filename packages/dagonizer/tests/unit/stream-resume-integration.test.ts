@@ -32,14 +32,13 @@ import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterfac
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 // ── state ─────────────────────────────────────────────────────────────────────
 
@@ -60,16 +59,7 @@ class StreamResumeState extends NodeStateBase {
   source: ScatterSource<number> = [];
   processed: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'processed': [...this.processed] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const v = snap['processed'];
-    if (Array.isArray(v)) {
-      this.processed = v.filter((x): x is number => typeof x === 'number');
-    }
-  }
 }
 
 // ── producer ──────────────────────────────────────────────────────────────────

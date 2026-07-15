@@ -79,6 +79,29 @@ function dynamicReference(candidate: string, path: string): StateDAGReferenceInp
 }
 
 void describe('DagGraphProjector', () => {
+  void it('stores and matches RDF 1.2 triple terms as annotation objects', () => {
+    const store = DagGraphProjector.store(withGraphContext(new DAGBuilder(
+      'urn:noocodec:dag:rdf12-terms',
+      '1',
+      { 'name': 'rdf12-terms' },
+    ).terminal('urn:noocodec:dag:rdf12-terms/node/done', { 'name': 'done' }).build()));
+    const subject = DagGraphTerms.namedNode('urn:noocodec:dag:rdf12-terms/node/step');
+    const predicate = DagGraphTerms.predicate('route');
+    const object = DagGraphTerms.namedNode('urn:noocodec:dag:rdf12-terms/node/done');
+    const annotation = DagGraphTerms.namedNode('urn:noocodec:annotation/route');
+    const triple = DagGraphTerms.tripleTerm(subject, predicate, object);
+
+    store.assert(annotation, DagGraphTerms.predicate('reifies'), triple);
+
+    const rows = store.select({
+      'subject': annotation,
+      'predicate': DagGraphTerms.predicate('reifies'),
+      'object': DagGraphTerms.tripleTerm(subject, predicate, object),
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(store.count({ 'object': triple }), 1);
+  });
+
   void it('projects reachable literal and dynamic DAG references as expanded IRIs', () => {
     const dag = withGraphContext(new DAGBuilder(HOST_DAG_IRI, '1', { 'name': 'host' })
       .embed(HOST_CHOOSE_IRI, {
@@ -204,6 +227,43 @@ void describe('DagGraphProjector', () => {
     assert.equal(typeof outputSchemaIri, 'string');
     assert.equal(schemas.has(inputSchemaIri ?? ''), true);
     assert.equal(schemas.has(outputSchemaIri ?? ''), true);
+  });
+
+  void it('annotates RDF 1.2 route statements with producer and consumer schemas', () => {
+    const first = TestNode.make('urn:noocodec:node:rdf12-first', ['success'], () => 'success');
+    const second = TestNode.make('urn:noocodec:node:rdf12-second', ['success'], () => 'success');
+    const firstIri = 'urn:noocodec:dag:rdf12-route/node/first';
+    const secondIri = 'urn:noocodec:dag:rdf12-route/node/second';
+    const dag = new DAGBuilder('urn:noocodec:dag:rdf12-route', '1', { 'name': 'rdf12-route' })
+      .node(firstIri, first, { 'success': secondIri }, { 'name': 'first' })
+      .node(secondIri, second, { 'success': 'urn:noocodec:dag:rdf12-route/node/done' }, { 'name': 'second' })
+      .terminal('urn:noocodec:dag:rdf12-route/node/done', { 'name': 'done' })
+      .build();
+    const schemas = new SchemaRegistry();
+    const store = DagGraphProjector.store(dag);
+
+    DagGraphProjector.projectNodeSchemas({
+      dag,
+      'nodes': new Map([[first['@id'], first], [second['@id'], second]]),
+      schemas,
+      store,
+    });
+
+    const routeSchemas = DagGraphQueries.routeSchemaIris(store, firstIri, secondIri);
+    const firstOutputSchema = first.outputSchema['success'];
+    assert.ok(firstOutputSchema);
+    assert.equal(routeSchemas.produced, schemas.register(firstOutputSchema));
+    assert.equal(routeSchemas.required, schemas.register(second.inputSchema));
+    assert.equal(
+      store.count({
+        'subject': DagGraphTerms.tripleTerm(
+          DagGraphTerms.namedNode(firstIri),
+          DagGraphTerms.predicate('route'),
+          DagGraphTerms.namedNode(secondIri),
+        ),
+      }),
+      2,
+    );
   });
 
   void it('projects a large DAG with one thousand placements and five thousand route edges', () => {

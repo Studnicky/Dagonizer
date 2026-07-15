@@ -39,7 +39,7 @@ type GraphHandle = {
   setPointSizes(arr: Float32Array): void;
   setLinks(arr: Float32Array): void;
   setConfig?(config: Record<string, unknown>): void;
-  render(alpha?: number): void;
+  render(alpha?: number, transitionDuration?: number): void;
   start(alpha?: number): void;
   pause(): void;
   fitView(duration?: number, padding?: number): void;
@@ -213,6 +213,12 @@ function initCosmos(container: HTMLDivElement): void {
       // and stops jittering well before the visitor reads any node.
       'simulationDecay': 5000,
       'enableDrag': true,
+      // Deliberately NOT hooked to fitView/centring here: onSimulationTick
+      // and onSimulationEnd fire for ANY reason the simulation is active,
+      // including a visitor dragging a point — auto-fitting on those would
+      // yank the camera out from under a manual pan/zoom/drag in progress.
+      // Auto-fit is instead a bounded, self-contained sequence armed only
+      // from paint() (see below), which runs exclusively on data load/change.
       'onSimulationTick': () => { scheduleLabelPaint(); pollZoom(); },
       'onZoom': () => {
         scheduleLabelPaint();
@@ -318,7 +324,14 @@ function mgCentre(): void {
   }
   try {
     g.setPointPositions(next, true);
-    g.render(0);
+    // Explicit transitionDuration=0: without it, render()'s implicit
+    // config.transitionDuration (800ms, never overridden here) leaves a
+    // pending Positions transition with duration > 0 while the simulation
+    // is running — cosmos.gl force-pauses the simulation on that condition
+    // (fires onSimulationPause, not onSimulationEnd) and never resumes it.
+    // render(0, 0) snaps the position AND suppresses the transition so the
+    // physics settle isn't cut short when this runs mid-simulation.
+    g.render(0, 0);
     scheduleLabelPaint();
   } catch { /* ignore */ }
 }
@@ -329,18 +342,36 @@ function mgExpand(): void {
   void diagramFrameRef.value?.toggleFullscreen();
 }
 
-function mgFit(): void {
+// Bounded fit sequence — the ONE fit implementation, shared by the D-pad's
+// Fit button (armFitSequence(), a manual one-shot against whatever the graph
+// looks like right now) and paint()'s auto-fit-on-load (the same call,
+// armed only when new data lands). Deliberately NOT hooked to
+// onSimulationTick/onSimulationEnd, which fire for any reason the
+// simulation is active (including a visitor dragging a point) and would
+// yank the camera out from under a manual pan/zoom/drag. A few graduated
+// checkpoints track a still-settling cloud (simulationDecay:5000, ~1s)
+// instead of one sparse fit at the end; the last checkpoint's zoom becomes
+// the zoom-out floor. Once these fire, the visitor has full, uninterrupted
+// control until the sequence is re-armed (new data, or another Fit click).
+function armFitSequence(): void {
+  const handle = graph.value;
+  if (handle === null) return;
   try {
     fitScheduler.cancelAll();
-    graph.value?.fitView(300);
-    // Capture the fit zoom after the animation settles so the floor stays current.
-    fitScheduler.scheduleAt(Date.now() + 350, () => {
+    for (const delayMs of [0, 250, 500, 750]) {
+      fitScheduler.scheduleAt(Date.now() + delayMs, () => { handle.fitView(200); });
+    }
+    fitScheduler.scheduleAt(Date.now() + 800, () => {
       try {
         const level = graph.value?.getZoomLevel() ?? null;
         if (level !== null) fitZoomLevel.value = level;
       } catch { /* ignore */ }
     });
   } catch { /* ignore */ }
+}
+
+function mgFit(): void {
+  armFitSequence();
 }
 
 // `dx`/`dy` are SCREEN-pixel deltas (matching the cytoscape graph's 80px
@@ -364,7 +395,10 @@ function mgPanBy(dx: number, dy: number): void {
   }
   try {
     g.setPointPositions(next, true);
-    g.render(0);
+    // See mgCentre() above: render(0, 0) suppresses the implicit transition
+    // duration so a pan while the simulation is running can't trip cosmos.gl's
+    // force-pause-on-pending-transition path.
+    g.render(0, 0);
     scheduleLabelPaint();
   } catch { /* ignore */ }
 }
@@ -406,20 +440,11 @@ function paint(): void {
     return;
   }
   handle.start(0.9);
-  // Wait long enough for the simulation to spread points before fitting.
-  // Pokemontology uses 400ms + secondary at 900ms; we mirror that.
-  fitScheduler.cancelAll();
-  fitScheduler.scheduleAt(Date.now() + 400, () => { handle.fitView(400); });
-  fitScheduler.scheduleAt(Date.now() + 900, () => {
-    handle.fitView(500);
-    // Capture fit zoom after the final fit settles; this becomes the zoom-out floor.
-    fitScheduler.scheduleAt(Date.now() + 550, () => {
-      try {
-        const level = graph.value?.getZoomLevel() ?? null;
-        if (level !== null) fitZoomLevel.value = level;
-      } catch { /* ignore */ }
-    });
-  });
+  // Auto-fit on load: arms the SAME bounded sequence as the D-pad's Fit
+  // button (armFitSequence, above) — one implementation, not two that can
+  // drift apart. This is the only place it's armed automatically; new data
+  // is the trigger, not any generic simulation-lifecycle event.
+  armFitSequence();
   scheduleLabelPaint();
 }
 

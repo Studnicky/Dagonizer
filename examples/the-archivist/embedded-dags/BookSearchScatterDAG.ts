@@ -55,11 +55,11 @@
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
-import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 const BOOK_SEARCH_SCATTER_DAG_IRI = 'urn:noocodec:dag:book-search-scatter';
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(BOOK_SEARCH_SCATTER_DAG_IRI, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${BOOK_SEARCH_SCATTER_DAG_IRI}/node/${placementIdentifier}`;
 const display = <T extends string>(name: T): { name: T } => ({ name });
 
 const BOOK_SEARCH_TOOL_DAGS = [

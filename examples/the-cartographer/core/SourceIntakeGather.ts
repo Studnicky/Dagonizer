@@ -1,9 +1,9 @@
 /**
- * SourceIntakeGather: first-class multi-entry intake gather for Cartographer.
+ * SourceIntakeGather: source-payload compatibility gather.
  *
- * Each event type enters the DAG through a canonical entrypoint IRI targeting
- * this gather. The gather opens those typed streams and folds them into one
- * round-robin `state.sources` stream for the downstream processing scatter.
+ * The current runnable Cartographer topology uses producer feed DAGs plus
+ * CanonicalFeedGather. This strategy remains registered for source-payload
+ * stream examples that need a merged `state.sources` stream.
  */
 
 import type { GatherRecordType } from '@studnicky/dagonizer/contracts';

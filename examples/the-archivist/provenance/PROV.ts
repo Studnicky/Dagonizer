@@ -27,9 +27,10 @@
 
 import type { NamedNode } from 'n3';
 
+import { DagonizerContexts } from '@studnicky/dagonizer';
 import { MemoryStore } from '../memory/MemoryStore.ts';
 
-const PROV_NS = 'http://www.w3.org/ns/prov#';
+const PROV_NS = DagonizerContexts.NAMESPACES.prov;
 
 export const PROV = {
   // Classes

@@ -9,8 +9,7 @@ import {
   Batch,
   DAGBuilder,
   DAG_CONTEXT,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -84,7 +83,7 @@ export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
 
 export const pluginDAGIri = 'urn:noocodec:dag:plugin-normalize' as const;
 export const parentDAGIri = 'urn:noocodec:dag:pipeline' as const;
-const placement = (dagIri: string, placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (dagIri: string, placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 // #region plugin-dag
 /** Sub-DAG that the plugin registers. Entry point of the plugin's functionality. */

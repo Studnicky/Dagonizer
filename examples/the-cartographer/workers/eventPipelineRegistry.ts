@@ -61,11 +61,7 @@ const registry: RegistryModuleInterface = {
         'dags':  [...geoBundle.dags,  ...cartographerWorkerRuntimeBundle.dags],
       },
       'registryVersion': '1.0.0',
-      'restoreState': {
-        restore(snapshot: JsonObjectType) {
-          return CartographerState.restore(snapshot);
-        },
-      },
+      'restoreState': { restore: () => new CartographerState() },
     };
   },
 };

@@ -10,6 +10,7 @@
  */
 import type { FromSchema } from 'json-schema-to-ts';
 import type { CartographerState } from '../CartographerState.ts';
+import { CountryCodes } from '../services.ts';
 
 export const GeoSignalSchema = {
   '$id': 'https://noocodec.dev/schemas/cartographer/GeoSignal',
@@ -41,13 +42,17 @@ export const DEFAULT_GEO_SIGNAL: GeoSignal = {
 export class GeoSignalBuilder {
   private constructor() { /* static-only */ }
 
+  private static recipientCountry(body: CartographerState['canonical']['body']): string {
+    return 'recipientCountry' in body ? body.recipientCountry : '';
+  }
+
   public static from(state: CartographerState): GeoSignal {
     const body = state.canonical.body;
     const lat = body.latitude;
     const lng = body.longitude;
     const ip  = body.ipAddress;
     const localeTag   = body.localeTag;
-    const countryCode = body.countryCode;
+    const countryCode = CountryCodes.toGeoSignalIso2(body.countryCode, GeoSignalBuilder.recipientCountry(body));
 
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0);
 

@@ -55,6 +55,20 @@ void describe('IRI identity — prefix-isolated node coexistence', () => {
     assert.strictEqual(prefixedIri, 'https://a.example.com/increment');
   });
 
+  void it('expands and compacts JSON-LD terms through the declared context', () => {
+    const context = {
+      ...DAG_CONTEXT,
+      'state': 'https://example.com/state/',
+      'Run': { '@id': 'https://example.com/Run' },
+    };
+
+    assert.equal(ContextResolver.expandTerm('Run', context), 'https://example.com/Run');
+    assert.equal(ContextResolver.expandTerm('state:answer', context), 'https://example.com/state/answer');
+    assert.equal(ContextResolver.compactTerm('https://example.com/Run', context), 'Run');
+    assert.equal(ContextResolver.compactTerm('https://example.com/state/answer', context), 'state:answer');
+    assert.equal(ContextResolver.compactTerm('https://noocodec.dev/ontology/dag/DAG', context), 'DAG');
+  });
+
   void it('same node IRI registered twice for the same object stays one registry entry', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 

@@ -37,6 +37,14 @@ The Archivist is a runnable demo: a real browser-executed DAG application, not a
 
 Use it to see a model-driven workflow become inspectable: model calls are nodes, tool work is routed through DAG placements, retries are visible edges, and memory is a shared store rather than a hidden callback side effect.
 
+## Runnable Demo
+
+<ClientOnly>
+  <ArchivistRunner />
+</ClientOnly>
+
+Watch the **DAG Topology** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory Graph** pane retains the bootstrap greeting, the visitor's initial outreach, every later turn, the seed library, and all run facts in the RDF store. The **LLM Select** and **Configuration** panes control backend selection, checkpointing, transcript window size, and timeouts without hiding the conversation.
+
 ## How It Works
 
 The runner wires real node classes, real DAG documents, and browser UI observers together. The visual panes listen to dispatcher lifecycle events, so the page shows execution rather than replaying a canned animation.
@@ -61,15 +69,11 @@ Three exit conditions, each carrying a different outcome.
 
 The Archivist proves that an LLM agent application can be an inspectable DAG: model calls are nodes, tool dispatch is embedded-DAG/scatter composition, recall uses shared memory, retries are graph edges, and the final response is a lifecycle outcome instead of an opaque callback.
 
-Try it live below; the demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device options (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. The browser demo provisions an on-device embedder (`EmbedderProvisioner` — transformers.js MiniLM, with TensorFlow.js USE and WebLLM behind it); cosine recall, hybrid ranking, and vector-similarity intent classification run client-side, using Jaccard / heuristics only when no embedder probes are available. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and a separate `EmbedderCascade` for the same vector-similarity intent classification.
+The demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device options (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. The browser demo provisions an on-device embedder (`EmbedderProvisioner` — transformers.js MiniLM, with TensorFlow.js USE and WebLLM behind it); cosine recall, hybrid ranking, and vector-similarity intent classification run client-side, using Jaccard / heuristics only when no embedder probes are available. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and a separate `EmbedderCascade` for the same vector-similarity intent classification.
 
 The Archivist composes reusable work through one interface: a placement points at a DAG through `dag`, either as a literal registered DAG IRI or as a dynamic `DagReference` with explicit candidates. `EmbeddedDAGNode` invokes one selected DAG once; `ScatterNode` invokes the selected DAG per source item and then routes clone output into a first-class gather placement. `build-book-worksets` converts the decided tool plan into a `bookWorksets` array where each item carries a `dagIri` field, the scatter resolves the body DAG through the same `dag` reference surface, the `tool-candidate-merge` gather folds each clone's output into the parent `candidates`, and the `any-success` reducer routes `success` when at least one tool returned results. A `PhaseNode` (`phase: 'pre'`, placement display name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
-<ClientOnly>
-  <ArchivistRunner />
-</ClientOnly>
-
-Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, and the compose retry budget (`state.retriesFor('compose')`) as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
+Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
 
 ## What It Lets You Do
 

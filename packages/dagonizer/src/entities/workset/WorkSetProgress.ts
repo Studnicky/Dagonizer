@@ -3,7 +3,7 @@
  * entities persisted to checkpoint metadata under `WORKSET_PROGRESS_KEY`.
  *
  * Shape summary:
- *   WorkSetItem     — one item in the work set: its id, optional source label, and state snapshot.
+ *   WorkSetItem     — one item in the work set: its id, optional source label, and graph state.
  *   WorkSetEntry    — all items pending at a single placement.
  *   WorkSetProgress — the full in-flight work set captured at interruption.
  *
@@ -18,6 +18,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
+
 // ---------------------------------------------------------------------------
 // WorkSetItem
 // ---------------------------------------------------------------------------
@@ -26,21 +28,21 @@ export const WorkSetItemSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/WorkSetItem',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['id', 'snapshot'],
+  'required': ['id', 'graphState'],
   'properties': {
     'id':       { 'type': 'string' },
     'source':   { 'type': 'string', 'minLength': 1 },
-    'snapshot': { 'type': 'object' },
+    'graphState': { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
   },
   'additionalProperties': false,
 } as const;
 
 /**
  * One item in the work set: its stable string `id`, optional entrypoint
- * `source` label, and state `snapshot` at the point of interruption. Used by
+ * `source` label, and graph state at the point of interruption. Used by
  * `WorkSetCheckpoint` to rehydrate the pending batch on resume.
  */
-export type WorkSetItemType = FromSchema<typeof WorkSetItemSchema>;
+export type WorkSetItemType = Omit<FromSchema<typeof WorkSetItemSchema>, 'graphState'> & { graphState: GraphStateJsonLdDocumentType };
 
 // ---------------------------------------------------------------------------
 // WorkSetEntry
@@ -66,7 +68,7 @@ export const WorkSetEntrySchema = {
  * `placement` is the placement name; `items` is the ordered list of pending
  * `WorkSetItem` values for that placement.
  */
-export type WorkSetEntryType = FromSchema<typeof WorkSetEntrySchema>;
+export type WorkSetEntryType = { placement: string; items: WorkSetItemType[] };
 
 // ---------------------------------------------------------------------------
 // WorkSetProgress
@@ -92,4 +94,4 @@ export const WorkSetProgressSchema = {
  * boundary; read back on resume to rebuild the pending batches. Absent for
  * size-1 canonical runs (single item whose state is the top-level state).
  */
-export type WorkSetProgressType = FromSchema<typeof WorkSetProgressSchema>;
+export type WorkSetProgressType = { entries: WorkSetEntryType[] };

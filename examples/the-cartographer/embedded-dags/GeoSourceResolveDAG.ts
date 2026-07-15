@@ -1,13 +1,37 @@
 /**
- * GeoSourceResolveDAG: validity-gated weighted multi-entry geo-resolution sub-DAG.
+ * GeoSourceResolveDAG: validity-gated layered-consensus multi-entry geo-resolution
+ * sub-DAG.
  *
  * The parent DAG has one entrypoint per geo modality. Each entrypoint embeds a
  * modality-specific resolver DAG that prepares its descriptor, resolves the
  * candidate when present, and projects `state.candidate` into a gather record.
  * The first-class `geo-weighted-fusion` gather node is the graph-visible barrier
- * that folds candidates by weight into `state.resolvedGeo`, `state.geoContext`,
- * and `state.routing.{geoConfidence,geoModalities}`. When no signal resolves,
- * the gather writes the baseline values directly.
+ * that accumulates every weight>0 candidate into `state.geoCandidates`. When at
+ * least one candidate resolved, a node chain derives the combined location from
+ * every signal instead of a single weight-ranked winner:
+ *
+ *   - `resolve-country-consensus` groups candidates by country (or water) and
+ *     picks the group with the highest SUMMED weight — agreement, not a single
+ *     candidate's weight, decides. Branches 'consensus' when the winning group
+ *     clears the agreement thresholds (see the node's own doc comment), or
+ *     'no-consensus' when the signals disagreed too much to trust an answer.
+ *   - `verify-point-containment` (consensus lane) reverse-geocodes the best
+ *     available point and checks it against the consensus country, recording
+ *     disagreement as a conflict rather than silently picking a side.
+ *   - `assemble-resolved-geo` (consensus lane) writes `state.resolvedGeo`,
+ *     `state.geoContext`, and `state.routing.{geoConfidence,geoModalities,...}`
+ *     from the verified consensus + position — timezone is left as a placeholder.
+ *   - `resolve-timezone` (consensus lane) derives the REAL timezone from the
+ *     final assembled position via `TimeZoneResolver.zoneFor` — never from a
+ *     candidate's self-reported value — since timezone depends on the position
+ *     this chain settled on, not on any individual signal.
+ *   - `flag-geo-for-review` (no-consensus lane) writes baseline `resolvedGeo`/
+ *     `geoContext` and sets `state.routing.geoFlaggedForReview = true` — a
+ *     visibly distinct DAG lane for locations that need investigation, not
+ *     silently blended into the confident-resolution path.
+ *
+ * When no signal resolves, the gather writes the baseline values directly and
+ * skips the consensus chain entirely — there is nothing to consense over.
  *
  * Topology:
  *   entrypoints:
@@ -17,7 +41,11 @@
  *     code    ─► resolve-code-source    ─success/error─┤─► geo-weighted-fusion
  *     phone   ─► resolve-phone-source   ─success/error─┤
  *     locale  ─► resolve-locale-source  ─success/error─┘
- *   geo-weighted-fusion (gather) ─success/error/empty──► resolved
+ *   geo-weighted-fusion (gather):
+ *     ─success/error─► resolve-country-consensus
+ *                         ─consensus────► verify-point-containment ─► assemble-resolved-geo ─► resolve-timezone ─► resolved
+ *                         ─no-consensus─► flag-geo-for-review ──────────────────────────────────────────────────► resolved
+ *     ─empty─────────────────────────────────────────────────────────────────────────────────────────────────────► resolved
  *   resolved: terminal (completed)
  *
  * DI: `ipGeolocator` and `addressGeocoder` are injected per-call so each
@@ -39,6 +67,11 @@ import {
   prepareGeoLocale,
   prepareGeoPhone,
 } from '../nodes/geo/prepareGeoSignal.ts';
+import { resolveCountryConsensus } from '../nodes/geo/resolveCountryConsensus.ts';
+import { verifyPointContainment } from '../nodes/geo/verifyPointContainment.ts';
+import { assembleResolvedGeo } from '../nodes/geo/assembleResolvedGeo.ts';
+import { resolveTimezone } from '../nodes/geo/resolveTimezone.ts';
+import { flagGeoForReview } from '../nodes/geo/flagGeoForReview.ts';
 import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import type { IpGeolocator } from '../contracts/IpGeolocator.ts';
 import type { AddressGeocoder } from '../contracts/AddressGeocoder.ts';
@@ -181,11 +214,32 @@ export class GeoSourceResolveDAG {
         },
         { 'strategy': 'geo-weighted-fusion' },
         {
-          'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'),
-          'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'),
+          'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolve-country-consensus'),
+          'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolve-country-consensus'),
           'empty':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'),
         },
       )
+
+      // Layered-consensus chain: consensus country → verified point → assembled
+      // ResolvedGeo/GeoContext → real-geography timezone. A country/water
+      // identity that fails to reach consensus branches to flag-geo-for-review
+      // instead of joining the confident-resolution lane.
+      .node(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolve-country-consensus'), resolveCountryConsensus, {
+        'consensus':    CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'verify-point-containment'),
+        'no-consensus': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'flag-geo-for-review'),
+      })
+      .node(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'verify-point-containment'), verifyPointContainment, {
+        'resolved': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'assemble-resolved-geo'),
+      })
+      .node(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'assemble-resolved-geo'), assembleResolvedGeo, {
+        'resolved': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolve-timezone'),
+      })
+      .node(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolve-timezone'), resolveTimezone, {
+        'resolved': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'),
+      })
+      .node(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'flag-geo-for-review'), flagGeoForReview, {
+        'resolved': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'),
+      })
 
       .terminal(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.geoSourceResolve, 'resolved'), { 'outcome': 'completed' })
 
@@ -205,6 +259,11 @@ export class GeoSourceResolveDAG {
         resolveCode,
         resolvePhone,
         resolveLocale,
+        resolveCountryConsensus,
+        verifyPointContainment,
+        assembleResolvedGeo,
+        resolveTimezone,
+        flagGeoForReview,
       ],
       'dags': [
         resolveCoordsDag,

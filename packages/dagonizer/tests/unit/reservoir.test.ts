@@ -24,8 +24,6 @@ import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.j
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import { JsonValue } from '../../src/entities/JsonValue.js';
 import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
@@ -47,31 +45,7 @@ class ReservoirState extends NodeStateBase {
   items: ReservoirItem[] = [];
   gathered: ReservoirItem[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'items':    JsonValue.from(this.items),
-      'gathered': JsonValue.from(this.gathered),
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const items = snap['items'];
-    if (Array.isArray(items)) {
-      this.items = items.filter(
-        (x): x is ReservoirItem =>
-          typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['key'] === 'string' && typeof x['value'] === 'number',
-      );
-    }
-    const gathered = snap['gathered'];
-    if (Array.isArray(gathered)) {
-      this.gathered = gathered.filter(
-        (x): x is ReservoirItem =>
-          typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['key'] === 'string' && typeof x['value'] === 'number',
-      );
-    }
-  }
 }
 
 /** Builds reservoir DAGs for tests. */

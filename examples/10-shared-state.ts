@@ -100,8 +100,8 @@ import {
     resumeDispatcher.registerDAG(childDag);
     resumeDispatcher.registerDAG(parentDag);
 
-    const { dagName, state, cursor } = ckpt2.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap)),
+    const { dagName, state, cursor } = await ckpt2.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new NodeStateBase()),
     );
     await resumeDispatcher.resume(dagName, state, cursor);
 

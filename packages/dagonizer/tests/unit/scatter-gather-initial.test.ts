@@ -7,16 +7,16 @@ import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType, JsonValueType } from '../../src/entities/json.js';
+import type { JsonValueType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const STRATEGY_NAME = 'test-tracking-gather';
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 /** Records the call order of `initial`, `reduce`, and `finalize` hooks. */
 class TrackingGatherStrategy extends GatherStrategy {
@@ -61,23 +61,7 @@ class GatherInitialState extends NodeStateBase {
   items: number[] = [];
   results: JsonValueType[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'items':   [...this.items],
-      'results': [...this.results],
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const items = snap['items'];
-    if (Array.isArray(items)) {
-      this.items = items.filter((x): x is number => typeof x === 'number');
-    }
-    const results = snap['results'];
-    if (Array.isArray(results)) {
-      this.results = [...results];
-    }
-  }
 }
 
 /** Static DAG factory for gather-initial tests. */

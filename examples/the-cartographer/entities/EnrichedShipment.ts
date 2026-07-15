@@ -92,7 +92,7 @@ export const EnrichedShipmentSchema = {
         'path',
         'geoLookupRun', 'geoLookupSkipped',
         'ipGeolocateRun', 'ipGeolocateSkipped',
-        'geoConfidence', 'geoModalities',
+        'geoConfidence', 'geoModalities', 'geoFlaggedForReview',
         'geoSourceModel', 'geoSecondaryLookupUsed',
         'redactionRun', 'redactionSkipped',
         'pricingRun', 'pricingSkipped',
@@ -111,6 +111,10 @@ export const EnrichedShipmentSchema = {
         // Multi-modal fusion outcome carried for the report.
         'geoConfidence':     { 'type': 'number', 'minimum': 0, 'maximum': 1 },
         'geoModalities':     { 'type': 'array', 'items': { 'type': 'string' } },
+        // Set by resolve-country-consensus when no candidate group's summed
+        // weight clears the consensus floor — the location needs review, not
+        // a confident answer.
+        'geoFlaggedForReview': { 'type': 'boolean' },
         // Source-model classification: which geo signal classify-geo-source selected.
         'geoSourceModel':    { 'type': 'string' },
         // Whether CoordTimezone secondary lookup fired.

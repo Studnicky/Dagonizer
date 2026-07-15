@@ -3,7 +3,6 @@ import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { GatherNodeDefaults } from '../entities/dag/GatherNode.js';
 import type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
-import { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { GatherRouteRecordType } from './Gather.js';
@@ -21,8 +20,6 @@ type GatherReducedSummaryType = {
 };
 
 export class GatherBuffers {
-  static readonly #BASE_SNAPSHOT_FIELDS = new Set(['metadata', 'retries', 'warnings']);
-
   readonly #records = new Map<string, Map<string, GatherRecordType>>();
   readonly #reduced = new Map<string, Map<string, GatherReducedSummaryType>>();
   #scalarOrdinal = 0;
@@ -93,13 +90,11 @@ export class GatherBuffers {
     };
   }
 
-  restore(progress: GatherProgressType, state: NodeStateInterface): void {
+  async restore(progress: GatherProgressType, state: NodeStateInterface): Promise<void> {
     for (const [gatherKey, records] of Object.entries(progress.entries)) {
       for (const record of records) {
         const cloneState = state.clone();
-        const snapshot = JsonObject.is(record.snapshot) ? record.snapshot : {};
-        cloneState.applySnapshot(snapshot);
-        GatherBuffers.restoreSnapshotFields(cloneState, snapshot);
+        if (record.graphState !== undefined) await cloneState.restoreJsonLd(cloneState.runIri, record.graphState);
         this.add(gatherKey, {
           'source': record.source,
           'index': record.index,
@@ -162,15 +157,8 @@ export class GatherBuffers {
 
     return {
       ...base,
-      'snapshot': record.cloneState.snapshot(),
+      'graphState': record.cloneState.snapshotJsonLd(record.cloneState.runIri),
     };
-  }
-
-  private static restoreSnapshotFields(state: NodeStateInterface, snapshot: Readonly<Record<string, unknown>>): void {
-    for (const [key, value] of Object.entries(snapshot)) {
-      if (GatherBuffers.#BASE_SNAPSHOT_FIELDS.has(key)) continue;
-      Reflect.set(state, key, value);
-    }
   }
 
   private static selectedSources(

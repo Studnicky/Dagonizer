@@ -23,7 +23,7 @@
 // ---------------------------------------------------------------------------
 
 export type { DagonizerInterface } from '../Dagonizer.js';
-export type { NodeStateInterface, StateFieldType, StateFieldsType } from '../NodeStateBase.js';
+export type { NodeStateInterface } from '../NodeStateBase.js';
 export type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } from './BatchExecutionOptions.js';
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,8 @@ export type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } fro
 // ---------------------------------------------------------------------------
 
 export type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointRestoreAdapterInterface.js';
+export type { GraphStateFieldDefinitionType, GraphStateNestedFieldDefinitionType } from '../contracts/GraphStateFieldDefinition.js';
+export type { GraphRetentionPolicyType } from '../contracts/GraphRetentionPolicy.js';
 export type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
 export type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
 export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
@@ -58,6 +60,8 @@ export type { RemoteStoreLeaseType } from '../contracts/RemoteStoreLease.js';
 export type { SnapshottableInterface, StoreSnapshotType, StoreSnapshotEntryType } from '../contracts/SnapshottableInterface.js';
 export type { StoreInterface } from '../contracts/StoreInterface.js';
 export type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
+export type { GraphDatasetInterface, GraphStateSnapshotInterface, GraphStateTransferIdentityType, GraphStateTransferType } from '../contracts/index.js';
+export type { GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStateJsonLdNodeType, GraphStateJsonLdValueType } from '../contracts/GraphStateJsonLd.js';
 
 // ---------------------------------------------------------------------------
 // Entity-narrowing interfaces

@@ -253,6 +253,55 @@ void describe('Dagonizer subclass hooks contract', () => {
     assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'urn:noocodec:dag:inst-parent');
   });
 
+  void it('delivers every lifecycle event to every registered observer', async () => {
+    const observerEvents: string[][] = [[], []];
+    const observers = observerEvents.map((events) => ({
+      'onFlowStart': (dagName: string): void => { events.push(`flow-start:${dagName}`); },
+      'onNodeStart': (nodeName: string): void => { events.push(`node-start:${nodeName}`); },
+      'onNodeEnd': (nodeName: string): void => { events.push(`node-end:${nodeName}`); },
+      'onFlowEnd': (dagName: string): void => { events.push(`flow-end:${dagName}`); },
+    }));
+    const dispatcher = new Dagonizer<NodeStateBase>({ 'observers': observers });
+
+    dispatcher.registerNode(TestNode.make('urn:noocodec:node:observer-only', ['success']));
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodec:dag:observer-fanout',
+      '@type': 'DAG',
+      'name': 'observer-fanout',
+      'version': '1',
+      'entrypoints': { 'main': placementIri('urn:noocodec:dag:observer-fanout', 'only') },
+      'nodes': [
+        {
+          '@id': placementIri('urn:noocodec:dag:observer-fanout', 'only'),
+          '@type': 'SingleNode',
+          'name': 'only',
+          'node': 'urn:noocodec:node:observer-only',
+          'outputs': { 'success': placementIri('urn:noocodec:dag:observer-fanout', 'end') },
+        },
+        {
+          '@id': placementIri('urn:noocodec:dag:observer-fanout', 'end'),
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+
+    await dispatcher.execute('urn:noocodec:dag:observer-fanout', new NodeStateBase());
+
+    for (const events of observerEvents) {
+      assert.deepEqual(events, [
+        'flow-start:urn:noocodec:dag:observer-fanout',
+        'node-start:only',
+        'node-end:only',
+        'node-start:end',
+        'node-end:end',
+        'flow-end:urn:noocodec:dag:observer-fanout',
+      ]);
+    }
+  });
+
   void it('onError fires when a node throws', async () => {
     const dispatcher = new RecordingDagonizer();
 

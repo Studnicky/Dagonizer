@@ -179,7 +179,7 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, DAG IRI, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
-`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObjectType): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapter.wrap(fn)` from `@studnicky/dagonizer/checkpoint`:
+`CheckpointRestoreAdapter<TState>` constructs a graph-backed state instance. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapter.wrap(fn)` from `@studnicky/dagonizer/checkpoint`:
 
 ```ts twoslash
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
@@ -188,8 +188,8 @@ import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 class MyState extends NodeStateBase {}
 declare const ckpt: Checkpoint;
 // ---cut---
-const { dagName, state, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+const { dagName, state, cursor } = await ckpt.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new MyState()),
 );
 ```
 
@@ -260,13 +260,12 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 
 ```ts twoslash
 import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const adapter: CheckpointRestoreAdapterInterface<{ value: number }>;
-const _result: { value: number } = adapter.restore({ key: 1 });
+const _result: { value: number } = adapter.restore();
 ```
 
-Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
+Contract for constructing a graph-backed state instance before `Checkpoint.restoreState()` restores its JSON-LD graph. Wrap a factory with `CheckpointRestoreAdapter.wrap(() => new MyState())`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 
@@ -331,7 +330,7 @@ import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 declare const data: CheckpointDataType;
 const _dagIri: string = data.dagName;
 const _placementIri: string | null = data.cursor;
-const _state: Record<string, unknown> = data.state;
+const _graph = data.graph;
 const _executedNodes: string[] = data.executedNodes;
 const _skippedNodes: string[] = data.skippedNodes;
 const _stores: CheckpointDataType['stores'] = data.stores;

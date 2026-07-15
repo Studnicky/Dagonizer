@@ -28,9 +28,14 @@
  * All properties are initialised in constructor for V8 hidden-class stability.
  */
 
+import type { GraphStateDeltaInterface } from '../contracts/GraphStateDeltaInterface.js';
+import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
+import type { GraphStateTransferType } from '../contracts/GraphStateTransfer.js';
+import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
+import type { QuadType } from '../contracts/TripleStoreInterface.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
@@ -38,6 +43,9 @@ import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { NodeError } from '../entities/node/NodeError.js';
 import { DAGError } from '../errors/DAGError.js';
+import { GraphStateJsonLdCodec } from '../graph/GraphStateJsonLdCodec.js';
+import { GraphStateTerms } from '../graph/GraphStateTerms.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 import { Validator } from '../validation/Validator.js';
@@ -55,6 +63,7 @@ import { WorkerObserver } from './WorkerObserver.js';
  */
 export type DagHostOptionsType = {
   registry?: RegistryModuleInterface;
+  graphStateTransferStore?: GraphStateTransferStoreInterface;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +76,8 @@ export class DagHost {
   readonly #inflight: Map<string, AbortController>;
   /** Statically-injected registry, or null when init imports by URL. */
   readonly #registry: RegistryModuleInterface | null;
+  readonly #graphStateTransferStore: GraphStateTransferStoreInterface | null;
+  readonly #capabilities: string[];
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
 
@@ -74,6 +85,13 @@ export class DagHost {
     this.#channel = channel;
     this.#inflight = new Map();
     this.#registry = options.registry ?? null;
+    this.#graphStateTransferStore = options.graphStateTransferStore ?? null;
+    // Inline N-Quads is the mandatory graph-state wire format, so it is not
+    // negotiated as an optional capability. Only transfer modes that require
+    // an injected adapter appear in the ready handshake.
+    this.#capabilities = this.#graphStateTransferStore === null
+      ? []
+      : ['graph-ref', 'shared-endpoint', 'inline-delta-nquads', 'delta-ref'];
     this.#bundle = null;
   }
 
@@ -201,7 +219,7 @@ export class DagHost {
       } else {
         // Dynamic import is the module ingest boundary: the loaded module is
         // unknown at compile time. A typed declaration narrows it without a cast.
-        const mod: { default?: unknown } = await import(registryModule);
+        const mod: { default?: unknown } = await import(/* @vite-ignore */ registryModule);
 
         // `DagHost.#isRegistryModule` is a type-guard predicate that confirms the
         // default export implements `RegistryModuleInterface` (object with an
@@ -239,7 +257,7 @@ export class DagHost {
       this.#channel.send({
         'variant': 'ready',
         'registryVersion': bundle.registryVersion,
-        'capabilities': [],
+        'capabilities': [...this.#capabilities],
       });
     } catch (error) {
       const message = DAGError.messageOf(error);
@@ -291,9 +309,13 @@ export class DagHost {
   ): Promise<void> {
     // Restore all item states from the request's items array.
     const requestItems = request.items;
-    const restoredItems = requestItems.map(({ id, snapshot }: { id: string; snapshot: Record<string, unknown> }) => ({
-      'id': id,
-      'state': bundle.restoreState.restore(JsonObject.is(snapshot) ? snapshot : {}),
+    const restoredItems = await Promise.all(requestItems.map(async ({ id, graphState }) => {
+      const state = bundle.restoreState.restore();
+      if (graphState !== undefined) {
+        if (!DagHost.isGraphSnapshot(state)) throw new Error('Graph-state transfer requires a graph-backed state implementation');
+        await GraphStateTransferCodec.restore(state, graphState);
+      }
+      return { 'id': id, state, graphState };
     }));
 
     // Set up timeout abort if specified.
@@ -338,6 +360,7 @@ export class DagHost {
         if (item === undefined) throw new Error('DagHost: invariant — restoredItems[0] is undefined');
         const execution = dagonizer.execute(request.dagName, item.state, {
           'signal': controller.signal,
+          ...(request.items[0]?.graphState === undefined ? {} : { 'runIri': request.items[0].graphState.runIri }),
         });
 
         // Drain the async generator, forwarding each NodeResult as an intermediate
@@ -387,9 +410,10 @@ export class DagHost {
             : []),
         ];
 
+        const graphState = await this.#graphStateOf(item.state, request, item.graphState);
         const response: ExecutionResponseType = {
           'correlationId': correlationId,
-          'items': [{ 'id': item.id, 'snapshot': item.state.snapshot(), 'terminalOutcome': derivedTerminal }],
+          'items': [{ 'id': item.id, 'terminalOutcome': derivedTerminal, 'graphState': graphState }],
           'errors': collectedErrors,
           intermediates,
         };
@@ -404,6 +428,7 @@ export class DagHost {
         for (const item of restoredItems) {
           const execution = dagonizer.execute(request.dagName, item.state, {
             'signal': controller.signal,
+            ...(item.graphState === undefined ? {} : { 'runIri': item.graphState.runIri }),
           });
 
           const generator = execution[Symbol.asyncIterator]();
@@ -419,7 +444,7 @@ export class DagHost {
             // Batch path: send live only — do NOT buffer into `intermediates`.
             // Live relay delivers observability to the parent in real-time.
             // `ExecutionResponse.intermediates` is unused by Dagonizer for the
-            // batch/scatter path (only outcome, errors, and stateSnapshot are
+            // batch/scatter path carries outcome, errors, and graph state
             // consumed), so buffering here is pure O(N × M) retention with no
             // benefit. The `intermediates` array remains empty for the batch
             // path and is sent as `[]` in the ExecutionResponse below.
@@ -445,10 +470,13 @@ export class DagHost {
         // Collect all errors across all items.
         const allErrors = restoredItems.flatMap(({ state }) => [...state.errors]);
 
-        const responseItems = restoredItems.map(({ id, state }) => ({
-          'id': id,
-          'snapshot': state.snapshot(),
-          'terminalOutcome': terminalByItemId.get(id) ?? 'failed',
+        const responseItems = await Promise.all(restoredItems.map(async ({ id, state }) => {
+          const graphState = await this.#graphStateOf(state, request, restoredItems.find((item) => item.id === id)?.graphState);
+          return {
+            'id': id,
+            'terminalOutcome': terminalByItemId.get(id) ?? 'failed',
+            'graphState': graphState,
+          };
         }));
 
         const response: ExecutionResponseType = {
@@ -464,10 +492,13 @@ export class DagHost {
       const message = DAGError.messageOf(error);
 
       // On unhandled exception, return failed items for all items in the request.
-      const failedItems = restoredItems.map(({ id, state }) => ({
-        'id': id,
-        'snapshot': state.snapshot(),
-        'terminalOutcome': 'failed',
+      const failedItems = await Promise.all(restoredItems.map(async ({ id, state }) => {
+        const graphState = await this.#graphStateOf(state, request, restoredItems.find((item) => item.id === id)?.graphState);
+        return {
+          'id': id,
+          'terminalOutcome': 'failed',
+          'graphState': graphState,
+        };
       }));
 
       const response: ExecutionResponseType = {
@@ -492,6 +523,55 @@ export class DagHost {
         await timeoutPromise;
       }
     }
+  }
+
+  private static isGraphSnapshot(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
+    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
+      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
+  }
+
+  private static isGraphDelta(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface & GraphStateDeltaInterface {
+    return DagHost.isGraphSnapshot(state) && 'snapshotGraphDelta' in state && typeof state.snapshotGraphDelta === 'function';
+  }
+
+  async #graphStateOf(state: NodeStateInterface, request: ExecutionRequestType, requested: GraphStateTransferType | undefined): Promise<GraphStateTransferType> {
+    if (!DagHost.isGraphSnapshot(state)) throw new Error('Every node state must expose the graph-state port');
+    const quads: QuadType[] = [];
+    for await (const quad of state.snapshotGraph(state.runIri)) quads.push(quad);
+    const jsonLd = GraphStateJsonLdCodec.encode(quads);
+    if (requested?.mode === 'shared-endpoint') {
+      if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
+      await this.#graphStateTransferStore.writeShared({ "endpoint": requested.endpoint, "token": requested.lease, "graphIris": [...requested.graphIris], "expiresAt": Number.POSITIVE_INFINITY }, state.snapshotGraph(state.runIri));
+      return { ...requested, jsonLd };
+    }
+    const placementIri = request.placementPath[request.placementPath.length - 1];
+    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
+    const identity = {
+      'dagIri': request.dagName,
+      'placementPath': request.placementPath,
+      'placementIri': placementIri,
+      'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri),
+      jsonLd,
+    };
+    if (requested?.mode === 'graph-ref') {
+      if (this.#graphStateTransferStore === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
+      return { ...(await GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+    }
+    if (requested === undefined || requested.mode === 'inline-nquads') {
+      return { ...(await GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+    }
+    if (requested?.mode === 'delta-ref') {
+      if (this.#graphStateTransferStore === null) throw new Error('Delta-reference transfer requires a graph transfer store');
+      if (!DagHost.isGraphDelta(state)) throw new Error('Delta-reference transfer requires graph delta support');
+      const delta = await state.snapshotGraphDelta(state.runIri);
+      return { ...GraphStateTransferCodec.deltaReference(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision }), jsonLd };
+    }
+    if (requested?.mode === 'inline-delta-nquads') {
+      if (!DagHost.isGraphDelta(state)) throw new Error('Inline delta transfer requires graph delta support');
+      const delta = await state.snapshotGraphDelta(state.runIri);
+      return { ...GraphStateTransferCodec.delta(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision }), jsonLd };
+    }
+    throw new Error('Unsupported graph transfer mode');
   }
 
   // ---------------------------------------------------------------------------

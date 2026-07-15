@@ -19,7 +19,6 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State
@@ -33,18 +32,7 @@ export class HitlState extends NodeStateBase {
   /** Execution log used to verify the example output. */
   log: string[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'item': this.item, 'decision': this.decision, 'log': [...this.log] };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const item = snapshot['item'];
-    if (typeof item === 'string') this.item = item;
-    const decision = snapshot['decision'];
-    if (decision === 'approved' || decision === 'rejected') this.decision = decision;
-    const log = snapshot['log'];
-    if (Array.isArray(log)) this.log = log.filter((x): x is string => typeof x === 'string');
-  }
 }
 
 // ---------------------------------------------------------------------------

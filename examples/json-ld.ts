@@ -19,7 +19,6 @@ import {
   Batch,
   DAGBuilder,
   Dagonizer,
-  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -55,7 +54,7 @@ class TransformNode extends MonadicNode<NodeStateBase, 'success'> {
 // #region round-trip
 // Build a DAG via DAGBuilder — the canonical JSON-LD object.
 const dagIri = 'urn:noocodec:dag:demo' as const;
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 const original = new DAGBuilder(dagIri, '1')
   .node(placement('transform'), new TransformNode(), { success: placement('end') })

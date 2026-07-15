@@ -43,14 +43,14 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 const pipelineFacilityScanDagIri = 'urn:noocodec:dag:pipeline-facility-scan' as const;
 const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
 const orderEnrichmentDagIri = 'urn:noocodec:dag:order-enrichment' as const;
 const gdprComplianceDagIri = 'urn:noocodec:dag:gdpr-compliance' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(pipelineFacilityScanDagIri, placementIdentifier);
+  `${pipelineFacilityScanDagIri}/node/${placementIdentifier}`;
 
 export const pipelineFacilityScanDAG: DAGType = new DAGBuilder(pipelineFacilityScanDagIri, '1.0')
 

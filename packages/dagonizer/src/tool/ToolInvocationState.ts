@@ -6,13 +6,13 @@
  * in the constructor in declaration order for V8 shape stability — every
  * instance has the same hidden class regardless of call site.
  *
- * Snapshot/restore covers both fields so the state survives checkpoint/resume.
+ * Both fields are stored directly in the run graph and therefore survive
+ * checkpoint, transfer, and resume.
  */
 
 import { Predicates } from '@studnicky/predicates';
 
 import type { JsonObjectType } from '../entities/json.js';
-import { JsonValue } from '../entities/JsonValue.js';
 import { NodeStateBase } from '../NodeStateBase.js';
 
 export class ToolInvocationState extends NodeStateBase {
@@ -21,13 +21,26 @@ export class ToolInvocationState extends NodeStateBase {
    * `JsonObjectType` because tool arguments are JSON (they cross the scatter /
    * checkpoint boundary) — so the snapshot needs no cast.
    */
-  input: JsonObjectType;
+  get input(): JsonObjectType {
+    const value = this.getGraphStateField('input');
+    return value !== undefined && typeof value === 'object' && value !== null && !Array.isArray(value) ? value : {};
+  }
+
+  set input(value: JsonObjectType) {
+    this.setGraphStateField('input', value);
+  }
   /**
    * Return value from the tool. Written by `ToolInvokeNode`. Genuinely
    * `unknown` — the registry erases each tool's concrete output type — so it is
    * narrowed to JSON via `JsonValue.from` at the snapshot boundary, not cast.
    */
-  output: unknown;
+  get output(): unknown {
+    return this.getGraphStateField('output') ?? null;
+  }
+
+  set output(value: unknown) {
+    this.setGraphStateField('output', value);
+  }
 
   constructor() {
     super();
@@ -45,25 +58,4 @@ export class ToolInvocationState extends NodeStateBase {
     return Predicates.matchesType('object', value);
   }
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      // `input` is already `JsonObjectType`; a shallow copy stays JSON-typed.
-      'input':  { ...this.input },
-      // `output` is genuinely `unknown` (generic tool return) — coerce to a real
-      // `JsonValueType` field-wise rather than asserting it.
-      'output': JsonValue.from(this.output),
-    };
-  }
-
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const rawInput = snapshot['input'];
-    // `rawInput` is `JsonValueType`; narrow to a JSON object before assigning.
-    if (typeof rawInput === 'object' && rawInput !== null && !Array.isArray(rawInput)) {
-      this.input = rawInput;
-    }
-
-    if ('output' in snapshot) {
-      this.output = snapshot['output'];
-    }
-  }
 }

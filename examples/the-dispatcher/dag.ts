@@ -26,7 +26,7 @@
  *   5. send-response appends both sides to conversation → end.
  */
 
-import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from './DispatcherState.ts';
@@ -42,7 +42,7 @@ const decline         = new PlaceholderNode<DispatcherState, 'declined'>('urn:no
 
 const supportDispatcherDagIri = 'urn:noocodec:dag:support-dispatcher' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(supportDispatcherDagIri, placementIdentifier);
+  `${supportDispatcherDagIri}/node/${placementIdentifier}`;
 
 export const supportDispatcherDAG: DAGType = new DAGBuilder(supportDispatcherDagIri, '1')
   // Pre-phase: stamps runId before the entrypoint runs.

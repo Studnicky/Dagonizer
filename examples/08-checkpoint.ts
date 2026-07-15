@@ -7,25 +7,8 @@
  *   3. Persist it (here: serialise to a string as a stand-in for a DB write).
  *   4. Parse it back and restore state via a custom restore function.
  *   5. Resume from the cursor; only the remaining nodes run.
- *
- * State that needs to survive the gap must override `snapshotData()` and
- * `restoreData()`. The base class handles lifecycle; the subclass handles
- * domain fields.
- *
- * Watch: partial.cursor names the next node to run. After resume,
- * state.count equals 3 and state.log records all three tick events,
- * identical to an uninterrupted execution.
- *
- * DAG definition (state with snapshot/restore, inc node, dag): examples/dags/08-checkpoint.ts
- *
- * Run: npx tsx examples/08-checkpoint.ts
  */
-
-import {
-  Checkpoint,
-  CheckpointRestoreAdapter,
-  Dagonizer,
-} from '@studnicky/dagonizer';
+import { Checkpoint, CheckpointRestoreAdapter, Dagonizer } from '@studnicky/dagonizer';
 import { CountingState, IncNode, dag } from './dags/08-checkpoint.js';
 
 // Step 1: partial run, abort after the first node completes
@@ -68,11 +51,9 @@ const ckpt = Checkpoint.load(JSON.parse(persisted));
 // restoreState maps the snapshot back to a typed CountingState instance.
 // Consumers supply their own restore fn so the checkpoint module never
 // imports domain state classes.
-const { state, dagName, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),  // rehydrates domain fields via restoreData()
+const { state, dagName, cursor } = await ckpt.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new CountingState()),
 );
-
-process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);
 // #endregion recall
 
 // #region resume
@@ -80,7 +61,7 @@ process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);
 const resumed = await dispatcher.resume(dagName, state, cursor);
 
 process.stdout.write(`  resumed: count=${resumed.state.count} log=${JSON.stringify(resumed.state.log)}\n`);
-process.stdout.write('\nLesson: cursor marks where to resume; snapshotData/restoreData\n');
-process.stdout.write('        persist domain fields across the serialisation boundary.\n');
+process.stdout.write('\nLesson: cursor marks where to resume; the graph carries domain fields\n');
+process.stdout.write('        across the JSON-LD and N-Quads boundaries.\n');
 process.stdout.write('        Final count=3 and log length=3: identical to a full run.\n');
 // #endregion resume

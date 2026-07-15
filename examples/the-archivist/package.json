@@ -13,8 +13,11 @@
     "test": "node --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
+    "@studnicky/cache": "^5.0.0",
+    "@studnicky/circular-buffer": "^5.0.0",
+    "@studnicky/clock": "^5.0.0",
+    "@studnicky/concurrency": "^5.0.0",
     "@studnicky/dagonizer": "workspace:^",
-    "@studnicky/dagonizer-store-indexeddb": "workspace:^",
     "@studnicky/dagonizer-adapter-anthropic": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
@@ -27,19 +30,17 @@
     "@studnicky/dagonizer-embedder-tensorflow": "workspace:^",
     "@studnicky/dagonizer-embedder-transformers": "workspace:^",
     "@studnicky/dagonizer-embedder-web-llm": "workspace:^",
+    "@studnicky/dagonizer-store-indexeddb": "workspace:^",
     "@studnicky/dagonizer-tool-googlebooks": "workspace:^",
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
-    "@studnicky/cache": "^4.0.0",
-    "@studnicky/circular-buffer": "^4.0.0",
-    "@studnicky/clock": "^4.0.0",
-    "@studnicky/concurrency": "^4.0.0",
-    "@studnicky/logger": "^4.0.0",
-    "@studnicky/signal": "^4.0.0"
+    "@studnicky/logger": "^5.0.0",
+    "@studnicky/signal": "^5.0.0"
   },
   "devDependencies": {
-    "fake-indexeddb": "^6.0.0",
-    "n3": "^2.1.0",
-    "vite": "^6.4.3"
+    "@rdfjs/types": "^2.0.1",
+    "fake-indexeddb": "^6.2.5",
+    "n3": "^2.1.1",
+    "vite": "^8.1.3"
   }
 }

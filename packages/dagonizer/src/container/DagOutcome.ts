@@ -15,7 +15,7 @@
  *
  * `BatchRunResultType` is the per-item result returned by `DagContainerBase.runDagBatch`.
  * Each entry carries the item `id` alongside the full `DagOutcomeType` for
- * that item, including its `terminalOutput`, `errors`, `stateSnapshot`, and
+ * that item, including its `terminalOutput`, `errors`, graph state, and
  * `intermediates`.
  */
 
@@ -61,7 +61,6 @@ export class DagOutcome {
     return {
       'terminalOutput': 'failed',
       'errors': [error],
-      'stateSnapshot': null,
       'intermediates': [],
     };
   }
@@ -80,7 +79,6 @@ export class DagOutcome {
       'id': id,
       'terminalOutput': outcome.terminalOutput,
       'errors': outcome.errors,
-      'stateSnapshot': outcome.stateSnapshot,
       'intermediates': outcome.intermediates,
     };
   }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+
 import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import {
   GATHER_PROGRESS_KEY as ROOT_GATHER_PROGRESS_KEY,
@@ -10,6 +11,9 @@ import {
   DagReferenceGraph,
   DagGraphProjector,
   DagGraphQueries,
+  GraphDatasetRevision,
+  GraphRetentionQueryService,
+  Rdf12JsonLdCodec,
   JsonSchemaCompatibility,
   PluginDiscovery,
   PluginSpecifier,
@@ -26,6 +30,7 @@ import type {
   GatherProgressType as TypeBarrelGatherProgressType,
   GatherRecordProgressType as TypeBarrelGatherRecordProgressType,
 } from '../../src/types/index.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 void describe('public root surface', () => {
   void it('exports the gather progress key', () => {
@@ -40,7 +45,7 @@ void describe('public root surface', () => {
       'index': null,
       'output': 'success',
       'terminalOutcome': null,
-      'snapshot': {},
+      'graphState': emptyGraphStateTransfer().jsonLd,
     };
     const sameRecord: TypeBarrelGatherRecordProgressType = record;
 
@@ -69,5 +74,12 @@ void describe('public root surface', () => {
     assert.equal(typeof StableSchemaHash.of, 'function');
     assert.equal(typeof PluginDiscovery.referencedDagIris, 'function');
     assert.equal(typeof PluginSpecifier.byIriPrefix, 'function');
+  });
+
+  void it('exports the RDF 1.2 and graph-retention public services', () => {
+    assert.equal(typeof GraphDatasetRevision.of, 'function');
+    assert.equal(typeof GraphRetentionQueryService, 'function');
+    assert.equal(typeof Rdf12JsonLdCodec.parse, 'function');
+    assert.equal(typeof Rdf12JsonLdCodec.serialize, 'function');
   });
 });

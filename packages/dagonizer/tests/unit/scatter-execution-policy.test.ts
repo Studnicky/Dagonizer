@@ -20,7 +20,6 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { ScatterNodeDefaults } from '../../src/entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../../src/entities/dag/ScatterNode.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -121,14 +120,7 @@ void describe('ScatterNodeDefaults.executionPolicy', () => {
 class ItemsState extends NodeStateBase {
   items: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'items': [...this.items] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const raw = snap['items'];
-    if (Array.isArray(raw)) this.items = raw.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 class ItemModeDag {
@@ -193,20 +185,7 @@ void describe('Scatter execution policy — mode: item caps concurrently in-flig
 class BatchState extends NodeStateBase {
   events: { key: string; value: number }[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'events': this.events.map((e) => ({ ...e })) };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const raw = snap['events'];
-    if (Array.isArray(raw)) {
-      this.events = raw.filter(
-        (x): x is { key: string; value: number } =>
-          typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['key'] === 'string' && typeof x['value'] === 'number',
-      );
-    }
-  }
 }
 
 class ReservoirModeDag {

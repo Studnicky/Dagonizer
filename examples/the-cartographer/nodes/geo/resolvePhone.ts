@@ -1,7 +1,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts';
-import { CallingCode } from '../../geo/CallingCode.ts';
+import { CallingCode } from '@studnicky/geo-resolver';
 import { CountryCodeResolution } from './CountryCodeResolution.ts';
 import {
   MonadicNode,
@@ -38,7 +38,7 @@ export class ResolvePhoneNode extends MonadicNode<CartographerState, 'resolved'>
       if (iso2 === '') {
         item.state.candidate = GeoResolutionBuilder.from({ 'source': 'phone', 'weight': 0 });
       } else {
-        item.state.candidate = CountryCodeResolution.forIso2(iso2, 'phone', raw.weight);
+        item.state.candidate = CountryCodeResolution.forCountryCode(iso2, 'phone', raw.weight);
       }
     }
     return RoutedBatch.create('resolved', batch);

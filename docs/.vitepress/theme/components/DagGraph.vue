@@ -16,6 +16,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 
 import type { DAGType } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import type { CytoscapeGraphOptionsType } from '../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
@@ -29,6 +30,9 @@ const props = defineProps<{
   embeddedDAGs?: ReadonlyMap<string, DAGType>;
   nodeVariants?: Readonly<Record<string, string>>;
   expandAll?: boolean;
+  idMode?: 'path' | 'iri';
+  initialView?: 'fit' | 'readable';
+  layoutOptions?: CytoscapeGraphOptionsType['layoutOptions'];
   ariaLabel?: string;
 }>();
 
@@ -91,6 +95,9 @@ onMounted(async () => {
     ...(props.embeddedDAGs !== undefined ? { 'embeddedDAGs': props.embeddedDAGs } : {}),
     ...(props.nodeVariants    !== undefined ? { 'nodeVariants':    props.nodeVariants    } : {}),
     ...(props.expandAll    !== undefined ? { 'expandAll':    props.expandAll    } : {}),
+    ...(props.idMode       !== undefined ? { 'idMode':       props.idMode       } : {}),
+    ...(props.initialView  !== undefined ? { 'initialView':  props.initialView  } : {}),
+    ...(props.layoutOptions !== undefined ? { 'layoutOptions': props.layoutOptions } : {}),
     'onNodeClick':  (name) => { emit('node-click', name); },
     'onZoomChange': (level) => { zoomLevel.value = level; },
   });

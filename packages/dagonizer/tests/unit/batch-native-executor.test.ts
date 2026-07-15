@@ -98,16 +98,7 @@ class ValueState extends NodeStateBase {
     return copy;
   }
 
-  override snapshotData() {
-    return { 'value': this.value, 'log': [...this.log] };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>): void {
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-    const l = snap['log'];
-    if (Array.isArray(l)) this.log = l.filter((e): e is string => typeof e === 'string');
-  }
 }
 
 // ===========================================================================

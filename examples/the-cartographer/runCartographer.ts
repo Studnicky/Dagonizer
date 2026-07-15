@@ -46,7 +46,6 @@ import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { ObservedCartographer } from './ObservedCartographer.ts';
 import { normalizeSourcesPlugin } from './plugins/NormalizeSourcesPlugin.ts';
-import { CartographerSourceIntake } from './nodes/sourceIntake.ts';
 import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
@@ -131,9 +130,10 @@ class AbortingCartographer extends ObservedCartographer {
 const RESUME_EVENT_COUNT = 40;
 /**
  * Number of scatter item completions (aggregate-event inside process-stream)
- * after which the interrupted run aborts. cartographerResumeDAG has no reservoir,
- * so items are dispatched one-at-a-time (ScatterWorkerPool path) and the abort
- * signal fires between pulls — giving a non-zero StreamCursor value.
+ * after which the interrupted run aborts. cartographerResumeDAG uses the same
+ * producer-feed/open-gather topology as the main DAG, then processes
+ * canonicalEvents in item mode so the abort signal fires between pulls and
+ * leaves a non-zero StreamCursor value.
  */
 const ABORT_AFTER_ITEMS = 8;
 
@@ -184,15 +184,15 @@ class InsightsFingerprint {
 /**
  * CartographerResumableScenario: self-contained abort→cursor→resume verification.
  *
- * Uses `cartographerResumeDAG` (no reservoir) so abort fires mid-scatter, leaving
- * acked items in the checkpoint and un-pulled items un-acked.
+ * Uses `cartographerResumeDAG` (no reservoir) so abort fires mid-scatter after
+ * the five producer feed DAGs have converged through the canonical open gather.
  *
- *   Baseline — Full streaming pass over all RESUME_EVENT_COUNT items (no abort).
- *              Produces the reference InsightsFingerprint.
+ *   Baseline — Full feed/open-gather pass over all RESUME_EVENT_COUNT canonical
+ *              events (no abort). Produces the reference InsightsFingerprint.
  *   Step A   — Interrupted run: abort after ABORT_AFTER_ITEMS aggregate-event
  *              completions; read durable cursor from checkpoint.
- *   Step B   — Resume: restore from firstState.snapshot() (carries accumulator +
- *              checkpoint) and supply the remainder through CartographerSourceIntake.
+ *   Step B   — Resume: restore from firstState's graph JSON-LD (carries accumulator,
+ *              canonicalEvents, and checkpoint) and resume process-stream.
  *              Assert cursor > 0 and resumeResult.cursor === null (completed).
  *   Proof    — Compare InsightsFingerprint of resumed state to baseline fingerprint.
  *              Equal → exactly-once; unequal → throw with full diff.
@@ -220,8 +220,8 @@ class CartographerResumableScenario {
   ): Promise<void> {
     logger.info('CartographerResumableScenario', 'run', `Starting streamed-resume verification (${RESUME_EVENT_COUNT} events, abort after ${ABORT_AFTER_ITEMS})`);
 
-    // ── Baseline: full streaming pass (no abort) ─────────────────────────────
-    // Runs the same producer + same event count through the same DAG without
+    // ── Baseline: full feed/open-gather pass (no abort) ─────────────────────
+    // Runs the same producer feeds and event count through the same DAG without
     // interruption. Produces the reference accumulator for the exactly-once proof.
     const baselineDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
     const baselineState = new CartographerState();
@@ -235,7 +235,7 @@ class CartographerResumableScenario {
     // ── Step A: Interrupted run ──────────────────────────────────────────────
     // AbortingCartographer fires abort after ABORT_AFTER_ITEMS aggregate-event
     // completions inside process-stream. cartographerResumeDAG has no reservoir,
-    // so the ScatterWorkerPool checks abort between item pulls — giving cursor > 0.
+    // so the ScatterWorkerPool checks abort between canonical-event pulls.
     const interruptAc = new AbortController();
     const abortingDispatcher = new AbortingCartographer({}, interruptAc, ABORT_AFTER_ITEMS);
     abortingDispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
@@ -260,11 +260,11 @@ class CartographerResumableScenario {
       if (!(err instanceof DAGError && err.code === 'EXECUTION_ERROR')) throw err;
     }
 
-    // Read the durable stream cursor from the interrupted checkpoint.
+    // Read the durable process-stream cursor from the interrupted checkpoint.
     const cursor = StreamCursor.resumeAfter(firstState, 'process-stream');
     logger.info(
       'CartographerResumableScenario', 'interrupted',
-      `Interrupted after ${ABORT_AFTER_ITEMS} items. execution cursor='${String(interruptedCursor)}' stream cursor=${cursor}`,
+      `Interrupted after ${ABORT_AFTER_ITEMS} items. execution cursor='${String(interruptedCursor)}' process-stream cursor=${cursor}`,
     );
 
     process.stdout.write(`ASSERT cursor > 0: ${cursor > 0 ? 'PASS' : 'FAIL'} (cursor=${cursor})\n`);
@@ -275,20 +275,17 @@ class CartographerResumableScenario {
     // ── Step B: Resume ───────────────────────────────────────────────────────
     // Restore from the interrupted snapshot — this is the faithful cross-process
     // restart path: the partial insights accumulator AND the SCATTER_PROGRESS_KEY
-    // checkpoint are both carried by CartographerState.restore(firstState.snapshot()).
+    // checkpoint are both carried by the graph restore.
     // Acked items (below the watermark) already contributed to state.insights and
     // are NOT replayed by the engine; the accumulator carry ensures their folds
     // survive. Un-acked items in the durable inbox are replayed by the engine.
     const resumeDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
 
-    const resumeState = CartographerState.restore(firstState.snapshot());
+    const resumeState = new CartographerState();
+    await resumeState.restoreJsonLd(firstState.runIri, firstState.snapshotJsonLd());
     resumeState.useStreamingSource = true;
     resumeState.eventCount = RESUME_EVENT_COUNT;
     resumeState.streamCount = RESUME_EVENT_COUNT;
-    // Supply the remainder: the top-level intake gather is already complete in
-    // the restored checkpoint, so resume enters process-stream directly.
-    resumeState.sources = CartographerSourceIntake.mergedFor(resumeState, cursor);
-
     const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:cartographer-resume', resumeState, 'process-stream');
 
     logger.info(
@@ -514,7 +511,7 @@ const executionMode = useWorkers
     : 'IN-PROCESS (no container)';
 
 // Run-configuration banner: status diagnostics → leveled info on the logger.
-logger.info('runCartographer', 'banner', `${String(eventCount)} journeys -> multi-format sources -> fan-in -> streaming enrichment (concurrency=16)`);
+logger.info('runCartographer', 'banner', `${String(eventCount)} journeys -> producer feed DAGs -> canonical fan-in -> typed enrichment (concurrency=16)`);
 logger.info('runCartographer', 'banner', `execution mode: ${executionMode}`);
 logger.info('runCartographer', 'banner', `geo backend: offline country-coder reverse-geocode + ${useLive ? 'LIVE freeipapi.com IP geolocation' : 'RECORDED IP fixture replay (offline)'}`);
 
@@ -562,10 +559,10 @@ const sampleProcessed = state.sampleRecords.filter((r) => r.shipmentId.length > 
 let totalScans = 0;
 for (const r of state.insights.values()) totalScans += r.shipmentCount;
 
-// ── (0) Streaming source summary ──────────────────────────────────────────────
-// The streaming topology decodes mixed formats inline per scan; there is no
-// separate ingestion fan-in stage. Report what the accumulators know.
-logger.result('=== (0) Streaming source — mixed formats decoded inline per scan ===\n');
+// ── (0) Producer feed summary ────────────────────────────────────────────────
+// Producer feed DAGs decode mixed formats before canonical fan-in. Report what
+// the accumulators know.
+logger.result('=== (0) Producer feeds — mixed formats decoded before canonical fan-in ===\n');
 
 // Per-event-type lane distribution derived from the bounded sample.
 const byEventType = new Map<string, number>();
@@ -585,7 +582,8 @@ if (Array.isArray(state.sources)) {
     distinctFormats.add(item.format);
   }
 }
-// Fall back to eventConfig format mix labels when sources is exhausted.
+// Fall back to eventConfig format mix labels when no compatibility source array
+// is present.
 if (distinctFormats.size === 0) {
   for (const cfg of state.eventConfig) {
     for (const mix of cfg.formatMix) distinctFormats.add(mix.format);

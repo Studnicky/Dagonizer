@@ -2,9 +2,9 @@
 title: 'Example 36: DAG Stream Producer'
 description: 'The Archivist streaming demo bridges an inner candidate-discovery DAG into an outer scatter source through BookSearchStreamProducer.'
 seeAlso:
-  - text: 'Example 34: Intake stream source'
+  - text: 'Example 34: Producer feed DAGs'
     link: './34-stream-channel'
-    description: 'Cartographer source-intake gather stream assembly'
+    description: 'Cartographer producer feed DAG assembly'
   - text: 'Example 20: Streaming execution'
     link: './20-streaming'
     description: 'per-node AsyncIterable execution'
@@ -76,6 +76,6 @@ The runnable entry point wires the producer into `StreamChannel.driven(...)` and
 
 ## Related Concepts
 
-- [Example 34: Intake stream source](./34-stream-channel) - Cartographer source-intake gather stream assembly
+- [Example 34: Producer feed DAGs](./34-stream-channel) - Cartographer producer feed DAG assembly
 - [Example 20: Streaming execution](./20-streaming) - per-node AsyncIterable execution
 - [Streaming Producers](../guide/streaming-producers) - full streaming API: driven, fanIn, resumable, DagStreamProducer

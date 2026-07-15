@@ -1,5 +1,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
+
 export const GatherRecordProgressSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/GatherRecordProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -12,11 +14,11 @@ export const GatherRecordProgressSchema = {
     'output':          { 'type': 'string' },
     'terminalOutcome': { 'type': ['string', 'null'], 'enum': ['completed', 'failed', null] },
     'result':          {},
-    'snapshot':        { 'type': 'object' },
+    'graphState':      { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
   },
   'additionalProperties': false,
   'anyOf': [
-    { 'required': ['snapshot'] },
+    { 'required': ['graphState'] },
     { 'required': ['result'] },
   ],
 } as const;
@@ -38,5 +40,5 @@ export const GatherProgressSchema = {
   'additionalProperties': false,
 } as const;
 
-export type GatherRecordProgressType = FromSchema<typeof GatherRecordProgressSchema>;
-export type GatherProgressType = FromSchema<typeof GatherProgressSchema>;
+export type GatherRecordProgressType = Omit<FromSchema<typeof GatherRecordProgressSchema>, 'graphState'> & { graphState?: GraphStateJsonLdDocumentType };
+export type GatherProgressType = { entries: Record<string, GatherRecordProgressType[]> };

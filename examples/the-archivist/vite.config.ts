@@ -14,7 +14,12 @@ export default defineConfig({
   // the bundle so the in-browser vector intent classifier runs fully offline.
   'plugins': [transformersEmbedderAssets()],
   'root':    import.meta.dirname,
-  'server':  { 'port': 5174, 'strictPort': true, 'open': false },
+  'server':  {
+    'port':           5174,
+    'strictPort':     true,
+    'open':           false,
+    'forwardConsole': { 'logLevels': ['warn', 'error'], 'unhandledErrors': true },
+  },
   'build':   { 'target': 'es2022' },
   // esbuild can't parse `"target": "ES2024"` from the base tsconfig; pin
   // it to a version esbuild understands so the dev/build pipelines run

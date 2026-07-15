@@ -119,7 +119,7 @@ export class EmbedderProvisioner {
       const intentClassifier = await IntentClassifier.create(embedder);
       return { embedder, intentClassifier };
     } catch (err) {
-      console.warn('[EmbedderProvisioner] embedder unavailable; using LLM-only intent classification:', err);
+      console.info('[EmbedderProvisioner] embedder unavailable; using LLM-only intent classification:', err);
       return { 'embedder': null, 'intentClassifier': null };
     }
   }

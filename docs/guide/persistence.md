@@ -7,7 +7,7 @@ seeAlso:
     description: 'the codec layer (`Checkpoint.capture` and `Checkpoint.load`)'
   - text: 'Subclassing State'
     link: './subclassing'
-    description: 'domain fields survive the round-trip via `snapshotData` and `restoreData`'
+    description: 'domain fields survive the round-trip through the graph-state port'
   - text: 'Cancellation'
     link: './cancellation'
     description: 'produce a checkpointable result by aborting an in-flight flow'
@@ -17,7 +17,7 @@ seeAlso:
 
 ## What It Is
 
-Checkpoint persistence is the storage layer for checkpoint JSON. `Checkpoint` owns the codec; `CheckpointStore` owns save, load, and delete. Together, `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` make save/resume a small adapter problem instead of a custom serialization project.
+Checkpoint persistence is the durable graph-state path for checkpointed execution. RDF/N-Quads is the default graph serialization for node state, lifecycle, relationships, transfer, and retention, while context-bound JSON-LD is the intermediate representation exposed to Node.js boundaries. `Checkpoint` carries both views of the same graph state: JSON-LD for Node.js restoration and N-Quads for streaming, hashing, and adapter persistence.
 
 Use it when a checkpoint must survive process memory: browser parking, serverless resume, queue hand-off, crash recovery, or any execution that may continue in a different host.
 
@@ -55,7 +55,7 @@ The diagram traces method invocations across the save and resume halves. It is n
 Persistence is not DAG topology, so this page uses a sequence diagram for the checkpoint API lifecycle and source snippets for the runnable store examples.
 
 - [Checkpoint](./checkpoint) - the codec layer (`Checkpoint.capture` and `Checkpoint.load`)
-- [Subclassing State](./subclassing) - domain fields survive the round-trip via `snapshotData` and `restoreData`
+- [Subclassing State](./subclassing) - domain fields survive through graph facts and JSON-LD
 - [Cancellation](./cancellation) - produce a checkpointable result by aborting an in-flight flow
 - [Example 23: Checkpoint Store](../examples/23-checkpoint-store) runs the store-backed recall path.
 
@@ -130,9 +130,34 @@ The `custom-checkpoint-store` example exercises the full `save` → `load` → `
 
 `CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
 
-### Snapshot round-trip
+## RDF graph state
 
-`Checkpoint.capture` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
+`NodeStateBase` is graph-backed. Its ordinary state fields, metadata, lifecycle, retry counters, warnings, errors, placement events, and run identity are represented as RDF facts in a run-scoped named graph while the public node API remains the familiar `NodeStateInterface` surface.
+
+Use `GraphStateTransferCodec` for graph-aware checkpoint and container boundaries. N-Quads is the required transfer form; `GraphStateTransferCodec.reference` stores a named-graph snapshot behind a reference, `GraphStateTransferCodec.shared` issues scoped shared-graph authority, and `GraphStateTransferCodec.delta` carries additive/deletion deltas. Optional transfer modes are capability-negotiated; inline N-Quads is implicit and is not listed as a capability.
+
+Semantic assertions are additive and exact-quad-idempotent. Relationship facts are not silently replaced. Completed run graphs close with lifecycle facts, then `GraphRetentionManager` can compact and prune transient detail while protecting live checkpoint graphs, externally referenced graphs, and durable memory graphs.
+
+The Node file-store package provides the durable graph adapter and provider:
+
+```ts
+import { FileGraphDataset, FileGraphDatasetProvider } from '@studnicky/dagonizer-store-file';
+
+const graph = new FileGraphDataset('./state.nq');
+const provider = new FileGraphDatasetProvider('./runs');
+```
+
+Direct mutations append RDF operation records to `./state.nq.journal`, so a
+single placement write does not re-serialize the complete graph. `flush()` or
+the journal size threshold compacts the replayable journal into the canonical
+N-Quads snapshot atomically. Reopening replays the journal before serving graph
+queries.
+
+For inspection or migration, decode canonical N-Quads with `dagonizer-rdf-json path/to/state.nq` or pipe N-Quads to the command. The decoder is a presentation tool; it does not replace the canonical RDF dataset.
+
+### Graph round-trip
+
+`Checkpoint.capture` exports the run graph as JSON-LD and N-Quads, then packages those views with the cursor and execution history. State subclasses persist domain fields by writing them to the shared graph-backed state API; there is no second object snapshot contract.
 
 <<< @/../examples/dags/23-checkpoint-store.ts#pipeline-state
 
@@ -154,12 +179,12 @@ Three persistence-side implications:
 2. **Per-batch write cadence.** The dispatcher writes the progress entry once per scatter batch (not once per item). The persisted metadata is consistent with the batch boundary that was last `await`-ed; a crash during a batch leaves the last completed batch persisted and the in-flight batch unreported.
 3. **Indices are array positions in the source at resume time.** If the `CheckpointStore` is read across processes that may rebuild state with a different source array, the resumed scatter skips by position, not by item identity. Treat the source as immutable while a scatter checkpoint is live, or clear the progress entry before calling `dispatcher.resume()` when the source has changed.
 
-The reserved key piggybacks on `NodeStateBase.metadata`, so any `CheckpointStore` that already round-trips the `JsonObjectType` snapshot supports scatter resume with no additional adapter changes. See [Checkpoint and Resume](./checkpoint#scatter-resume-per-item-progress) for the executable contract and index-semantics worked example.
+The reserved key is projected into the graph-backed state, so scatter resume uses the same checkpoint graph as every other node field. See [Checkpoint and Resume](./checkpoint#scatter-resume-per-item-progress) for the executable contract and index-semantics worked example.
 
 ## Related Concepts
 
 - [Checkpoint](./checkpoint) - the codec layer (`Checkpoint.capture` and `Checkpoint.load`)
-- [Subclassing State](./subclassing) - domain fields survive the round-trip via `snapshotData` and `restoreData`
+- [Subclassing State](./subclassing) - domain fields survive through graph facts and JSON-LD
 - [Cancellation](./cancellation) - produce a checkpointable result by aborting an in-flight flow
 - [Example 23: Checkpoint Store](../examples/23-checkpoint-store)
 - [Reference: Contracts](../reference/contracts)

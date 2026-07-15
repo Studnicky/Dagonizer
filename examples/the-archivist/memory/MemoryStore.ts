@@ -29,6 +29,7 @@
 import { DataFactory, Parser, Store, Writer } from 'n3';
 import type { Literal, NamedNode, Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
+import type { ConversationTurn } from '../ArchivistState.ts';
 import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 
 const { namedNode, literal, quad, defaultGraph } = DataFactory;
@@ -42,12 +43,21 @@ const MEMORY_SNAPSHOT_KEY = 'nquads';
 export const DAG_NS = 'https://noocodec.dev/ontology/dagonizer/';
 export const BOOK_NS = 'urn:dagonizer:book:';
 export const RUN_NS  = 'urn:dagonizer:run:';
+export const CONVERSATION_TURN_NS = 'urn:dagonizer:conversation:turn:';
 
 /** Named-graph IRIs reserved by the Archivist demo. */
 export const GRAPH_ONTOLOGY = namedNode('urn:dagonizer:ontology');
 export const GRAPH_MEMORY   = namedNode('urn:dagonizer:memory');
+export const GRAPH_CONVERSATION = namedNode('urn:dagonizer:conversation');
 export const STATE_GRAPH_PREFIX = 'urn:dagonizer:state:';
 export const PROV_GRAPH_PREFIX  = 'urn:dagonizer:prov:';
+
+const RDF_TYPE = namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
+const DAG_CONVERSATION_TURN = namedNode(`${DAG_NS}ConversationTurn`);
+const DAG_TURN_ROLE = namedNode(`${DAG_NS}turnRole`);
+const DAG_TURN_TEXT = namedNode(`${DAG_NS}turnText`);
+const DAG_TURN_TIMESTAMP = namedNode(`${DAG_NS}turnTimestamp`);
+const DAG_TURN_INDEX = namedNode(`${DAG_NS}turnIndex`);
 
 /**
  * One bound row from `select()`. Keys are pattern variable names without
@@ -60,6 +70,13 @@ interface SlotPattern {
   readonly predicate?: Term | string;
   readonly object?:    Term | string;
   readonly graph?:     Term | string;
+}
+
+interface ConversationTurnAccumulator {
+  role: ConversationTurn['role'] | null;
+  text: string | null;
+  ts: number | null;
+  index: number | null;
 }
 
 export class MemoryStore implements SnapshottableInterface {
@@ -167,6 +184,52 @@ export class MemoryStore implements SnapshottableInterface {
   /** Drop every quad in one named graph (useful when a run resets). */
   clearGraph(graph: Term): void {
     this.#store.removeQuads(this.#store.getQuads(null, null, null, graph));
+  }
+
+  /** Persist one conversation turn into the RDF memory graph. */
+  recordConversationTurn(turn: ConversationTurn): void {
+    const index = this.#store.getQuads(null, DAG_TURN_INDEX, null, GRAPH_CONVERSATION).length;
+    const subject = namedNode(`${CONVERSATION_TURN_NS}${String(turn.ts)}:${String(index)}`);
+    this.#store.addQuad(quad(subject, RDF_TYPE, DAG_CONVERSATION_TURN, GRAPH_CONVERSATION));
+    this.#store.addQuad(quad(subject, DAG_TURN_ROLE, MemoryStore.lit.str(turn.role), GRAPH_CONVERSATION));
+    this.#store.addQuad(quad(subject, DAG_TURN_TEXT, MemoryStore.lit.str(turn.text), GRAPH_CONVERSATION));
+    this.#store.addQuad(quad(subject, DAG_TURN_TIMESTAMP, MemoryStore.lit.num(turn.ts), GRAPH_CONVERSATION));
+    this.#store.addQuad(quad(subject, DAG_TURN_INDEX, MemoryStore.lit.int(index), GRAPH_CONVERSATION));
+  }
+
+  /** Read the most recent conversation turns from the RDF memory graph. */
+  conversationTurns(limit: number): readonly ConversationTurn[] {
+    if (limit <= 0) return [];
+    const bySubject = new Map<string, ConversationTurnAccumulator>();
+    for (const q of this.#store.getQuads(null, null, null, GRAPH_CONVERSATION)) {
+      const subject = q.subject.value;
+      const entry = bySubject.get(subject) ?? { 'role': null, 'text': null, 'ts': null, 'index': null };
+      if (q.predicate.equals(DAG_TURN_ROLE) && q.object.termType === 'Literal') {
+        entry.role = q.object.value === 'archivist' ? 'archivist' : 'visitor';
+      } else if (q.predicate.equals(DAG_TURN_TEXT) && q.object.termType === 'Literal') {
+        entry.text = q.object.value;
+      } else if (q.predicate.equals(DAG_TURN_TIMESTAMP) && q.object.termType === 'Literal') {
+        entry.ts = Number(q.object.value);
+      } else if (q.predicate.equals(DAG_TURN_INDEX) && q.object.termType === 'Literal') {
+        entry.index = Number(q.object.value);
+      }
+      bySubject.set(subject, entry);
+    }
+
+    const turns: ConversationTurn[] = [];
+    for (const entry of bySubject.values()) {
+      if (entry.role === null || entry.text === null || entry.ts === null || !Number.isFinite(entry.ts)) continue;
+      turns.push({ 'role': entry.role, 'text': entry.text, 'ts': entry.ts });
+    }
+
+    return turns
+      .sort((a, b) => {
+        if (a.ts !== b.ts) return a.ts - b.ts;
+        const aIndex = MemoryStore.#turnIndexFor(a, bySubject);
+        const bIndex = MemoryStore.#turnIndexFor(b, bySubject);
+        return aIndex - bIndex;
+      })
+      .slice(-limit);
   }
 
   /**
@@ -296,5 +359,14 @@ export class MemoryStore implements SnapshottableInterface {
     if (MemoryStore.isVar(slot)) return null;
     if (typeof slot === 'string') return null;
     return slot;
+  }
+
+  static #turnIndexFor(turn: ConversationTurn, entries: ReadonlyMap<string, ConversationTurnAccumulator>): number {
+    for (const entry of entries.values()) {
+      if (entry.role === turn.role && entry.text === turn.text && entry.ts === turn.ts) {
+        return entry.index ?? 0;
+      }
+    }
+    return 0;
   }
 }

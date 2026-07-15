@@ -203,8 +203,9 @@ class GatherHarness {
     strategy.reduce(CONFIG, batchA, stateA, accessor);
 
     // Snapshot stateA then restore into a fresh CartographerState instance
-    const snapshot = stateA.snapshot();
-    const stateB = CartographerState.restore(snapshot);
+    const snapshot = stateA.snapshotJsonLd();
+    const stateB = new CartographerState();
+    await stateB.restoreJsonLd(stateA.runIri, snapshot);
 
     // Second pass on restored state — no initial() call (resume path: accumulators
     // are restored from checkpoint, not reset)
@@ -342,8 +343,9 @@ describe('InsightsFoldGather durable-resume contract', () => {
     assert.ok(stateA.journeyAccumulators.size > 0, 'journeyAccumulators must be non-empty after first reduce');
 
     // Snapshot and restore
-    const snapshot = stateA.snapshot();
-    const stateB = CartographerState.restore(snapshot);
+    const snapshot = stateA.snapshotJsonLd();
+    const stateB = new CartographerState();
+    await stateB.restoreJsonLd(stateA.runIri, snapshot);
 
     // Confirm restored state has the accumulated insights
     assert.ok(stateB.insights.size > 0, 'restored insights must be non-empty');

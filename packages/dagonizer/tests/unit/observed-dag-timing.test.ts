@@ -3,14 +3,14 @@ import { describe, it } from 'node:test';
 
 import { Timing } from '@studnicky/timing';
 
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { DagLoggerInterface } from '../../src/ObservedDag.js';
 import { ObservedDag } from '../../src/ObservedDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
+const placementIri = (dagName: string, placementName: string): string => `${dagName}/node/${placementName}`;
 
 const NULL_LOGGER: DagLoggerInterface = {
   trace(): void { /* test sink */ },

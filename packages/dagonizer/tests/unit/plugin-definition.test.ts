@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { PluginReceiverType } from '../../src/contracts/PluginInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { defineDagonizerPlugin } from '../../src/plugin/defineDagonizerPlugin.js';
@@ -16,7 +15,7 @@ class PluginState extends NodeStateBase {
   documents = '';
 }
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 const RETRIEVAL_DAG_IRI = 'https://noocodec.dev/plugins/retrieval#search';
 const PLUGIN_KNOWN_DAG_IRI = 'https://noocodec.dev/plugins/plugin#known';

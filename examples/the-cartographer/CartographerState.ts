@@ -2,7 +2,9 @@
  * CartographerState: the mutable clipboard threaded through every node.
  *
  * Top-level (cartographer DAG):
- *   - `sources`     – source stream assembled by the intake gather; scatter reads it
+ *   - `sourceFeed`      – producer-local stream opened by one feed node
+ *   - `canonicalEvents` – open-gather result consumed by process-stream
+ *   - `sources`         – source-intake helper output used by compatibility flows
  *   - `eventCount`  – display/run scale hint for host tooling
  *   - `records`     – gathered from scatter clones via the 'append' gather strategy
  *   - `insights`    – fixed-size regional aggregate produced by summarizeInsights
@@ -19,19 +21,19 @@
  *   - `enriched`         – compact EnrichedShipment written by aggregate-event;
  *                          the parent gather appends this to state.records
  *
- * Checkpoint/resume: snapshotData/restoreData round-trip durable state only.
- * Durable: eventCount, eventConfig, useStreamingSource, streamCount, sources,
+ * Checkpoint/resume: the graph round-trips durable state only.
+ * Durable: eventCount, eventConfig, useStreamingSource, streamCount,
  * ingestBuckets, canonicalEvents, records, sampleRecords, enriched, insights,
  * journeyAccumulators, errorRollup.
- * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
- * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
- * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
+ * Per-event scratch (sourceFeed, currentSource, decodedText, parsedRecords,
+ * mappedRecords, ingestedEvents, canonical, canonicalVariant, raw, normalized,
+ * currentEvent, geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
  * coldChainBreach, customsDwellHours,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
- * The `sources` AsyncIterable is not checkpointable (snapshots as empty array);
- * resume rebuilds it through CartographerSourceIntake using eventConfig,
- * streamCount, and the scatter cursor.
+ * AsyncIterable feed fields are not checkpointable. Resume restores
+ * canonicalEvents and relies on the scatter checkpoint for exactly-once
+ * process-stream continuation.
  * The scatter durable-inbox handles exactly-once delivery; un-acked items are
  * reprocessed from the inbox, not re-read from source.
  */
@@ -60,7 +62,7 @@ import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
 import type { GeoErrorRecordType } from './errors/GeoErrorRecord.ts';
-import { ErrorRollup, type ErrorGroupType, type ErrorRollupType } from './errors/ErrorRollup.ts';
+import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 import type { JourneyAccumulator } from './core/InsightsFoldGather.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
@@ -149,35 +151,38 @@ export class CartographerState extends NodeStateBase {
   ];
 
   /**
-   * When true, host tooling reports the Cartographer run as streaming. The DAG
-   * always assembles source streams through its multi-entry intake gather; this
-   * flag remains a UI/CLI display knob.
+   * When true, host tooling reports the Cartographer run as streaming. The feed
+   * DAGs always open lazy producer streams; this flag remains a UI/CLI display
+   * knob.
    */
   useStreamingSource: boolean = false;
 
   /**
-   * Override for the total source-payload count. When > 0, the source-intake
-   * gather scales eventConfig before opening per-type streams.
+   * Override for the total source-payload count. When > 0, producer feed nodes
+   * scale eventConfig before opening their per-type streams.
    */
   streamCount: number = 0;
 
   /**
-   * StreamChannel buffer capacity for the streaming source channel.
-   * When 0 (default), the channel uses its built-in default capacity (256).
-   * Set to 1 to enable genuine per-item backpressure (useful for abort-and-resume
-   * scenarios where the producer must not pre-fill the buffer).
+   * Reserved stream-channel capacity knob for compatibility source helpers.
+   * The current producer feed DAGs use pull-based AsyncIterable streams.
    */
   streamChannelCapacity: number = 0;
 
   /**
-   * The multi-format source feeds, assembled by intake-gather. Each is a
+   * Producer-local source stream emitted by one concrete feed node. The owning
+   * producer feed DAG scatters this stream through ingest-source, then emits the
+   * resulting canonicalEvents array to the top-level open gather.
+   */
+  sourceFeed: SourcePayload[] | AsyncIterable<SourcePayload> = [];
+
+  /**
+   * Compatibility source stream assembled by SourceIntakeGather. Each item is a
    * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
    *
-   * This field normally holds the merged `AsyncIterable<SourcePayload>` built
-   * from five per-type source streams. The engine's scatter accepts that stream
-   * directly. Snapshot/restore serialises the array path only; resume rebuilds
-   * the async iterable from eventConfig and the scatter cursor.
+   * Snapshot/restore serialises the array path only. The current Cartographer
+   * DAG reads canonicalEvents after the producer feed DAGs converge.
    */
   sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
@@ -197,7 +202,7 @@ export class CartographerState extends NodeStateBase {
   canonicalEvents: CanonicalEventVariant[] = [];
 
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
-  /** The source feed currently being ingested (set from `sources` by select). */
+  /** The source payload currently being ingested from the producer feed scatter. */
   currentSource: SourcePayload = {
     'sourceId':     '',
     'format':       'json',
@@ -256,6 +261,72 @@ export class CartographerState extends NodeStateBase {
    * analysis. Reset per execution by the gather's `initial`.
    */
   errorRollup: ErrorRollupType = ErrorRollup.empty();
+
+  protected override graphStateValue(key: string, value: unknown): unknown {
+    if (key === 'insights' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'journeys' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'journeyAccumulators' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'errorRollup' && ErrorRollup.is(value)) return { ...value, 'groups': Object.fromEntries(value.groups) };
+    return value;
+  }
+
+  override async restoreJsonLd(runIri: string, document: Parameters<NodeStateBase['restoreJsonLd']>[1]): Promise<void> {
+    await super.restoreJsonLd(runIri, document);
+    this.insights = CartographerState.mapFromJson(Reflect.get(this, 'insights'), CartographerState.regionInsightsOf);
+    this.journeys = CartographerState.mapFromJson(Reflect.get(this, 'journeys'), CartographerState.journeyInsightsOf);
+    this.journeyAccumulators = CartographerState.mapFromJson(Reflect.get(this, 'journeyAccumulators'), CartographerState.journeyAccumulatorOf);
+    const rawRollup = Reflect.get(this, 'errorRollup');
+    if (ErrorRollup.is(rawRollup) && typeof rawRollup.groups === 'object' && rawRollup.groups !== null && !Array.isArray(rawRollup.groups)) {
+      const groups = CartographerState.mapFromJson(rawRollup.groups, CartographerState.errorGroupOf);
+      this.errorRollup = { ...rawRollup, groups };
+    }
+  }
+
+  private static mapFromJson<T>(value: unknown, decode: (value: unknown) => T | undefined): Map<string, T> {
+    const result = new Map<string, T>();
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return result;
+    for (const [key, item] of Object.entries(value)) {
+      const decoded = decode(item);
+      if (decoded !== undefined) result.set(key, decoded);
+    }
+    return result;
+  }
+
+  private static regionInsightsOf(value: unknown): RegionInsights | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyRegionInsights(), value);
+  }
+
+  private static journeyInsightsOf(value: unknown): JourneyInsights | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyJourneyInsights(), value);
+  }
+
+  private static journeyAccumulatorOf(value: unknown): JourneyAccumulator | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyJourneyAccumulator(), value);
+  }
+
+  private static errorGroupOf(value: unknown): import('./errors/ErrorRollup.ts').ErrorGroupType | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign({ 'source': '', 'variant': '', 'count': 0, 'samples': [], 'sampleInput': '' }, value);
+  }
+
+  private static emptyRegionInsights(): RegionInsights {
+    return { region: '', country: '', hub: '', deliveries: 0, exceptions: 0, onTimeCount: 0, lateCount: 0, totalSubtotalUsdMinor: 0, totalShippingUsdMinor: 0, totalDistanceKm: 0, totalDelayHours: 0, consentValid: 0, consentMissing: 0, consentExpired: 0, sizeTierEnvelope: 0, sizeTierSmall: 0, sizeTierMedium: 0, sizeTierLarge: 0, sizeTierFreight: 0, shipmentCount: 0 };
+  }
+
+  private static emptyJourneyInsights(): JourneyInsights {
+    return { shipmentId: '', scans: [], scanCount: 0, pathKm: 0, firstEpochMs: 0, lastEpochMs: 0, elapsedHours: 0, timezones: [], offsets: [], jurisdictions: [], statusProgression: [], lastStatus: '', lastHub: '', delivered: false, onTime: false, delayHours: 0, subtotalUsdMinor: 0, shippingUsdMinor: 0 };
+  }
+
+  private static emptyJourneyAccumulator(): JourneyAccumulator {
+    return { scans: [], scanCount: 0, pathKm: 0, minEpoch: 0, maxEpoch: 0, offsets: [], timezones: [], jurisdictions: [], statusProgression: [], delivered: false, etaCaptured: false, onTime: false, delayHours: 0, subtotalUsdMinor: 0, shippingUsdMinor: 0 };
+  }
+
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
 
   /** Raw scan from scatter metadata (set by parseEvent). */
   raw: RawShipmentEvent = {
@@ -522,6 +593,11 @@ export class CartographerState extends NodeStateBase {
       // AsyncIterable — shared by reference
       copy.sources = this.sources;
     }
+    if (Array.isArray(this.sourceFeed)) {
+      copy.sourceFeed = this.sourceFeed.map((s) => ({ ...s }));
+    } else {
+      copy.sourceFeed = this.sourceFeed;
+    }
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
     copy.streamChannelCapacity = this.streamChannelCapacity;
@@ -530,8 +606,8 @@ export class CartographerState extends NodeStateBase {
     // ingestBuckets, canonicalEvents, records, sampleRecords, insights, and
     // journeys are scatter-gather accumulators written by the parent DAG's
     // gather strategy (InsightsFoldGather) or by post-scatter summary nodes.
-    // Scatter body clones (stream-event, ingestion) never read these fields —
-    // they only read the item placed on metadata by the engine. Copying them
+    // Scatter body clones (event-pipeline-typed, ingestion) never read these
+    // fields — they only read the item placed on metadata by the engine. Copying them
     // into clones would send up to 200 EnrichedShipment JSON objects per clone
     // over the worker channel (60 KB × 16,000 in-flight clones = ~960 MB at
     // concurrencyLimit=16 / capacity=1000), producing the O(peak-concurrency)
@@ -617,212 +693,7 @@ export class CartographerState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'eventCount': this.eventCount,
-      'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
-      // AsyncIterable sources are not checkpointable. Resume rebuilds them via
-      // CartographerSourceIntake using eventConfig + streamCount + cursor.
-      // Snapshot as an empty array so restoreData leaves sources = [].
-      'sources':    Array.isArray(this.sources)
-        ? this.sources.map((s) => CartographerState.sourceToJson(s))
-        : [],
-      'useStreamingSource': this.useStreamingSource,
-      'streamCount': this.streamCount,
-      'streamChannelCapacity': this.streamChannelCapacity,
-      'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.variantToJson(e))),
-      'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
-      'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
-      'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
-      'enriched': CartographerState.enrichedToJson(this.enriched),
-      'insights': [...this.insights.entries()].map(([key, r]) => ({
-        'key': key,
-        'region': r.region, 'country': r.country, 'hub': r.hub,
-        'deliveries': r.deliveries, 'exceptions': r.exceptions,
-        'onTimeCount': r.onTimeCount, 'lateCount': r.lateCount,
-        'totalSubtotalUsdMinor': r.totalSubtotalUsdMinor,
-        'totalShippingUsdMinor': r.totalShippingUsdMinor,
-        'totalDistanceKm': r.totalDistanceKm,
-        'totalDelayHours': r.totalDelayHours,
-        'consentValid': r.consentValid, 'consentMissing': r.consentMissing, 'consentExpired': r.consentExpired,
-        'sizeTierEnvelope': r.sizeTierEnvelope, 'sizeTierSmall': r.sizeTierSmall,
-        'sizeTierMedium': r.sizeTierMedium, 'sizeTierLarge': r.sizeTierLarge, 'sizeTierFreight': r.sizeTierFreight,
-        'shipmentCount': r.shipmentCount,
-      })),
-      'journeyAccumulators': [...this.journeyAccumulators.entries()].map(([id, acc]) => ({
-        'id': id,
-        'scans': acc.scans.map((s) => ({
-          'scanSeq': s.scanSeq, 'epochMs': s.epochMs, 'localIso': s.localIso,
-          'utcOffset': s.utcOffset, 'timezone': s.timezone, 'jurisdiction': s.jurisdiction,
-          'status': s.status, 'hub': s.hub, 'region': s.region, 'country': s.country,
-          'lat': s.lat, 'lng': s.lng, 'legKm': s.legKm, 'disruptionReason': s.disruptionReason,
-        })),
-        'scanCount': acc.scanCount, 'pathKm': acc.pathKm,
-        'minEpoch': acc.minEpoch, 'maxEpoch': acc.maxEpoch,
-        'offsets': [...acc.offsets], 'timezones': [...acc.timezones], 'jurisdictions': [...acc.jurisdictions],
-        'statusProgression': [...acc.statusProgression],
-        'delivered': acc.delivered, 'etaCaptured': acc.etaCaptured, 'onTime': acc.onTime,
-        'delayHours': acc.delayHours, 'subtotalUsdMinor': acc.subtotalUsdMinor, 'shippingUsdMinor': acc.shippingUsdMinor,
-      })),
-      'errorRollup': {
-        'total': this.errorRollup.total,
-        'groups': [...this.errorRollup.groups.entries()].map(([key, g]) => ({
-          'key': key,
-          'source': g.source, 'variant': g.variant, 'count': g.count,
-          'samples': [...g.samples], 'sampleInput': g.sampleInput,
-        })),
-      },
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
-    if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
-    if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
-    if (typeof snap['streamChannelCapacity'] === 'number') this.streamChannelCapacity = snap['streamChannelCapacity'];
-    if (Array.isArray(snap['sources'])) {
-      this.sources = snap['sources'].map((s) => CartographerState.sourceFromJson(CartographerState.asObject(s) ?? {}));
-    }
-    if (Array.isArray(snap['ingestBuckets'])) {
-      this.ingestBuckets = snap['ingestBuckets'].map((bucket) =>
-        Array.isArray(bucket)
-          ? bucket.map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}))
-          : [],
-      );
-    }
-    if (Array.isArray(snap['canonicalEvents'])) {
-      this.canonicalEvents = snap['canonicalEvents'].map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}));
-    }
-    if (Array.isArray(snap['eventConfig'])) {
-      const loadedEvtCfg: EventTypeConfig = snap['eventConfig']
-        .map((e) => CartographerState.asObject(e))
-        .filter((e): e is JsonObjectType => e !== null)
-        .map((e) => {
-          const mixRaw = Array.isArray(e['formatMix']) ? e['formatMix'] : [];
-          const formatMix = mixRaw
-            .map((m) => CartographerState.asObject(m))
-            .filter((m): m is JsonObjectType => m !== null)
-            .map((m): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly weight: number } => ({
-              'format':      CartographerState.sourceFormat(m['format']),
-              'compression': m['compression'] === 'gzip' ? 'gzip' : 'none',
-              'weight':      CartographerState.num(m['weight'], 1),
-            }));
-          return {
-            'eventType': CartographerState.canonicalEventType(e['eventType']),
-            'count':     CartographerState.num(e['count']),
-            'formatMix': formatMix,
-          };
-        });
-      if (loadedEvtCfg.length > 0) this.eventConfig = loadedEvtCfg;
-    }
-    if (Array.isArray(snap['records'])) {
-      this.records = snap['records'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
-    }
-    if (Array.isArray(snap['sampleRecords'])) {
-      this.sampleRecords = snap['sampleRecords'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
-    }
-    const enObj = CartographerState.asObject(snap['enriched']);
-    if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
-    if (Array.isArray(snap['insights'])) {
-      this.insights = new Map(
-        snap['insights']
-          .map((e) => CartographerState.asObject(e))
-          .filter((e): e is JsonObjectType => e !== null)
-          .map((e): [string, RegionInsights] => [
-            CartographerState.str(e['key']),
-            {
-              'region': CartographerState.str(e['region']),
-              'country': CartographerState.str(e['country']),
-              'hub': CartographerState.str(e['hub']),
-              'deliveries': CartographerState.num(e['deliveries']),
-              'exceptions': CartographerState.num(e['exceptions']),
-              'onTimeCount': CartographerState.num(e['onTimeCount']),
-              'lateCount': CartographerState.num(e['lateCount']),
-              'totalSubtotalUsdMinor': CartographerState.num(e['totalSubtotalUsdMinor']),
-              'totalShippingUsdMinor': CartographerState.num(e['totalShippingUsdMinor']),
-              'totalDistanceKm': CartographerState.num(e['totalDistanceKm']),
-              'totalDelayHours': CartographerState.num(e['totalDelayHours']),
-              'consentValid': CartographerState.num(e['consentValid']),
-              'consentMissing': CartographerState.num(e['consentMissing']),
-              'consentExpired': CartographerState.num(e['consentExpired']),
-              'sizeTierEnvelope': CartographerState.num(e['sizeTierEnvelope']),
-              'sizeTierSmall': CartographerState.num(e['sizeTierSmall']),
-              'sizeTierMedium': CartographerState.num(e['sizeTierMedium']),
-              'sizeTierLarge': CartographerState.num(e['sizeTierLarge']),
-              'sizeTierFreight': CartographerState.num(e['sizeTierFreight']),
-              'shipmentCount': CartographerState.num(e['shipmentCount']),
-            },
-          ])
-      );
-    }
-    if (Array.isArray(snap['journeyAccumulators'])) {
-      this.journeyAccumulators = new Map(
-        snap['journeyAccumulators']
-          .map((e) => CartographerState.asObject(e))
-          .filter((e): e is JsonObjectType => e !== null)
-          .map((e): [string, JourneyAccumulator] => [
-            CartographerState.str(e['id']),
-            {
-              'scans': Array.isArray(e['scans'])
-                ? e['scans']
-                    .map((s) => CartographerState.asObject(s))
-                    .filter((s): s is JsonObjectType => s !== null)
-                    .map((s): JourneyScan => ({
-                      'scanSeq': CartographerState.num(s['scanSeq']),
-                      'epochMs': CartographerState.num(s['epochMs']),
-                      'localIso': CartographerState.str(s['localIso']),
-                      'utcOffset': CartographerState.str(s['utcOffset']),
-                      'timezone': CartographerState.str(s['timezone']),
-                      'jurisdiction': CartographerState.str(s['jurisdiction']),
-                      'status': CartographerState.str(s['status']),
-                      'hub': CartographerState.str(s['hub']),
-                      'region': CartographerState.str(s['region']),
-                      'country': CartographerState.str(s['country']),
-                      'lat': CartographerState.num(s['lat']),
-                      'lng': CartographerState.num(s['lng']),
-                      'legKm': CartographerState.num(s['legKm']),
-                      'disruptionReason': CartographerState.str(s['disruptionReason']),
-                    }))
-                : [],
-              'scanCount': CartographerState.num(e['scanCount']),
-              'pathKm': CartographerState.num(e['pathKm']),
-              'minEpoch': CartographerState.num(e['minEpoch']),
-              'maxEpoch': CartographerState.num(e['maxEpoch']),
-              'offsets': CartographerState.strArr(e['offsets']),
-              'timezones': CartographerState.strArr(e['timezones']),
-              'jurisdictions': CartographerState.strArr(e['jurisdictions']),
-              'statusProgression': CartographerState.strArr(e['statusProgression']),
-              'delivered': CartographerState.bool(e['delivered']),
-              'etaCaptured': CartographerState.bool(e['etaCaptured']),
-              'onTime': CartographerState.bool(e['onTime']),
-              'delayHours': CartographerState.num(e['delayHours']),
-              'subtotalUsdMinor': CartographerState.num(e['subtotalUsdMinor']),
-              'shippingUsdMinor': CartographerState.num(e['shippingUsdMinor']),
-            },
-          ])
-      );
-    }
-    const rollupRaw = CartographerState.asObject(snap['errorRollup']);
-    if (rollupRaw !== null) {
-      const groupsRaw = Array.isArray(rollupRaw['groups']) ? rollupRaw['groups'] : [];
-      const groups = new Map<string, ErrorGroupType>(
-        groupsRaw
-          .map((g) => CartographerState.asObject(g))
-          .filter((g): g is JsonObjectType => g !== null)
-          .map((g): [string, ErrorGroupType] => [
-            CartographerState.str(g['key']),
-            {
-              'source': CartographerState.str(g['source']),
-              'variant': CartographerState.str(g['variant']),
-              'count': CartographerState.num(g['count']),
-              'samples': CartographerState.strArr(g['samples']),
-              'sampleInput': CartographerState.str(g['sampleInput']),
-            },
-          ])
-      );
-      this.errorRollup = { 'total': CartographerState.num(rollupRaw['total']), 'groups': groups };
-    }
-  }
   // #endregion snapshot-restore
 
   // #region snapshot-helpers
@@ -1120,7 +991,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Serialize a CanonicalEventVariant to a JSON-safe object (dispatch map on eventType for exact body fields). */
-  private static variantToJson(v: CanonicalEventVariant): JsonObjectType {
+  static variantToJson(v: CanonicalEventVariant): JsonObjectType {
     const bodyHandler = CartographerState.resolveToJsonBodyHandler(v.eventType);
     return {
       'shipmentId':        v.shipmentId,
@@ -1160,7 +1031,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Reconstruct a CanonicalEventVariant from a deserialized JSON object (dispatch map on eventType). */
-  private static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
+  static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
     const eventType = typeof o['eventType'] === 'string' ? o['eventType'] : 'position-ping';
     const b = CartographerState.asObject(o['body']) ?? {};
     const envelope = {
@@ -1193,7 +1064,7 @@ export class CartographerState extends NodeStateBase {
     return CartographerState.resolveFromJsonHandler(eventType)(envelope, sharedBody, b, o);
   }
 
-  private static sourceToJson(s: SourcePayload): JsonObjectType {
+  static sourceToJson(s: SourcePayload): JsonObjectType {
     return {
       'sourceId':    s.sourceId,
       'format':      s.format,
@@ -1204,7 +1075,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static sourceFromJson(o: Record<string, unknown>): SourcePayload {
+  static sourceFromJson(o: Record<string, unknown>): SourcePayload {
     return {
       'sourceId':    CartographerState.str(o['sourceId']),
       'format':      CartographerState.sourceFormat(o['format']),
@@ -1278,7 +1149,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── Entity ↔ JSON reconstruction (field-by-field) ──────────────────────────
-  private static enrichedToJson(e: EnrichedShipment): JsonObjectType {
+  static enrichedToJson(e: EnrichedShipment): JsonObjectType {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
       'localIso': e.localIso, 'utcOffset': e.utcOffset, 'timezone': e.timezone, 'jurisdiction': e.jurisdiction,
@@ -1310,6 +1181,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': false,
       'geoConfidence':     0,
       'geoModalities':     [],
+      'geoFlaggedForReview': false,
       'geoSourceModel':    '',
       'geoSecondaryLookupUsed': false,
       'redactionRun':      false,
@@ -1340,6 +1212,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': r.ipGeolocateSkipped,
       'geoConfidence':     r.geoConfidence,
       'geoModalities':     [...r.geoModalities],
+      'geoFlaggedForReview': r.geoFlaggedForReview,
       'geoSourceModel':    r.geoSourceModel,
       'geoSecondaryLookupUsed': r.geoSecondaryLookupUsed,
       'redactionRun':      r.redactionRun,
@@ -1369,6 +1242,7 @@ export class CartographerState extends NodeStateBase {
       'ipGeolocateSkipped': CartographerState.bool(o['ipGeolocateSkipped']),
       'geoConfidence':     CartographerState.num(o['geoConfidence']),
       'geoModalities':     CartographerState.strArr(o['geoModalities']),
+      'geoFlaggedForReview': CartographerState.bool(o['geoFlaggedForReview']),
       'geoSourceModel':    CartographerState.str(o['geoSourceModel']),
       'geoSecondaryLookupUsed': CartographerState.bool(o['geoSecondaryLookupUsed']),
       'redactionRun':      CartographerState.bool(o['redactionRun']),
@@ -1382,7 +1256,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static enrichedFromJson(o: Record<string, unknown>): EnrichedShipment {
+  static enrichedFromJson(o: Record<string, unknown>): EnrichedShipment {
     const sample = CartographerState.asObject(o['redactedSample']) ?? {};
     return {
       'shipmentId': CartographerState.str(o['shipmentId']),

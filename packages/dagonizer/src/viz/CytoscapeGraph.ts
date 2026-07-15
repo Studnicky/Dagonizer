@@ -56,6 +56,7 @@ import type { CompositeLayoutOptionsType } from './CompositeLayout.js';
 import { Cytoscape } from './Cytoscape.js';
 import { CytoscapeRenderer } from './CytoscapeRenderer.js';
 import type { CytoscapeElementType } from './CytoscapeRenderer.js';
+import type { CytoscapeIdModeType } from './internal.js';
 
 // ---------------------------------------------------------------------------
 // Container type
@@ -81,6 +82,9 @@ const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAGType> = new Map();
 /** Default CompositeLayout options (all fields delegated to CompositeLayout defaults). */
 const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptionsType = {};
 
+/** Default Cytoscape id strategy. */
+const DEFAULT_ID_MODE: CytoscapeIdModeType = 'path';
+
 /**
  * Canonical defaults for `CytoscapeGraphOptionsType`.
  *
@@ -90,6 +94,7 @@ const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptionsType = {};
 const CYTOSCAPE_GRAPH_DEFAULTS = {
   'embeddedDAGs': DEFAULT_EMBEDDED_DAGS,
   'layoutOptions': DEFAULT_LAYOUT_OPTIONS,
+  'idMode': DEFAULT_ID_MODE,
 } as const;
 
 /**
@@ -140,6 +145,11 @@ export type CytoscapeGraphOptionsType = {
    * Default: `{}` (all tuning delegated to CompositeLayout's own defaults).
    */
   layoutOptions?: CompositeLayoutOptionsType;
+  /**
+   * Cytoscape id strategy for expanded embedded-DAGs.
+   * Default 'path' scopes repeated embedded DAG placements by call site.
+   */
+  idMode?: CytoscapeIdModeType;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +185,8 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
   protected readonly embeddedDAGs: ReadonlyMap<string, DAGType>;
   /** Layout tuning options forwarded to CompositeLayout. */
   protected readonly layoutOptions: CompositeLayoutOptionsType;
+  /** Cytoscape id strategy forwarded to renderer and layout. */
+  protected readonly idMode: CytoscapeIdModeType;
   /** The live cytoscape Core after `mount()`. Only `mount()` writes this. */
   #cyInstance: cytoscape.Core | null;
 
@@ -195,6 +207,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     this.dag              = dag;
     this.embeddedDAGs     = resolved.embeddedDAGs;
     this.layoutOptions    = resolved.layoutOptions;
+    this.idMode           = resolved.idMode;
     this.#cyInstance      = null;
   }
 
@@ -294,7 +307,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     const layout = await CompositeLayout.compute(
       this.dag,
       this.layoutRegistry(),
-      this.layoutOptions,
+      { ...this.layoutOptions, 'idMode': this.idMode },
     );
 
     const laidOut = [...layout.positions.values()];
@@ -346,6 +359,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
   protected composeElements(): ReadonlyArray<CytoscapeElementType> {
     return CytoscapeRenderer.render(this.dag, {
       "embeddedDAGs": this.embeddedDAGs,
+      "idMode": this.idMode,
     });
   }
 
@@ -435,15 +449,24 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       // ── Compound parent (parallel / embedded-dag wrapper) ─────────────────
       { "selector": 'node:parent', "style": {
         'shape':            'round-hexagon',
-        'background-color': '#04060a',
-        'border-color':     '#7a8290',
+        'background-color': '#071018',
+        'background-opacity': 0.12,
+        'border-color':     '#315363',
+        'border-opacity':   0.75,
         'border-style':     'dashed',
-        'border-width':     1.4,
+        'border-width':     1.2,
         'text-valign':      'top',
+        'text-halign':      'center',
+        'text-margin-y':    -8,
+        'text-background-color': '#071018',
+        'text-background-opacity': 0.82,
+        'text-background-padding': '5px',
+        'text-background-shape': 'roundrectangle',
+        'padding':          '8px',
         'font-family':      MONO,
-        'font-size':        13,
+        'font-size':        12,
         'font-weight':      600,
-        'color':            '#eef3f7',
+        'color':            '#aeb9c7',
       } },
 
       // ── Contained (worker/isolate) placements ─────────────────────────────
@@ -467,13 +490,16 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       // default dark theme. This rule re-applies the role colors with higher
       // specificity so the compound container is visibly distinct.
       { "selector": 'node.dag-contained:parent', "style": {
-        'background-color':   'data(containerColor)',
-        'background-opacity': 0.18,
+        'background-color':   '#071018',
+        'background-opacity': 0.08,
         'border-color':       'data(containerStroke)',
-        'border-width':       2.5,
+        'border-opacity':     0.92,
+        'border-width':       1.8,
         'border-style':       'dashed',
         'color':              'data(containerText)',
-        'text-outline-color': 'data(containerColor)',
+        'text-outline-color': '#020306',
+        'text-background-color': '#071018',
+        'text-background-opacity': 0.9,
       } },
       // Edges inside a container-bound (worker) compound. The renderer applies
       // the `route-in-worker` class to every edge emitted while recursing into
@@ -574,6 +600,88 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
         'text-border-color':  '#22e8ff',
       } },
 
+      // ── Overview mode ────────────────────────────────────────────────────
+      { "selector": 'node.dag-overview', "style": {
+        'background-color': '#16dff5',
+        'background-opacity': 0.86,
+        'border-color': '#9af8ff',
+        'border-opacity': 0.9,
+        'border-width': 0.8,
+        'text-opacity': 0,
+        'text-background-opacity': 0,
+        'text-outline-opacity': 0,
+        'width': 250,
+        'height': 18,
+      } },
+      { "selector": 'node.dag-overview.dag-single', "style": {
+        'background-color': '#16dff5',
+        'border-color': '#9af8ff',
+        'border-width': 1.4,
+      } },
+      { "selector": 'node.dag-overview.dag-scatter', "style": {
+        'background-color': '#16dff5',
+        'border-color': '#9af8ff',
+        'border-width': 1.4,
+      } },
+      { "selector": 'node.dag-overview.dag-embedded-dag', "style": {
+        'background-color': '#1db4c7',
+        'border-color': '#9af8ff',
+        'border-width': 1.2,
+      } },
+      { "selector": 'node.dag-overview.dag-parallel', "style": {
+        'background-color': '#8f6dff',
+        'border-color': '#c8b8ff',
+        'border-width': 1.4,
+      } },
+      { "selector": 'node.dag-overview.dag-phase', "style": {
+        'background-color': '#8f6dff',
+        'border-color': '#c8b8ff',
+        'border-width': 1.2,
+      } },
+      { "selector": 'node.dag-overview.dag-terminal', "style": {
+        'background-color': '#d4a649',
+        'border-color': '#f5c76a',
+        'border-width': 1.2,
+      } },
+      { "selector": 'node.dag-overview:parent', "style": {
+        'background-color': '#071018',
+        'background-opacity': 0.025,
+        'border-color': '#22e8ff',
+        'border-opacity': 0.2,
+        'border-width': 0.8,
+        'text-opacity': 0,
+        'text-background-opacity': 0,
+        'font-size': 10,
+      } },
+      { "selector": 'node.dag-overview[type="terminal"]', "style": {
+        'background-color': '#d4a649',
+        'border-color': '#f5c76a',
+      } },
+      { "selector": 'node.dag-overview[variant="non-deterministic"]', "style": {
+        'background-color': '#8f6dff',
+        'border-color': '#c8b8ff',
+      } },
+      { "selector": 'node.dag-overview.dag-contained', "style": {
+        'background-color': 'data(containerStroke)',
+        'border-color': 'data(containerText)',
+      } },
+      { "selector": 'edge.dag-overview', "style": {
+        'text-opacity': 0,
+        'text-background-opacity': 0,
+        'text-border-opacity': 0,
+        'line-opacity': 0.72,
+        'width': 1.2,
+        'arrow-scale': 0.75,
+      } },
+      { "selector": 'edge.dag-overview.route-in-worker', "style": {
+        'line-opacity': 0.5,
+        'width': 0.9,
+      } },
+      { "selector": 'edge.dag-overview.dag-traversed', "style": {
+        'line-opacity': 0.95,
+        'width': 2,
+      } },
+
       // ── Self-loop catch-all ───────────────────────────────────────────────
       // round-taxi cannot draw self-loop edges (source === target); bezier
       // renders the arc correctly. Owns the loop GEOMETRY (curve-style +
@@ -631,7 +739,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     return {
       "name":    'preset',
       "fit":     true,
-      "padding": 60,
+      "padding": 32,
       "animate": false,
     };
   }
@@ -641,8 +749,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    *
    * These fields are spread directly into the `cytoscape({...})` constructor
    * options, enabling pan, zoom, box-select, and additive selection out of
-   * the box. `wheelSensitivity` is tuned down from the default to avoid
-   * accidental viewport jumps on track-pad scroll.
+   * the box.
    */
   protected interactionDefaults(): Partial<cytoscape.CytoscapeOptions> {
     return {
@@ -650,7 +757,6 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       "userZoomingEnabled":  true,
       "boxSelectionEnabled": true,
       "selectionType":       'additive',
-      "wheelSensitivity":    0.25,
     };
   }
 

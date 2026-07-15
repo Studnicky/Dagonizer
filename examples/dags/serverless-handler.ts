@@ -19,8 +19,7 @@
 import { Batch, DAG_CONTEXT, Dagonizer, MonadicNode, NodeOutput, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
-import { JsonObject } from '@studnicky/dagonizer/entities';
-import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 
 export const REGISTRY_VERSION = '1.0.0';
 export const SETTLE_DAG_IRI = 'urn:noocodec:dag:settle';
@@ -35,15 +34,7 @@ export class OrderState extends NodeStateBase {
   total = 0;
   status = 'pending';
 
-  protected override snapshotData(): JsonObjectType {
-    return { orderId: this.orderId, total: this.total, status: this.status };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    if (typeof snapshot['orderId'] === 'string') this.orderId = snapshot['orderId'];
-    if (typeof snapshot['total'] === 'number') this.total = snapshot['total'];
-    if (typeof snapshot['status'] === 'string') this.status = snapshot['status'];
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,16 +114,8 @@ export class ServerlessHandler {
       throw new Error(`Version mismatch: expected ${REGISTRY_VERSION}, got ${envelope.registryVersion}`);
     }
 
-    // 2. Restore state. DAGHandoff is a oneOf: stateSnapshot (by-value) or
-    //    stateSnapshotRef (by-reference URI). Narrow before restore.
-    if (!('stateSnapshot' in envelope)) {
-      throw new Error('stateSnapshotRef envelopes require fetching the URI before restore');
-    }
-    const snapshot: unknown = envelope.stateSnapshot;
-    if (!JsonObject.is(snapshot)) {
-      throw new Error('stateSnapshot is not a JSON object');
-    }
-    const state = OrderState.restore(snapshot);
+    const state = new OrderState();
+    await state.restoreJsonLd(state.runIri, envelope.graphState);
 
     // 3. Build a per-invocation dispatcher with egress channels bound to terminal
     //    names. The channel publishes the next envelope after the terminal.

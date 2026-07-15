@@ -1,0 +1,31 @@
+{
+  "name": "@studnicky/dagonizer-store-file",
+  "version": "2.0.0",
+  "description": "Node.js file-backed graph dataset provider for Dagonizer.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": { "node": ">=24" },
+  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "@studnicky/dagonizer": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2"
+  }
+}

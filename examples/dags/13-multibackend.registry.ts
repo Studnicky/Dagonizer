@@ -25,7 +25,7 @@ const registry: RegistryModuleInterface = {
         "dags":  [squareItemDag, sumResultsDag, dag],
       },
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapter.wrap((snapshot: JsonObjectType) => MultiBackendState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapter.wrap(() => new MultiBackendState()),
     };
   },
 };

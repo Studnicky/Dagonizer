@@ -24,15 +24,14 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -40,16 +39,7 @@ class BoundedState extends NodeStateBase {
   items: number[] = [];
   processed: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'items': [...this.items], 'processed': [...this.processed] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const rawItems = snap['items'];
-    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-    const rawProcessed = snap['processed'];
-    if (Array.isArray(rawProcessed)) this.processed = rawProcessed.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 // ── worker node ──────────────────────────────────────────────────────────────

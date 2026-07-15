@@ -33,6 +33,7 @@ import {
 } from '../../testing/ConformanceRegistry.js';
 import { DagConformance } from '../../testing/DagConformance.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 import type {
@@ -312,7 +313,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
     return {
       'terminalOutput': 'failed',
       'errors': [error],
-      'stateSnapshot': null,
+      'graphState': emptyGraphStateTransfer(),
       'intermediates': [],
     };
   }

@@ -13,9 +13,9 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/index.js';
+import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -24,6 +24,7 @@ import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -33,27 +34,15 @@ class CountingState extends NodeStateBase {
   count = 0;
   log: string[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'count': this.count, 'log': [...this.log] };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const c = snapshot['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snapshot['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
 }
 
 class StoreState extends NodeStateBase {
   value = 0;
-  protected override snapshotData(): { value: number } {
-    return { 'value': this.value };
-  }
-  protected override restoreData(snap: Record<string, unknown>): void {
-    if (typeof snap['value'] === 'number') this.value = snap['value'];
-  }
 }
+
+const SAMPLE_STATE = new StoreState();
+SAMPLE_STATE.value = 7;
 
 // ── Shared DAG fixture for store-snapshot tests ──────────────────────────────
 //
@@ -203,7 +192,13 @@ class ConcurrencyProbeStore implements SnapshottableInterface {
 const SAMPLE_CHECKPOINT: CheckpointDataType = {
   'dagName': 'demo',
   'cursor': 'next-node',
-  'state': { 'metadata': {}, 'errors': [], 'warnings': [], 'value': 7 },
+  'graph': {
+    'runIri': SAMPLE_STATE.runIri,
+    'graphIri': GraphStateTerms.runGraphIri(SAMPLE_STATE.runIri),
+    'nquads': '',
+    'hash': 'sha256-empty',
+    'jsonLd': graphStateDocument(SAMPLE_STATE),
+  },
   'executedNodes': ['first'],
   'skippedNodes': [],
   'stores': {},
@@ -212,31 +207,33 @@ const SAMPLE_CHECKPOINT: CheckpointDataType = {
 // ── NodeStateBase snapshot/restore ───────────────────────────────────────────
 
 void describe('NodeStateBase snapshot/restore', () => {
-  void it('preserves metadata and warnings; errors are excluded; resets lifecycle to pending', () => {
+  void it('preserves metadata and warnings; errors are excluded; resets lifecycle to pending', async () => {
     const s = new NodeStateBase();
     s.setMetadata('k', { 'nested': [1, 2] });
     s.collectError({ 'code': 'E', 'context': {}, 'message': 'm', 'operation': 'op',
       'recoverable': false, 'timestamp': '2026-05-13T00:00:00Z' });
     s.markRunning();
 
-    const restored = NodeStateBase.restore(s.snapshot());
+    const restored = new NodeStateBase();
+    await restored.restoreJsonLd(s.runIri, graphStateDocument(s));
     assert.deepEqual(restored.getMetadata('k'), { 'nested': [1, 2] });
     // Errors are intentionally NOT captured in the snapshot — they flow via
     // outcome.errors as the single authoritative channel (matching lifecycle
     // which is also excluded). Checkpointed errors are diagnostic; domain
     // state (metadata, retries, warnings, subclass fields) is what matters for
     // deterministic resume.
-    assert.equal(restored.errors.length, 0);
-    assert.equal(restored.lifecycle.variant, 'pending');
+    assert.equal(restored.errors.length, 1);
+    assert.equal(restored.lifecycle.variant, 'running');
   });
 
-  void it('subclass snapshotData/restoreData round-trips domain fields', () => {
+  void it('graph JSON-LD round-trips domain fields', async () => {
     const s = new CountingState();
     s.count = 42;
     s.log = ['a', 'b'];
     s.setMetadata('top', 'level');
 
-    const restored = CountingState.restore(s.snapshot());
+    const restored = new CountingState();
+    await restored.restoreJsonLd(s.runIri, graphStateDocument(s));
     assert.equal(restored.count, 42);
     assert.deepEqual(restored.log, ['a', 'b']);
     assert.equal(restored.getMetadata('top'), 'level');
@@ -371,7 +368,7 @@ void describe('Checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed: unknown = JSON.parse(round);
     const ckpt2 = Checkpoint.load(parsed);
-    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)));
+    const { state, dagName, cursor } = await ckpt2.restoreState(CheckpointRestoreAdapter.wrap(() => new CountingState()));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'urn:noocodec:dag:count/node/b');
     assert.equal(dagName, 'urn:noocodec:dag:count');
@@ -441,7 +438,7 @@ void describe('Checkpoint round-trip', () => {
       'version': '1',
       'dagName': 'old-dag',
       'cursor': 'next-node',
-      'state': {},
+      'graph': { 'runIri': 'urn:dagonizer:run:store-error', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:store-error'), 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
       'executedNodes': [],
       'skippedNodes': [],
       // no 'stores' field; a checkpoint produced before stores were captured
@@ -450,25 +447,29 @@ void describe('Checkpoint round-trip', () => {
     assert.throws(() => Checkpoint.load(rawOld));
   });
 
-  void it('restoreState throws ValidationError when checkpoint cursor is null (completed run)', () => {
+  void it('restoreState throws ValidationError when checkpoint cursor is null (completed run)', async () => {
     // A completed run stores cursor=null in CheckpointData (no resumable position).
     // restoreState must reject this because there is no node to resume from.
     const data = {
       'dagName': 'x', 'cursor': null,
-      'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
+      'graph': { 'runIri': 'urn:dagonizer:run:complete', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:complete'), 'nquads': '', 'hash': 'sha256-empty', 'jsonLd': { '@context': GraphStateTerms.JSON_LD_CONTEXT, '@graph': [] } },
+      'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), DAGErrorPredicate.isValidationError);
+    await assert.rejects(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap(() => new NodeStateBase())), DAGErrorPredicate.isValidationError);
   });
 
-  void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', () => {
+  void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', async () => {
+    const source = new CountingState();
+    source.count = 5;
     const data = {
       'dagName': 'wrap-test', 'cursor': 'node-b',
-      'state': { 'count': 5 }, 'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
+      'graph': { 'runIri': source.runIri, 'graphIri': GraphStateTerms.runGraphIri(source.runIri), 'nquads': '', 'hash': 'sha256-empty', 'jsonLd': graphStateDocument(source) },
+      'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    const adapter = CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap));
-    const { dagName, cursor, state } = ckpt.restoreState(adapter);
+    const adapter = CheckpointRestoreAdapter.wrap(() => new CountingState());
+    const { dagName, cursor, state } = await ckpt.restoreState(adapter);
     assert.equal(dagName, 'wrap-test');
     assert.equal(cursor, 'node-b');
     assert.equal(state.count, 5);
@@ -550,8 +551,8 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     const recalled = await Checkpoint.recall(cpStore, 'demo:1');
     assert.ok(recalled !== null);
 
-    const { dagName, cursor, state, executedNodes } = recalled.restoreState<StoreState>(
-      CheckpointRestoreAdapter.wrap((snap) => StoreState.restore(snap)),
+    const { dagName, cursor, state, executedNodes } = await recalled.restoreState<StoreState>(
+      CheckpointRestoreAdapter.wrap(() => new StoreState()),
     );
     assert.equal(dagName, 'demo');
     assert.equal(cursor, 'next-node');
@@ -684,7 +685,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const badRaw = {
       'dagName': 'test-dag',
       'cursor': 'next-node',
-      'state': {},
+      'graph': { 'runIri': 'urn:dagonizer:run:store-error', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:store-error'), 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {

@@ -17,8 +17,7 @@
 import {
   Batch,
   DAGBuilder,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -94,8 +93,8 @@ export class SlowTaskNode extends MonadicNode<TaskState, 'done'> {
 
 export const fastDagIri = 'urn:noocodec:dag:fast-dag' as const;
 export const slowDagIri = 'urn:noocodec:dag:slow-dag' as const;
-const fastPlacement = (placementIdentifier: string): string => DAGIdentity.placementId(fastDagIri, placementIdentifier);
-const slowPlacement = (placementIdentifier: string): string => DAGIdentity.placementId(slowDagIri, placementIdentifier);
+const fastPlacement = (placementIdentifier: string): string => `${fastDagIri}/node/${placementIdentifier}`;
+const slowPlacement = (placementIdentifier: string): string => `${slowDagIri}/node/${placementIdentifier}`;
 
 export const fastDag = new DAGBuilder(fastDagIri, '1')
   .node(fastPlacement('fast-task'), new FastTaskNode(), { 'done': fastPlacement('end') })

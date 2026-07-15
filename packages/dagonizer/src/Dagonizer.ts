@@ -4,12 +4,13 @@ import type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
+import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js';
+import type { GraphDatasetProviderInterface } from './contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
-import type { TripleStoreInterface } from './contracts/TripleStoreInterface.js';
 import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
@@ -25,7 +26,8 @@ import type { NodeScheduler } from './execution/NodeScheduler.js';
 import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
-import { InMemoryTopologyStore } from './graph/InMemoryTopologyStore.js';
+import { GraphStateTerms } from './graph/GraphStateTerms.js';
+import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
@@ -89,6 +91,7 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'registryVersion': DEFAULT_REGISTRY_VERSION,
   'validateOutputs': false,
   'observers': EMPTY_OBSERVERS,
+  'graphStore': new InMemoryGraphDatasetProvider(),
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
@@ -122,6 +125,8 @@ export type DispatcherObserverType = {
  * threaded through the dispatcher; there is no services option here.
  */
 export type DagonizerOptionsType = {
+  /** Provider for root and isolated child graph datasets. */
+  graphStore?: GraphDatasetProviderInterface;
   /**
    * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
@@ -180,7 +185,7 @@ export type DagonizerOptionsType = {
    * graph-backed implementation to persist or query selected embedded/scatter
    * DAG choices across runs.
    */
-  executionTopologyStore?: TripleStoreInterface;
+  executionTopologyStore?: GraphDatasetInterface;
 }
 
 
@@ -208,6 +213,13 @@ export interface DagonizerInterface<
   execute(
     dagName: string,
     initialState: TState,
+    options?: ExecuteOptionsType,
+  ): Execution<TState>;
+
+  /** Mint the run identity before constructing graph-backed state. */
+  executeWithStateFactory(
+    dagName: string,
+    factory: (dataset: GraphDatasetInterface, runIri: string) => TState,
     options?: ExecuteOptionsType,
   ): Execution<TState>;
 
@@ -376,6 +388,7 @@ implements DagonizerInterface<TState> {
   private readonly containers: Readonly<Record<string, DagContainerInterface>>;
   /** Bound egress channels, read by `destroy()` for teardown. */
   private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
+  private readonly graphDatasetProvider: GraphDatasetProviderInterface;
 
   /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
@@ -415,6 +428,7 @@ implements DagonizerInterface<TState> {
     const resolved = Dagonizer.options(options);
     this.containers = resolved.containers;
     this.channels = resolved.channels;
+    this.graphDatasetProvider = resolved.graphStore;
 
     // `self` gives the locally-declared EngineHost class below access to this
     // instance's protected hooks and private fields — private-name and protected
@@ -434,7 +448,7 @@ implements DagonizerInterface<TState> {
       readonly pluginSpecifiers = new Map<string, string>();
       readonly accessor: StateAccessorInterface;
       readonly stateMapper: StateMapper;
-      readonly executionTopologyStore: TripleStoreInterface;
+      readonly executionTopologyStore: GraphDatasetInterface;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
       readonly registryVersion: string;
       readonly #containers: Readonly<Record<string, DagContainerInterface>>;
@@ -447,7 +461,7 @@ implements DagonizerInterface<TState> {
       constructor() {
         this.accessor = resolved.accessor;
         this.stateMapper = new StateMapper(resolved.accessor);
-        this.executionTopologyStore = options.executionTopologyStore ?? new InMemoryTopologyStore();
+        this.executionTopologyStore = options.executionTopologyStore ?? resolved.graphStore.root('urn:dagonizer:topology');
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
@@ -721,7 +735,8 @@ implements DagonizerInterface<TState> {
        * Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`,
        * then call each muxed observer's `onNodeStart` callback in registration order.
        */
-      relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+      relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri = nodeName): void {
+        state.recordPlacementEvent(placementIri, 'started');
         self.onNodeStart(nodeName, state, placementPath, signal);
         for (const obs of this.#observers) {
           obs.onNodeStart?.(nodeName, state, placementPath, signal);
@@ -732,7 +747,8 @@ implements DagonizerInterface<TState> {
        * Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`,
        * then call each muxed observer's `onNodeEnd` callback in registration order.
        */
-      relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+      relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri = nodeName): void {
+        state.recordPlacementEvent(placementIri, 'completed', output ?? undefined);
         self.onNodeEnd(nodeName, output, state, placementPath, signal);
         for (const obs of this.#observers) {
           obs.onNodeEnd?.(nodeName, output, state, placementPath, signal);
@@ -743,7 +759,8 @@ implements DagonizerInterface<TState> {
        * Relay an error event from a worker/contained sub-DAG into `onError`,
        * then call each muxed observer's `onError` callback in registration order.
        */
-      relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+      relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void {
+        if (placementIri !== undefined) state.recordPlacementEvent(placementIri, 'failed');
         self.onError(nodeName, error, state, placementPath, signal);
         for (const obs of this.#observers) {
           obs.onError?.(nodeName, error, state, placementPath, signal);
@@ -951,8 +968,23 @@ implements DagonizerInterface<TState> {
     // there short-circuits to the identical object rather than re-wrapping it —
     // see `dagExecutionScope`'s doc comment).
     const signal = Dagonizer.rootSignal(options);
-    const scope = this.dagExecutionScope(dagName, signal);
+    const runIri = options.runIri ?? initialState.runIri;
+    if (runIri !== initialState.runIri) throw new Error('Execution state must be constructed with the execution run identity');
+    initialState.bindGraphDatasetProvider(this.graphDatasetProvider);
+    const scope = this.dagExecutionScope(dagName, runIri, signal);
     return new Execution<TState>(this.runNodes(dagName, initialState, null, { signal }), scope);
+  }
+
+  executeWithStateFactory(
+    dagName: string,
+    factory: (dataset: GraphDatasetInterface, runIri: string) => TState,
+    options: ExecuteOptionsType = {},
+  ): Execution<TState> {
+    const runIri = options.runIri ?? GraphStateTerms.runIri(dagName, globalThis.crypto.randomUUID());
+    const state = factory(this.graphDatasetProvider.root(runIri), runIri);
+    if (state.runIri !== runIri) throw new Error('State factory must construct state with the supplied run identity');
+    state.bindGraphDatasetProvider(this.graphDatasetProvider);
+    return this.execute(dagName, state, { ...options, runIri });
   }
 
   /**
@@ -975,7 +1007,8 @@ implements DagonizerInterface<TState> {
     // correlation-context lifetimes.
     return batchStates.map((state) => {
       const signal = Dagonizer.rootSignal(options);
-      const scope = this.dagExecutionScope(dagName, signal);
+      const runIri = state.runIri;
+      const scope = this.dagExecutionScope(dagName, runIri, signal);
       return new Execution<TState>(this.runNodes(dagName, state, null, { signal }), scope);
     });
   }
@@ -998,7 +1031,8 @@ implements DagonizerInterface<TState> {
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
     const signal = Dagonizer.rootSignal(options);
-    const scope = this.dagExecutionScope(dagName, signal);
+    const runIri = state.runIri;
+    const scope = this.dagExecutionScope(dagName, runIri, signal);
     return new Execution<TState>(this.runNodes(dagName, state, fromStage, { signal }), scope);
   }
 
@@ -1031,10 +1065,12 @@ implements DagonizerInterface<TState> {
    * anywhere, correct across any `await` boundary or interleaved concurrent
    * run — see `runtime/DagExecutionContext.ts` for the full design.
    */
-  private dagExecutionScope(dagName: string, signal: AbortSignal): DagExecutionScope {
+  private dagExecutionScope(dagName: string, runIri: string, signal: AbortSignal): DagExecutionScope {
     return DagExecutionContext.initialize({
       [DagExecutionContextKeys.CORRELATION_ID]: globalThis.crypto.randomUUID(),
       [DagExecutionContextKeys.DAG_NAME]: dagName,
+      [DagExecutionContextKeys.DAG_IRI]: dagName,
+      [DagExecutionContextKeys.RUN_IRI]: runIri,
     }, signal);
   }
 
@@ -1100,6 +1136,7 @@ implements DagonizerInterface<TState> {
     registryVersion: string;
     validateOutputs: boolean;
     observers: ReadonlyArray<DispatcherObserverType>;
+    graphStore: GraphDatasetProviderInterface;
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
@@ -1108,6 +1145,7 @@ implements DagonizerInterface<TState> {
       'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,
       'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
       'observers':       partial.observers ?? DAGONIZER_OPTION_DEFAULTS.observers,
+      'graphStore':      partial.graphStore ?? DAGONIZER_OPTION_DEFAULTS.graphStore,
     };
   }
 

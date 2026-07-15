@@ -47,7 +47,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, describe, it } from 'node:test';
 
-import { DAGIdentity, Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
+import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface, StoredScatterProgressType } from '@studnicky/dagonizer';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import {
@@ -402,7 +402,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     // The killed item must remain un-acked; the checkpoint must survive.
     const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
     const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
-    const fanIri = DAGIdentity.placementId(CONFORMANCE_DAG.law8, 'fan');
+    const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
     const fan = progress[fanIri];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
     // The map gather is compactable, so its checkpoint is bounded mode: the

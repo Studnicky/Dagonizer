@@ -30,12 +30,12 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 const pipelineSensorReadingDagIri = 'urn:noocodec:dag:pipeline-sensor-reading' as const;
 const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(pipelineSensorReadingDagIri, placementIdentifier);
+  `${pipelineSensorReadingDagIri}/node/${placementIdentifier}`;
 
 export const pipelineSensorReadingDAG: DAGType = new DAGBuilder(pipelineSensorReadingDagIri, '1.0')
 

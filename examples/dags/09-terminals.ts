@@ -8,8 +8,7 @@ import {
   Batch,
   DAG_CONTEXT,
   DAGBuilder,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeError,
   NodeOutput,
   NodeStateBase,
@@ -23,7 +22,7 @@ const explicitFailedDagIri = 'urn:noocodec:dag:demo-explicit-failed' as const;
 const childTerminalsDagIri = 'urn:noocodec:dag:child-for-terminals' as const;
 const embeddedTerminalsDagIri = 'urn:noocodec:dag:demo-embedded-dag-terminals' as const;
 const placement = (dagIri: string, placementIdentifier: string): string =>
-  DAGIdentity.placementId(dagIri, placementIdentifier);
+  `${dagIri}/node/${placementIdentifier}`;
 
 // ---------------------------------------------------------------------------
 // State

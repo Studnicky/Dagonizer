@@ -153,7 +153,7 @@ This is closer to a small in-process workflow engine than to a prompt-chain help
 Three in-browser demos show the same engine in different domains:
 
 - [The Archivist](/examples/the-archivist) — LLM agents. A multi-stage bibliographic-assistant DAG that exercises tool DAGs, embedded search bodies, retry, cancellation, and checkpoint resume.
-- [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multiple source entrypoints feed a first-class intake gather, then scatter through typed event pipelines with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.
+- [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multiple source entrypoints each run a feed/unpack/normalize DAG, converge through a canonical open gather, then scatter through typed event pipelines with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.
 - [The Dispatcher](/examples/the-dispatcher) — HITL support workflow. Customer messages route through routine AI response, operator escalation with park/resume, or off-topic decline.
 
 ## Related Concepts

@@ -52,6 +52,7 @@ import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
 import {
+  ActiveBackendStore,
   ApiKeyStore,
   BackendMatrix,
   EmbedderProvisioner,
@@ -63,6 +64,7 @@ import type {
   EmbedderProvisionOptionsType,
   EmbedderProvisionResultType,
   ProviderId,
+  WebLlmInitReportType,
 } from './providers/index.ts';
 import type { IntentClassifier } from './providers/IntentClassifier.ts';
 import { MobileDetection } from './providers/MobileDetection.ts';
@@ -186,6 +188,8 @@ export interface ArchivistSessionOptions {
   readonly clock?: SubstrateClock;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
+  /** WebLLM progress callback for browser frontends. */
+  readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
   /**
    * Visitor's device language (ISO 639-1), threaded into the LLM client's
    * prompts and into `ArchivistState.userLanguage` (tool-arg language
@@ -342,7 +346,7 @@ class SessionObserver extends ObservedDag<ArchivistState> {
  *   - Backend detection and selection (`boot()`)
  *   - Greeting and visitor-reply generation (`greet()`, `sampleReply()`)
  *   - The full DAG run loop (`ask()`)
- *   - Conversation history accumulation
+ *   - Conversation history accumulation in the RDF memory graph
  *   - A single `reset()` implementation (eliminates the onMounted/reset duplication)
  *
  * Does NOT own:
@@ -370,12 +374,13 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   protected embedder: EmbedderInterface | null;
   protected intentClassifier: IntentClassifier | null;
 
-  // ── Conversation (public: views read this to render the chat log) ─────────
+  // ── Conversation mirror (RDF memory graph remains authoritative) ─────────
   conversation: ConversationTurn[];
 
   // ── Private run plumbing (shape-stable; always present) ──────────────────
   readonly #clock: SubstrateClock;
   readonly #injectedLlm: LlmClientInterface | null;
+  readonly #onWebLlmProgress: ((report: WebLlmInitReportType) => void) | null;
   #abortController: AbortController | null;
   #isRunning: boolean;
 
@@ -399,6 +404,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     this.conversation     = [];
     this.#clock           = options.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
     this.#injectedLlm     = options.llm ?? null;
+    this.#onWebLlmProgress = options.onWebLlmProgress ?? null;
     this.#abortController = null;
     this.#isRunning       = false;
   }
@@ -597,37 +603,46 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       }
     }
 
-    this.onGreetingReady(greeting);
-    return greeting;
+    const turn = this.#recordConversationTurn('archivist', greeting);
+    const text = turn?.text ?? '';
+    this.onGreetingReady(text);
+    return text;
   }
 
   /**
    * Generate and emit a visitor-style reply to the supplied greeting.
    *
-   * Tries the LLM first; uses a static sample when unavailable or when the LLM
-   * produces an empty string. Calls `onSampleReplyReady(reply)`.
+   * Uses a manually seeded visitor message so the conversation starts with a
+   * stable visitor turn rather than an LLM-authored simulation.
    */
-  async sampleReply(greeting: string): Promise<void> {
-    const llm = this.#resolveLlm();
-    let reply = this.#staticVisitorReply();
+  async sampleReply(_greeting: string): Promise<string> {
+    const reply = this.#staticVisitorReply();
+    const turn = this.#recordConversationTurn('visitor', reply);
+    const text = turn?.text ?? '';
+    this.onSampleReplyReady(text);
+    return text;
+  }
 
-    if (llm !== null) {
-      try {
-        const generated = await llm.suggestVisitorReplyTo(greeting);
-        if (generated.length > 0) reply = generated;
-      } catch {
-        // Static sample remains selected.
-      }
-    }
-
-    this.onSampleReplyReady(reply);
+  /**
+   * Run the Archivist DAG for a visitor turn that is already in the RDF-backed
+   * conversation graph.
+   *
+   * Bootstrap UIs use this after `sampleReply()` so the seeded visitor prompt is
+   * answered by the same DAG path as a typed visitor message without rendering
+   * or recording that visitor turn a second time. If no matching recorded turn
+   * exists, the method falls back to `ask()` semantics and records it.
+   */
+  async answerRecordedVisitorTurn(query: string): Promise<void> {
+    const cleanQuery = ArchivistSession.#messageText(query);
+    const recordedTurn = this.#lastRecordedVisitorTurn(cleanQuery);
+    await this.#runVisitorQuery(cleanQuery, recordedTurn ?? undefined);
   }
 
   /**
    * Run the Archivist DAG for a visitor query.
    *
    * Sequence:
-   *   1. Push visitor turn to `conversation`; call `onVisitorTurn(query)`.
+   *   1. Push visitor turn to the RDF memory graph; call `onVisitorTurn(query)`.
    *   2. Build a fresh `SessionObserver`, assemble bundles, execute the DAG.
    *   3. During execution, lifecycle events fire `onNodeEvent` / `onDagEvent`.
    *   4. On completion: push archivist turn (if draft non-empty); call
@@ -641,6 +656,10 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Throws when no LLM is available.
    */
   async ask(query: string): Promise<void> {
+    await this.#runVisitorQuery(query);
+  }
+
+  async #runVisitorQuery(query: string, recordedVisitorTurn?: ConversationTurn): Promise<void> {
     if (this.#isRunning) {
       throw new Error('ArchivistSession.ask: a run is already in progress; call cancel() first');
     }
@@ -648,9 +667,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const llm = this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.ask: no LLM available; call boot() first');
 
-    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': query, 'ts': this.#clock.now() };
-    this.conversation = [...this.conversation, visitorTurn];
-    this.onVisitorTurn(query);
+    const cleanQuery = ArchivistSession.#messageText(query);
+    const visitorTurn = recordedVisitorTurn ?? this.#recordConversationTurn('visitor', cleanQuery);
+    if (recordedVisitorTurn === undefined && visitorTurn !== null) this.onVisitorTurn(visitorTurn.text);
 
     this.#isRunning = true;
     this.#abortController = new AbortController();
@@ -676,12 +695,10 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
     const visitor = new ArchivistState();
-    visitor.query    = query;
+    visitor.query    = visitorTurn?.text ?? cleanQuery;
     visitor.runId    = runId;
     visitor.userLanguage = this.visitorLanguage;
-    visitor.conversation = this.conversation
-      .slice(-this.conversationContextWindow)
-      .map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
+    visitor.conversation = this.#conversationContextFromMemory(visitorTurn ?? undefined);
 
     const { composeMs, webSearchMs, rankMs } = this.timeoutSettings;
     const deadlineMs = composeMs + webSearchMs + rankMs + 5_000;
@@ -741,8 +758,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * and pushes visitor bubbles directly; this method handles only the session
    * bookkeeping and the DAG execution machinery.
    *
-   * Appends a visitor turn to `this.conversation` for history consistency, then
-   * resumes the DAG at `cursor`. All node events and the final `onRunEnd` fire
+   * Appends a visitor turn to the memory-backed conversation, then resumes the
+   * DAG at `cursor`. All node events and the final `onRunEnd` fire
    * exactly as they do for `ask()`, so `onRunEnd` handles durability clean-up
    * (clearing `hitl:pendingKey`, persisting the memory graph) in the subclass.
    */
@@ -759,8 +776,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const llm = this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.resumeRun: no LLM available; call boot() first');
 
-    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': humanText, 'ts': this.#clock.now() };
-    this.conversation = [...this.conversation, visitorTurn];
+    const visitorTurn = this.#recordConversationTurn('visitor', humanText);
+    state.conversation = this.#conversationContextFromMemory(visitorTurn ?? undefined);
+    if (visitorTurn !== null) state.query = visitorTurn.text;
 
     this.#isRunning = true;
     this.#abortController = new AbortController();
@@ -814,6 +832,62 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     }
   }
 
+  #recordConversationTurn(role: ConversationTurn['role'], text: string): ConversationTurn | null {
+    const cleanText = ArchivistSession.#messageText(text);
+    if (cleanText.length === 0) return null;
+    const turn: ConversationTurn = { role, 'text': cleanText, 'ts': this.#clock.now() };
+    this.conversation = [...this.conversation, turn];
+    this.store.recordConversationTurn(turn);
+    this.onMemoryChanged();
+    return turn;
+  }
+
+  #conversationContextFromMemory(exclude?: ConversationTurn): readonly ConversationTurn[] {
+    const turnLimit = this.conversationContextWindow + (exclude === undefined ? 0 : 1);
+    return this.store.conversationTurns(turnLimit)
+      .filter((t) => exclude === undefined || !ArchivistSession.#sameTurn(t, exclude))
+      .slice(-this.conversationContextWindow)
+      .map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
+  }
+
+  #lastRecordedVisitorTurn(cleanText: string): ConversationTurn | null {
+    for (let i = this.conversation.length - 1; i >= 0; i--) {
+      const turn = this.conversation[i];
+      if (turn !== undefined && turn.role === 'visitor' && turn.text === cleanText) {
+        return turn;
+      }
+    }
+    return null;
+  }
+
+  static #messageText(value: string): string {
+    let text = value.trim();
+    let next = ArchivistSession.#stripOneQuotePair(text);
+    while (next !== text) {
+      text = next.trim();
+      next = ArchivistSession.#stripOneQuotePair(text);
+    }
+    return text;
+  }
+
+  static #stripOneQuotePair(value: string): string {
+    if (value.length < 2) return value;
+    const first = value[0];
+    const last = value[value.length - 1];
+    const pairs: Readonly<Record<string, string>> = {
+      '"':      '"',
+      "'":      "'",
+      '`':      '`',
+      '\u201c': '\u201d',
+      '\u2018': '\u2019',
+    };
+    return first !== undefined && last === pairs[first] ? value.slice(1, -1) : value;
+  }
+
+  static #sameTurn(a: ConversationTurn, b: ConversationTurn): boolean {
+    return a.role === b.role && a.text === b.text && a.ts === b.ts;
+  }
+
   // ── SessionEventSinkInterface (called by SessionObserver) ─────────────────
   // These methods translate ObservedDag lifecycle events into the structured
   // SessionNodeEvent / SessionDagEvent payloads and route them to the abstract
@@ -853,9 +927,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       if (output === 'error' && state instanceof ToolInvocationState) {
         const lastErr = state.errors[state.errors.length - 1];
         const rawName = lastErr !== undefined ? lastErr.context['toolName'] : undefined;
-        const toolName = typeof rawName === 'string' && rawName.length > 0
-          ? rawName
-          : (placementPath[placementPath.length - 1] ?? nodeName);
+        const toolName = typeof rawName === 'string' && rawName.length > 0 ? rawName : fullId;
         const errMsg      = lastErr !== undefined ? lastErr.message : '';
         const isRateLimit = /429|too many requests/i.test(errMsg);
         const noteMsg     = isRateLimit
@@ -922,10 +994,11 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const lifecycle = state.lifecycle.variant;
 
     // Push the archivist turn when the run produced a draft.
-    if (state.draft.length > 0) {
-      const archivistTurn: ConversationTurn = { 'role': 'archivist', 'text': state.draft, 'ts': this.#clock.now() };
-      this.conversation = [...this.conversation, archivistTurn];
-      this.onArchivistTurn(state.draft);
+    const cleanDraft = ArchivistSession.#messageText(state.draft);
+    if (cleanDraft.length > 0) {
+      state.draft = cleanDraft;
+      const archivistTurn = this.#recordConversationTurn('archivist', cleanDraft);
+      if (archivistTurn !== null) this.onArchivistTurn(archivistTurn.text);
     }
 
     this.logger.result(
@@ -975,8 +1048,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   /**
    * Called when a contextual visitor sample reply is ready.
    *
-   * Vue subclass: set `visitorQuery.value`.
-   * DOM subclass: set `input.value`.
+   * Vue subclass: render the seeded visitor turn.
+   * DOM subclass: render a visitor bubble.
    * Headless test: record for assertion; assert it differs from the greeting.
    */
   protected abstract onSampleReplyReady(reply: string): void;
@@ -1075,6 +1148,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       'apiKeys':  this.apiKeys,
       'model':    model,
       'language': this.visitorLanguage,
+      ...(this.#onWebLlmProgress !== null ? { 'onWebLlmProgress': this.#onWebLlmProgress } : {}),
       ...(this.intentClassifier !== null ? { 'intentClassifier': this.intentClassifier } : {}),
     });
   }
@@ -1085,10 +1159,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   }
 
   static #loadSavedBackend(): ProviderId | null {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem('dagonizer-active-backend');
-    if (raw !== null && ApiKeyStore.isProviderId(raw)) return raw;
-    return null;
+    return ActiveBackendStore.load();
   }
 
   #staticGreeting(): string {

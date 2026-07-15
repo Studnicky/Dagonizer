@@ -10,8 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GeohashTzMap } from '../../geo/GeohashTzMap.ts';
-import { LocaleTimezone } from '../../geo/LocaleTimezone.ts';
+import { GeohashTzMap, LocaleTimezone } from '@studnicky/geo-resolver';
 
 // ---------------------------------------------------------------------------
 // GeohashTzMap
@@ -19,7 +18,7 @@ import { LocaleTimezone } from '../../geo/LocaleTimezone.ts';
 
 describe('GeohashTzMap', () => {
   // Construct once — all fields set at construction (monomorphic shape).
-  const tzMap = new GeohashTzMap();
+  const tzMap = GeohashTzMap.default();
 
   it('NYC (40.7128, -74.006) → America/New_York, US, waterBody=""', () => {
     const result = tzMap.lookup(40.7128, -74.006);

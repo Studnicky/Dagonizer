@@ -35,7 +35,7 @@ export class PluginLoader {
    *   export a valid plugin.
    */
   static async load(specifier: string): Promise<PluginInterface> {
-    const mod: unknown = await import(specifier);
+    const mod: unknown = await import(/* @vite-ignore */ specifier);
     return PluginLoader.#validate(mod, specifier);
   }
 

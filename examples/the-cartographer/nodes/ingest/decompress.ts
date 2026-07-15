@@ -66,11 +66,13 @@ export class DecompressNode extends MonadicNode<CartographerState, 'route-format
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
-      await writer.write(bytes);
-      await writer.close();
+      const write = writer.write(bytes);
+      const close = writer.close();
       const chunks: Uint8Array[] = [];
       const reader = ds.readable.getReader();
       for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }
+      await write;
+      await close;
       let total = 0; for (const c of chunks) total += c.length;
       const merged = new Uint8Array(total);
       let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }

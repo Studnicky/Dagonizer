@@ -8,7 +8,7 @@
  *   │ <single-column on narrow; two-column at ≥720px container width>      │
  *   ├──────────────────────────┬───────────────────────────────────────────┤
  *   │ LEFT COL                  │ RIGHT COL                                │
- *   │ tabs: Conversation|Config │ tabs: DAG | Memory | Trace               │
+ *   │ tabs: Conversation|Trace  │ tabs: DAG | Memory | LLM Select | Config │
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
  * Session orchestration is delegated to VueArchivistSession (extends
@@ -310,21 +310,21 @@ function clearMemory(): void {
   logger.note('memory store cleared; ontology restored');
 }
 
-// ── Left-column tabs: Conversation | Memory ──────────────────────────────
+const traceCount = computed(() => trace.value.length + logger.history().length);
+
+// ── Left-column tabs: Conversation | Trace ───────────────────────────────
 const leftTabs = computed(() => [
   { 'key': 'conversation', 'label': 'Conversation', 'badge': '',                              'tone': 'default' as const },
-  { 'key': 'memory',       'label': 'Memory',       'badge': String(tripleCount.value || ''), 'tone': 'accent'  as const },
+  { 'key': 'trace',        'label': 'Trace',        'badge': String(traceCount.value || ''), 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
 ]);
 
-// ── Right-column tabs: DAG | Config | Trace ──────────────────────────────
-const rightTabs = computed(() => {
-  const traceCount = trace.value.length + logger.history().length;
-  return [
-    { 'key': 'dag',    'label': 'DAG',    'badge': isRunning.value ? 'live' : '', 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'config', 'label': 'Config', 'badge': '',                            'tone': 'default' as const },
-    { 'key': 'trace',  'label': 'Trace',  'badge': String(traceCount || ''),      'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-  ];
-});
+// ── Right-column tabs: DAG | Memory | LLM Select | Configuration ─────────
+const rightTabs = computed(() => [
+  { 'key': 'dag',    'label': 'DAG Topology',  'badge': isRunning.value ? 'live' : '',          'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+  { 'key': 'memory', 'label': 'Memory Graph',  'badge': String(tripleCount.value || ''),        'tone': 'accent' as const },
+  { 'key': 'llm',    'label': 'LLM Select',    'badge': activeBackend.value ?? '',              'tone': 'default' as const },
+  { 'key': 'config', 'label': 'Configuration', 'badge': String(conversationContextWindow.value), 'tone': 'default' as const },
+]);
 
 // Top-level archivist DAG reference for DagGraph display.
 const archivistDag = ref<DAGType | null>(canonicalArchivistDAG);
@@ -433,7 +433,11 @@ class VueArchivistSession extends ArchivistSession {
   }
 
   protected override onSampleReplyReady(reply: string): void {
-    visitorQuery.value = reply;
+    conversation.value = [
+      ...conversation.value,
+      { 'role': 'visitor', 'text': reply, 'ts': Date.now() },
+    ];
+    visitorQuery.value = '';
   }
 
   protected override onVisitorTurn(query: string): void {
@@ -665,6 +669,40 @@ function onTreatAsDesktop(): void {
   window.location.reload();
 }
 
+async function runSessionExecution(queryText: string, execute: () => Promise<void>): Promise<void> {
+  const cleanQuery = queryText.trim();
+  if (isRunning.value || cleanQuery.length === 0 || activeBackend.value === null) return;
+
+  runnerMachine.dispatch({ 'type': 'submit' });
+  isRunning.value       = true;
+  terminalVariant.value = 'pending';
+  trace.value           = [];
+
+  await dagGraph.value?.reset();
+  memoryTick.value++;
+  logger.clear();
+  logger.note(`run start, query: ${cleanQuery}`);
+
+  try {
+    await execute();
+  } catch (err) {
+    conversation.value = [
+      ...conversation.value,
+      {
+        'role': 'archivist',
+        'text': `(error: ${err instanceof Error ? err.message : String(err)})`,
+        'ts': Date.now(),
+      },
+    ];
+  } finally {
+    isRunning.value = false;
+  }
+}
+
+async function runBootstrapSeed(seedQuery: string): Promise<void> {
+  await runSessionExecution(seedQuery, () => session.answerRecordedVisitorTurn(seedQuery));
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
   // Seed the memory store before the session boots so the memory graph shows
@@ -692,12 +730,12 @@ onMounted(async () => {
     return;
   }
 
-  // On a fresh session: generate the Archivist greeting (onGreetingReady
-  // pushes it to conversation.value) and a contextual visitor reply
-  // (onSampleReplyReady pre-fills the input).
+  // On a fresh session: generate the Archivist greeting and the initial visitor
+  // outreach turn, then answer that recorded visitor turn through the DAG.
   if (isFreshSession() && visitorQuery.value.length === 0) {
     const greeting = await session.greet();
-    await session.sampleReply(greeting);
+    const seedQuery = await session.sampleReply(greeting);
+    await runBootstrapSeed(seedQuery);
   }
 });
 
@@ -709,38 +747,11 @@ async function ask(): Promise<void> {
   // Clear the input immediately after capturing (the send-and-clear pattern).
   visitorQuery.value = '';
 
-  runnerMachine.dispatch({ 'type': 'submit' });
-  isRunning.value       = true;
-  terminalVariant.value = 'pending';
-  trace.value           = [];
-
-  await dagGraph.value?.reset();
-  memoryTick.value++;
-  logger.clear();
-  logger.note(`run start, query: "${queryText}"`);
-
-  try {
-    // session.ask() fires the full DAG run. Seam overrides above update all
-    // reactive refs: onVisitorTurn, onNodeEvent, onDagEvent, onArchivistTurn,
-    // onMemoryChanged, onRunEnd, onError.
-    await session.ask(queryText);
-  } catch (err) {
-    // Only fatal pre-run errors reach here (e.g. no LLM available).
-    // Errors during DAG execution are handled by session.onError().
-    conversation.value = [
-      ...conversation.value,
-      {
-        'role': 'archivist',
-        'text': `(error: ${err instanceof Error ? err.message : String(err)})`,
-        'ts': Date.now(),
-      },
-    ];
-  } finally {
-    isRunning.value = false;
-  }
+  await runSessionExecution(queryText, () => session.ask(queryText));
 }
 
-function reset(): void {
+async function reset(): Promise<void> {
+  if (isRunning.value) return;
   conversation.value    = [];
   trace.value           = [];
   terminalVariant.value = 'pending';
@@ -754,8 +765,11 @@ function reset(): void {
 
   // session.reset() clears the session's conversation + store + logger,
   // calls onReset() (reloads ontology + seed), then runs greet() + sampleReply().
-  // The seam overrides push the greeting to conversation.value and set visitorQuery.value.
-  void session.reset();
+  // The seam overrides push both bootstrap turns to conversation.value; the
+  // recorded visitor seed then runs through the same DAG path as a typed ask.
+  await session.reset();
+  const seedQuery = [...conversation.value].reverse().find((turn) => turn.role === 'visitor')?.text ?? '';
+  await runBootstrapSeed(seedQuery);
 }
 
 // ── Checkpoint ────────────────────────────────────────────────────────────
@@ -773,8 +787,8 @@ async function resumeFromCheckpoint(): Promise<void> {
     const parsed = JSON.parse(raw) as unknown;
     const ckpt = Checkpoint.load(parsed);
     await ckpt.restoreStores({ 'memory': memoryStore });
-    restored = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+    restored = await ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
     );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -911,7 +925,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     <template v-else>
       <div class="ar-grid">
 
-        <!-- LEFT: Conversation | Memory -->
+        <!-- LEFT: Conversation | Trace -->
         <div class="ar-col ar-col--left">
           <div class="ar-col-head">
             <span class="ar-label">Archivist</span>
@@ -928,7 +942,7 @@ async function resumeFromCheckpoint(): Promise<void> {
                     <code>LanguageModel</code>. Structured-output steps (tool selection,
                     candidate ranking) take 5&ndash;20s each on this backend. For 1&ndash;2s
                     responses, add a free Groq, Cerebras, Gemini API, Mistral, or
-                    OpenRouter API key in the Config tab.
+                    OpenRouter API key in the LLM Select tab.
                   </span>
                   <button
                     type="button"
@@ -949,27 +963,14 @@ async function resumeFromCheckpoint(): Promise<void> {
               </div>
             </template>
 
-            <!-- Memory tab: cosmos.gl RDF graph -->
-            <template #memory>
-              <div class="graph-pane">
-                <MemoryGraph
-                  :store="memoryStore"
-                  :tick="memoryTick"
-                  @clear="clearMemory"
-                  @select="onMemorySelect"
-                />
-                <TripleInspector
-                  :store="memoryStore"
-                  :tick="memoryTick"
-                  :selection="selectedSelection"
-                  @close="selectedSelection = null"
-                />
-              </div>
+            <!-- Trace tab: merged node lifecycle + logger feed -->
+            <template #trace>
+              <TraceFeed :entries="trace" :log-events="logEvents" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>
 
-        <!-- RIGHT: DAG | Config | Trace -->
+        <!-- RIGHT: DAG | Memory | LLM Select | Configuration -->
         <div class="ar-col ar-col--right">
           <div class="ar-col-head">
             <span class="ar-label">Graph</span>
@@ -999,8 +1000,26 @@ async function resumeFromCheckpoint(): Promise<void> {
               </div>
             </template>
 
-            <!-- Config tab: backend + persistence + timeouts + checkpoints -->
-            <template #config>
+            <!-- Memory tab: wide RDF graph -->
+            <template #memory>
+              <div class="graph-pane">
+                <MemoryGraph
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  @clear="clearMemory"
+                  @select="onMemorySelect"
+                />
+                <TripleInspector
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  :selection="selectedSelection"
+                  @close="selectedSelection = null"
+                />
+              </div>
+            </template>
+
+            <!-- LLM Select tab: backend catalogue and keys -->
+            <template #llm>
               <div class="ar-config-pane">
                 <section class="ar-config-section">
                   <h5 class="ar-config-head">Backend</h5>
@@ -1016,7 +1035,12 @@ async function resumeFromCheckpoint(): Promise<void> {
                     @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
                   />
                 </section>
+              </div>
+            </template>
 
+            <!-- Configuration tab: persistence, RDF transcript, and timeouts -->
+            <template #config>
+              <div class="ar-config-pane">
                 <section class="ar-config-section">
                   <h5 class="ar-config-head">Checkpoints</h5>
                   <CheckpointControls
@@ -1036,11 +1060,6 @@ async function resumeFromCheckpoint(): Promise<void> {
                   <TimeoutPane @update:settings="onTimeoutSettingsUpdate" />
                 </section>
               </div>
-            </template>
-
-            <!-- Trace tab: merged node lifecycle + logger feed -->
-            <template #trace>
-              <TraceFeed :entries="trace" :log-events="logEvents" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>

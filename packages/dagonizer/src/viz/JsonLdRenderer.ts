@@ -27,6 +27,7 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { DagonizerContexts } from '../context/DagonizerContexts.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DagReferenceType } from '../entities/dag/DagReference.js';
@@ -37,7 +38,7 @@ import { PlacementUtils } from './internal.js';
 import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
-export const DAGONIZER_VOCAB = 'https://noocodec.dev/ontology/dagonizer/';
+export const DAGONIZER_VOCAB = DagonizerContexts.NAMESPACES.dagonizer;
 
 /**
  * JSON Schema 2020-12 definition for the top-level JSON-LD document

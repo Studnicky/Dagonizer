@@ -4,14 +4,14 @@
  * Carries the visitor's question, the parsed intent, scout candidates,
  * the merged shortlist, the draft response, and per-execution counters.
  * Extends `NodeStateBase` so the dispatcher owns the lifecycle FSM and
- * `snapshot()` round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
+ * Graph JSON-LD round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
  */
 
 import type { CandidateType } from './entities/Book.ts';
 import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
+import type { JsonObjectType } from '@studnicky/dagonizer/types';
 import type { ReasoningStepType } from '@studnicky/dagonizer';
 import { Validator } from '@studnicky/dagonizer/validation';
 import { CandidateSchema } from '@studnicky/dagonizer-book-entities';
@@ -85,20 +85,6 @@ export type ArchivistIntent =
 
 export class ArchivistState extends NodeStateBase {
   private static readonly candidateValidator = Validator.compile<CandidateType>(CandidateSchema);
-  /**
-   * Declared scalar fields for schema-driven snapshot/restore.
-   * Complex fields (arrays with item type-guards, nested objects,
-   * discriminated-union fields) are handled manually in
-   * `snapshotData` / `restoreData`.
-   */
-  static readonly FIELDS: StateFieldsType = {
-    'query':        'string',
-    'userLanguage': 'string',
-    'draft':        'string',
-    'failureCause': 'string',
-    'runId':        'string',
-  };
-
   /** Raw question the visitor submitted. */
   query = '';
   /**
@@ -246,37 +232,9 @@ export class ArchivistState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObjectType {
-    return {
-      ...NodeStateBase.snapshotFields(this, ArchivistState.FIELDS),
-      "intent":       this.intent,
-      "terms":        [...this.terms],
-      "candidates":   this.candidates.map(ArchivistState.candidateToJson),
-      "shortlist":    this.shortlist.map(ArchivistState.candidateToJson),
-      "approvalState": this.approvalState,
-      "recalledContext": {
-        "priorIntents":        this.recalledContext.priorIntents.map(ArchivistState.priorIntentToJson),
-        "recentCandidates":    this.recalledContext.recentCandidates.map(ArchivistState.candidateToJson),
-        "similarPriorQueries": this.recalledContext.similarPriorQueries.map(ArchivistState.priorQueryToJson),
-        "priorReasoning":      this.recalledContext.priorReasoning.map(ArchivistState.priorReasoningToJson),
-        "summary":             this.recalledContext.summary,
-      },
-      "priorCandidates": this.priorCandidates.map(ArchivistState.candidateToJson),
-      "conversation": this.conversation.map(ArchivistState.turnToJson),
-      "bookWorksets": this.bookWorksets.map((w) => ({ "dagIri": w.dagIri, "arguments": w.arguments })),
-      "reasoning": this.reasoning.map(ArchivistState.reasoningStepToJson),
-      "memoryDigest": {
-        "bookCount":       this.memoryDigest.bookCount,
-        "queryCount":      this.memoryDigest.queryCount,
-        "recentBooks":     this.memoryDigest.recentBooks.map((b) => ({ "title": b.title, "author": b.author })),
-        "intentBreakdown": this.memoryDigest.intentBreakdown.map((i) => ({ "intent": i.intent, "count": i.count })),
-        "summary":         this.memoryDigest.summary,
-      },
-    };
-  }
 
   // #region snapshot-helpers
-  private static candidateToJson(c: CandidateType): JsonObjectType {
+  static candidateToJson(c: CandidateType): JsonObjectType {
     const book: JsonObjectType = {
       "isbn":    c.book.identity.isbn,
       "title":   c.book.identity.title,
@@ -309,19 +267,19 @@ export class ArchivistState extends NodeStateBase {
     };
   }
 
-  private static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObjectType {
+  static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObjectType {
     return { "query": p.query, "intent": p.intent, "ts": p.ts };
   }
 
-  private static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObjectType {
+  static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObjectType {
     return { "query": q.query, "ts": q.ts };
   }
 
-  private static turnToJson(t: ConversationTurn): JsonObjectType {
+  static turnToJson(t: ConversationTurn): JsonObjectType {
     return { "role": t.role, "text": t.text, "ts": t.ts };
   }
 
-  private static priorReasoningToJson(p: RecalledContext['priorReasoning'][number]): JsonObjectType {
+  static priorReasoningToJson(p: RecalledContext['priorReasoning'][number]): JsonObjectType {
     return { "text": p.text, "kind": p.kind };
   }
 
@@ -330,7 +288,7 @@ export class ArchivistState extends NodeStateBase {
    * construction boundary; serialize only JSON-safe primitives, mirroring
    * `candidateToJson`'s `notesOut` sanitizer.
    */
-  private static reasoningStepToJson(step: ReasoningStepType): JsonObjectType {
+  static reasoningStepToJson(step: ReasoningStepType): JsonObjectType {
     if (step.kind === 'action') {
       const argsOut: JsonObjectType = {};
       for (const [k, v] of Object.entries(step.args)) {
@@ -347,85 +305,10 @@ export class ArchivistState extends NodeStateBase {
   }
   // #endregion snapshot-helpers
 
-  protected override restoreData(snap: JsonObjectType): void {
-    NodeStateBase.restoreFields(this, snap, ArchivistState.FIELDS);
-    const rawIntent = snap['intent'];
-    if (ArchivistState.isIntent(rawIntent)) this.intent = rawIntent;
-    const approvalSnap = snap['approvalState'];
-    if (approvalSnap === 'pending' || approvalSnap === 'approved' || approvalSnap === 'rejected') {
-      this.approvalState = approvalSnap;
-    }
-    const rawTerms = snap['terms'];
-    if (Array.isArray(rawTerms) && rawTerms.every((x): x is string => typeof x === 'string')) {
-      this.terms = rawTerms;
-    }
-    const rawCandidates = snap['candidates'];
-    if (Array.isArray(rawCandidates)) {
-      this.candidates = ArchivistState.filterCandidates(rawCandidates);
-    }
-    const rawShortlist = snap['shortlist'];
-    if (Array.isArray(rawShortlist)) {
-      this.shortlist = ArchivistState.filterCandidates(rawShortlist);
-    }
-    const rc = snap['recalledContext'];
-    if (rc !== null && rc !== undefined && typeof rc === 'object' && !Array.isArray(rc)) {
-      const rawPriorIntents = rc['priorIntents'];
-      const rawRecentCandidates = rc['recentCandidates'];
-      const rawSimilarPriorQueries = rc['similarPriorQueries'];
-      const rawPriorReasoning = rc['priorReasoning'];
-      this.recalledContext = {
-        'priorIntents': Array.isArray(rawPriorIntents)
-          ? ArchivistState.filterPriorIntents(rawPriorIntents)
-          : [],
-        'recentCandidates': Array.isArray(rawRecentCandidates)
-          ? ArchivistState.filterCandidates(rawRecentCandidates)
-          : [],
-        'similarPriorQueries': Array.isArray(rawSimilarPriorQueries)
-          ? ArchivistState.filterSimilarPriorQueries(rawSimilarPriorQueries)
-          : [],
-        'priorReasoning': Array.isArray(rawPriorReasoning)
-          ? ArchivistState.filterPriorReasoning(rawPriorReasoning)
-          : [],
-        'summary': typeof rc['summary'] === 'string' ? rc['summary'] : '',
-      };
-    }
-    const rawPriorCandidates = snap['priorCandidates'];
-    if (Array.isArray(rawPriorCandidates)) {
-      this.priorCandidates = ArchivistState.filterCandidates(rawPriorCandidates);
-    }
-    const rawConversation = snap['conversation'];
-    if (Array.isArray(rawConversation)) {
-      this.conversation = ArchivistState.filterConversationTurns(rawConversation);
-    }
-    const rawBookWorksets = snap['bookWorksets'];
-    if (Array.isArray(rawBookWorksets)) {
-      this.bookWorksets = ArchivistState.filterBookWorksetItems(rawBookWorksets);
-    }
-    const rawReasoning = snap['reasoning'];
-    if (Array.isArray(rawReasoning)) {
-      this.reasoning = ArchivistState.filterReasoningSteps(rawReasoning);
-    }
-    const md = snap['memoryDigest'];
-    if (md !== null && md !== undefined && typeof md === 'object' && !Array.isArray(md)) {
-      const rawRecentBooks = md['recentBooks'];
-      const rawIntentBreakdown = md['intentBreakdown'];
-      this.memoryDigest = {
-        'bookCount':  typeof md['bookCount']  === 'number' ? md['bookCount']  : 0,
-        'queryCount': typeof md['queryCount'] === 'number' ? md['queryCount'] : 0,
-        'recentBooks': Array.isArray(rawRecentBooks)
-          ? ArchivistState.filterRecentBooks(rawRecentBooks)
-          : [],
-        'intentBreakdown': Array.isArray(rawIntentBreakdown)
-          ? ArchivistState.filterIntentBreakdown(rawIntentBreakdown)
-          : [],
-        'summary': typeof md['summary'] === 'string' ? md['summary'] : '',
-      };
-    }
-  }
 
   // #region type-guards
 
-  private static filterCandidates(arr: unknown[]): CandidateType[] {
+  static filterCandidates(arr: unknown[]): CandidateType[] {
     const out: CandidateType[] = [];
     for (const item of arr) {
       if (ArchivistState.isCandidate(item)) out.push(item);
@@ -433,7 +316,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterPriorIntents(arr: unknown[]): RecalledContext['priorIntents'] {
+  static filterPriorIntents(arr: unknown[]): RecalledContext['priorIntents'] {
     const out: RecalledContext['priorIntents'][number][] = [];
     for (const item of arr) {
       if (ArchivistState.isPriorIntent(item)) out.push(item);
@@ -441,7 +324,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterSimilarPriorQueries(arr: unknown[]): RecalledContext['similarPriorQueries'] {
+  static filterSimilarPriorQueries(arr: unknown[]): RecalledContext['similarPriorQueries'] {
     const out: RecalledContext['similarPriorQueries'][number][] = [];
     for (const item of arr) {
       if (ArchivistState.isSimilarPriorQuery(item)) out.push(item);
@@ -449,7 +332,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterConversationTurns(arr: unknown[]): ConversationTurn[] {
+  static filterConversationTurns(arr: unknown[]): ConversationTurn[] {
     const out: ConversationTurn[] = [];
     for (const item of arr) {
       if (ArchivistState.isConversationTurn(item)) out.push(item);
@@ -457,7 +340,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterBookWorksetItems(arr: unknown[]): BookWorksetItemType[] {
+  static filterBookWorksetItems(arr: unknown[]): BookWorksetItemType[] {
     const out: BookWorksetItemType[] = [];
     for (const item of arr) {
       if (ArchivistState.isBookWorksetItem(item)) out.push(item);
@@ -465,7 +348,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterPriorReasoning(arr: unknown[]): RecalledContext['priorReasoning'] {
+  static filterPriorReasoning(arr: unknown[]): RecalledContext['priorReasoning'] {
     const out: RecalledContext['priorReasoning'][number][] = [];
     for (const item of arr) {
       if (ArchivistState.isPriorReasoning(item)) out.push(item);
@@ -473,7 +356,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterReasoningSteps(arr: unknown[]): ReasoningStepType[] {
+  static filterReasoningSteps(arr: unknown[]): ReasoningStepType[] {
     const out: ReasoningStepType[] = [];
     for (const item of arr) {
       if (ArchivistState.isReasoningStep(item)) out.push(item);
@@ -481,7 +364,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterRecentBooks(arr: unknown[]): MemoryDigest['recentBooks'] {
+  static filterRecentBooks(arr: unknown[]): MemoryDigest['recentBooks'] {
     const out: MemoryDigest['recentBooks'][number][] = [];
     for (const item of arr) {
       if (ArchivistState.isRecentBook(item)) out.push(item);
@@ -489,7 +372,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static filterIntentBreakdown(arr: unknown[]): MemoryDigest['intentBreakdown'] {
+  static filterIntentBreakdown(arr: unknown[]): MemoryDigest['intentBreakdown'] {
     const out: MemoryDigest['intentBreakdown'][number][] = [];
     for (const item of arr) {
       if (ArchivistState.isIntentBreakdownEntry(item)) out.push(item);
@@ -497,7 +380,7 @@ export class ArchivistState extends NodeStateBase {
     return out;
   }
 
-  private static isIntent(v: unknown): v is ArchivistIntent {
+  static isIntent(v: unknown): v is ArchivistIntent {
     return v === 'lookup-author'
       || v === 'find-reviews'
       || v === 'describe-book'

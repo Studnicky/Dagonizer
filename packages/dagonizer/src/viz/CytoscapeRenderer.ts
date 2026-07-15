@@ -39,8 +39,7 @@ import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherSourceConfigType } from '../entities/dag/GatherNode.js';
 
-import { PlacementUtils, RoleColorUtils } from './internal.js';
-import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
+import { PlacementUtils, RoleColorUtils, type CytoscapeIdModeType, type PlacementDispatchType, type PlacementEntryType } from './internal.js';
 
 /**
  * Data record carried by every Cytoscape node element.
@@ -53,6 +52,8 @@ import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 export type CytoscapeNodeDataType = {
   id: string;
   label: string;
+  /** Alternate runtime ids that should resolve to this rendered node. */
+  aliases?: readonly string[];
   /** Placement variant; selector use: `node[type="scatter"]`. */
   type: 'single' | 'scatter' | 'embedded-dag' | 'gather' | 'terminal' | 'phase';
   // ── Containment (EmbeddedDAGNode / dag-body ScatterNode with a container role) ──
@@ -133,6 +134,8 @@ export type RenderOptionsType = {
   embeddedDAGs?: ReadonlyMap<string, DAGType>;
   /** Max recursion depth; guards against accidental embedded-DAG cycles. */
   maxDepth?: number;
+  /** Cytoscape id strategy. Default 'path' preserves call-site scoped embedded nodes. */
+  idMode?: CytoscapeIdModeType;
 }
 
 /**
@@ -160,12 +163,14 @@ const DEFAULT_MAX_DEPTH = 6;
 const CYTOSCAPE_RENDER_DEFAULTS = {
   'embeddedDAGs': DEFAULT_EMBEDDED_DAGS,
   'maxDepth': DEFAULT_MAX_DEPTH,
+  'idMode': 'path',
 } as const;
 
 /** Resolved render options — all fields required; defaults filled before first use. */
 type ResolvedRenderOptions = {
   embeddedDAGs: ReadonlyMap<string, DAGType>;
   maxDepth: number;
+  idMode: CytoscapeIdModeType;
 }
 
 /**
@@ -180,6 +185,8 @@ type ResolvedRenderOptions = {
 class RenderState {
   readonly elements: CytoscapeElementType[];
   readonly options:  ResolvedRenderOptions;
+  readonly nodeIndexById: Map<string, number>;
+  readonly edgeIds: Set<string>;
   /**
    * True when the current recursion is inside a container-bound (worker)
    * compound. Edges emitted while this flag is set receive the
@@ -191,6 +198,8 @@ class RenderState {
   constructor(options: ResolvedRenderOptions) {
     this.elements            = [];
     this.options             = options;
+    this.nodeIndexById       = new Map();
+    this.edgeIds             = new Set();
     this.inContainedCompound = false;
   }
 }
@@ -241,6 +250,59 @@ export class CytoscapeRenderer {
     return state.elements;
   }
 
+  private static addElement(state: RenderState, element: CytoscapeElementType): void {
+    if (element.group === 'nodes') {
+      const existingIndex = state.nodeIndexById.get(element.data.id);
+      if (existingIndex !== undefined) {
+        const existing = state.elements[existingIndex];
+        if (existing?.group === 'nodes') {
+          state.elements[existingIndex] = CytoscapeRenderer.withMergedAliases(existing, element.data.aliases);
+        }
+        return;
+      }
+      state.nodeIndexById.set(element.data.id, state.elements.length);
+    } else {
+      if (state.edgeIds.has(element.data.id)) return;
+      state.edgeIds.add(element.data.id);
+    }
+    state.elements.push(element);
+  }
+
+  private static mergeAliases(
+    current: readonly string[] | undefined,
+    incoming: readonly string[] | undefined,
+  ): readonly string[] | undefined {
+    if (current === undefined && incoming === undefined) return undefined;
+    const merged = new Set<string>();
+    for (const alias of current ?? []) merged.add(alias);
+    for (const alias of incoming ?? []) merged.add(alias);
+    return [...merged];
+  }
+
+  private static withMergedAliases(
+    node: CytoscapeNodeElementType,
+    aliases: readonly string[] | undefined,
+  ): CytoscapeNodeElementType {
+    const mergedAliases = CytoscapeRenderer.mergeAliases(node.data.aliases, aliases);
+    return mergedAliases === undefined
+      ? node
+      : { ...node, "data": { ...node.data, "aliases": mergedAliases } };
+  }
+
+  private static placementAliases(
+    prefix: string,
+    placementIri: string,
+    renderedId: string,
+  ): readonly string[] | undefined {
+    const aliases = new Set<string>([
+      placementIri,
+      PlacementUtils.idIn(prefix, placementIri, 'path'),
+      PlacementUtils.idIn(prefix, placementIri, 'iri'),
+    ]);
+    aliases.delete(renderedId);
+    return aliases.size === 0 ? undefined : [...aliases];
+  }
+
   /**
    * Build the base `CytoscapeNodeDataType` for a placement, including container
    * role colors when the placement is bound to a worker/isolate container.
@@ -255,11 +317,15 @@ export class CytoscapeRenderer {
     label: string,
     variant: CytoscapeNodeDataType['type'],
     role: string | null,
+    aliases: readonly string[] | undefined,
   ): CytoscapeNodeDataType {
+    const identity = aliases === undefined
+      ? { "id": id }
+      : { "id": id, "aliases": aliases };
     if (role !== null) {
       const colors = RoleColorUtils.forRole(role);
       return {
-        "id":               id,
+        ...identity,
         "label":            label,
         "type":             variant,
         "container":        role,
@@ -268,7 +334,7 @@ export class CytoscapeRenderer {
         "containerText":    colors.text,
       };
     }
-    return { "id": id, "label": label, "type": variant };
+    return { ...identity, "label": label, "type": variant };
   }
 
   /**
@@ -294,12 +360,16 @@ export class CytoscapeRenderer {
    *   `node[container]`       — data selector, matches any node with a container role
    *   `node[container="cpu"]` — data selector, matches a specific role
    */
-  private static placementNode(placement: PlacementEntryType, id: string): CytoscapeNodeElementType {
+  private static placementNode(
+    placement: PlacementEntryType,
+    id: string,
+    aliases: readonly string[] | undefined,
+  ): CytoscapeNodeElementType {
     const nodeVariant = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const role = PlacementUtils.containerRole(placement);
 
     const baseLabel = CytoscapeRenderer.titleCase(PlacementUtils.displayLabel(placement));
-    const baseData: CytoscapeNodeDataType = CytoscapeRenderer.composeNodeData(id, baseLabel, nodeVariant, role);
+    const baseData: CytoscapeNodeDataType = CytoscapeRenderer.composeNodeData(id, baseLabel, nodeVariant, role, aliases);
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${nodeVariant} dag-contained` : `dag-${nodeVariant}`;
@@ -400,12 +470,13 @@ export class CytoscapeRenderer {
     placement: PlacementEntryType,
     fromId: string,
     prefix: string,
+    idMode: CytoscapeIdModeType,
   ): readonly CytoscapeEdgeElementType[] {
     // TerminalNode and PhaseNode are leaf placements with no outbound routes.
     if (!CytoscapeRenderer.hasOutputs(placement)) return [];
     const edges: CytoscapeEdgeElementType[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
-      const destId = PlacementUtils.idIn(prefix, target);
+      const destId = PlacementUtils.idIn(prefix, target, idMode);
       const selfLoop = fromId === destId ? ' self-loop' : '';
       edges.push({
         "group": 'edges',
@@ -454,12 +525,13 @@ export class CytoscapeRenderer {
       if (body === undefined) continue;
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
-      const placementId = PlacementUtils.idIn(prefix, placement['@id']);
-      embeddedEntryRewrite.set(placement['@id'], CytoscapeRenderer.entryChildIds(body, placementId));
+      const placementId = PlacementUtils.idIn(prefix, placement['@id'], state.options.idMode);
+      embeddedEntryRewrite.set(placement['@id'], CytoscapeRenderer.entryChildIds(body, placementId, state.options.idMode));
     }
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
-      const myId = PlacementUtils.idIn(prefix, placement['@id']);
+      const myId = PlacementUtils.idIn(prefix, placement['@id'], state.options.idMode);
+      const aliases = CytoscapeRenderer.placementAliases(prefix, placement['@id'], myId);
       const myCompoundParent = compoundParent;
 
       // ── EmbeddedDAGNode / ScatterNode with body.dag: if the target DAG is
@@ -477,7 +549,7 @@ export class CytoscapeRenderer {
       if (shouldExpand && embeddedDagBody !== undefined && embedDagName !== null) {
         // Emit the placement as a compound parent (label tells the visitor
         // which embedded-DAG this cluster represents).
-        const parentNode = CytoscapeRenderer.placementNode(placement, myId);
+        const parentNode = CytoscapeRenderer.placementNode(placement, myId, aliases);
         const labelled: CytoscapeNodeElementType = {
           ...parentNode,
           "data": {
@@ -486,12 +558,12 @@ export class CytoscapeRenderer {
             ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
           },
         };
-        state.elements.push(labelled);
+        CytoscapeRenderer.addElement(state, labelled);
 
         // Recurse: render every node of the embedded-DAG with `parent: myId`.
         // If this placement is container-bound (worker/isolate), mark the state so
         // edges emitted inside receive the `route-in-worker` class.
-        const innerPrefix = PlacementUtils.idIn(prefix, placement['@id']);
+        const innerPrefix = PlacementUtils.idIn(prefix, placement['@id'], state.options.idMode);
         const innerVisited = new Set(visited);
         innerVisited.add(embedDagName);
         const placementRole = PlacementUtils.containerRole(placement);
@@ -509,50 +581,56 @@ export class CytoscapeRenderer {
         //   • all other outputs → inner TerminalNode(completed) placements
         // If no matching inner leaf is found for an output, fall through
         // to the compound source (original behavior).
-        const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix);
-        for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
+        const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix, state.options.idMode);
+        for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix, state.options.idMode)) {
           const isErrorRoute = edge.data.route === 'error' || edge.data.route === 'failed';
           const candidateSources = isErrorRoute ? innerLeaves.failed : innerLeaves.completed;
           if (candidateSources.length > 0) {
             for (const sourceId of candidateSources) {
-              state.elements.push({
+              CytoscapeRenderer.addElement(state, {
                 ...edge,
                 "data": { ...edge.data, "source": sourceId, "id": `${sourceId}__${edge.data.route}__${edge.data.target}` },
               });
             }
           } else {
-            state.elements.push(edge);
+            CytoscapeRenderer.addElement(state, edge);
           }
         }
         continue;
       }
 
       // ── Regular placement (or unresolved embedded-dag): emit as a single node.
-      const node = CytoscapeRenderer.placementNode(placement, myId);
+      const node = CytoscapeRenderer.placementNode(placement, myId, aliases);
       const enriched: CytoscapeNodeElementType = myCompoundParent !== undefined
         ? { ...node, "data": { ...node.data, "parent": myCompoundParent } }
         : node;
-      state.elements.push(enriched);
+      CytoscapeRenderer.addElement(state, enriched);
 
-      for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
+      for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix, state.options.idMode)) {
         // Entry-point rewrite: if this edge targets an embedded-DAG
         // placement at this level, retarget to that placement's
         // entrypoint child so dagre lays the compound out top-down
         // with the entry visually at the top.
-        const rewrittenTargets = CytoscapeRenderer.rewriteToEmbeddedEntries(edge.data.target, prefix, embeddedEntryRewrite);
+        const rewrittenTargets = CytoscapeRenderer.rewriteToEmbeddedEntries(
+          edge.data.target,
+          prefix,
+          embeddedEntryRewrite,
+          state.options.idMode,
+        );
         // Worker-edge class: edges inside a container-bound compound receive
         // `route-in-worker` so the stylesheet can style them distinctly (dashed,
         // role-colored) to signal "runs in a worker context".
         const workerClass = state.inContainedCompound ? ' route-in-worker' : '';
         if (rewrittenTargets.length === 1 && rewrittenTargets[0] === edge.data.target) {
-          state.elements.push(
+          CytoscapeRenderer.addElement(
+            state,
             workerClass !== ''
               ? { ...edge, "classes": `${edge.classes}${workerClass}` }
               : edge,
           );
         } else {
           for (const rewrittenTarget of rewrittenTargets) {
-            state.elements.push({
+            CytoscapeRenderer.addElement(state, {
               ...edge,
               "classes": `${edge.classes}${workerClass}`,
               "data": { ...edge.data, "target": rewrittenTarget, "id": `${edge.data.source}__${edge.data.route}__${rewrittenTarget}` },
@@ -563,13 +641,13 @@ export class CytoscapeRenderer {
     }
   }
 
-  private static entryChildIds(body: DAGType, placementId: string): readonly string[] {
+  private static entryChildIds(body: DAGType, placementId: string, idMode: CytoscapeIdModeType): readonly string[] {
     const result: string[] = [];
     const seen = new Set<string>();
     for (const entrypoint of Object.values(body.entrypoints)) {
       if (seen.has(entrypoint)) continue;
       seen.add(entrypoint);
-      result.push(PlacementUtils.idIn(placementId, entrypoint));
+      result.push(PlacementUtils.idIn(placementId, entrypoint, idMode));
     }
     return result;
   }
@@ -584,9 +662,10 @@ export class CytoscapeRenderer {
     targetId: string,
     prefix: string,
     entryMap: ReadonlyMap<string, readonly string[]>,
+    idMode: CytoscapeIdModeType,
   ): readonly string[] {
     for (const [placementIri, entryChildIds] of entryMap) {
-      const placementId = PlacementUtils.idIn(prefix, placementIri);
+      const placementId = PlacementUtils.idIn(prefix, placementIri, idMode);
       if (targetId === placementId) return entryChildIds;
     }
     return [targetId];
@@ -603,12 +682,13 @@ export class CytoscapeRenderer {
   private static collectExitLeaves(
     body: DAGType,
     innerPrefix: string,
+    idMode: CytoscapeIdModeType,
   ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
     const completed: string[] = [];
     const failed: string[] = [];
     for (const placement of PlacementUtils.narrowNodes(body)) {
       if (placement['@type'] !== 'TerminalNode') continue;
-      const placementId = PlacementUtils.idIn(innerPrefix, placement['@id']);
+      const placementId = PlacementUtils.idIn(innerPrefix, placement['@id'], idMode);
       if (placement.outcome === 'failed') failed.push(placementId);
       else completed.push(placementId);
     }

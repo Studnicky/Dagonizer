@@ -40,17 +40,16 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { Placement } from '../../src/entities/dag/Placement.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import { JsonValue } from '../../src/entities/JsonValue.js';
 import { NodeError } from '../../src/entities/node/NodeError.js';
 import { DAGError } from '../../src/errors/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -59,14 +58,7 @@ import { Validator } from '../../src/validation/Validator.js';
 class CounterState extends NodeStateBase {
   value = 0;
 
-  protected override snapshotData() {
-    return { 'value': this.value };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>) {
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-  }
 }
 
 class DynamicContainerState extends NodeStateBase {
@@ -74,29 +66,7 @@ class DynamicContainerState extends NodeStateBase {
   selectedDag = '';
   items: Array<{ dagIri: string }> = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'value': this.value,
-      'selectedDag': this.selectedDag,
-      'items': this.items.map((item) => ({ ...item })),
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const value = snap['value'];
-    if (typeof value === 'number') this.value = value;
-    const selectedDag = snap['selectedDag'];
-    if (typeof selectedDag === 'string') this.selectedDag = selectedDag;
-    const items = snap['items'];
-    if (Array.isArray(items)) {
-      this.items = items.filter((entry): entry is { dagIri: string } => {
-        return typeof entry === 'object'
-          && entry !== null
-          && !Array.isArray(entry)
-          && typeof entry['dagIri'] === 'string';
-      });
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +112,7 @@ class BodyNode extends MonadicNode<NodeStateBase, 'success'> {
 }
 const bodyNode = new BodyNode();
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 const CHILD_DAG_IRI = 'urn:noocodec:dag:child';
 const PARENT_DAG_IRI = 'urn:noocodec:dag:parent';
 const PARENT_CONTAINER_DAG_IRI = 'urn:noocodec:dag:parent-c';
@@ -241,7 +211,7 @@ const parentContainerDAG: DAGType = {
 // container-dispatch mode (its runDag is never invoked by the registration tests).
 const fakeCounterContainer: DagContainerInterface = {
   async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-    return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+    return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
   },
 };
 
@@ -304,7 +274,7 @@ const validDagBodyScatterDAG: DAGType = {
 // runDag is never invoked by the registration-only test below.
 const fakeDagContainer: DagContainerInterface = {
   async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-    return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+    return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
   },
 };
 
@@ -346,16 +316,6 @@ function transportError(message: string = 'transport lost') {
     true,
     '2020-01-01T00:00:00Z',
   );
-}
-
-function firstRequestSnapshot(request: ExecutionRequestType): JsonObjectType {
-  const firstItem = request.items[0];
-  if (firstItem === undefined) throw new Error('No item in container request');
-  const snapshot = JsonValue.from(firstItem.snapshot);
-  if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) {
-    throw new Error('container request snapshot must be a JSON object');
-  }
-  return snapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -487,18 +447,12 @@ void describe('Container seam — W1', () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface = {
       async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        // Restore child clone from the snapshot in the task.
-        // items[0].snapshot is { [key: string]: unknown } at the wire boundary;
-        // JsonValue.from coerces it to JsonValueType, then the object guard narrows
-        // to JsonObjectType so CounterState.restore can accept it cast-free.
+        // Restore the child clone from the graph transfer in the task.
         const request = task.toRequest();
         const firstItem = request.items[0];
         if (firstItem === undefined) throw new Error('No items in request');
-        const rawSnap = JsonValue.from(firstItem.snapshot);
-        if (typeof rawSnap !== 'object' || rawSnap === null || Array.isArray(rawSnap)) {
-          throw new Error('snapshot must be a JSON object');
-        }
-        const childState = CounterState.restore(rawSnap);
+        const childState = new CounterState();
+        await childState.restoreJsonLd(firstItem.graphState.runIri, firstItem.graphState.jsonLd);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();
@@ -511,7 +465,7 @@ void describe('Container seam — W1', () => {
         return {
           'terminalOutput': 'success',
           'errors': [],
-          'stateSnapshot': childState.snapshot(),
+          'graphState': graphStateTransfer(childState),
           'intermediates': childResult.executedNodes.map((nodeName) => ({
             'output': 'success',
             'skipped': false,
@@ -533,7 +487,7 @@ void describe('Container seam — W1', () => {
     const state = new CounterState();
     const result = await dispatcher.execute(PARENT_CONTAINER_DAG_IRI, state);
 
-    // Child ran (added 10 to value) and applySnapshot applied the clone's
+    // Child ran (added 10 to value) and graph restore applied the clone's
     // terminal snapshot back to the clone, then output mapping copied value
     // back to parent state.
     assert.equal(result.state.value, 10);
@@ -631,11 +585,12 @@ void describe('Container seam — dynamic DAG references', () => {
       async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
         const request = task.toRequest();
         requests.push(request);
-        const snapshot = firstRequestSnapshot(request);
+        const childState = new DynamicContainerState();
+        childState.value = 77;
         return {
           'terminalOutput': 'success',
           'errors': [],
-          'stateSnapshot': { ...snapshot, 'value': 77 },
+          'graphState': graphStateTransfer(childState),
           'intermediates': [],
         };
       },
@@ -691,11 +646,11 @@ void describe('Container seam — dynamic DAG references', () => {
       async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
         const request = task.toRequest();
         requests.push(request);
-        const snapshot = firstRequestSnapshot(request);
+        const childState = new DynamicContainerState();
         return {
           'terminalOutput': 'success',
           'errors': [],
-          'stateSnapshot': snapshot,
+          'graphState': graphStateTransfer(childState),
           'intermediates': [],
         };
       },
@@ -744,7 +699,7 @@ void describe('Container seam — dynamic DAG references', () => {
         return {
           'terminalOutput': 'failed',
           'errors': [transportError('embedded transport lost')],
-          'stateSnapshot': null,
+          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
         };
       },
@@ -805,7 +760,7 @@ void describe('Container seam — dynamic DAG references', () => {
         return {
           'terminalOutput': 'failed',
           'errors': [transportError('scatter transport lost')],
-          'stateSnapshot': null,
+          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
         };
       },

@@ -345,7 +345,7 @@ const runnerOptions: DagRunnerOptionsType<ArchivistState> = { 'dispatcher': disp
 const archivistRunner = new ArchivistRunner(runnerOptions);
 
 const onceTrigger = new OnceTrigger<ArchivistInput, ArchivistState, ArchivistResult>(
-  'the-archivist',
+  ARCHIVIST_DAG_IRI,
   { 'query': visitorQuery },
 );
 
@@ -433,15 +433,18 @@ logger.result(`triples=${String(services.memory.size)} written`);
 // #endregion eventbus-pattern
 
 // #region cancellation-run
-// Caller-driven cancellation: the visitor closes the page.
-const visitorClosedSignal = Signal.timeout(800);
+// Caller-driven cancellation: the visitor closes the page. Set
+// `ARCHIVIST_LIVE_SMOKE=1` for a completed model-backed release exercise.
+const liveSmoke = Env.get('ARCHIVIST_LIVE_SMOKE') === '1';
+const cancellationOptions = liveSmoke
+  ? { 'deadlineMs': 120_000 }
+  : { 'signal': Signal.timeout(800), 'deadlineMs': 5_000 };
 
 const cancelVisitor = new ArchivistState();
 cancelVisitor.query = "What's a book about a labyrinth?";
 
 const cancelResult = await dispatcher.execute(ARCHIVIST_DAG_IRI, cancelVisitor, {
-  'signal':     visitorClosedSignal,
-  'deadlineMs': 5000,              // hard 5s ceiling regardless of signal
+  ...cancellationOptions,
 });
 
 // #region lifecycle-state-switch
@@ -483,8 +486,8 @@ if (cancelResult.cursor !== null) {
   if (recalled !== null) {
     const freshMemory = new MemoryStore();
     await recalled.restoreStores({ 'memory': freshMemory });
-    const { dagName, state, cursor } = recalled.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+    const { dagName, state, cursor } = await recalled.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);

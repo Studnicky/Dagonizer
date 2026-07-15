@@ -257,6 +257,33 @@ export class PreferredModels {
 }
 
 /**
+ * ActiveBackendStore: explicit provider preference persistence.
+ *
+ * A stored ProviderId means the visitor chose that backend. A missing value
+ * means auto-select the best runnable backend from the detected matrix.
+ */
+export class ActiveBackendStore {
+  static readonly #STORAGE_KEY = 'dagonizer-active-backend';
+
+  static load(): ProviderId | null {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(ActiveBackendStore.#STORAGE_KEY);
+    if (raw !== null && ApiKeyStore.isProviderId(raw)) return raw;
+    return null;
+  }
+
+  static save(id: ProviderId): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(ActiveBackendStore.#STORAGE_KEY, id);
+  }
+
+  static clear(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(ActiveBackendStore.#STORAGE_KEY);
+  }
+}
+
+/**
  * BackendMatrix: backend detection, ranking, and visibility utilities.
  */
 export class BackendMatrix {
@@ -546,6 +573,45 @@ export class BackendMatrix {
     options: PickBestOptions = {},
   ): boolean {
     return BackendMatrix.pickBest(available, options) === null;
+  }
+
+  /**
+   * Ready backends first, then the rest; each group is alphabetical by display name.
+   */
+  static sortAvailable(available: readonly BackendAvailability[]): BackendAvailability[] {
+    const byDisplayName = (left: BackendAvailability, right: BackendAvailability): number =>
+      left.displayName.localeCompare(right.displayName);
+    const ready = available.filter((backend) => backend.runnable).toSorted(byDisplayName);
+    const rest  = available.filter((backend) => !backend.runnable).toSorted(byDisplayName);
+    return [...ready, ...rest];
+  }
+
+  /**
+   * Resolve the backend that is actually used for the next request.
+   */
+  static effectiveActiveBackendId(
+    activeId: ProviderId | null,
+    available: readonly BackendAvailability[],
+    options: PickBestOptions = {},
+  ): ProviderId | null {
+    if (activeId !== null) {
+      const explicit = available.find((backend) => backend.id === activeId);
+      if (explicit?.runnable === true) return explicit.id;
+    }
+    return BackendMatrix.pickBest(available, options)?.id ?? null;
+  }
+
+  static activeSummary(
+    activeId: ProviderId | null,
+    available: readonly BackendAvailability[],
+    options: PickBestOptions = {},
+  ): string {
+    const effectiveId = BackendMatrix.effectiveActiveBackendId(activeId, available, options);
+    if (effectiveId === null) return 'No runnable backend available.';
+    const active = available.find((backend) => backend.id === effectiveId);
+    if (active === undefined) return `Current backend: ${effectiveId}`;
+    const prefix = activeId === null ? 'Auto' : 'Selected';
+    return `${prefix}: ${active.displayName}`;
   }
 
   /**

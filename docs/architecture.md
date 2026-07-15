@@ -159,10 +159,10 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `Signal.compose(...)`.
 3. Marks state `running`.
 4. Iterates the graph by placement IRI: look up the current placement, call the matching executor, yield the result, and route each output token to the next placement IRI.
-5. For `EmbeddedDAGNode` and DAG-body `ScatterNode` placements that declare a `container` role, the dispatcher resolves the bound `DagContainerInterface` and delegates the whole child DAG execution to that backend. The child state crosses the boundary as a snapshot; the backend preserves the DAG boundary, placement path, terminal snapshot, and intermediate topology events; the dispatcher applies the returned snapshot and continues.
+5. For `EmbeddedDAGNode` and DAG-body `ScatterNode` placements that declare a `container` role, the dispatcher resolves the bound `DagContainerInterface` and delegates the whole child DAG execution to that backend. The child state crosses the boundary as graph-state JSON-LD plus its RDF graph identity; the backend preserves the DAG boundary, placement path, terminal graph state, and intermediate topology events; the dispatcher restores the returned graph state and continues.
 6. Stops when the work set drains through explicit `TerminalNode` placements or when the signal fires (abort or timeout).
 7. Marks state `completed`, `cancelled`, or `timed_out` accordingly.
-8. For non-embedded runs: if the terminal placement name is bound in `channels`, builds a `DAGHandoff` envelope (by-value `stateSnapshot`, `correlationId`, `registryVersion`, `placementPath`) and publishes it to the bound `HandoffChannelInterface`. A publish failure is collected as a `HANDOFF_PUBLISH_FAILED` error; it does not change the returned `ExecutionResult` or the terminal outcome.
+8. For non-embedded runs: if the terminal placement is bound in `channels`, builds a `DAGHandoff` envelope carrying the graph-state JSON-LD document, `correlationId`, `registryVersion`, and `placementPath`, then publishes it to the bound `HandoffChannelInterface`. A publish failure is collected as a `HANDOFF_PUBLISH_FAILED` error; it does not change the returned `ExecutionResult` or the terminal outcome.
 9. Returns `ExecutionResultType` with `cursor` (next placement IRI or `null`), `executedNodes`, `skippedNodes`, and final `state`.
 
 `Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator. The flow body runs exactly once.
@@ -242,7 +242,7 @@ Dagonizer is a TypeScript DAG dispatcher. You describe work as a JSON-LD graph o
 
 An embedded DAG or scatter-dag-body placement may declare a logical `container` role. The dispatcher binds roles to `DagContainerInterface` backends (worker thread, forked child, cluster worker, spawned process, Web Worker, or remote host) at construction time. The DAG definition and node implementations are unchanged: the container decides where the child DAG executes, not how it is authored. A dispatcher with no bound containers runs every body in-process; a dispatcher with at least one container validates declared roles at `registerDAG` time and rejects unbound roles.
 
-When a top-level DAG completes at a terminal placement whose `name` is bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal state snapshot, the terminal name, the placement path, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope state and executes the next DAG in the chain using a plain `Dagonizer` instance. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
+When a top-level DAG completes at a terminal placement whose `name` is bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal graph-state JSON-LD, the terminal name, the placement path, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope graph state and executes the next DAG in the chain using a plain `Dagonizer` instance. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
 
 The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter and first-class gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
 
@@ -331,8 +331,9 @@ Dagonizer is structured as a **ports-and-adapters** (hexagonal) architecture. Th
 | Node execution | `NodeInterface<TState, TOutput>` | The step the dispatcher calls |
 | Clock | `ClockProviderInterface` | Monotonic time source |
 | Scheduler | `SchedulerProviderInterface` | Timer/sleep primitives |
-| State store | `StoreInterface` | Key-value persistence |
-| Checkpoint store | `CheckpointStoreInterface` | Cursor + state snapshot persistence |
+| Node state graph | `GraphDatasetInterface` | RDF graph persistence for every node state |
+| Named store | `StoreInterface` / `Snapshottable` | Optional non-node attachments carried by checkpoints |
+| Checkpoint store | `CheckpointStoreInterface` | Cursor + graph-state JSON-LD/N-Quads persistence |
 | DAG container | `DagContainerInterface` | Sub-DAG isolation (worker thread, fork, cluster) |
 | Channel | `HandoffChannelInterface` | Cross-host state hand-off |
 | Embedder | `EmbedderInterface` | Vector embedding backend |
@@ -415,7 +416,7 @@ Applications import from the narrowest subpath that gives them what they need. T
 Class extension is the only extension mechanism. Zero callbacks. Zero function-pass-in.
 
 - **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the application's responsibility; write it into the subclass.
-- **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
+- **Domain state**: subclass `NodeStateBase` and map typed fields to the graph-state port for checkpointing.
 - **Nodes**: extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly. Nodes receive their dependencies through their constructors. Nodes never throw; they return a routed batch from `execute(batch, context)`.
 - **Time and scheduling**: implement `ClockProviderInterface` and `SchedulerProviderInterface`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`; the container preserves DAG boundaries, placement paths, checkpoint/resume contracts, and graph topology while moving execution out of process. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.

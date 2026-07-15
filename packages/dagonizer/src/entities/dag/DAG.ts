@@ -12,6 +12,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { DagonizerContexts } from '../../context/DagonizerContexts.js';
+
 import { EmbeddedDAGNodeSchema } from './EmbeddedDAGNode.js';
 import { GatherNodeSchema } from './GatherNode.js';
 import { PhaseNodeSchema } from './PhaseNode.js';
@@ -23,7 +25,7 @@ import { TerminalNodeSchema } from './TerminalNode.js';
 // Namespace
 // ---------------------------------------------------------------------------
 
-const NS = 'https://noocodec.dev/ontology/dag/';
+const NS = DagonizerContexts.NAMESPACES.dag;
 
 // ---------------------------------------------------------------------------
 // Context
@@ -44,6 +46,9 @@ const NS = 'https://noocodec.dev/ontology/dag/';
  */
 export const DAG_CONTEXT: Record<string, unknown> = {
   '@version': 1.1,
+  'dag': NS,
+  'xsd': DagonizerContexts.NAMESPACES.xsd,
+  '@vocab': NS,
 
   // ── DAG-level properties ──────────────────────────────────────────────────
   'name':       { '@id': `${NS}name` },
@@ -54,7 +59,6 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // ── placement-level properties ────────────────────────────────────────────
   'outputs':  { '@id': `${NS}outputs` },
   'node':     { '@id': `${NS}node` },
-  'dag':      { '@id': `${NS}dag` },
 
   // scatter properties
   'body':        { '@id': `${NS}body` },
@@ -160,9 +164,8 @@ export class DAGEntrypoints {
  * frozen value namespace. TypeScript permits a `type` and a `const`
  * with the same identifier because they live in separate declaration spaces.
  *
- * `DAGIdentity.id` validates caller-supplied DAG IRIs. `DAGIdentity.placementId`
- * composes a placement IRI from an explicit DAG IRI and an explicit placement
- * identifier. Display names never participate in identity construction.
+ * `DAGIdentity.id` validates caller-supplied DAG IRIs. Placement identities are
+ * supplied directly on each placement and are never synthesized here.
  */
 export const DAGIdentity = Object.freeze({
   /**
@@ -175,13 +178,4 @@ export const DAGIdentity = Object.freeze({
     return iri;
   },
 
-  /**
-   * Compose a placement IRI from a DAG IRI and explicit placement identifier.
-   */
-  placementId(dagIri: string, placementId: string): string {
-    if (placementId.length === 0) {
-      throw new Error(`DAGIdentity.placementId requires a non-empty placement identifier`);
-    }
-    return `${DAGIdentity.id(dagIri)}/node/${placementId}`;
-  },
 });

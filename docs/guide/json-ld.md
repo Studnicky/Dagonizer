@@ -44,6 +44,8 @@ Every DAG carries `@context`, `@id`, and `@type`, so the same file can be consum
 
 Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or projection layer. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that round-trips through `DAGDocument.serialize` and `DAGDocument.load`. Every DAG carries `@context`, `@id`, and `@type` so RDF stores, schema validators, and generic JSON-LD processors read the shape natively without an adapter.
 
+RDF 1.2 is the semantic substrate used across topology, node contracts, execution, state, checkpoints, provenance, and memory. `DAGDocument.load()` remains the typed JSON-LD 1.1 authoring boundary for DAG documents; graph-backed runtime state uses the shared `Rdf12JsonLdCodec` and the shared context/prefix registry. See [RDF 1.2](../reference/rdf-12) for the parser-backed path.
+
 ## Diagrams, Examples, and Outputs
 
 Example 03 starts from a JSON-LD string, loads it through `DAGDocument.load`, and executes the resulting DAG. The diagram is generated from that loaded object:
@@ -98,7 +100,7 @@ Example 03 embeds a full JSON-LD DAG as a string and feeds it through the ingest
 
 <<< @/../examples/dags/03-schema.ts#dag-literal
 
-Placement `@id`s typically nest under the DAG's URN: `urn:noocodec:dag:demo/node/transform`.
+Placement `@id`s are explicit absolute IRIs. A project may choose a nested convention such as `urn:noocodec:dag:demo/node/transform`, but the framework never derives identity from `name`.
 
 ### `@type` vocabulary
 
@@ -193,6 +195,8 @@ Because every field carries a canonical IRI through `@context`, a Dagonizer DAG 
 ```
 
 This is the same data the engine consumes. No separate ontology model, no projection. Applications that want to query DAGs as RDF (SHACL validation, SPARQL queries over a fleet of stored DAGs) get it for free by treating the JSON document as JSON-LD.
+
+RDF 1.2 Basic Encoding documents are parsed through the RDF 1.2 helper instead of `DAGDocument.load()`. That path is for statement metadata, such as confidence on a route claim or provenance on a composition edge, and returns RDF/JS quads with triple terms in object position. The encoding uses ordinary JSON-LD 1.1 nodes typed as `rdf:TripleTerm` with `rdf:ttSubject`, `rdf:ttPredicate`, and `rdf:ttObject`; reifier nodes connect to them with `rdf:reifies`.
 
 ## Related Concepts
 

@@ -33,7 +33,7 @@ const CLEANUP_END_IRI = 'urn:noocodec:dag:cleanup-run/node/end';
 const UNSCOPED_SIGNAL = new AbortController().signal;
 
 class SeenState extends NodeStateBase {
-  seen: { nodeName: string; correlationId: string | undefined; dagName: string | undefined }[] = [];
+  seen: { nodeName: string; correlationId: string | undefined; dagName: string | undefined; dagIri: string | undefined; runIri: string | undefined }[] = [];
 }
 
 void describe('DagExecutionContext correlation propagation', () => {
@@ -44,6 +44,8 @@ void describe('DagExecutionContext correlation propagation', () => {
         'nodeName': name,
         'correlationId': DagExecutionContext.tryGet(context.signal, DagExecutionContextKeys.CORRELATION_ID),
         'dagName': DagExecutionContext.tryGet(context.signal, DagExecutionContextKeys.DAG_NAME),
+        'dagIri': DagExecutionContext.dagIriOf(context.signal),
+        'runIri': DagExecutionContext.runIriOf(context.signal),
       });
       return 'success';
     };
@@ -75,6 +77,11 @@ void describe('DagExecutionContext correlation propagation', () => {
     // NodeContextType or any node constructor argument.
     assert.equal(seenFirst.dagName, CORRELATED_DAG_IRI);
     assert.equal(seenSecond.dagName, CORRELATED_DAG_IRI);
+    assert.equal(seenFirst.dagIri, CORRELATED_DAG_IRI);
+    assert.equal(seenSecond.dagIri, CORRELATED_DAG_IRI);
+    assert.equal(seenFirst.runIri, seenSecond.runIri);
+    assert.equal(seenFirst.runIri, state.runIri);
+    assert.match(seenFirst.runIri ?? '', /\/run\//u);
   });
 
   void it('the scope is terminated once the run completes: its bindings are no longer readable', async () => {
@@ -147,7 +154,7 @@ void describe('DagExecutionContext correlation propagation', () => {
       async (state, context) => {
         await new Promise<void>((resolve) => { setTimeout(resolve, delayMs); });
         const correlationId = DagExecutionContext.tryGet(context.signal, DagExecutionContextKeys.CORRELATION_ID);
-        state.seen.push({ 'nodeName': 'delayed', correlationId, 'dagName': undefined });
+        state.seen.push({ 'nodeName': 'delayed', correlationId, 'dagName': undefined, 'dagIri': undefined, 'runIri': undefined });
         return 'success';
       };
 

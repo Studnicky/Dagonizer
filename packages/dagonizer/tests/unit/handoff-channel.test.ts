@@ -3,8 +3,8 @@
  *
  * W5 hand-off channels:
  * (a) DAG ending at a BOUND terminal publishes exactly one envelope; round-trip
- *     fixed point: restore(envelope.stateSnapshot).snapshot() deep-equals
- *     envelope.stateSnapshot.
+ *     fixed point: restore(envelope.graphState).snapshotJsonLd() deep-equals
+ *     envelope.graphState.
  * (b) DAG ending at an UNBOUND terminal publishes nothing.
  * (c) Channel whose publish rejects → run returns normal ExecutionResult with
  *     unchanged terminalOutcome, and state.errors contains HANDOFF_PUBLISH_FAILED.
@@ -23,9 +23,11 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAGType } from '../../src/entities/index.js';
-import { JsonValue } from '../../src/entities/JsonValue.js';
+import { GraphStateJsonLdCodec } from '../../src/graph/GraphStateJsonLdCodec.js';
+import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -42,14 +44,7 @@ class HandoffState extends NodeStateBase {
     return cloned;
   }
 
-  protected override snapshotData() {
-    return { 'counter': this.counter };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>) {
-    const v = snap['counter'];
-    if (typeof v === 'number') this.counter = v;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -127,18 +122,14 @@ void describe('handoff-channel: bound terminal', () => {
     assert.equal(envelope.registryVersion, '1.2.3');
     assert.ok(envelope.correlationId.length > 0);
     assert.deepEqual(envelope.placementPath, []);
-    assert.ok('stateSnapshot' in envelope, 'envelope should have stateSnapshot');
-    assert.ok(!('stateSnapshotRef' in envelope), 'envelope should not have stateSnapshotRef');
+    assert.ok('graphState' in envelope, 'envelope should have graphState');
+    assert.ok('graphState' in envelope, 'envelope should carry graphState');
 
     // Round-trip fixed point: restore → snapshot must equal original snapshot
-    if (!('stateSnapshot' in envelope)) throw new Error('expected stateSnapshot variant');
-    const originalSnapshot = JsonValue.from(envelope.stateSnapshot);
-    assert.ok(
-      originalSnapshot !== null && typeof originalSnapshot === 'object' && !Array.isArray(originalSnapshot),
-      'stateSnapshot must be a JSON object',
-    );
-    const restored = HandoffState.restore(originalSnapshot);
-    const restoredSnapshot = restored.snapshot();
+    const originalSnapshot = envelope.graphState;
+    const restored = new HandoffState(undefined, state.runIri);
+    await restored.restoreJsonLd(restored.runIri, originalSnapshot);
+    const restoredSnapshot = graphStateDocument(restored);
     assert.deepEqual(restoredSnapshot, originalSnapshot);
   });
 
@@ -157,10 +148,11 @@ void describe('handoff-channel: bound terminal', () => {
     assert.equal(channel.published.length, 1);
     const envelope = channel.published[0];
     if (envelope === undefined) throw new Error('expected envelope at index 0');
-    assert.ok('stateSnapshot' in envelope);
-    if (!('stateSnapshot' in envelope)) throw new Error('expected stateSnapshot variant');
-    const snap = envelope.stateSnapshot;
-    assert.equal(snap['counter'], 1);
+    assert.ok('graphState' in envelope);
+    if (!('graphState' in envelope)) throw new Error('expected graphState variant');
+    const snap = envelope.graphState;
+    assert.ok(GraphStateJsonLdCodec.decode(snap).some((quad) =>
+      quad.predicate.value === GraphStateTerms.DAGONIZER.StateValuePredicate && quad.object.value === '1'));
   });
 });
 
@@ -321,7 +313,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
 // ---------------------------------------------------------------------------
 
 void describe('handoff-channel: DAGHandoffType schema', () => {
-  void it('validates a by-value envelope', () => {
+  void it('validates a JSON-LD envelope', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -329,12 +321,12 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'stateSnapshot': { 'metadata': {} },
+      'graphState': { '@context': {}, '@graph': [] },
     };
     assert.ok(Validator.dagHandoff.is(envelope), 'by-value envelope should be valid');
   });
 
-  void it('validates a by-reference envelope', () => {
+  void it('rejects a by-reference envelope', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -342,12 +334,12 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': ['parent'],
-      'stateSnapshotRef': 's3://my-bucket/snapshots/abc123',
+      'graphState': 's3://my-bucket/snapshots/abc123',
     };
-    assert.ok(Validator.dagHandoff.is(envelope), 'by-ref envelope should be valid');
+    assert.ok(!Validator.dagHandoff.is(envelope), 'by-ref envelope should be rejected');
   });
 
-  void it('rejects an envelope with both stateSnapshot and stateSnapshotRef', () => {
+  void it('rejects an envelope with a non-JSON-LD graphState', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -355,13 +347,12 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'stateSnapshot': { 'metadata': {} },
-      'stateSnapshotRef': 's3://bucket/key',
+      'graphState': 's3://bucket/key',
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'both fields should be invalid');
   });
 
-  void it('rejects an envelope with neither stateSnapshot nor stateSnapshotRef', () => {
+  void it('rejects an envelope with neither graphState nor graphState', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -381,7 +372,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'stateSnapshot': {},
+      'graphState': {},
       'extraField': 'not-allowed',
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'additionalProperties should be invalid');
@@ -395,7 +386,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'stateSnapshot': {},
+      'graphState': {},
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'empty dagName should be invalid');
   });
@@ -408,7 +399,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': '',
       'placementPath': [],
-      'stateSnapshot': {},
+      'graphState': {},
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'empty correlationId should be invalid');
   });

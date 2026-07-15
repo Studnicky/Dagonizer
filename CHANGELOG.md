@@ -23,6 +23,12 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ### Added
 
+- **Graph dataset providers are the canonical state and topology seam.**
+  `GraphDatasetProviderInterface` mints isolated root/child datasets for
+  in-memory and N3 execution, while `@studnicky/dagonizer-store-file` provides
+  the Node-only durable file adapter and provider. Core graph source passes the
+  browser-isomorphism gate; the removed `./adapter/file-graph` export is
+  replaced by the sibling package.
 - **First-class `GatherNode` JSON-LD shape.** Gather placements declare source placement/entrypoint IRIs, per-source projection config, gather strategy config, downstream outputs, and policy modes (`all`, `any`, `quorum`, with explicit error inclusion semantics).
 - **Graph-native DAG topology projection and querying.** `DagGraphProjector`, `DagGraphQueries`, `DagReferenceGraph`, and the in-memory topology store project DAG identity, entrypoints, placements, routes, gather sources, candidate DAG references, schema ports, and selected runtime DAGs into a queryable graph substrate.
 - **Schema registry and route compatibility checks.** Registered node/tool schemas are projected into graph metadata and validated across route edges, gather boundaries, and embedded-DAG input/output mappings. Schema identity uses the browser-safe `@studnicky/substrate` structural hash path.

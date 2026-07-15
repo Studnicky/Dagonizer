@@ -18,6 +18,7 @@ import { normalizeCsvDAG } from '../embedded-dags/NormalizeCsvDAG.ts';
 import { normalizeJsonDAG } from '../embedded-dags/NormalizeJsonDAG.ts';
 import { normalizeNdjsonDAG } from '../embedded-dags/NormalizeNdjsonDAG.ts';
 import { normalizeYamlDAG } from '../embedded-dags/NormalizeYamlDAG.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 
 export const normalizeSourcesPlugin = defineDagonizerPlugin({
   'id': '@studnicky/dagonizer-cartographer-normalize-sources',
@@ -37,10 +38,10 @@ export const normalizeSourcesPlugin = defineDagonizerPlugin({
     normalizeYamlDAG,
   ],
   'exports': {
-    'csv': 'normalize-csv',
-    'json': 'normalize-json',
-    'ndjson': 'normalize-ndjson',
-    'yaml': 'normalize-yaml',
+    'csv':    CARTOGRAPHER_IRIS.dag.normalizeCsv,
+    'json':   CARTOGRAPHER_IRIS.dag.normalizeJson,
+    'ndjson': CARTOGRAPHER_IRIS.dag.normalizeNdjson,
+    'yaml':   CARTOGRAPHER_IRIS.dag.normalizeYaml,
   },
 });
 // #endregion cartographer-normalize-plugin

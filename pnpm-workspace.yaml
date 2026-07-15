@@ -8,3 +8,69 @@ packages:
 # warn "Unknown project config". shamefullyHoist flattens node_modules for tools
 # that expect a hoisted layout.
 shamefullyHoist: true
+# The refreshed lockfile contains preact@10.29.7 published at
+# 2026-07-08T17:33:43Z; minimumReleaseAge: 1440 is compatible after
+# 2026-07-09T17:33:43Z if no newer lockfile entries are added.
+minimumReleaseAge: 600
+
+allowBuilds:
+  core-js: false
+  esbuild: true
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
+  unrs-resolver: true
+
+overrides:
+  js-yaml@4: ^4.2.0
+  dompurify: ">=3.4.11"
+  esbuild@0.28: ">=0.28.1"
+  vitepress>vite: ^6.4.3
+  vitepress>shiki: 4.3.1
+  vitepress>@shikijs/core: 4.3.1
+  vitepress>@shikijs/transformers: 4.3.1
+  vitepress>@shikijs/types: 4.3.1
+  read-yaml-file: ^2.1.0
+  "@typescript-eslint/parser>typescript": 6.0.3
+  "@typescript-eslint/project-service>typescript": 6.0.3
+  "@typescript-eslint/tsconfig-utils>typescript": 6.0.3
+  "@typescript-eslint/type-utils>typescript": 6.0.3
+  "@typescript-eslint/typescript-estree>typescript": 6.0.3
+  "@typescript-eslint/utils>typescript": 6.0.3
+  typescript-eslint>typescript: 6.0.3
+  twoslash@0.3.9>typescript: 6.0.3
+  twoslash-vue@0.3.9>typescript: 6.0.3
+
+packageExtensions:
+  "@typescript-eslint/parser@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  "@typescript-eslint/project-service@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  "@typescript-eslint/tsconfig-utils@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  "@typescript-eslint/type-utils@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  "@typescript-eslint/typescript-estree@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  "@typescript-eslint/utils@8.63.0":
+    dependencies:
+      typescript: 6.0.3
+  typescript-eslint@8.63.0:
+    dependencies:
+      typescript: 6.0.3
+  twoslash@0.3.9:
+    dependencies:
+      typescript: 6.0.3
+  twoslash-vue@0.3.9:
+    dependencies:
+      typescript: 6.0.3
+
+peerDependencyRules:
+  allowedVersions:
+    "@tensorflow-models/universal-sentence-encoder>@tensorflow/tfjs-converter": "4"
+    "@tensorflow-models/universal-sentence-encoder>@tensorflow/tfjs-core": "4"

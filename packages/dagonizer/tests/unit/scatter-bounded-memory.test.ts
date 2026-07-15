@@ -25,16 +25,15 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -42,14 +41,7 @@ class CountState extends NodeStateBase {
   counter: number = 0;
   finalizeRecordCount: number = -1; // -1 = finalize not yet called
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'counter': this.counter, 'finalizeRecordCount': this.finalizeRecordCount };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
-    if (typeof snap['finalizeRecordCount'] === 'number') this.finalizeRecordCount = snap['finalizeRecordCount'];
-  }
 }
 
 // ── state that carries items ──────────────────────────────────────────────────
@@ -57,15 +49,7 @@ class CountState extends NodeStateBase {
 class ItemCountState extends CountState {
   items: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { ...super.snapshotData(), 'items': [...this.items] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    super.restoreData(snap);
-    const rawItems = snap['items'];
-    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 // ── test gather strategy ─────────────────────────────────────────────────────
@@ -308,15 +292,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
       items: number[] = [];
       finalizeRecordCount: number = -1;
 
-      protected override snapshotData(): JsonObjectType {
-        return { 'items': [...this.items], 'finalizeRecordCount': this.finalizeRecordCount };
-      }
 
-      protected override restoreData(snap: JsonObjectType): void {
-        const rawItems = snap['items'];
-        if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-        if (typeof snap['finalizeRecordCount'] === 'number') this.finalizeRecordCount = snap['finalizeRecordCount'];
-      }
     }
 
     const trackingNode = TestNode.make<TrackingState>('urn:noocodec:node:track-pass', ['done']);
@@ -429,20 +405,7 @@ class MultiNodeBodyState extends NodeStateBase {
   /** Tracks finalize invocation for the compactable gather. */
   finalizeRecordCount: number = -1;
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'items': [...this.items],
-      'counter': this.counter,
-      'finalizeRecordCount': this.finalizeRecordCount,
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const rawItems = snap['items'];
-    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-    if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
-    if (typeof snap['finalizeRecordCount'] === 'number') this.finalizeRecordCount = snap['finalizeRecordCount'];
-  }
 }
 
 // ── nodes for the sub-DAG body ────────────────────────────────────────────────

@@ -44,6 +44,7 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // CountingChannel: wraps a MessageChannelInterface and counts onMessage calls
@@ -92,7 +93,7 @@ class CorrelationTask {
   static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
     return {
       'dagName': 'test-dag',
-      'placementPath': [],
+      'placementPath': ['urn:dagonizer:placement:test'],
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
@@ -100,8 +101,8 @@ class CorrelationTask {
       toRequest(): ExecutionRequestType {
         return {
           'dagName': 'test-dag',
-          'placementPath': [],
-          'items': [{ 'id': correlationId, 'snapshot': new MinimalState().snapshot() }],
+          'placementPath': ['urn:dagonizer:placement:test'],
+          'items': [{ 'id': correlationId, 'graphState': graphStateTransfer(new MinimalState()) }],
           'timeoutMs': null,
           'correlationId': correlationId,
         };
@@ -188,7 +189,7 @@ class FakeHost {
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
+            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${correlationId}` }],
             'errors': [],
             'intermediates': [],
           },
@@ -294,7 +295,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
               'variant': 'result',
               'response': {
                 'correlationId': secondId,
-                'items': [{ 'id': secondId, 'snapshot': null, 'terminalOutcome': `done-${secondId}` }],
+                'items': [{ 'id': secondId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${secondId}` }],
                 'errors': [],
                 'intermediates': [],
               },
@@ -304,7 +305,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
                 'variant': 'result',
                 'response': {
                   'correlationId': firstId,
-                  'items': [{ 'id': firstId, 'snapshot': null, 'terminalOutcome': `done-${firstId}` }],
+                  'items': [{ 'id': firstId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${firstId}` }],
                   'errors': [],
                   'intermediates': [],
                 },
@@ -365,7 +366,7 @@ void describe('worker observability: forwarded node events reach the parent obse
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': 'done' }],
+            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'done' }],
             'errors': [],
             'intermediates': [],
           },

@@ -57,7 +57,7 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import { DAGIdentity, SCATTER_PROGRESS_KEY, Validator } from '@studnicky/dagonizer';
+import { SCATTER_PROGRESS_KEY, Validator } from '@studnicky/dagonizer';
 import type { StoredScatterProgressType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
@@ -391,7 +391,7 @@ export class DagConformance {
           };
 
           await dispatcher.execute(CONFORMANCE_DAG.law7, state);
-          const finalSnapshot = JSON.parse(JSON.stringify(state.snapshot()));
+          const finalSnapshot = await state.snapshotJsonLd();
           return { checkpoints, finalSnapshot };
         };
 
@@ -490,7 +490,7 @@ export class DagConformance {
         // At least one item must have been acked before the kill.
         const raw = state1.getMetadata(SCATTER_PROGRESS_KEY);
         const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
-        const fanIri = DAGIdentity.placementId(CONFORMANCE_DAG.law8, 'fan');
+        const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
         const progressEntry = progress[fanIri];
         const ackedBefore = progressEntry === undefined ? 0
           : progressEntry.mode === 'bounded'

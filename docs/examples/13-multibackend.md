@@ -1,6 +1,6 @@
 ---
 title: 'Example 13: Multi-Backend Roles'
-description: 'The Cartographer browser workers DAG assigns the streaming scatter to a cpu container and the summary embedded DAG to an io container while preserving the same JSON-LD graph.'
+description: 'The Cartographer browser workers DAG assigns the canonical event scatter to a cpu container and the summary embedded DAG to an io container while preserving the same JSON-LD graph.'
 seeAlso:
   - text: 'The Cartographer'
     link: './the-cartographer'
@@ -14,15 +14,14 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerWorkersDAG, insightsSummaryDAG } from '../../examples/the-cartographer/dag.ts';
-import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/StreamEventDAG.ts';
+import { cartographerWorkersDAG, eventPipelineTypedDAG, insightsSummaryDAG } from '../../examples/the-cartographer/dag.ts';
 </script>
 
 # Example 13: Multi-Backend Roles
 
 ## What It Is
 
-Multi-Backend Roles let one application DAG send different placements to different execution backends. The Cartographer assigns stream processing to `cpu` and summary generation to `io` while preserving the same JSON-LD graph.
+Multi-Backend Roles let one application DAG send different placements to different execution backends. The Cartographer assigns canonical event processing to `cpu` and summary generation to `io` while preserving the same JSON-LD graph.
 
 The role names are deployment labels, not new workflow primitives. The graph stays portable because it asks for `cpu` and `io`; the host decides whether those roles mean browser workers, Node worker threads, forked processes, or in-process execution.
 
@@ -41,7 +40,7 @@ pnpm run docs:dev
 Then open [The Cartographer](./the-cartographer), click **Run**, and watch the
 **DAG** pane. The graph expands the same registered DAGs shown above:
 
-- `process-stream` fans out through `stream-event` on the `cpu` role.
+- `process-stream` fans out through `event-pipeline-typed` on the `cpu` role.
 - `summarize-insights` invokes `insights-summary` on the `io` role.
 - The parent DAG stays a JSON-LD graph of placements, routes, and container
   role names.
@@ -74,13 +73,14 @@ container-role labels are visible in the same shape the dispatcher executes.
 
 #### `cpu` body DAG
 
-The `cpu` role runs the `stream-event` body for every source payload. This is
-not a synthetic worker sample; it is the live Cartographer decode and routing
-pipeline.
+The `cpu` role runs the `event-pipeline-typed` body for every canonical event.
+This is not a synthetic worker sample; it is the live Cartographer typed
+enrichment and routing pipeline after producer feed DAGs unpack and normalize
+the raw payloads.
 
-<DagJsonMermaid :dag="streamEventDAG" title="stream-event body DAG" aria-label="Stream event JSON-LD DAG beside Mermaid generated from it." />
+<DagJsonMermaid :dag="eventPipelineTypedDAG" title="event-pipeline-typed body DAG" aria-label="Typed event pipeline JSON-LD DAG beside Mermaid generated from it." />
 
-<<< @/../examples/the-cartographer/embedded-dags/StreamEventDAG.ts#stream-event-dag
+<<< @/../examples/the-cartographer/dag.ts#event-pipeline-typed-dag
 
 #### `io` body DAG
 
@@ -104,7 +104,8 @@ Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD g
 
 The runnable page creates two role bindings from the same registry-backed worker
 entry. The registry contains every DAG the worker can execute: the stream-event
-tree for `cpu` and the insights-summary DAG for `io`.
+compatibility tree, the event-pipeline-typed tree for `cpu`, and the
+insights-summary DAG for `io`.
 
 <<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
 

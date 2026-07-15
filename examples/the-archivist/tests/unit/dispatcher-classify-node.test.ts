@@ -218,20 +218,18 @@ describe('ClassifyMessageNode', () => {
   });
 });
 
-describe('DispatcherState classificationMode snapshot/restore', () => {
-  it('round-trips classificationMode through snapshot() / restore()', () => {
+describe('DispatcherState graph state', () => {
+  it('round-trips classificationMode through graph JSON-LD', async () => {
     const state = new DispatcherState();
     state.classificationMode = 'llm';
-    const snap = state.snapshot();
-    const restored = DispatcherState.restore(snap);
+    const snap = state.snapshotJsonLd();
+    const restored = new DispatcherState();
+    await restored.restoreJsonLd(state.runIri, snap);
     assert.equal(restored.classificationMode, 'llm');
   });
 
-  it('defaults to \'embedder\' when the snapshot carries a garbage classificationMode', () => {
-    const state = new DispatcherState();
-    state.classificationMode = 'llm';
-    const snap = { ...state.snapshot(), 'classificationMode': 'nonsense' };
-    const restored = DispatcherState.restore(snap);
+  it('uses the schema default for a new state', () => {
+    const restored = new DispatcherState();
     assert.equal(restored.classificationMode, 'embedder');
   });
 });

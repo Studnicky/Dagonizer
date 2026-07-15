@@ -22,7 +22,6 @@
  */
 
 import { Dagonizer, InMemoryChannel } from '@studnicky/dagonizer';
-import { JsonObject } from '@studnicky/dagonizer/entities';
 import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 
 import {
@@ -59,13 +58,8 @@ class HandoffChannel extends InMemoryChannel {
   lastResultState: PipelineState | null = null;
 
   protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
-    // Restore the state snapshot carried by the envelope.
-    // DAGHandoff is a discriminated union (stateSnapshot vs stateSnapshotRef);
-    // narrow to the by-value branch before calling restore.
-    if (!('stateSnapshot' in handoff)) return;
-    const snapshot: unknown = handoff.stateSnapshot;
-    if (!JsonObject.is(snapshot)) return;
-    const continuationState = PipelineState.restore(snapshot);
+    const continuationState = new PipelineState();
+    await continuationState.restoreJsonLd(continuationState.runIri, handoff.graphState);
 
     // Execute DAG B on the restored state.
     const result = await dispatcherB.execute('urn:noocodec:dag:pipeline-b', continuationState);

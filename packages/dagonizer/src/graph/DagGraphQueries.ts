@@ -1,4 +1,4 @@
-import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
+import type { TermType, TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 
@@ -89,6 +89,30 @@ export class DagGraphQueries {
     return result;
   }
 
+  static routeTargets(store: TripleStoreInterface, placementIri: string): readonly string[] {
+    const targets: string[] = [];
+    const routes = store.select({
+      'subject': DagGraphTerms.namedNode(placementIri),
+      'predicate': DagGraphTerms.predicate('route'),
+      'object': '?route',
+    });
+    for (const row of routes) {
+      const route = row['route'];
+      if (route === undefined) continue;
+      const target = DagGraphQueries.namedObject(store, route.value, 'target');
+      if (target !== undefined) targets.push(target);
+    }
+    return targets;
+  }
+
+  static placementIris(store: TripleStoreInterface): readonly string[] {
+    const rows = store.select({
+      'predicate': DagGraphTerms.predicate('placement'),
+      'object': '?placement',
+    });
+    return DagGraphQueries.unique(rows.map((row) => row['placement']?.value));
+  }
+
   static selectedDagIris(store: TripleStoreInterface): readonly string[] {
     const rows = store.select({
       'predicate': DagGraphTerms.predicate('selectedDag'),
@@ -169,6 +193,22 @@ export class DagGraphQueries {
     return undefined;
   }
 
+  static routeSchemaIris(
+    store: TripleStoreInterface,
+    sourcePlacementIri: string,
+    targetPlacementIri: string,
+  ): { readonly produced: string | undefined; readonly required: string | undefined } {
+    const routeStatement = DagGraphTerms.tripleTerm(
+      DagGraphTerms.namedNode(sourcePlacementIri),
+      DagGraphTerms.predicate('route'),
+      DagGraphTerms.namedNode(targetPlacementIri),
+    );
+    return {
+      'produced': DagGraphQueries.namedObject(store, routeStatement, 'producesSchema'),
+      'required': DagGraphQueries.namedObject(store, routeStatement, 'requiresSchema'),
+    };
+  }
+
   private static literalObject(store: TripleStoreInterface, subject: string, predicate: string): string | undefined {
     const row = store.select({
       'subject': DagGraphTerms.namedNode(subject),
@@ -179,9 +219,9 @@ export class DagGraphQueries {
     return value?.termType === 'Literal' ? value.value : undefined;
   }
 
-  private static namedObject(store: TripleStoreInterface, subject: string, predicate: string): string | undefined {
+  private static namedObject(store: TripleStoreInterface, subject: string | TermType, predicate: string): string | undefined {
     const row = store.select({
-      'subject': DagGraphTerms.namedNode(subject),
+      'subject': typeof subject === 'string' ? DagGraphTerms.namedNode(subject) : subject,
       'predicate': DagGraphTerms.predicate(predicate),
       'object': '?value',
     })[0];

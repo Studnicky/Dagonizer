@@ -31,11 +31,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.1.1"
   },
   "dependencies": {
-    "@studnicky/clock": "^4.0.0",
-    "@studnicky/concurrency": "^4.0.0"
+    "@studnicky/clock": "^5.0.0",
+    "@studnicky/concurrency": "^5.0.0"
   },
   "peerDependencies": {
     "@studnicky/dagonizer": "workspace:^2.0.0"

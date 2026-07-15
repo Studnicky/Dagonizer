@@ -1,16 +1,14 @@
 /**
- * CheckpointRestoreAdapterInterface: typed contract for restoring domain state
- * from a JSON snapshot.
+ * CheckpointRestoreAdapterInterface: typed contract for constructing the graph
+ * state class used by a checkpoint restore.
  *
  * Consumers implement this interface (typically as a static class) to
- * rehydrate a `TState` instance from a `JsonObjectType` snapshot produced by
- * `NodeStateBase.snapshot()`. Use `CheckpointRestoreAdapter.wrap` from
- * `checkpoint/Checkpoint.ts` to wrap a plain function in this contract.
+ * construct a `TState` instance that receives a checkpoint's graph-state JSON-LD
+ * document through the graph port. Use `CheckpointRestoreAdapter.wrap` from
+ * `checkpoint/Checkpoint.ts` to wrap a plain factory in this contract.
  */
 
-import type { JsonObjectType } from '../entities/json.js';
-
 export interface CheckpointRestoreAdapterInterface<TState> {
-  /** Rehydrate a `TState` instance from a JSON snapshot produced by `NodeStateBase.snapshot()`. */
-  restore(snapshot: JsonObjectType): TState;
+  /** Construct a state instance that will receive the checkpoint graph. */
+  restore(): TState;
 }

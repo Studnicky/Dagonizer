@@ -4,8 +4,8 @@
  * Six new coverage tests for paths hardened in the W4/W5 cycle but not yet
  * exercised by the existing suite:
  *
- *   TST-16: NodeStateBase.restoreData with a malformed snapshot — silent-skip.
- *   TST-17: DAGHandoffType stateSnapshotRef (by-reference) publishing path.
+ *   TST-16: graph JSON-LD state restoration.
+ *   TST-17: DAGHandoffType graphState (by-reference) publishing path.
  *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
  *   TST-20: Signal.compose with a pre-aborted signal.
@@ -31,117 +31,49 @@ import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.j
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer, graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
 
-// ── TST-16: NodeStateBase.restoreData with malformed snapshot ─────────────────
+// ── TST-16: graph JSON-LD state restoration ──────────────────────────────────
 
 class TypedState extends NodeStateBase {
   count: number = 0;
   label: string = '';
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'count': this.count, 'label': this.label };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    // Contract: silently skip fields whose types don't match. Do not throw.
-    const c = snap['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snap['label'];
-    if (typeof l === 'string') this.label = l;
-  }
 }
 
-void describe('TST-16: NodeStateBase.restoreData — malformed snapshot silent-skip contract', () => {
-  void it('silently skips a field with wrong type (string where number expected)', () => {
-    // Build a snapshot where count is a string instead of number.
-    const malformed: JsonObjectType = {
-      'metadata': {},
-      'retries': {},
-      'warnings': [],
-      'count': 'not-a-number',
-      'label': 'hello',
-    };
-    const restored = TypedState.restore(malformed);
-    // count stays at the default (0) — wrong type is silently skipped.
-    assert.equal(restored.count, 0, 'wrong-type field must be silently skipped, not throw');
-    // label is correctly restored.
-    assert.equal(restored.label, 'hello', 'correctly-typed label must be restored');
-  });
-
-  void it('silently skips a missing field — default value is preserved', () => {
-    // Build a snapshot with no count field at all.
-    const missing: JsonObjectType = {
-      'metadata': {},
-      'retries': {},
-      'warnings': [],
-      'label': 'world',
-    };
-    const restored = TypedState.restore(missing);
-    // count stays at the class default (0).
-    assert.equal(restored.count, 0, 'missing field must yield class default');
-    assert.equal(restored.label, 'world');
-  });
-
-  void it('round-trips without losing data when all fields are correctly typed', () => {
+void describe('TST-16: graph JSON-LD state restoration', () => {
+  void it('round-trips graph-owned domain fields', async () => {
     const state = new TypedState();
     state.count = 7;
     state.label = 'seven';
-    const snap = state.snapshot();
-    const restored = TypedState.restore(snap);
+    const snap = graphStateDocument(state);
+    const restored = new TypedState();
+    await restored.restoreJsonLd(state.runIri, snap);
     assert.equal(restored.count, 7);
     assert.equal(restored.label, 'seven');
   });
 });
 
-// ── TST-17: DAGHandoffType stateSnapshotRef (by-reference) publishing path ────────
-//
-// The dispatcher always publishes by-value. The by-ref envelope variant is
-// defined in the schema for size-limited transports where state is written
-// separately. This test verifies:
-//   (a) A custom channel can rewrite a by-value envelope to by-reference form.
-//   (b) The resulting by-reference envelope satisfies Validator.dagHandoff.is().
-//   (c) The envelope carries `stateSnapshotRef`, not inline `stateSnapshot`.
+// ── TST-17: DAGHandoffType graphState publishing path ───────────────────────
 
-void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
+void describe('TST-17: DAGHandoffType graphState publishing path', () => {
   void it('a channel that rewrites to by-ref envelope produces a valid DAGHandoffType', async () => {
-    // Simulate an external state store that assigns a ref URI when state is
-    // written. The channel receives the by-value envelope, writes state to the
-    // mock store, and re-publishes a by-ref envelope.
-    const stored: Map<string, JsonObjectType> = new Map();
-    let refCounter = 0;
-
     const receivedEnvelopes: DAGHandoffType[] = [];
 
     class ByRefChannel {
       async publish(handoff: DAGHandoffType): Promise<void> {
-        // Write the state to the mock external store.
-        const ref = `urn:test:snapshot:${++refCounter}`;
-        if ('stateSnapshot' in handoff) {
-          const byValue = handoff as { stateSnapshot: JsonObjectType };
-          stored.set(ref, byValue.stateSnapshot);
-        }
-        // Build a by-ref envelope (no stateSnapshot field).
-        const byRefEnvelope: DAGHandoffType = {
-          'dagName':          handoff.dagName,
-          'terminalName':     handoff.terminalName,
-          'terminalOutput':   handoff.terminalOutput,
-          'registryVersion':  handoff.registryVersion,
-          'correlationId':    handoff.correlationId,
-          'placementPath':    handoff.placementPath,
-          'stateSnapshotRef': ref,
-        };
-        receivedEnvelopes.push(byRefEnvelope);
+        receivedEnvelopes.push(handoff);
       }
     }
 
@@ -182,24 +114,10 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
     const envelope = receivedEnvelopes[0];
     assert.ok(envelope !== undefined);
 
-    // Envelope carries stateSnapshotRef, not inline stateSnapshot.
-    assert.ok('stateSnapshotRef' in envelope,
-      'by-ref envelope must carry stateSnapshotRef');
-    assert.ok(!('stateSnapshot' in envelope),
-      'by-ref envelope must NOT carry inline stateSnapshot');
-    assert.ok(
-      typeof (envelope as { stateSnapshotRef: string }).stateSnapshotRef === 'string' &&
-      (envelope as { stateSnapshotRef: string }).stateSnapshotRef.startsWith('urn:test:snapshot:'),
-      'stateSnapshotRef must be the URI assigned by the channel',
-    );
-
-    // The by-ref envelope must satisfy the DAGHandoffType schema.
+    assert.ok('@context' in envelope.graphState);
+    assert.ok('@graph' in envelope.graphState);
     assert.ok(Validator.dagHandoff.is(envelope),
-      `by-ref envelope must satisfy DAGHandoffType schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
-
-    // The state was actually stored at the ref.
-    const ref = (envelope as { stateSnapshotRef: string }).stateSnapshotRef;
-    assert.ok(stored.has(ref), 'state must have been written to the mock store at the ref URI');
+      `handoff must satisfy DAGHandoffType schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
   });
 });
 
@@ -250,7 +168,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // below declares a DIFFERENT, unbound role, which is the misalignment.
     const fakeContainer: DagContainerInterface = {
       async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+        return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
       },
     };
     const dispatcher = new Dagonizer<NodeStateBase>({
@@ -332,7 +250,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badRaw = {
       'dagName': 'type-mismatch-test',
       'cursor': 'next-node',
-      'state': {},
+      'graph': { 'runIri': 'urn:dagonizer:run:type-mismatch', 'graphIri': 'urn:dagonizer:run:type-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {
@@ -365,7 +283,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badVersion = {
       'dagName': 'version-mismatch-test',
       'cursor': 'next-node',
-      'state': {},
+      'graph': { 'runIri': 'urn:dagonizer:run:version-mismatch', 'graphIri': 'urn:dagonizer:run:version-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {
@@ -452,16 +370,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       items: number[] = [];
       value: number = 0;
 
-      protected override snapshotData(): JsonObjectType {
-        return { 'items': [...this.items], 'value': this.value };
-      }
 
-      protected override restoreData(snap: JsonObjectType): void {
-        const items = snap['items'];
-        if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
-        const v = snap['value'];
-        if (typeof v === 'number') this.value = v;
-      }
     }
 
     // Counter node: reads item from metadata, records it, then waits for abort

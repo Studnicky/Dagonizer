@@ -30,11 +30,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.1",
     "json-schema-to-ts": "^3.1.1"
   },
   "dependencies": {
-    "@studnicky/dagonizer-book-entities": "workspace:^2.0.0"
+    "@studnicky/dagonizer-book-entities": "workspace:^"
   },
   "peerDependencies": {
     "@studnicky/dagonizer": "workspace:^2.0.0"

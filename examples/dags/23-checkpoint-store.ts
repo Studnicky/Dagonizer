@@ -15,10 +15,9 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
-// State: snapshotData/restoreData persist domain fields across the
+// State: graph-backed fields persist domain values across the
 // serialisation boundary that Checkpoint.capture + restoreState impose.
 // ---------------------------------------------------------------------------
 
@@ -28,18 +27,7 @@ export class PipelineState extends NodeStateBase {
   tally  = 0;
   trail: string[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { stage: this.stage, tally: this.tally, trail: [...this.trail] };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const s = snapshot['stage'];
-    if (typeof s === 'string') this.stage = s;
-    const n = snapshot['tally'];
-    if (typeof n === 'number') this.tally = n;
-    const t = snapshot['trail'];
-    if (Array.isArray(t)) this.trail = t.filter((x): x is string => typeof x === 'string');
-  }
 }
 // #endregion pipeline-state
 

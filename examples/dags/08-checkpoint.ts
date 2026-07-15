@@ -13,7 +13,6 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State: overrides snapshot/restore to persist domain fields
@@ -28,20 +27,11 @@ export class CountingState extends NodeStateBase {
    * Serialize domain fields into a plain JSON-serialisable object.
    * Called by Checkpoint.capture() to capture state at the abort point.
    */
-  protected override snapshotData(): JsonObjectType {
-    return { "count": this.count, "log": [...this.log] };
-  }
 
   /**
    * Restore domain fields from a previously-captured snapshot.
-   * Called by CountingState.restore() after the parse step.
+ * The checkpoint factory constructs CountingState; the graph restore follows.
    */
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const c = snapshot['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snapshot['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
 }
 // #endregion counting-state
 

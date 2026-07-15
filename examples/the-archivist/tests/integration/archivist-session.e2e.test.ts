@@ -5,16 +5,15 @@
  * subclass that collects every seam call into typed arrays for assertion.
  * No real LLM or HTTP calls are made:
  *   - `HeadlessStubLlm` returns deterministic responses for `suggestGreeting`,
- *     `suggestVisitorReplyTo`, `classifyIntent`, etc.
+ *     `classifyIntent`, etc.
  *   - `HeadlessArchivistSession.buildRig` injects stub scouts (empty results)
  *     exactly as `ArchivistHarness.dispatcher` does in the existing e2e test.
  *   - `HeadlessArchivistSession.provisionEmbedder` short-circuits to null
  *     (no CDN imports, no WebGPU probes).
  *
- * Regression guard: the `sampleReply` must differ from the greeting and must
- * not match the static greeting prefix patterns (`/^welcome|^come in|^stay a while/i`).
- * This catches any regression where `suggestVisitorReplyTo` returns its input
- * unchanged or returns a generic greeting rather than a visitor reply.
+ * Regression guard: the `sampleReply` must differ from the greeting, must come
+ * from the manual visitor seed pool, and must not match static greeting prefix
+ * patterns (`/^welcome|^come in|^stay a while/i`).
  *
  * Node 24 type-stripping: no enums, no namespaces, no parameter properties.
  */
@@ -25,12 +24,13 @@ import assert from 'node:assert/strict';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import { Clock, VirtualClockProvider, VirtualTimeCounter } from '@studnicky/clock';
 
-import { ArchivistSession } from '../../ArchivistSession.ts';
+import { ArchivistSession, STATIC_VISITOR_REPLIES } from '../../ArchivistSession.ts';
 import type {
   SessionDagEvent,
   SessionNodeEvent,
   SessionRig,
 } from '../../ArchivistSession.ts';
+import type { ConversationTurn } from '../../ArchivistState.ts';
 import type { BackendAvailability } from '../../providers/index.ts';
 import type { EmbedderProvisionResultType } from '../../providers/index.ts';
 import { MemoryStore } from '../../memory/MemoryStore.ts';
@@ -76,8 +76,8 @@ class NullTool {
 /**
  * HeadlessStubLlm: deterministic LlmClientInterface for session tests.
  *
- * `suggestGreeting` and `suggestVisitorReplyTo` return DISTINCT strings so the
- * regression test can assert they are different. Every other method that IS
+ * `suggestGreeting` returns a quoted string so the session sanitizer strips
+ * wrapper quotes before rendering or recording. Every other method that IS
  * called on the run path (classifyIntent, extractTerms, decideTools,
  * composeEmptyResponse) returns values that drive the salvage path without
  * making network calls. Methods that should NOT be called on the off-topic /
@@ -85,15 +85,17 @@ class NullTool {
  */
 class HeadlessStubLlm implements LlmClientInterface {
   static readonly GREETING = 'Good evening, bookseeker. What tale draws you tonight?';
+  static readonly RAW_GREETING = `"${HeadlessStubLlm.GREETING}"`;
   static readonly VISITOR_REPLY = 'I am looking for something about a haunted archive.';
+  static readonly RAW_VISITOR_REPLY = `"${HeadlessStubLlm.VISITOR_REPLY}"`;
 
   async suggestGreeting(): Promise<string> {
-    return HeadlessStubLlm.GREETING;
+    return HeadlessStubLlm.RAW_GREETING;
   }
 
   async suggestVisitorReplyTo(_greeting: string): Promise<string> {
     // Must differ from the greeting and from static greeting pool prefixes.
-    return HeadlessStubLlm.VISITOR_REPLY;
+    return HeadlessStubLlm.RAW_VISITOR_REPLY;
   }
 
   async classifyIntent(): Promise<ClassifiedIntent> { return 'search'; }
@@ -226,6 +228,10 @@ class HeadlessArchivistSession extends ArchivistSession {
   protected override onError(error: Error): void {
     this.errors.push(error);
   }
+
+  memoryConversation(limit: number): readonly ConversationTurn[] {
+    return this.store.conversationTurns(limit);
+  }
 }
 
 // ── Factory helpers ──────────────────────────────────────────────────────────
@@ -266,6 +272,12 @@ describe('ArchivistSession.greet()', () => {
   it('uses LLM-generated greeting (not static sample)', () => {
     assert.equal(greeting, HeadlessStubLlm.GREETING);
   });
+
+  it('records the greeting in the RDF conversation graph', () => {
+    assert.deepEqual(session.memoryConversation(10), [
+      { 'role': 'archivist', 'text': HeadlessStubLlm.GREETING, 'ts': session.conversation[0]?.ts ?? 0 },
+    ]);
+  });
 });
 
 // ── sampleReply() tests ──────────────────────────────────────────────────────
@@ -302,8 +314,51 @@ describe('ArchivistSession.sampleReply()', () => {
     );
   });
 
-  it('sample reply matches the LLM-generated visitor phrase', () => {
-    assert.equal(session.sampleReplies[0], HeadlessStubLlm.VISITOR_REPLY);
+  it('sample reply uses a manually seeded visitor phrase', () => {
+    assert.ok(STATIC_VISITOR_REPLIES.includes(session.sampleReplies[0] ?? ''));
+  });
+
+  it('records greeting and initial visitor reply in conversation history', () => {
+    const roles = session.conversation.map((t) => t.role);
+    assert.deepEqual(roles, ['archivist', 'visitor']);
+    assert.deepEqual(session.memoryConversation(10).map((t) => t.role), ['archivist', 'visitor']);
+  });
+});
+
+// ── recorded-seed execution tests ───────────────────────────────────────────
+
+describe('ArchivistSession.answerRecordedVisitorTurn()', () => {
+  let session: HeadlessArchivistSession;
+  let seedQuery: string;
+
+  before(async () => {
+    session = SessionHarness.make();
+    const greeting = await session.greet();
+    seedQuery = await session.sampleReply(greeting);
+    await session.answerRecordedVisitorTurn(seedQuery);
+  }, { timeout: 60_000 });
+
+  it('does not duplicate the already-recorded visitor seed', () => {
+    const visitorTurns = session.conversation.filter((turn) => turn.role === 'visitor');
+    assert.equal(visitorTurns.length, 1);
+    assert.equal(visitorTurns[0]?.text, seedQuery);
+    assert.deepEqual(session.memoryConversation(10).filter((turn) => turn.role === 'visitor').map((turn) => turn.text), [seedQuery]);
+  });
+
+  it('does not fire onVisitorTurn for the already-rendered seed', () => {
+    assert.deepEqual(session.visitorTurns, []);
+  });
+
+  it('executes the DAG and completes the run', () => {
+    assert.equal(session.runEnds.length, 1);
+    assert.equal(session.runEnds[0]?.lifecycle, 'completed');
+    assert.ok(session.nodeEvents.length > 0, 'seed execution must emit node events');
+  });
+
+  it('records the Archivist answer after the seed prompt', () => {
+    assert.deepEqual(session.conversation.map((turn) => turn.role), ['archivist', 'visitor', 'archivist']);
+    assert.deepEqual(session.memoryConversation(10).map((turn) => turn.role), ['archivist', 'visitor', 'archivist']);
+    assert.ok((session.archivistTurns[0]?.length ?? 0) > 0, 'seed prompt must produce an Archivist turn');
   });
 });
 
@@ -358,6 +413,12 @@ describe('ArchivistSession.ask()', () => {
     assert.ok(archivistTurns.length >= 1, 'conversation must contain at least one archivist turn');
   });
 
+  it('reads the prompt conversation context from the RDF graph', () => {
+    const conv = session.memoryConversation(10);
+    assert.deepEqual(conv.map((t) => t.role), session.conversation.map((t) => t.role));
+    assert.ok(conv.some((t) => t.text === 'Tell me about books with haunted archives'));
+  });
+
   it('does not fire onError for a successful salvage run', () => {
     assert.equal(session.errors.length, 0, 'no errors expected on the salvage path');
   });
@@ -399,11 +460,10 @@ describe('ArchivistSession.reset()', () => {
     assert.ok(session.greetingsReceived.length > priorGreetings, 'reset must re-run greet()');
   }, { timeout: 90_000 });
 
-  it('clears conversation history on reset', () => {
-    // After reset(), conversation contains only the new greeting (archivist) turn.
+  it('clears old conversation history on reset and records the new bootstrap turns', () => {
     const roles = session.conversation.map((t) => t.role);
-    const visitorTurns = roles.filter((r) => r === 'visitor');
-    assert.equal(visitorTurns.length, 0, 'visitor turns must be cleared after reset');
+    assert.deepEqual(roles, ['archivist', 'visitor']);
+    assert.deepEqual(session.memoryConversation(10).map((t) => t.role), ['archivist', 'visitor']);
   });
 
   it('fires onReset hook', () => {
