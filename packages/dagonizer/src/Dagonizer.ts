@@ -5,6 +5,7 @@ import type { DagContainerInterface } from './contracts/DagContainerInterface.js
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
 import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js';
+import type { GraphDatasetProviderInterface } from './contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
@@ -26,8 +27,7 @@ import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
-import { InMemoryGraphDataset } from './graph/InMemoryGraphDataset.js';
-import { InMemoryTopologyStore } from './graph/InMemoryTopologyStore.js';
+import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
@@ -91,6 +91,7 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'registryVersion': DEFAULT_REGISTRY_VERSION,
   'validateOutputs': false,
   'observers': EMPTY_OBSERVERS,
+  'graphStore': new InMemoryGraphDatasetProvider(),
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
@@ -124,8 +125,8 @@ export type DispatcherObserverType = {
  * threaded through the dispatcher; there is no services option here.
  */
 export type DagonizerOptionsType = {
-  /** Factory for the graph port supplied to states created by executeWithStateFactory. */
-  stateDatasetFactory?: () => GraphDatasetInterface;
+  /** Provider for root and isolated child graph datasets. */
+  graphStore?: GraphDatasetProviderInterface;
   /**
    * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
@@ -387,7 +388,7 @@ implements DagonizerInterface<TState> {
   private readonly containers: Readonly<Record<string, DagContainerInterface>>;
   /** Bound egress channels, read by `destroy()` for teardown. */
   private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
-  private readonly stateDatasetFactory: () => GraphDatasetInterface;
+  private readonly graphDatasetProvider: GraphDatasetProviderInterface;
 
   /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
@@ -427,7 +428,7 @@ implements DagonizerInterface<TState> {
     const resolved = Dagonizer.options(options);
     this.containers = resolved.containers;
     this.channels = resolved.channels;
-    this.stateDatasetFactory = options.stateDatasetFactory ?? (() => new InMemoryGraphDataset());
+    this.graphDatasetProvider = resolved.graphStore;
 
     // `self` gives the locally-declared EngineHost class below access to this
     // instance's protected hooks and private fields — private-name and protected
@@ -460,7 +461,7 @@ implements DagonizerInterface<TState> {
       constructor() {
         this.accessor = resolved.accessor;
         this.stateMapper = new StateMapper(resolved.accessor);
-        this.executionTopologyStore = options.executionTopologyStore ?? new InMemoryTopologyStore();
+        this.executionTopologyStore = options.executionTopologyStore ?? resolved.graphStore.root('urn:dagonizer:topology');
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
@@ -969,6 +970,7 @@ implements DagonizerInterface<TState> {
     const signal = Dagonizer.rootSignal(options);
     const runIri = options.runIri ?? initialState.runIri;
     if (runIri !== initialState.runIri) throw new Error('Execution state must be constructed with the execution run identity');
+    initialState.bindGraphDatasetProvider(this.graphDatasetProvider);
     const scope = this.dagExecutionScope(dagName, runIri, signal);
     return new Execution<TState>(this.runNodes(dagName, initialState, null, { signal }), scope);
   }
@@ -979,8 +981,9 @@ implements DagonizerInterface<TState> {
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
     const runIri = options.runIri ?? GraphStateTerms.runIri(dagName, globalThis.crypto.randomUUID());
-    const state = factory(this.stateDatasetFactory(), runIri);
+    const state = factory(this.graphDatasetProvider.root(runIri), runIri);
     if (state.runIri !== runIri) throw new Error('State factory must construct state with the supplied run identity');
+    state.bindGraphDatasetProvider(this.graphDatasetProvider);
     return this.execute(dagName, state, { ...options, runIri });
   }
 
@@ -1133,6 +1136,7 @@ implements DagonizerInterface<TState> {
     registryVersion: string;
     validateOutputs: boolean;
     observers: ReadonlyArray<DispatcherObserverType>;
+    graphStore: GraphDatasetProviderInterface;
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
@@ -1141,6 +1145,7 @@ implements DagonizerInterface<TState> {
       'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,
       'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
       'observers':       partial.observers ?? DAGONIZER_OPTION_DEFAULTS.observers,
+      'graphStore':      partial.graphStore ?? DAGONIZER_OPTION_DEFAULTS.graphStore,
     };
   }
 

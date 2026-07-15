@@ -40,6 +40,14 @@ If no adapter is reachable, the page renders the cascade's
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
+For a completed live-provider release exercise, use the local Ollama backend
+with the smoke mode that disables the cancellation demonstration:
+
+```bash
+ARCHIVIST_LIVE_SMOKE=1 OLLAMA_MODEL=glm-4.5-air:latest \
+  npx tsx examples/the-archivist/runArchivist.ts "a strange house and a library"
+```
+
 Default cascade:
 
 1. **Ollama:** `http://127.0.0.1:11434` (override via `OLLAMA_BASE_URL`,

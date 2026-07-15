@@ -138,12 +138,13 @@ Use `GraphStateTransferCodec` for graph-aware checkpoint and container boundarie
 
 Semantic assertions are additive and exact-quad-idempotent. Relationship facts are not silently replaced. Completed run graphs close with lifecycle facts, then `GraphRetentionManager` can compact and prune transient detail while protecting live checkpoint graphs, externally referenced graphs, and durable memory graphs.
 
-The Node adapter surface is available from `@studnicky/dagonizer/adapter`:
+The Node file-store package provides the durable graph adapter and provider:
 
 ```ts
-import { FileGraphDataset } from '@studnicky/dagonizer/adapter';
+import { FileGraphDataset, FileGraphDatasetProvider } from '@studnicky/dagonizer-store-file';
 
 const graph = new FileGraphDataset('./state.nq');
+const provider = new FileGraphDatasetProvider('./runs');
 ```
 
 Direct mutations append RDF operation records to `./state.nq.journal`, so a

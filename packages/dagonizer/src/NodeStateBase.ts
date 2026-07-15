@@ -1,4 +1,5 @@
 import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js';
+import type { GraphDatasetProviderInterface, GraphScopeType } from './contracts/GraphDatasetProviderInterface.js';
 import type { GraphStateDeltaInterface } from './contracts/GraphStateDeltaInterface.js';
 import type { GraphStateFieldDefinitionType } from './contracts/GraphStateFieldDefinition.js';
 import type { GraphStateJsonLdDocumentType } from './contracts/GraphStateJsonLd.js';
@@ -21,6 +22,16 @@ import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
+
+class DatasetForkProvider implements GraphDatasetProviderInterface {
+    readonly #dataset: GraphDatasetInterface;
+    constructor(dataset: GraphDatasetInterface) { this.#dataset = dataset; }
+    root(_runIri: string): GraphDatasetInterface { return this.#dataset; }
+    child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface {
+        return this.#dataset.fork();
+    }
+    reopen(_runIri: string): undefined { return undefined; }
+}
 
 const GRAPH_HAS_STATE_CELL = GraphStateTerms.DAGONIZER.HasStateCell;
 const GRAPH_KEY = GraphStateTerms.DAGONIZER.StateKey;
@@ -46,6 +57,9 @@ const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
 export interface NodeStateInterface {
   /** Shared RDF dataset used by this node state and all lifecycle facts. */
   readonly graphDataset: GraphDatasetInterface;
+
+  /** Bind the provider that mints isolated child datasets for this state. */
+  bindGraphDatasetProvider(provider: GraphDatasetProviderInterface): void;
 
   /** Export the run graph as the Node.js JSON-LD intermediate representation. */
   snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
@@ -218,6 +232,7 @@ export interface NodeStateInterface {
 export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInterface, GraphStateLifecycleInterface, GraphStateDeltaInterface {
     declare ['constructor']: new () => this;
     #dataset: GraphDatasetInterface;
+    #graphDatasetProvider: GraphDatasetProviderInterface;
     #runIri: string;
     #lastSnapshotGraph: QuadType[] | undefined;
     #lastSnapshotRevision: string | undefined;
@@ -226,9 +241,10 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     // against this state so the public face is stable; reads route through the
     // graph-backed getMetadata operation.
     getter;
-    constructor(dataset: GraphDatasetInterface = new InMemoryGraphDataset(), runIri: string = `urn:dagonizer/run/${globalThis.crypto.randomUUID()}`) {
+    constructor(dataset: GraphDatasetInterface = new InMemoryGraphDataset(), runIri: string = `urn:dagonizer/run/${globalThis.crypto.randomUUID()}`, graphDatasetProvider?: GraphDatasetProviderInterface) {
         this.#dataset = dataset;
         this.#runIri = runIri;
+        this.#graphDatasetProvider = graphDatasetProvider ?? new DatasetForkProvider(dataset);
         this.getter = new MetadataGetter(this);
         this.#metadataProxy = new Proxy({}, {
             "get": (_target, key) => typeof key === 'string' ? this.getMetadata(key) : undefined,
@@ -251,6 +267,9 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     }
     get graphDataset() {
         return this.#dataset;
+    }
+    bindGraphDatasetProvider(provider: GraphDatasetProviderInterface) {
+        this.#graphDatasetProvider = provider;
     }
     async *snapshotGraph(runIri: string = this.#runIri) {
         this.#syncRuntimeFields();
@@ -336,8 +355,13 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         // their normal defaults. State mapping applies domain data explicitly
         // after cloning; clone itself carries only shared metadata.
         const cloned = new this.constructor();
-        cloned.#dataset = this.#dataset.fork();
-        cloned.#runIri = `${this.#runIri}/clone/${crypto.randomUUID()}`;
+        const clonedRunIri = `${this.#runIri}/clone/${crypto.randomUUID()}`;
+        cloned.#graphDatasetProvider = this.#graphDatasetProvider;
+        cloned.#dataset = this.#graphDatasetProvider.child(
+            { 'runIri': this.#runIri, 'dagIri': '', 'placementIri': '' },
+            { 'runIri': clonedRunIri, 'dagIri': '', 'placementIri': '' },
+        );
+        cloned.#runIri = clonedRunIri;
         cloned.#ensureRunFact();
         for (const [key, value] of this.#values()) {
             if (key.startsWith('metadata.'))

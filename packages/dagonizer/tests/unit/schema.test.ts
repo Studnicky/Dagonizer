@@ -335,6 +335,15 @@ void describe('DAGDocument.load', () => {
   void it('rejects schema-noncompliant JSON', () => {
     assert.throws(() => DAGDocument.load('{"name": "x"}'), DAGErrorPredicate.isValidationError);
   });
+
+  void it('merges overrides before validating the decoded DAG', () => {
+    const json = DAGDocument.serialize(validDAG);
+    const parsed = DAGDocument.load(json, { 'overrides': { 'name': 'runtime-demo' } });
+
+    assert.equal(parsed.name, 'runtime-demo');
+    assert.equal(parsed['@id'], validDAG['@id']);
+    assert.equal(DAGDocument.load(json).name, validDAG.name);
+  });
 });
 
 void describe('DAGDocument round-trip', () => {

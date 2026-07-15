@@ -1,13 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 
-import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
-import type { BindingType, QuadType, SlotPatternType, TermType } from '../contracts/TripleStoreInterface.js';
-import { DagGraphTerms } from '../graph/DagGraphTerms.js';
-import { GraphDatasetRevision } from '../graph/GraphDatasetRevision.js';
-import { GraphStateTerms } from '../graph/GraphStateTerms.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
-
-import { N3GraphDataset } from './N3GraphDataset.js';
+import { N3GraphDataset } from '@studnicky/dagonizer/adapter';
+import type { GraphDatasetInterface, BindingType, QuadType, SlotPatternType, TermType } from '@studnicky/dagonizer/contracts';
+import { DagGraphTerms, GraphDatasetRevision, GraphStateTerms, GraphStateTransferCodec } from '@studnicky/dagonizer/graph';
 
 const JOURNAL_COMPACTION_BYTES = 1_048_576;
 
@@ -16,7 +11,7 @@ type JournalRecord =
   | { readonly operation: 'delete'; readonly pattern: SlotPatternType }
   | { readonly operation: 'clearGraph'; readonly graph: TermType };
 
-/** Durable graph adapter with append-only mutation journaling and atomic N-Quads compaction. */
+/** Durable graph adapter with append-only mutation journaling and atomic compaction. */
 export class FileGraphDataset implements GraphDatasetInterface {
   readonly #path: string;
   readonly #journalPath: string;
@@ -44,45 +39,27 @@ export class FileGraphDataset implements GraphDatasetInterface {
 
   assert(subject: TermType, predicate: TermType, object: TermType, graph?: TermType): void {
     this.#dataset.assert(subject, predicate, object, graph);
-    this.#changed({
-      'operation': 'add',
-      'quads': [{ 'subject': subject, predicate, 'object': object, 'graph': graph ?? DagGraphTerms.defaultGraph() }],
-    });
+    this.#changed({ 'operation': 'add', 'quads': [{ 'subject': subject, predicate, 'object': object, 'graph': graph ?? DagGraphTerms.defaultGraph() }] });
   }
 
-  select(pattern: SlotPatternType): readonly BindingType[] {
-    return this.#dataset.select(pattern);
-  }
-
-  count(pattern: SlotPatternType): number {
-    return this.#dataset.count(pattern);
-  }
+  select(pattern: SlotPatternType): readonly BindingType[] { return this.#dataset.select(pattern); }
+  count(pattern: SlotPatternType): number { return this.#dataset.count(pattern); }
 
   clearGraph(graph: TermType): void {
     this.#dataset.clearGraph(graph);
     this.#changed({ 'operation': 'clearGraph', graph });
   }
 
-  *triples(): IterableIterator<QuadType> {
-    yield* this.#dataset.triples();
-  }
+  *triples(): IterableIterator<QuadType> { yield* this.#dataset.triples(); }
 
   delete(pattern: SlotPatternType): void {
     this.#dataset.delete(pattern);
     this.#changed({ 'operation': 'delete', pattern });
   }
 
-  *match(pattern: SlotPatternType): IterableIterator<QuadType> {
-    yield* this.#dataset.match(pattern);
-  }
-
-  ask(pattern: SlotPatternType): boolean {
-    return this.#dataset.ask(pattern);
-  }
-
-  exportGraph(graph: TermType): IterableIterator<QuadType> {
-    return this.#dataset.exportGraph(graph);
-  }
+  *match(pattern: SlotPatternType): IterableIterator<QuadType> { yield* this.#dataset.match(pattern); }
+  ask(pattern: SlotPatternType): boolean { return this.#dataset.ask(pattern); }
+  exportGraph(graph: TermType): IterableIterator<QuadType> { return this.#dataset.exportGraph(graph); }
 
   importGraph(quads: Iterable<QuadType>): void {
     const materialized = [...quads];
@@ -97,16 +74,8 @@ export class FileGraphDataset implements GraphDatasetInterface {
     this.#changed({ 'operation': 'add', 'quads': materialized });
   }
 
-  fork(): GraphDatasetInterface {
-    // A clone receives its state snapshot after the fork. Do not copy the
-    // parent's durable run graph into the child dataset.
-    return new N3GraphDataset();
-  }
-
-  revision(): string {
-    if (this.#revisionCache === undefined) this.#revisionCache = GraphDatasetRevision.of(this);
-    return this.#revisionCache;
-  }
+  fork(): GraphDatasetInterface { return new N3GraphDataset(); }
+  revision(): string { return this.#revisionCache ?? (this.#revisionCache = GraphDatasetRevision.of(this)); }
 
   transactAtRevision<T>(expectedRevision: string, operation: (dataset: GraphDatasetInterface) => T): T {
     if (this.revision() !== expectedRevision) throw new Error('Graph transaction revision mismatch');
@@ -157,17 +126,14 @@ export class FileGraphDataset implements GraphDatasetInterface {
 
   flush(): void {
     const lockPath = `${this.#path}.lock`;
+    try { mkdirSync(lockPath, { 'recursive': false }); } catch { throw new Error('Graph commit lock is held'); }
     try {
-      mkdirSync(lockPath);
-    } catch {
-      throw new Error('Graph commit lock is held');
-    }
-    try {
+      const parent = this.#path.slice(0, this.#path.lastIndexOf('/'));
+      if (parent.length > 0) mkdirSync(parent, { 'recursive': true });
       const diskDataset = new N3GraphDataset();
       if (existsSync(this.#path)) diskDataset.importGraph(GraphStateTransferCodec.decode(readFileSync(this.#path, 'utf8')));
       if (existsSync(this.#journalPath)) FileGraphDataset.#replayJournal(diskDataset, readFileSync(this.#journalPath, 'utf8'));
-      const diskRevision = diskDataset.revision();
-      if (diskRevision !== this.#committedRevision) throw new Error('Graph commit revision mismatch');
+      if (diskDataset.revision() !== this.#committedRevision) throw new Error('Graph commit revision mismatch');
       this.#writeRevisionResource();
       const temporaryPath = `${this.#path}.${process.pid}.tmp`;
       writeFileSync(temporaryPath, GraphStateTransferCodec.encode(this.#dataset.triples()), 'utf8');
@@ -176,9 +142,7 @@ export class FileGraphDataset implements GraphDatasetInterface {
       this.#committedRevision = GraphDatasetRevision.of(this.#dataset);
       this.#revisionCache = this.#committedRevision;
       this.#dirty = false;
-    } finally {
-      rmdirSync(lockPath);
-    }
+    } finally { rmdirSync(lockPath); }
   }
 
   #changed(record: JournalRecord): void {
@@ -211,13 +175,8 @@ export class FileGraphDataset implements GraphDatasetInterface {
     return facts;
   }
 
-  #appendJournal(record: JournalRecord): void {
-    appendFileSync(this.#journalPath, `${JSON.stringify(record)}\n`, 'utf8');
-  }
-
-  static #journalBytes(path: string): number {
-    return existsSync(path) ? statSync(path).size : 0;
-  }
+  #appendJournal(record: JournalRecord): void { appendFileSync(this.#journalPath, `${JSON.stringify(record)}\n`, 'utf8'); }
+  static #journalBytes(path: string): number { return existsSync(path) ? statSync(path).size : 0; }
 
   static #replayJournal(dataset: N3GraphDataset, journal: string): void {
     for (const line of journal.split('\n')) {

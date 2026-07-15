@@ -12,5 +12,7 @@ export { GraphStateQueryService } from './GraphStateQueryService.js';
 export { GraphStateJsonLdCodec } from './GraphStateJsonLdCodec.js';
 export { Rdf12JsonLdCodec } from './Rdf12JsonLdCodec.js';
 export { InMemoryGraphDataset } from './InMemoryGraphDataset.js';
+export { InMemoryGraphDatasetProvider } from './InMemoryGraphDatasetProvider.js';
+export { N3GraphDatasetProvider } from './N3GraphDatasetProvider.js';
 export { InMemoryGraphStateTransferStore } from './InMemoryGraphStateTransferStore.js';
 export { InMemoryTopologyStore } from './InMemoryTopologyStore.js';

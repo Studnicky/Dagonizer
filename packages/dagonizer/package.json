@@ -98,10 +98,6 @@
       "types": "./dist/adapter/index.d.ts",
       "default": "./dist/adapter/index.js"
     },
-    "./adapter/file-graph": {
-      "types": "./dist/adapter/FileGraphDataset.d.ts",
-      "default": "./dist/adapter/FileGraphDataset.js"
-    },
     "./patterns": {
       "types": "./dist/patterns/index.d.ts",
       "default": "./dist/patterns/index.js"

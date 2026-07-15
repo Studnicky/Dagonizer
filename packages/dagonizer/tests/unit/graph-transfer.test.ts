@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
 
-import { FileGraphDataset } from '../../src/adapter/FileGraphDataset.js';
+import { FileGraphDataset } from '@studnicky/dagonizer-store-file';
+
 import { N3GraphDataset } from '../../src/adapter/N3GraphDataset.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
