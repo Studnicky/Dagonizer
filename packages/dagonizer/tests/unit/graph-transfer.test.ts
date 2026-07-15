@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
 
@@ -59,6 +59,9 @@ void describe('GraphStateTransferCodec', () => {
     const document = GraphStateJsonLdCodec.encode(source);
     assert.equal(document['@context']['dag'], GraphStateTerms.JSON_LD_CONTEXT['dag']);
     assert.ok(JSON.stringify(document).includes('lifecycle'));
+    const annotation = document['@graph'][0]?.['@graph'].find((node) => node['@id'] === 'urn:state:jsonld:run')?.['urn:state:jsonld:annotation'];
+    if (!Array.isArray(annotation) || annotation[0] === undefined || typeof annotation[0] !== 'object' || annotation[0] === null || Array.isArray(annotation[0])) assert.fail('expected RDF 1.2 Basic Encoding node');
+    assert.equal(annotation[0]['@type'], 'rdf:TripleTerm');
     assert.deepEqual(GraphStateJsonLdCodec.decode(document), source);
   });
 
@@ -340,6 +343,24 @@ void describe('GraphStateTransferCodec', () => {
     assert.equal(dataset.count({ "graph": graph }), 1);
     assert.deepEqual([...dataset.match({ "graph": graph })], [quad]);
     assert.deepEqual(dataset.select({ "subject": '?subject' }), [{ "subject": quad.subject }]);
+    assert.match(dataset.revision(), /^graph-rev-[0-9a-f]{64}$/u);
+  });
+
+  void it('keeps ground graph revisions stable across insertion order', () => {
+    const graph = DagGraphTerms.namedNode('urn:revision:graph');
+    const quads = [
+      { "subject": DagGraphTerms.namedNode('urn:revision:b'), "predicate": DagGraphTerms.namedNode('urn:revision:p'), "object": DagGraphTerms.literal('two'), graph },
+      { "subject": DagGraphTerms.namedNode('urn:revision:a'), "predicate": DagGraphTerms.namedNode('urn:revision:p'), "object": DagGraphTerms.literal('one'), graph },
+    ];
+    const first = new N3GraphDataset();
+    const second = new N3GraphDataset();
+    first.add(quads);
+    second.add([...quads].reverse());
+
+    assert.equal(first.revision(), second.revision());
+    const cached = first.revision();
+    first.add([]);
+    assert.equal(first.revision(), cached);
   });
 
   void it('reopens the durable file adapter from canonical N-Quads', () => {
@@ -386,6 +407,64 @@ void describe('GraphStateTransferCodec', () => {
         graph,
       );
       assert.equal(reopened.count({ "graph": graph }), 2);
+    } finally {
+      rmSync(directory, { "recursive": true, "force": true });
+    }
+  });
+
+  void it('persists durable RDF 1.2 triple terms and recomputes their revision', () => {
+    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
+    const path = `${directory}/triple-term-state.nq`;
+    try {
+      const source = new FileGraphDataset(path);
+      const graph = DagGraphTerms.namedNode('urn:file:triple-term:graph');
+      const triple = DagGraphTerms.tripleTerm(
+        DagGraphTerms.namedNode('urn:file:triple-term:subject'),
+        DagGraphTerms.namedNode('urn:file:triple-term:predicate'),
+        { "termType": 'BlankNode', "value": 'inner' },
+      );
+      source.assert(
+        DagGraphTerms.namedNode('urn:file:triple-term:annotation'),
+        DagGraphTerms.namedNode('urn:file:triple-term:reifies'),
+        triple,
+        graph,
+      );
+
+      const reopened = new FileGraphDataset(path);
+      assert.equal(reopened.count({ "graph": graph }), 1);
+      assert.match(reopened.revision(), /^graph-rev-[0-9a-f]{64}$/u);
+    } finally {
+      rmSync(directory, { "recursive": true, "force": true });
+    }
+  });
+
+  void it('journals direct durable writes without rewriting the snapshot', () => {
+    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
+    const path = `${directory}/journaled-state.nq`;
+    try {
+      const dataset = new FileGraphDataset(path);
+      const graph = DagGraphTerms.namedNode('urn:file:journal:graph');
+      dataset.assert(
+        DagGraphTerms.namedNode('urn:file:journal:subject:0'),
+        DagGraphTerms.namedNode('urn:file:journal:predicate'),
+        DagGraphTerms.literal('0'),
+        graph,
+      );
+      dataset.flush();
+      const snapshot = readFileSync(path, 'utf8');
+      for (let index = 1; index < 4; index += 1) {
+        dataset.assert(
+          DagGraphTerms.namedNode(`urn:file:journal:subject:${index}`),
+          DagGraphTerms.namedNode('urn:file:journal:predicate'),
+          DagGraphTerms.literal(String(index)),
+          graph,
+        );
+      }
+      assert.equal(readFileSync(path, 'utf8'), snapshot);
+      assert.equal(existsSync(`${path}.journal`), true);
+      dataset.flush();
+      assert.equal(existsSync(path), true);
+      assert.equal(existsSync(`${path}.journal`), false);
     } finally {
       rmSync(directory, { "recursive": true, "force": true });
     }

@@ -98,6 +98,10 @@
       "types": "./dist/adapter/index.d.ts",
       "default": "./dist/adapter/index.js"
     },
+    "./adapter/file-graph": {
+      "types": "./dist/adapter/FileGraphDataset.d.ts",
+      "default": "./dist/adapter/FileGraphDataset.js"
+    },
     "./patterns": {
       "types": "./dist/patterns/index.d.ts",
       "default": "./dist/patterns/index.js"
@@ -214,12 +218,14 @@
     "stamp-version": "node scripts/stamp-version.mjs",
     "stamp-version:check": "node scripts/stamp-version.mjs --check",
     "rdf:decode-json": "node scripts/decode-nquads-json.mjs",
-    "bench": "npm run bench:state && npm run bench:checkpoint && npm run bench:scatter && npm run bench:retention && npm run bench:transfer",
+    "bench": "npm run bench:state && npm run bench:checkpoint && npm run bench:scatter && npm run bench:retention && npm run bench:transfer && npm run bench:scale",
+    "bench:smoke": "tsx bench/smoke.bench.ts",
     "bench:state": "tsx bench/state-baseline.bench.ts && tsx bench/graph-state.bench.ts",
     "bench:checkpoint": "tsx bench/checkpoint-graph.bench.ts",
     "bench:scatter": "tsx bench/scatter-graph.bench.ts",
     "bench:retention": "tsx bench/retention-graph.bench.ts",
     "bench:transfer": "tsx bench/transfer-graph.bench.ts",
+    "bench:scale": "tsx bench/scale.bench.ts",
     "clean": "rm -rf dist dist-test dist-testing",
     "build:src": "tsc -p tsconfig.json && cp src/viz/explorer.css dist/viz/explorer.css",
     "build:testing": "tsc -p tsconfig.testing.json",
@@ -253,6 +259,7 @@
     "@cosmos.gl/graph": "^3.2.0",
     "@dagrejs/dagre": "^3.0.0",
     "@types/cytoscape-dagre": "^2.3.4",
+    "@types/jsonld": "^1.5.15",
     "@types/n3": "^1.26.1",
     "@types/node": "^26.1.1",
     "cytoscape": "^3.34.0",
@@ -286,8 +293,7 @@
     "@studnicky/types": "^5.0.0",
     "ajv": "^8.20.0",
     "json-schema-to-ts": "^3.1.1",
-    "jsonld-streaming-parser": "^5.0.1",
-    "jsonld-streaming-serializer": "^4.0.0",
+    "jsonld": "^9.0.0",
     "n3": "^2.1.1",
     "rdf-canonize": "^5.0.0"
   },

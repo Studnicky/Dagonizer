@@ -10,6 +10,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
+import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { graphStateDocument } from '../_support/GraphStateSupport.js';
 
@@ -37,6 +39,23 @@ void describe('NodeStateBase: retry attempts', () => {
 
     assert.equal(state.retriesFor('a'), 0);
     assert.equal(state.retriesFor('b'), 1);
+  });
+
+  void it('keeps one stable counter resource per key under repeated attempts', () => {
+    const state = new NodeStateBase();
+    for (let index = 0; index < 100; index++) state.recordAttempt('scatter-item');
+
+    assert.equal(state.retriesFor('scatter-item'), 100);
+    assert.equal(state.graphDataset.count({
+      'subject': DagGraphTerms.namedNode(state.runIri),
+      'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt),
+      'graph': DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri)),
+    }), 1);
+    assert.equal(state.graphDataset.count({
+      'subject': DagGraphTerms.namedNode(GraphStateTerms.attemptIri(state.runIri, 'scatter-item')),
+      'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount),
+      'graph': DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri)),
+    }), 1);
   });
 
   void it('withinRetryBudget records an attempt and reports remaining budget', () => {

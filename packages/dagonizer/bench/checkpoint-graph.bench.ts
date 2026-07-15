@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { performance } from 'node:perf_hooks';
-
+import { BenchmarkHarness } from './BenchmarkHarness.js';
 import { DagGraphTerms } from '../src/graph/DagGraphTerms.js';
 import { GraphStateTransferCodec } from '../src/graph/GraphStateTransferCodec.js';
 
@@ -10,10 +9,13 @@ const quads = Array.from({ length: 1_000 }, (_, index) => ({
   "object": DagGraphTerms.literal(String(index)),
   "graph": DagGraphTerms.namedNode('urn:bench:checkpoint#state'),
 }));
-const started = performance.now();
-const nquads = GraphStateTransferCodec.encode(quads);
-const decoded = GraphStateTransferCodec.decode(nquads);
-const result = { 'benchmark': 'checkpoint-graph', 'quadCount': decoded.length, 'bytes': nquads.length, 'elapsedMs': performance.now() - started };
+let nquads = '';
+let decoded: ReturnType<typeof GraphStateTransferCodec.decode> = [];
+const measurement = BenchmarkHarness.measure(() => {
+  nquads = GraphStateTransferCodec.encode(quads);
+  decoded = GraphStateTransferCodec.decode(nquads);
+});
+const result = { 'benchmark': 'checkpoint-graph', 'quadCount': decoded.length, 'bytes': nquads.length, ...measurement };
 mkdirSync('.orchestration/bench', { recursive: true });
 writeFileSync('.orchestration/bench/checkpoint-graph.json', `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify(result));

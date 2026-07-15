@@ -35,9 +35,7 @@
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
     "@studnicky/logger": "^5.0.0",
-    "@studnicky/signal": "^5.0.0",
-    "jsonld-streaming-parser": "^5.0.1",
-    "jsonld-streaming-serializer": "^4.0.0"
+    "@studnicky/signal": "^5.0.0"
   },
   "devDependencies": {
     "@rdfjs/types": "^2.0.1",

@@ -787,8 +787,8 @@ async function resumeFromCheckpoint(): Promise<void> {
     const parsed = JSON.parse(raw) as unknown;
     const ckpt = Checkpoint.load(parsed);
     await ckpt.restoreStores({ 'memory': memoryStore });
-    restored = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+    restored = await ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
     );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);

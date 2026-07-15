@@ -17,11 +17,13 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   readonly #byPredicate = new Map<string, Set<QuadType>>();
   readonly #byObject = new Map<string, Set<QuadType>>();
   readonly #byGraph = new Map<string, Set<QuadType>>();
+  #revisionCache: string | undefined;
 
   assert(subject: TermType, predicate: TermType, object: TermType, graph: TermType = DagGraphTerms.defaultGraph()): void {
     const quad = { subject, predicate, object, graph };
     const key = InMemoryTopologyStore.quadKey(quad);
     if (this.#keys.has(key)) return;
+    this.#revisionCache = undefined;
     this.#keys.add(key);
     this.#quads.push(quad);
     this.#addToIndex(this.#bySubject, subject, quad);
@@ -55,7 +57,8 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   }
 
   revision(): string {
-    return GraphDatasetRevision.of(this);
+    if (this.#revisionCache === undefined) this.#revisionCache = GraphDatasetRevision.of(this);
+    return this.#revisionCache;
   }
 
   transactAtRevision<T>(expectedRevision: string, operation: (dataset: GraphDatasetInterface) => T): T {
@@ -106,6 +109,7 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   }
 
   clearGraph(graph: TermType): void {
+    this.#revisionCache = undefined;
     let index = this.#quads.length;
     while (index > 0) {
       index -= 1;
@@ -121,6 +125,7 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   }
 
   delete(pattern: SlotPatternType): void {
+    this.#revisionCache = undefined;
     let index = this.#quads.length;
     while (index > 0) {
       index -= 1;

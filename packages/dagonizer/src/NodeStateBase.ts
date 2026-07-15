@@ -420,31 +420,35 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     recordAttempt(key: string) {
         const next = this.retriesFor(key) + 1;
         const run = DagGraphTerms.namedNode(this.#runIri);
-        const sequence = this.#dataset.count({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() }) + 1;
-        const attempt = DagGraphTerms.namedNode(`${this.#runIri}/attempt/${sequence}`);
+        const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
         this.#dataset.transact((dataset) => {
+            dataset.delete({ "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "graph": this.#graph() });
             dataset.add([
                 { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
                 { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
                 { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal(String(next), GraphStateTerms.XSD.integer), "graph": this.#graph() },
-                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptSequence), "object": DagGraphTerms.literal(String(sequence), GraphStateTerms.XSD.integer), "graph": this.#graph() },
             ]);
         });
         return next;
     }
     retriesFor(key: string) {
-        return new GraphStateQueryService(this.#dataset, this.#runIri).attempts().get(key) ?? 0;
+        const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
+        const count = this.#dataset.match({ "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "graph": this.#graph() }).next().value?.object;
+        if (count?.termType !== 'Literal') return 0;
+        const value = Number(count.value);
+        return Number.isFinite(value) ? value : 0;
     }
     clearAttempts(key: string) {
         const run = DagGraphTerms.namedNode(this.#runIri);
-        const sequence = this.#dataset.count({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() }) + 1;
-        const attempt = DagGraphTerms.namedNode(`${this.#runIri}/attempt/${sequence}`);
-        this.#dataset.add([
-            { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
-            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
-            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal('0', GraphStateTerms.XSD.integer), "graph": this.#graph() },
-            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptSequence), "object": DagGraphTerms.literal(String(sequence), GraphStateTerms.XSD.integer), "graph": this.#graph() },
-        ]);
+        const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
+        this.#dataset.transact((dataset) => {
+            dataset.delete({ "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "graph": this.#graph() });
+            dataset.add([
+                { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal('0', GraphStateTerms.XSD.integer), "graph": this.#graph() },
+            ]);
+        });
     }
     withinRetryBudget(key: string, maxAttempts: number) {
         return this.recordAttempt(key) < maxAttempts;
@@ -672,9 +676,12 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #syncRuntimeFields(): void {
         for (const key of Object.keys(this)) {
             if (key === 'getter') continue;
-            this.#write(`domain.${key}`, JsonValue.from(Reflect.get(this, key)));
+            this.#write(`domain.${key}`, JsonValue.from(this.graphStateValue(key, Reflect.get(this, key))));
         }
     }
+
+    /** Normalize a runtime field into the JSON-shaped value stored in the graph. */
+    protected graphStateValue(_key: string, value: unknown): unknown { return value; }
 
     #restoreRuntimeFields(): void {
         for (const [key, value] of this.#values()) {

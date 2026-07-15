@@ -52,7 +52,6 @@ export class GraphStateTerms {
     'Attempt': 'https://noocodec.dev/ontology/dagonizer/attempt',
     'AttemptCount': 'https://noocodec.dev/ontology/dagonizer/count',
     'AttemptKey': 'https://noocodec.dev/ontology/dagonizer/key',
-    'AttemptSequence': 'https://noocodec.dev/ontology/dagonizer/sequence',
     'Completed': 'https://noocodec.dev/ontology/dagonizer/completed',
     'CompactionActivity': 'https://noocodec.dev/ontology/dagonizer/CompactionActivity',
     'CompactsGraph': 'https://noocodec.dev/ontology/dagonizer/compactsGraph',
@@ -122,6 +121,10 @@ export class GraphStateTerms {
 
   static batchItemIri(worksetIri: string, index: number): string {
     return `${worksetIri}/item/${index}`;
+  }
+
+  static attemptIri(runIri: string, key: string): string {
+    return `${runIri}/attempt/${encodeURIComponent(key)}`;
   }
 
   static runIri(dagIri: string, executionId: string): string {

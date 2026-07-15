@@ -523,8 +523,8 @@ async function sendOperatorResponse(): Promise<void> {
   try {
     // pe.result was stored outside Vue reactivity so it retains class identity.
     const ckpt = await Checkpoint.capture(pe.dagName, pe.result);
-    restored = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => DispatcherState.restore(snap)),
+    restored = await ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new DispatcherState()),
     );
   } catch (err) {
     logger.error(

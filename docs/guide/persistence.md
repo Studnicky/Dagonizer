@@ -146,6 +146,12 @@ import { FileGraphDataset } from '@studnicky/dagonizer/adapter';
 const graph = new FileGraphDataset('./state.nq');
 ```
 
+Direct mutations append RDF operation records to `./state.nq.journal`, so a
+single placement write does not re-serialize the complete graph. `flush()` or
+the journal size threshold compacts the replayable journal into the canonical
+N-Quads snapshot atomically. Reopening replays the journal before serving graph
+queries.
+
 For inspection or migration, decode canonical N-Quads with `dagonizer-rdf-json path/to/state.nq` or pipe N-Quads to the command. The decoder is a presentation tool; it does not replace the canonical RDF dataset.
 
 ### Graph round-trip

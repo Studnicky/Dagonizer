@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import type * as RDF from '@rdfjs/types';
 import { DataFactory, Parser, Writer } from 'n3';
 
@@ -155,7 +153,7 @@ export class GraphStateTransferCodec {
     quads: AsyncIterable<QuadType>,
     identity: GraphStateTransferIdentityType,
   ): Promise<Extract<GraphStateTransferType, { readonly mode: 'graph-ref' }>> {
-    const digest = createHash('sha256');
+    const hashState = { 'chunks': [] as string[] };
     let byteSize = 0;
     let quadCount = 0;
     const referenceId = `snapshot:${runIri}:${globalThis.crypto.randomUUID()}`;
@@ -173,8 +171,8 @@ export class GraphStateTransferCodec {
       "quadCount": 0,
       "jsonLd": identity.jsonLd,
     };
-    const stored = await store.putSnapshot(GraphStateTransferCodec.hashingStream(quads, digest, (bytes) => { byteSize += bytes; quadCount += 1; }), reference);
-    const hash = GraphStateTransferCodec.digestOf(digest);
+    const stored = await store.putSnapshot(GraphStateTransferCodec.hashingStream(quads, hashState, (bytes) => { byteSize += bytes; quadCount += 1; }), reference);
+    const hash = GraphStateTransferCodec.digestOf(hashState);
     return {
       "mode": 'graph-ref',
       runIri,
@@ -366,22 +364,22 @@ export class GraphStateTransferCodec {
 
   private static async importVerified(dataset: GraphDatasetInterface, quads: AsyncIterable<QuadType>, expectedHash: string): Promise<void> {
     const staging = dataset.fork();
-    const digest = createHash('sha256');
-    await staging.transactAsync((transaction) => transaction.importGraphAsync(GraphStateTransferCodec.hashingStream(quads, digest, () => undefined)));
-    if (GraphStateTransferCodec.digestOf(digest) !== expectedHash) throw new Error('Graph transfer integrity hash mismatch');
+    const hashState = { 'chunks': [] as string[] };
+    await staging.transactAsync((transaction) => transaction.importGraphAsync(GraphStateTransferCodec.hashingStream(quads, hashState, () => undefined)));
+    if (GraphStateTransferCodec.digestOf(hashState) !== expectedHash) throw new Error('Graph transfer integrity hash mismatch');
     await dataset.transactAsync((transaction) => transaction.importGraphAsync(GraphStateTransferCodec.asyncQuads(staging.triples())));
   }
 
   private static async *hashingStream(
     quads: AsyncIterable<QuadType>,
-    digest: ReturnType<typeof createHash>,
+    hashState: { chunks: string[] },
     onQuad: (byteSize: number) => void,
   ): AsyncIterable<QuadType> {
     const encoder = new TextEncoder();
     let byteSize = 0;
     const outputStream = {
       write(chunk: string, _encoding: string, done?: () => void): void {
-        digest.update(chunk);
+        hashState.chunks.push(chunk);
         byteSize += encoder.encode(chunk).byteLength;
         done?.();
       },
@@ -399,9 +397,8 @@ export class GraphStateTransferCodec {
     writer.end();
   }
 
-  private static digestOf(digest: ReturnType<typeof createHash>): string {
-    digest.update('\u0000');
-    return `sha256-${digest.digest('hex')}`;
+  private static digestOf(hashState: { chunks: string[] }): string {
+    return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')}\u0000`)}`;
   }
 
   private static metadataOf(reference: GraphStateSnapshotReferenceType, jsonLd: GraphStateTransferMetadataType['jsonLd']): GraphStateTransferMetadataType {
@@ -418,7 +415,7 @@ export class GraphStateTransferCodec {
   }
 
   private static hash(value: string): string {
-    return `sha256-${createHash('sha256').update(value).digest('hex')}`;
+    return `sha256-${GraphDatasetRevision.sha256(value)}`;
   }
 
   private static transferHash(additions: string, deletions: string): string {

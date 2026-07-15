@@ -10,7 +10,6 @@
  */
 
 export { N3GraphDataset } from './N3GraphDataset.js';
-export { FileGraphDataset } from './FileGraphDataset.js';
 
 export type {
   AdapterCapabilitiesType,

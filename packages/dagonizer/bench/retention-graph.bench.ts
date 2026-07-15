@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { performance } from 'node:perf_hooks';
-
+import { BenchmarkHarness } from './BenchmarkHarness.js';
 import { DagGraphTerms } from '../src/graph/DagGraphTerms.js';
 import { GraphRetentionManager } from '../src/graph/GraphRetentionManager.js';
 import { InMemoryGraphDataset } from '../src/graph/InMemoryGraphDataset.js';
@@ -13,9 +12,12 @@ for (const graphIri of graphIris) dataset.add([{
   "object": DagGraphTerms.literal('transient'),
   "graph": DagGraphTerms.namedNode(graphIri),
 }]);
-const started = performance.now();
-const report = new GraphRetentionManager(dataset).apply({ "graphIris": graphIris, "protectedGraphIris": [], "dryRun": false });
-const result = { 'benchmark': 'retention-graph', 'removedQuadCount': report.removedQuadCount, 'elapsedMs': performance.now() - started };
+let report: ReturnType<GraphRetentionManager['apply']> | undefined;
+const measurement = BenchmarkHarness.measure(() => {
+  report = new GraphRetentionManager(dataset).apply({ "graphIris": graphIris, "protectedGraphIris": [], "dryRun": false });
+});
+if (report === undefined) throw new Error('Retention benchmark did not produce a report');
+const result = { 'benchmark': 'retention-graph', 'removedQuadCount': report.removedQuadCount, ...measurement };
 mkdirSync('.orchestration/bench', { recursive: true });
 writeFileSync('.orchestration/bench/retention-graph.json', `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify(result));

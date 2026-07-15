@@ -262,6 +262,72 @@ export class CartographerState extends NodeStateBase {
    */
   errorRollup: ErrorRollupType = ErrorRollup.empty();
 
+  protected override graphStateValue(key: string, value: unknown): unknown {
+    if (key === 'insights' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'journeys' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'journeyAccumulators' && value instanceof Map) return Object.fromEntries(value);
+    if (key === 'errorRollup' && ErrorRollup.is(value)) return { ...value, 'groups': Object.fromEntries(value.groups) };
+    return value;
+  }
+
+  override async restoreJsonLd(runIri: string, document: Parameters<NodeStateBase['restoreJsonLd']>[1]): Promise<void> {
+    await super.restoreJsonLd(runIri, document);
+    this.insights = CartographerState.mapFromJson(Reflect.get(this, 'insights'), CartographerState.regionInsightsOf);
+    this.journeys = CartographerState.mapFromJson(Reflect.get(this, 'journeys'), CartographerState.journeyInsightsOf);
+    this.journeyAccumulators = CartographerState.mapFromJson(Reflect.get(this, 'journeyAccumulators'), CartographerState.journeyAccumulatorOf);
+    const rawRollup = Reflect.get(this, 'errorRollup');
+    if (ErrorRollup.is(rawRollup) && typeof rawRollup.groups === 'object' && rawRollup.groups !== null && !Array.isArray(rawRollup.groups)) {
+      const groups = CartographerState.mapFromJson(rawRollup.groups, CartographerState.errorGroupOf);
+      this.errorRollup = { ...rawRollup, groups };
+    }
+  }
+
+  private static mapFromJson<T>(value: unknown, decode: (value: unknown) => T | undefined): Map<string, T> {
+    const result = new Map<string, T>();
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return result;
+    for (const [key, item] of Object.entries(value)) {
+      const decoded = decode(item);
+      if (decoded !== undefined) result.set(key, decoded);
+    }
+    return result;
+  }
+
+  private static regionInsightsOf(value: unknown): RegionInsights | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyRegionInsights(), value);
+  }
+
+  private static journeyInsightsOf(value: unknown): JourneyInsights | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyJourneyInsights(), value);
+  }
+
+  private static journeyAccumulatorOf(value: unknown): JourneyAccumulator | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign(CartographerState.emptyJourneyAccumulator(), value);
+  }
+
+  private static errorGroupOf(value: unknown): import('./errors/ErrorRollup.ts').ErrorGroupType | undefined {
+    if (!CartographerState.isRecord(value)) return undefined;
+    return Object.assign({ 'source': '', 'variant': '', 'count': 0, 'samples': [], 'sampleInput': '' }, value);
+  }
+
+  private static emptyRegionInsights(): RegionInsights {
+    return { region: '', country: '', hub: '', deliveries: 0, exceptions: 0, onTimeCount: 0, lateCount: 0, totalSubtotalUsdMinor: 0, totalShippingUsdMinor: 0, totalDistanceKm: 0, totalDelayHours: 0, consentValid: 0, consentMissing: 0, consentExpired: 0, sizeTierEnvelope: 0, sizeTierSmall: 0, sizeTierMedium: 0, sizeTierLarge: 0, sizeTierFreight: 0, shipmentCount: 0 };
+  }
+
+  private static emptyJourneyInsights(): JourneyInsights {
+    return { shipmentId: '', scans: [], scanCount: 0, pathKm: 0, firstEpochMs: 0, lastEpochMs: 0, elapsedHours: 0, timezones: [], offsets: [], jurisdictions: [], statusProgression: [], lastStatus: '', lastHub: '', delivered: false, onTime: false, delayHours: 0, subtotalUsdMinor: 0, shippingUsdMinor: 0 };
+  }
+
+  private static emptyJourneyAccumulator(): JourneyAccumulator {
+    return { scans: [], scanCount: 0, pathKm: 0, minEpoch: 0, maxEpoch: 0, offsets: [], timezones: [], jurisdictions: [], statusProgression: [], delivered: false, etaCaptured: false, onTime: false, delayHours: 0, subtotalUsdMinor: 0, shippingUsdMinor: 0 };
+  }
+
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
   /** Raw scan from scatter metadata (set by parseEvent). */
   raw: RawShipmentEvent = {
     'shipmentId':          '',

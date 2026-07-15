@@ -4,7 +4,16 @@ export class DagGraphTerms {
   private constructor() { /* static-only */ }
 
   static readonly DAGONIZER = 'https://noocodec.dev/ontology/dagonizer/';
-  static readonly RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+  static readonly RDF = {
+    'namespace': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'type': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
+    'TripleTerm': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#TripleTerm',
+    'reifies': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies',
+    'ttSubject': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#ttSubject',
+    'ttPredicate': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#ttPredicate',
+    'ttObject': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#ttObject',
+  } as const;
+  static readonly RDF_TYPE = DagGraphTerms.RDF.type;
   static readonly XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
   static readonly DEFAULT_GRAPH = 'urn:dagonizer:default-graph';
 

@@ -7,25 +7,41 @@ import type { BindingType, QuadType, SlotPatternType, TermType } from '../contra
 import { DagGraphTerms } from '../graph/DagGraphTerms.js';
 import { GraphDatasetRevision } from '../graph/GraphDatasetRevision.js';
 
+type UndoOperation =
+  | { readonly operation: 'add'; readonly quads: readonly QuadType[] }
+  | { readonly operation: 'delete'; readonly quads: readonly QuadType[] };
+
 /** Browser-compatible N3 adapter implementing the canonical graph dataset port. */
 export class N3GraphDataset implements GraphDatasetInterface {
   readonly #store: Store<RDF.Quad, BaseQuad, RDF.Quad, RDF.Quad>;
+  readonly #undoLog: UndoOperation[] = [];
+  #transactionDepth = 0;
+  #replayingUndo = false;
+  #revisionCache: string | undefined;
 
   constructor() {
     this.#store = new Store<RDF.Quad, BaseQuad, RDF.Quad, RDF.Quad>();
   }
 
   add(quads: Iterable<QuadType>): void {
-    this.#store.addQuads([...quads].map((quad) => N3GraphDataset.rdfQuad(quad)));
+    this.#revisionCache = undefined;
+    const materialized = [...quads];
+    const added = materialized.filter((quad) => !this.#store.has(N3GraphDataset.rdfQuad(quad)));
+    this.#store.addQuads(materialized.map((quad) => N3GraphDataset.rdfQuad(quad)));
+    this.#recordUndo({ 'operation': 'delete', 'quads': added });
   }
 
   assert(subject: TermType, predicate: TermType, object: TermType, graph?: TermType): void {
-    this.#store.addQuad(
+    this.#revisionCache = undefined;
+    const quad = DataFactory.quad(
       N3GraphDataset.toSubject(subject),
       N3GraphDataset.toPredicate(predicate),
       N3GraphDataset.toObject(object),
       graph === undefined ? DataFactory.defaultGraph() : N3GraphDataset.toGraph(graph),
     );
+    if (this.#store.has(quad)) return;
+    this.#store.addQuad(quad);
+    this.#recordUndo({ 'operation': 'delete', 'quads': [N3GraphDataset.quadOf(quad)] });
   }
 
   select(pattern: SlotPatternType): readonly BindingType[] {
@@ -42,11 +58,22 @@ export class N3GraphDataset implements GraphDatasetInterface {
   }
 
   count(pattern: SlotPatternType): number {
+    if (![pattern.subject, pattern.predicate, pattern.object, pattern.graph].some((slot) => typeof slot === 'string')) {
+      return this.#store.countQuads(
+        N3GraphDataset.countSlot(pattern.subject),
+        N3GraphDataset.countSlot(pattern.predicate),
+        N3GraphDataset.countSlot(pattern.object),
+        N3GraphDataset.countSlot(pattern.graph),
+      );
+    }
     return [...this.match(pattern)].length;
   }
 
   clearGraph(graph: TermType): void {
+    this.#revisionCache = undefined;
+    const removed = [...this.match({ graph })];
     this.#store.deleteGraph(N3GraphDataset.toGraph(graph));
+    this.#recordUndo({ 'operation': 'add', 'quads': removed });
   }
 
   *triples(): IterableIterator<QuadType> {
@@ -54,12 +81,15 @@ export class N3GraphDataset implements GraphDatasetInterface {
   }
 
   delete(pattern: SlotPatternType): void {
+    this.#revisionCache = undefined;
+    const removed = [...this.match(pattern)];
     this.#store.deleteMatches(
       N3GraphDataset.deleteSlot(pattern.subject),
       N3GraphDataset.deleteSlot(pattern.predicate),
       N3GraphDataset.deleteSlot(pattern.object),
       N3GraphDataset.deleteSlot(pattern.graph),
     );
+    this.#recordUndo({ 'operation': 'add', 'quads': removed });
   }
 
   *match(pattern: SlotPatternType): IterableIterator<QuadType> {
@@ -85,7 +115,10 @@ export class N3GraphDataset implements GraphDatasetInterface {
   }
 
   async importGraphAsync(quads: AsyncIterable<QuadType>): Promise<void> {
-    for await (const quad of quads) this.#store.addQuad(N3GraphDataset.rdfQuad(quad));
+    this.#revisionCache = undefined;
+    const materialized: QuadType[] = [];
+    for await (const quad of quads) materialized.push(quad);
+    this.add(materialized);
   }
 
   fork(): GraphDatasetInterface {
@@ -93,7 +126,8 @@ export class N3GraphDataset implements GraphDatasetInterface {
   }
 
   revision(): string {
-    return GraphDatasetRevision.of(this);
+    if (this.#revisionCache === undefined) this.#revisionCache = GraphDatasetRevision.of(this);
+    return this.#revisionCache;
   }
 
   transactAtRevision<T>(expectedRevision: string, operation: (dataset: GraphDatasetInterface) => T): T {
@@ -102,28 +136,51 @@ export class N3GraphDataset implements GraphDatasetInterface {
   }
 
   transact<T>(operation: (dataset: GraphDatasetInterface) => T): T {
-    const snapshot = [...this.triples()];
+    const start = this.#undoLog.length;
+    this.#transactionDepth += 1;
     try {
       return operation(this);
     } catch (error) {
-      this.#restore(snapshot);
+      this.#rollback(start);
       throw error;
+    } finally {
+      this.#transactionDepth -= 1;
+      if (this.#transactionDepth === 0) this.#undoLog.length = 0;
     }
   }
 
   async transactAsync<T>(operation: (dataset: GraphDatasetInterface) => Promise<T>): Promise<T> {
-    const snapshot = [...this.triples()];
+    const start = this.#undoLog.length;
+    this.#transactionDepth += 1;
     try {
       return await operation(this);
     } catch (error) {
-      this.#restore(snapshot);
+      this.#rollback(start);
       throw error;
+    } finally {
+      this.#transactionDepth -= 1;
+      if (this.#transactionDepth === 0) this.#undoLog.length = 0;
     }
   }
 
-  #restore(quads: readonly QuadType[]): void {
-    this.#store.deleteMatches(undefined, undefined, undefined, undefined);
-    this.#store.addQuads(quads.map((quad) => N3GraphDataset.rdfQuad(quad)));
+  #recordUndo(operation: UndoOperation): void {
+    if (this.#transactionDepth !== 0 && !this.#replayingUndo && operation.quads.length !== 0) this.#undoLog.push(operation);
+  }
+
+  #rollback(start: number): void {
+    this.#replayingUndo = true;
+    try {
+      for (let index = this.#undoLog.length - 1; index >= start; index -= 1) {
+        const operation = this.#undoLog[index];
+        if (operation === undefined) continue;
+        if (operation.operation === 'add') this.#store.addQuads(operation.quads.map((quad) => N3GraphDataset.rdfQuad(quad)));
+        else for (const quad of operation.quads) this.#store.delete(N3GraphDataset.rdfQuad(quad));
+      }
+      this.#undoLog.length = start;
+      this.#revisionCache = undefined;
+    } finally {
+      this.#replayingUndo = false;
+    }
   }
 
   private static slot(value: TermType | string | undefined): RDF.Term | string | null {
@@ -132,6 +189,12 @@ export class N3GraphDataset implements GraphDatasetInterface {
 
   private static deleteSlot(value: TermType | string | undefined): RDF.Term | undefined {
     return typeof value === 'string' || value === undefined ? undefined : N3GraphDataset.toTerm(value);
+  }
+
+  private static countSlot(value: TermType | string | undefined): RDF.Term | null {
+    if (value === undefined) return null;
+    if (typeof value === 'string') throw new Error('N3 count slot cannot be a variable');
+    return N3GraphDataset.toTerm(value);
   }
 
   private static bind(binding: BindingType, pattern: TermType | string | undefined, value: TermType): void {

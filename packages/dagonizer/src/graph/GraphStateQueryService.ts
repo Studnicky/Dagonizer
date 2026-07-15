@@ -109,21 +109,9 @@ export class GraphStateQueryService {
     return undefined;
   }
 
-  attempts(): Map<string, number> {
-    const attempts = new Map<string, number>();
-    const sequences = new Map<string, number>();
-    const run = DagGraphTerms.namedNode(this.#runIri);
-    for (const quad of this.#dataset.match({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph })) {
-      if (quad.object.termType !== 'NamedNode') continue;
-      const key = this.#literalFor(quad.object, GraphStateTerms.DAGONIZER.AttemptKey);
-      const count = this.#numberFor(quad.object, GraphStateTerms.DAGONIZER.AttemptCount);
-      const sequence = this.#numberFor(quad.object, GraphStateTerms.DAGONIZER.AttemptSequence) ?? 0;
-      if (key !== undefined && count !== undefined && sequence >= (sequences.get(key) ?? -1)) {
-        sequences.set(key, sequence);
-        attempts.set(key, count);
-      }
-    }
-    return attempts;
+  attemptCountFor(key: string): number | undefined {
+    const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
+    return this.#numberFor(attempt, GraphStateTerms.DAGONIZER.AttemptCount);
   }
 
   #valueFromCell(cell: ReturnType<typeof DagGraphTerms.namedNode>): JsonValueType | undefined {

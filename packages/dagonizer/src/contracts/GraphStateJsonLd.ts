@@ -1,10 +1,13 @@
 /** JSON-LD graph-state value used at Node.js graph boundaries. */
 export type GraphStateJsonLdValueType = string | number | boolean | null | {
-  readonly '@id': string | GraphStateJsonLdNodeType;
+  readonly '@id': string;
 } | {
   readonly '@value': string;
   readonly '@type'?: string;
   readonly '@language'?: string;
+} | {
+  readonly '@type': string;
+  readonly [predicate: string]: GraphStateJsonLdValueType | readonly GraphStateJsonLdValueType[] | string;
 };
 
 /** One JSON-LD subject within a graph. */

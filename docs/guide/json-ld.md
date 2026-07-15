@@ -196,7 +196,7 @@ Because every field carries a canonical IRI through `@context`, a Dagonizer DAG 
 
 This is the same data the engine consumes. No separate ontology model, no projection. Applications that want to query DAGs as RDF (SHACL validation, SPARQL queries over a fleet of stored DAGs) get it for free by treating the JSON document as JSON-LD.
 
-JSON-LD-star annotation documents are parsed through the RDF 1.2 helper instead of `DAGDocument.load()`. That path is for statement metadata, such as confidence on a route claim or provenance on a composition edge, and returns RDF/JS quads that can be loaded into RDF-aware stores. New graph composition data should prefer the RDF 1.2 `rdf:reifies` form.
+RDF 1.2 Basic Encoding documents are parsed through the RDF 1.2 helper instead of `DAGDocument.load()`. That path is for statement metadata, such as confidence on a route claim or provenance on a composition edge, and returns RDF/JS quads with triple terms in object position. The encoding uses ordinary JSON-LD 1.1 nodes typed as `rdf:TripleTerm` with `rdf:ttSubject`, `rdf:ttPredicate`, and `rdf:ttObject`; reifier nodes connect to them with `rdf:reifies`.
 
 ## Related Concepts
 

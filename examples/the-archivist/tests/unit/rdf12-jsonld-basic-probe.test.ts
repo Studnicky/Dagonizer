@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { Rdf12JsonLdCodec as Rdf12JsonLd } from '@studnicky/dagonizer';
-import type { Quad, Quad_Object, Quad_Subject } from '@rdfjs/types';
+import type { Quad, Quad_Object } from '@rdfjs/types';
 
 const RDF_REIFIES = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies';
 const XSD_DECIMAL = 'http://www.w3.org/2001/XMLSchema#decimal';
@@ -14,7 +14,7 @@ const DAG_ROUTES = 'https://dagonizer.dev/vocab#routes';
 const DAG_CONFIDENCE = 'https://dagonizer.dev/vocab#confidence';
 const DAG_SOURCE = 'https://dagonizer.dev/vocab#source';
 
-const JSONLD_STAR_CONTEXT = {
+const BASIC_CONTEXT = {
   '@vocab': 'https://dagonizer.dev/vocab#',
   'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
   'routes': { '@id': DAG_ROUTES, '@type': '@id' },
@@ -22,70 +22,51 @@ const JSONLD_STAR_CONTEXT = {
   'source': { '@id': DAG_SOURCE, '@type': '@id' },
 };
 
-const JSONLD_RDF12_REIFIER = {
-  '@context': JSONLD_STAR_CONTEXT,
+const JSONLD_BASIC_REIFIER = {
+  '@context': BASIC_CONTEXT,
   '@id': DAG_ANNOTATION_EDGE_A_B,
   'rdf:reifies': {
-    '@id': {
-      '@id': DAG_EDGE_A_B,
-      'routes': { '@id': DAG_EDGE_B_C },
-    },
+    '@type': 'rdf:TripleTerm',
+    'rdf:ttSubject': { '@id': DAG_EDGE_A_B },
+    'rdf:ttPredicate': { '@id': DAG_ROUTES },
+    'rdf:ttObject': { '@id': DAG_EDGE_B_C },
   },
   'confidence': { '@value': '0.97', '@type': XSD_DECIMAL },
   'source': { '@id': DAG_PLANNER },
 };
 
-const JSONLD_STAR_EDGE = {
-  '@context': JSONLD_STAR_CONTEXT,
-  '@id': DAG_EDGE_A_B,
-  'routes': {
-    '@id': DAG_EDGE_B_C,
-    '@annotation': {
-      'confidence': { '@value': '0.97', '@type': XSD_DECIMAL },
-      'source': { '@id': DAG_PLANNER },
-    },
-  },
-};
-
 function requireQuad(quad: Quad | undefined): Quad {
-  if (quad === undefined) {
-    assert.fail('expected RDF quad');
-  }
+  if (quad === undefined) assert.fail('expected RDF quad');
   return quad;
 }
 
-function requireTripleTerm(term: Quad_Subject | Quad_Object): Quad {
-  if (term.termType !== 'Quad') {
-    assert.fail('expected RDF 1.2 triple term');
-  }
+function requireTripleTerm(term: Quad_Object): Quad {
+  if (term.termType !== 'Quad') assert.fail('expected RDF 1.2 triple term');
   return term;
 }
 
 function findPredicate(quads: readonly Quad[], predicate: string): Quad {
-  return requireQuad(quads.find((q) => q.predicate.value === predicate));
+  return requireQuad(quads.find((quad) => quad.predicate.value === predicate));
 }
 
-function assertRouteTripleTerm(term: Quad_Subject | Quad_Object): void {
+function assertRouteTripleTerm(term: Quad_Object): void {
   const route = requireTripleTerm(term);
   assert.equal(route.subject.value, DAG_EDGE_A_B);
   assert.equal(route.predicate.value, DAG_ROUTES);
   assert.equal(route.object.value, DAG_EDGE_B_C);
 }
 
-void test('JSON-LD-star parser maps RDF 1.2 reifier nodes to rdf:reifies triple-term objects', async () => {
-  const quads = await Rdf12JsonLd.parse(JSONLD_RDF12_REIFIER);
+void test('JSON-LD Basic Encoding maps RDF 1.2 triple-term nodes to RDF/JS triple-term objects', async () => {
+  const quads = await Rdf12JsonLd.parse(JSONLD_BASIC_REIFIER);
 
   assert.equal(quads.length, 3);
-
   const reification = findPredicate(quads, RDF_REIFIES);
   assert.equal(reification.subject.value, DAG_ANNOTATION_EDGE_A_B);
   assertRouteTripleTerm(reification.object);
 
   const confidence = findPredicate(quads, DAG_CONFIDENCE);
   assert.equal(confidence.subject.value, DAG_ANNOTATION_EDGE_A_B);
-  if (confidence.object.termType !== 'Literal') {
-    assert.fail('expected confidence literal');
-  }
+  if (confidence.object.termType !== 'Literal') assert.fail('expected confidence literal');
   assert.equal(confidence.object.value, '0.97');
   assert.equal(confidence.object.datatype.value, XSD_DECIMAL);
 
@@ -95,29 +76,22 @@ void test('JSON-LD-star parser maps RDF 1.2 reifier nodes to rdf:reifies triple-
   assert.equal(quads.some((quad) => quad.predicate.value === DAG_ROUTES), false);
 });
 
-void test('JSON-LD-star parser rejects @annotation shorthand with triple-term subjects', async () => {
-  await assert.rejects(Rdf12JsonLd.parse(JSONLD_STAR_EDGE), /triple terms in object position/u);
-});
+void test('JSON-LD Basic Encoding exposes the RDF 1.2 vocabulary as ordinary JSON-LD triples', async () => {
+  const serialized = await Rdf12JsonLd.serialize(await Rdf12JsonLd.parse(JSONLD_BASIC_REIFIER), { 'context': BASIC_CONTEXT, 'space': 2 });
 
-void test('JSON-LD-star serializer keeps RDF/JS reifier annotations round-trippable', async () => {
-  const quads = await Rdf12JsonLd.parse(JSONLD_RDF12_REIFIER);
-  const serialized = await Rdf12JsonLd.serialize(quads, { 'space': '  ' });
-
-  assert.ok(serialized.includes('"@id"'));
+  assert.ok(serialized.includes('rdf:TripleTerm'));
+  assert.ok(serialized.includes('rdf:ttSubject'));
+  assert.ok(serialized.includes('rdf:ttPredicate'));
+  assert.ok(serialized.includes('rdf:ttObject'));
   assert.ok(serialized.includes(DAG_EDGE_A_B));
-  assert.ok(serialized.includes(DAG_ROUTES));
-
-  const reparsed = await Rdf12JsonLd.parse(serialized);
-  const confidence = findPredicate(reparsed, DAG_CONFIDENCE);
-  const source = findPredicate(reparsed, DAG_SOURCE);
-  assert.equal(confidence.subject.value, DAG_ANNOTATION_EDGE_A_B);
-  assert.equal(source.subject.value, DAG_ANNOTATION_EDGE_A_B);
 });
 
-void test('JSON-LD-star serializer rejects context compaction when triple terms are present', async () => {
-  const quads = await Rdf12JsonLd.parse(JSONLD_RDF12_REIFIER);
-  await assert.rejects(
-    Rdf12JsonLd.serialize(quads, { 'context': JSONLD_STAR_CONTEXT }),
-    /not lossless for triple terms/u,
-  );
+void test('JSON-LD Basic Encoding serializer preserves RDF/JS triple terms with context compaction', async () => {
+  const quads = await Rdf12JsonLd.parse(JSONLD_BASIC_REIFIER);
+  const serialized = await Rdf12JsonLd.serialize(quads, { 'context': BASIC_CONTEXT, 'space': 2 });
+  const reparsed = await Rdf12JsonLd.parse(serialized);
+
+  assertRouteTripleTerm(findPredicate(reparsed, RDF_REIFIES).object);
+  assert.equal(findPredicate(reparsed, DAG_CONFIDENCE).subject.value, DAG_ANNOTATION_EDGE_A_B);
+  assert.equal(findPredicate(reparsed, DAG_SOURCE).subject.value, DAG_ANNOTATION_EDGE_A_B);
 });

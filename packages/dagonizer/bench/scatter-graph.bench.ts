@@ -1,15 +1,15 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { performance } from 'node:perf_hooks';
-
+import { BenchmarkHarness } from './BenchmarkHarness.js';
 import { NodeStateBase } from '../src/NodeStateBase.js';
 
-const started = performance.now();
 const parent = new NodeStateBase();
-for (let index = 0; index < 1_000; index += 1) {
-  const clone = parent.clone();
-  clone.setMetadata('itemIndex', index);
-}
-const result = { 'benchmark': 'scatter-graph', 'cloneCount': 1_000, 'elapsedMs': performance.now() - started };
+const measurement = BenchmarkHarness.measure(() => {
+  for (let index = 0; index < 1_000; index += 1) {
+    const clone = parent.clone();
+    clone.setMetadata('itemIndex', index);
+  }
+});
+const result = { 'benchmark': 'scatter-graph', 'cloneCount': 1_000, ...measurement };
 mkdirSync('.orchestration/bench', { recursive: true });
 writeFileSync('.orchestration/bench/scatter-graph.json', `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify(result));

@@ -24,7 +24,7 @@ RDF 1.2 Concepts is a W3C Candidate Recommendation Snapshot. It defines a triple
 
 RDF 1.2 Turtle is a W3C Working Draft. It defines the `<<( ... )>>` triple-term syntax and annotation syntax. An annotation expands to an asserted triple plus a reifier that points at the asserted triple term with `rdf:reifies`.
 
-JSON-LD 1.1 is the deployed Recommendation. The JSON-LD-star Community Group note defines `@annotation` and embedded-node forms for RDF-star/RDF 1.2-style statements about statements. The 2026 JSON-LD Working Group charter keeps RDF 1.2 compatibility in scope for future Recommendation-track JSON-LD work, but parser implementations already exist. Dagonizer uses parser-backed JSON-LD forms where authoring requires them, then carries the resulting RDF 1.2 dataset through the entire application.
+JSON-LD 1.1 is the deployed Recommendation. JSON-LD 1.2 support is still future standards work, so Dagonizer carries RDF 1.2 triple terms through JSON-LD 1.1 using the Basic Encoding described by the W3C RDF 1.2 Interoperability draft. This encoding uses ordinary triples and the RDF 1.2 vocabulary; it does not require a JSON-LD extension syntax.
 
 ## Local Stack Findings
 
@@ -34,11 +34,11 @@ JSON-LD 1.1 is the deployed Recommendation. The JSON-LD-star Community Group not
 
 The N3 focused probe lives at `examples/the-archivist/tests/unit/rdf12-triple-term-probe.test.ts`. It avoids casts and suppression comments by assigning `N3.DataFactory` to the RDF/JS `DataFactory` interface, constructing a reifying triple through RDF/JS `Quad` and `Quad_Object`, and using `Store.readQuads(...)` instead of `Store.getQuads(...)` so the returned quads keep RDF/JS types.
 
-`jsonld-streaming-parser@5.0.1` parses JSON-LD-star embedded-node input with `rdfstar` enabled. The RDF 1.2-aligned form is a reifier node with an `rdf:reifies` value whose `@id` is an embedded triple; parser output is an `rdf:reifies` quad whose object has `termType: 'Quad'`. Dagonizer rejects the older JSON-LD-star `@annotation` shorthand because it emits triple terms in subject position, which cannot cross the RDF 1.2 graph-state port.
+`jsonld@9` processes the JSON-LD 1.1 document containing Basic Encoding triples. `Rdf12JsonLdCodec` decodes the four Basic Encoding statements into an RDF/JS quad-as-term object and encodes RDF/JS triple terms back into those ordinary statements.
 
-`jsonld-streaming-serializer@4.0.0` can emit JSON-LD-star from RDF/JS quads. Dagonizer emits full-IRI JSON-LD when triple terms are present and rejects context compaction for those datasets because the serializer/parser pair does not preserve the RDF 1.2 shape under compacted output.
+`GraphStateJsonLdCodec` uses the same Basic Encoding node shape synchronously for the context-bound Node.js graph-state IR. Context prefixes are expanded and compacted through `ContextResolver`, including the RDF 1.2 terms `rdf:TripleTerm`, `rdf:ttSubject`, `rdf:ttPredicate`, and `rdf:ttObject`.
 
-The JSON-LD-star focused probe lives at `examples/the-archivist/tests/unit/rdf12-jsonld-star-probe.test.ts`. The framework-owned `Rdf12JsonLdCodec` exposes `parse(...)` and `serialize(...)` for RDF/JS quads.
+The JSON-LD Basic Encoding probe lives at `examples/the-archivist/tests/unit/rdf12-jsonld-basic-probe.test.ts`. The framework-owned `Rdf12JsonLdCodec` exposes `parse(...)` and `serialize(...)` for RDF/JS quads.
 
 `@rdfjs/types` is present through the installed `@types/n3` dependency tree. If RDF 1.2 triple terms move from probe code into exported package APIs, the owning package should declare `@rdfjs/types` directly before exposing those types.
 
@@ -51,7 +51,7 @@ Model DAG composition in two layers:
 - Graph identity: one named graph per DAG document, embedded DAG, run snapshot, or imported source. This keeps MemoryStore snapshots, provenance isolation, and JSON-LD export compatible with the current stack.
 - Statement identity: one RDF 1.2 reifier per annotated edge or placement claim. The reifier carries metadata such as `prov:wasGeneratedBy`, score, timestamp, or source. The reifier points at the route or composition triple via `rdf:reifies`.
 
-Use JSON-LD-star through `Rdf12JsonLdCodec.parse(...)` and `serialize(...)` at RDF 1.2 parser/serializer boundaries. `GraphStateJsonLdCodec` is the synchronous, context-bound projection used by node state and transfer envelopes; it is not a second RDF parser or a fallback format. Use RDF 1.2 reifier nodes with `rdf:reifies` for statement metadata. A reifier describes a triple term; it does not assert the described base triple, so authoring that relationship requires an explicit asserted quad alongside the reifier.
+Use RDF 1.2 Basic Encoding through `Rdf12JsonLdCodec.parse(...)` and `serialize(...)` at JSON-LD boundaries. `GraphStateJsonLdCodec` is the synchronous, context-bound Node.js projection and uses the identical Basic Encoding vocabulary. Use RDF 1.2 reifier nodes with `rdf:reifies` for statement metadata. A reifier describes a triple term; it does not assert the described base triple, so authoring that relationship requires an explicit asserted quad alongside the reifier.
 
 JSON-LD is the context-bound intermediate representation between Node.js values and RDF graphs. Graph-backed node state, checkpoint graphs, and graph transfer envelopes expose the same JSON-LD document to Node.js code; `ContextResolver` expands and compacts terms against the document context so application code does not maintain parallel IRI rules. The application projects those documents into RDF datasets, and the same RDF 1.2 substrate carries topology, schemas, node contracts, execution, state, checkpoints, provenance, and memory. N-Quads remains the default dataset transfer and persistence serialization because it streams named graphs and triple terms; the JSON-LD document is the Node.js boundary IR, not a replacement for the graph serialization.
 
@@ -60,11 +60,9 @@ Semantic graph writes are additive assertions. An exact quad is set-idempotent, 
 ## Sources
 
 - W3C RDF 1.2 Concepts and Abstract Data Model: https://www.w3.org/TR/rdf12-concepts/
+- W3C RDF 1.2 Interoperability and Basic Encoding: https://www.w3.org/TR/2025/DNOTE-rdf12-interop-20251216/
 - W3C RDF 1.2 Turtle: https://www.w3.org/TR/rdf12-turtle/
 - W3C JSON-LD 1.1: https://www.w3.org/TR/json-ld11/
 - W3C JSON-LD Working Group Charter: https://www.w3.org/2026/01/json-ld-wg-charter.html
-- JSON-LD-star Community Group Note: https://json-ld.github.io/json-ld-star/
-- JSON-LD-star Processor Conformance: https://json-ld.github.io/json-ld-star/reports/
-- JSON-LD Streaming Parser: https://github.com/rubensworks/jsonld-streaming-parser.js/
-- JSON-LD Streaming Serializer: https://github.com/rubensworks/jsonld-streaming-serializer.js/
+- jsonld.js: https://github.com/digitalbazaar/jsonld.js/
 - N3.js releases: https://github.com/rdfjs/N3.js/releases
