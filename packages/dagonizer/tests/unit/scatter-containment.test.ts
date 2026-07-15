@@ -24,14 +24,14 @@ import type { DagContainerInterface } from '../../src/contracts/DagContainerInte
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { emptyGraphStateTransfer, graphStateDocument, graphStateTransfer } from '../_support/GraphStateSupport.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 // ---------------------------------------------------------------------------
 // State
@@ -52,25 +52,7 @@ class ScatterContainerState extends NodeStateBase {
     this.value = 0;
   }
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'items': [...this.items],
-      'processed': [...this.processed],
-      'nodeBodyProcessed': [...this.nodeBodyProcessed],
-      'value': this.value,
-    };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>): void {
-    const items = snap['items'];
-    if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
-    const processed = snap['processed'];
-    if (Array.isArray(processed)) this.processed = processed.filter((x): x is number => typeof x === 'number');
-    const n = snap['nodeBodyProcessed'];
-    if (Array.isArray(n)) this.nodeBodyProcessed = n.filter((x): x is number => typeof x === 'number');
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +236,7 @@ class TestContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'stateSnapshot': null,
+            'graphState': emptyGraphStateTransfer(),
             'intermediates': [],
           };
         }
@@ -279,7 +261,7 @@ class TestContainer {
           return {
             'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
             'errors': [...terminal.state.errors],
-            'stateSnapshot': terminal.state.snapshot(),
+            'graphState': graphStateTransfer(terminal.state),
             'intermediates': intermediates,
           };
         } catch (err: unknown) {
@@ -293,7 +275,7 @@ class TestContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'stateSnapshot': null,
+            'graphState': emptyGraphStateTransfer(),
             'intermediates': [],
           };
         }
@@ -369,7 +351,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
         return {
           'terminalOutput': 'completed',
           'errors': [],
-          'stateSnapshot': null,
+          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
         };
       },
@@ -417,7 +399,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
             'recoverable': false,
             'timestamp': new Date().toISOString(),
           }],
-          'stateSnapshot': task.state.snapshot(),
+          'graphState': graphStateTransfer(task.state),
           'intermediates': [],
         };
       },
@@ -484,7 +466,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
       };
 
       await dispatcher.execute(useContainer ? RUNNER_DAG_NAME : 'scatter-inprocess', state);
-      const finalSnapshot = JSON.parse(JSON.stringify(state.snapshot()));
+      const finalSnapshot = JSON.parse(JSON.stringify(graphStateDocument(state)));
       return { checkpoints, finalSnapshot };
     };
 

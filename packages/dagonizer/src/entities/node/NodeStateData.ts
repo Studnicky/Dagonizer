@@ -7,7 +7,7 @@
  * does NOT extend this entity; its `lifecycle` field carries an in-memory
  * `Error` on the `failed` branch, which is not JSON-expressible. Instead,
  * `NodeStateInterface` is documented to reference this shape as the persistence
- * form returned by `NodeStateBase.snapshot()`.
+ * form represented by the node graph's JSON-LD intermediate document.
  *
  * The NodeError and NodeWarning item shapes reference the single-source
  * `NodeErrorProperties`/`NodeWarningProperties` consts and their schemas'

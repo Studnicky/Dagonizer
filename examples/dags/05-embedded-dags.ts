@@ -8,8 +8,7 @@ import {
   Batch,
   DAGBuilder,
   DAG_CONTEXT,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -54,7 +53,7 @@ export class IncrementNode extends MonadicNode<IncrementState, 'success'> {
 
 export const childDAGIri = 'urn:noocodec:dag:child' as const;
 export const parentDAGIri = 'urn:noocodec:dag:parent' as const;
-const placement = (dagIri: string, placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (dagIri: string, placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 // #region child-dag
 export const child: DAGType = {

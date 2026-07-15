@@ -112,41 +112,10 @@ export class ConformanceState extends NodeStateBase {
     this.gatheredItems = [];
   }
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'value': this.value,
-      'executedNodes': [...this.executedNodes],
-      'began': this.began,
-      'scatterItems': [...this.scatterItems],
-      'gatheredItems': [...this.gatheredItems],
-    };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>): void {
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-    const e = snap['executedNodes'];
-    if (Array.isArray(e)) this.executedNodes = e.filter((x): x is string => typeof x === 'string');
-    const b = snap['began'];
-    if (typeof b === 'boolean') this.began = b;
-    const s = snap['scatterItems'];
-    if (Array.isArray(s)) this.scatterItems = s.filter((x): x is number => typeof x === 'number');
-    const g = snap['gatheredItems'];
-    if (Array.isArray(g)) this.gatheredItems = g.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 /** Restore a ConformanceState from a snapshot (the registry's restoreState). */
-class ConformanceStateRestore {
-  private constructor() {}
-
-  static fromSnapshot(snapshot: JsonObjectType): ConformanceState {
-    const instance = new ConformanceState();
-    instance.applySnapshot(snapshot);
-    return instance;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Signal-respecting sleep
 // ---------------------------------------------------------------------------
@@ -580,7 +549,7 @@ export class ConformanceRegistry {
         'dags': [...CONFORMANCE_DAGS],
       },
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => ConformanceStateRestore.fromSnapshot(snap)),
+      'restoreState': CheckpointRestoreAdapter.wrap(() => new ConformanceState()),
     };
   }
 }

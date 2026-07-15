@@ -26,7 +26,6 @@ import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.j
 import { WORKSET_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -56,25 +55,9 @@ class WalkState extends NodeStateBase {
     return copy;
   }
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'value': this.value, 'log': [...this.log] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-    const l = snap['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
 }
 
-class WalkStateRestore {
-  private constructor() {}
-
-  static fromSnapshot(snap: JsonObjectType): WalkState {
-    return WalkState.restore(snap);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // DAG fixture:  fan(1→N) → process → collect (terminal accumulator)
@@ -284,8 +267,8 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       const raw = ckpt.toJson();
       const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
-      const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapter.wrap(WalkStateRestore.fromSnapshot),
+      const { 'state': restoredState, dagName, cursor } = await ckpt2.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new WalkState()),
       );
 
       // ── Run 2: resume ────────────────────────────────────────────────────
@@ -352,19 +335,12 @@ void describe('WorkSet checkpoint — blob shape', () => {
       assert.ok(result.cursor !== null, 'run must be interrupted');
 
       // The captured state snapshot must carry the workset blob.
-      const snap = result.state.snapshot();
-      const meta = snap['metadata'];
+      const meta = result.state.getMetadata(WORKSET_PROGRESS_KEY);
       assert.ok(
-        meta !== null && typeof meta === 'object' && !Array.isArray(meta),
-        'snapshot must have a metadata object',
+        meta !== undefined,
+        'graph state must have a workset entry',
       );
-      // After the narrowing above, TypeScript knows meta is JsonObjectType.
-      assert.ok(
-        WORKSET_PROGRESS_KEY in meta,
-        `snapshot metadata must contain ${WORKSET_PROGRESS_KEY}`,
-      );
-
-      const blob = meta[WORKSET_PROGRESS_KEY];
+      const blob = meta;
       assert.ok(
         blob !== null && typeof blob === 'object' && !Array.isArray(blob),
         'blob must be an object',
@@ -405,15 +381,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const result = await dispatcher.execute(FAN_PROC_COLLECT_DAG, new WalkState());
       assert.equal(result.cursor, null, 'run must complete');
 
-      const snap = result.state.snapshot();
-      const meta = snap['metadata'];
-      if (meta !== null && typeof meta === 'object' && !Array.isArray(meta)) {
-        // meta narrowed to JsonObjectType; no cast needed.
-        assert.ok(
-          !(WORKSET_PROGRESS_KEY in meta),
-          `completed run snapshot must NOT contain ${WORKSET_PROGRESS_KEY}`,
-        );
-      }
+      assert.equal(result.state.getMetadata(WORKSET_PROGRESS_KEY), undefined);
     },
   );
 });
@@ -442,14 +410,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
           return copy;
         }
 
-        protected override snapshotData(): JsonObjectType {
-          return { 'count': this.count };
-        }
 
-        protected override restoreData(snap: JsonObjectType): void {
-          const c = snap['count'];
-          if (typeof c === 'number') this.count = c;
-        }
       }
 
       const dispatcher = new Dagonizer<CountState>();
@@ -514,23 +475,15 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       assert.equal(partial.state.count, 1, 'count must be 1 after first node');
 
       // Assert: NO work-set blob in snapshot (size-1 canonical path).
-      const snap1 = partial.state.snapshot();
-      const meta1 = snap1['metadata'];
-      if (meta1 !== null && typeof meta1 === 'object' && !Array.isArray(meta1)) {
-        // meta1 narrowed to JsonObjectType.
-        assert.ok(
-          !(WORKSET_PROGRESS_KEY in meta1),
-          'size-1 abort must NOT write a work-set blob',
-        );
-      }
+      assert.equal(partial.state.getMetadata(WORKSET_PROGRESS_KEY), undefined);
 
       // Checkpoint → round-trip → restore → resume.
       const ckpt = await Checkpoint.capture(SIZE1_CKPT_DAG, partial);
       const raw = ckpt.toJson();
       const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
-      const { state, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),
+      const { state, dagName, cursor } = await ckpt2.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new CountState()),
       );
 
       assert.equal(state.count, 1, 'restored count must be 1');

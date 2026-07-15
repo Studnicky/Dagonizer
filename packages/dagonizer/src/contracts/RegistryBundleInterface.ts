@@ -26,8 +26,8 @@ export interface RegistryBundleInterface {
   /** Semantic version used for the init ↔ ready version handshake. */
   registryVersion: string;
   /**
-   * Adapter that restores a state instance from a JSON snapshot.
-   * Implement `restore(snapshot)` to rehydrate domain state.
+   * Factory that constructs the graph-backed state instance used by the host.
+   * The host restores its graph after construction.
    */
   restoreState: CheckpointRestoreAdapterInterface<NodeStateInterface>;
   /**

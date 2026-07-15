@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { Rdf12JsonLd } from '../../memory/Rdf12JsonLd.ts';
+import { Rdf12JsonLdCodec as Rdf12JsonLd } from '@studnicky/dagonizer';
 import type { Quad, Quad_Object, Quad_Subject } from '@rdfjs/types';
 
 const RDF_REIFIES = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies';
@@ -92,32 +92,15 @@ void test('JSON-LD-star parser maps RDF 1.2 reifier nodes to rdf:reifies triple-
   const source = findPredicate(quads, DAG_SOURCE);
   assert.equal(source.subject.value, DAG_ANNOTATION_EDGE_A_B);
   assert.equal(source.object.value, DAG_PLANNER);
+  assert.equal(quads.some((quad) => quad.predicate.value === DAG_ROUTES), false);
 });
 
-void test('JSON-LD-star parser preserves @annotation shorthand as RDF/JS triple-term subjects', async () => {
-  const quads = await Rdf12JsonLd.parse(JSONLD_STAR_EDGE);
-
-  assert.equal(quads.length, 3);
-
-  const route = findPredicate(quads, DAG_ROUTES);
-  assert.equal(route.subject.value, DAG_EDGE_A_B);
-  assert.equal(route.object.value, DAG_EDGE_B_C);
-
-  const confidence = findPredicate(quads, DAG_CONFIDENCE);
-  assertRouteTripleTerm(confidence.subject);
-  if (confidence.object.termType !== 'Literal') {
-    assert.fail('expected confidence literal');
-  }
-  assert.equal(confidence.object.value, '0.97');
-  assert.equal(confidence.object.datatype.value, XSD_DECIMAL);
-
-  const source = findPredicate(quads, DAG_SOURCE);
-  assertRouteTripleTerm(source.subject);
-  assert.equal(source.object.value, DAG_PLANNER);
+void test('JSON-LD-star parser rejects @annotation shorthand with triple-term subjects', async () => {
+  await assert.rejects(Rdf12JsonLd.parse(JSONLD_STAR_EDGE), /triple terms in object position/u);
 });
 
-void test('JSON-LD-star serializer keeps RDF/JS triple-term annotations round-trippable', async () => {
-  const quads = await Rdf12JsonLd.parse(JSONLD_STAR_EDGE);
+void test('JSON-LD-star serializer keeps RDF/JS reifier annotations round-trippable', async () => {
+  const quads = await Rdf12JsonLd.parse(JSONLD_RDF12_REIFIER);
   const serialized = await Rdf12JsonLd.serialize(quads, { 'space': '  ' });
 
   assert.ok(serialized.includes('"@id"'));
@@ -127,6 +110,14 @@ void test('JSON-LD-star serializer keeps RDF/JS triple-term annotations round-tr
   const reparsed = await Rdf12JsonLd.parse(serialized);
   const confidence = findPredicate(reparsed, DAG_CONFIDENCE);
   const source = findPredicate(reparsed, DAG_SOURCE);
-  assertRouteTripleTerm(confidence.subject);
-  assertRouteTripleTerm(source.subject);
+  assert.equal(confidence.subject.value, DAG_ANNOTATION_EDGE_A_B);
+  assert.equal(source.subject.value, DAG_ANNOTATION_EDGE_A_B);
+});
+
+void test('JSON-LD-star serializer rejects context compaction when triple terms are present', async () => {
+  const quads = await Rdf12JsonLd.parse(JSONLD_RDF12_REIFIER);
+  await assert.rejects(
+    Rdf12JsonLd.serialize(quads, { 'context': JSONLD_STAR_CONTEXT }),
+    /not lossless for triple terms/u,
+  );
 });

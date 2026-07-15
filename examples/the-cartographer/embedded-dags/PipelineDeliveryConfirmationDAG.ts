@@ -41,13 +41,13 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 const pipelineDeliveryConfirmationDagIri = 'urn:noocodec:dag:pipeline-delivery-confirmation' as const;
 const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
 const gdprComplianceDagIri = 'urn:noocodec:dag:gdpr-compliance' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(pipelineDeliveryConfirmationDagIri, placementIdentifier);
+  `${pipelineDeliveryConfirmationDagIri}/node/${placementIdentifier}`;
 
 export const pipelineDeliveryConfirmationDAG: DAGType = new DAGBuilder(pipelineDeliveryConfirmationDagIri, '1.0')
 

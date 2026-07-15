@@ -19,7 +19,6 @@ import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -50,30 +49,7 @@ class HeterogeneousState extends NodeStateBase {
   /** Per-provider failure messages (parent state). Distinct from base `errors`. */
   failMessages: string[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'providers':      [...this.providers],
-      'providerResult': this.providerResult,
-      'results':        [...this.results],
-      'failMessages':   [...this.failMessages],
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const providers = snap['providers'];
-    if (Array.isArray(providers)) {
-      this.providers = providers.filter((x): x is string => typeof x === 'string');
-    }
-    if (typeof snap['providerResult'] === 'string') this.providerResult = snap['providerResult'];
-    const results = snap['results'];
-    if (Array.isArray(results)) {
-      this.results = results.filter((x): x is string => typeof x === 'string');
-    }
-    const failMessages = snap['failMessages'];
-    if (Array.isArray(failMessages)) {
-      this.failMessages = failMessages.filter((x): x is string => typeof x === 'string');
-    }
-  }
 }
 
 // ── dispatch node ─────────────────────────────────────────────────────────────

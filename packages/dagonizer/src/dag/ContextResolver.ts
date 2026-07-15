@@ -69,6 +69,17 @@ export class ContextResolver {
     return ns + local;
   }
 
+  /** Expand a JSON-LD term or CURIE using the supplied context. */
+  static expandTerm(name: string, context: Record<string, unknown>): string {
+    const colonIdx = name.indexOf(':');
+    if (colonIdx > 0 || name.startsWith('urn:')) return ContextResolver.expand(name, context);
+    const definition = context[name];
+    if (ContextResolver.isContext(definition) && typeof definition['@id'] === 'string') return definition['@id'];
+    const vocabulary = context['@vocab'];
+    if (typeof vocabulary === 'string') return `${vocabulary}${name}`;
+    throw new DAGError(`JSON-LD term '${name}' is not declared in the context`, { 'code': 'CONFIGURATION_ERROR' });
+  }
+
   /**
    * Compact an absolute IRI to a CURIE for presentation.
    *
@@ -92,6 +103,15 @@ export class ContextResolver {
     return iri;
   }
 
+  /** Compact an IRI to a declared JSON-LD term, CURIE, or unchanged IRI. */
+  static compactTerm(iri: string, context: Record<string, unknown>): string {
+    for (const [term, definition] of Object.entries(context)) {
+      if (term.startsWith('@') || !ContextResolver.isContext(definition) || definition['@id'] !== iri) continue;
+      return term;
+    }
+    return ContextResolver.compact(iri, context);
+  }
+
   /**
    * Validate a context object for semantic correctness.
    *
@@ -104,14 +124,15 @@ export class ContextResolver {
     const seenNamespaces = new Map<string, string>();
     for (const [key, value] of Object.entries(context)) {
       if (key.startsWith('@')) continue;
-      if (typeof value !== 'string' || value.length === 0) continue;
-      const existingKey = seenNamespaces.get(value);
+      const namespace = ContextResolver.namespaceOf(value);
+      if (namespace === undefined) continue;
+      const existingKey = seenNamespaces.get(namespace);
       if (existingKey !== undefined) {
         throw new DAGError(
-          `@context collision: prefix '${existingKey}' and prefix '${key}' both map to namespace '${value}'`,
+          `@context collision: prefix '${existingKey}' and prefix '${key}' both map to namespace '${namespace}'`,
         );
       }
-      seenNamespaces.set(value, key);
+      seenNamespaces.set(namespace, key);
     }
   }
 
@@ -126,9 +147,15 @@ export class ContextResolver {
     const result = new Map<string, string>();
     for (const [key, value] of Object.entries(context)) {
       if (key.startsWith('@')) continue;
-      if (typeof value !== 'string' || value.length === 0) continue;
-      result.set(key, value);
+      const namespace = ContextResolver.namespaceOf(value);
+      if (namespace !== undefined) result.set(key, namespace);
     }
     return result;
+  }
+
+  private static namespaceOf(value: unknown): string | undefined {
+    if (typeof value === 'string' && value.length > 0) return value;
+    if (!ContextResolver.isContext(value) || value['@prefix'] !== true || typeof value['@id'] !== 'string' || value['@id'].length === 0) return undefined;
+    return value['@id'];
   }
 }

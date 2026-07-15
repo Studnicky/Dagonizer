@@ -6,7 +6,7 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
@@ -89,7 +89,7 @@ class PlacementFixture {
   private constructor() {}
 
   static iri(dagIri: string, placementSegment: string): string {
-    return DAGIdentity.placementId(dagIri, placementSegment);
+    return `${dagIri}/node/${placementSegment}`;
   }
 
   static single(dag: string, placementSegment: string, outputs: Record<string, string>): DAGType['nodes'][number] {

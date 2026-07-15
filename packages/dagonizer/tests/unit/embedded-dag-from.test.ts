@@ -17,7 +17,7 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity, type DAGType } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT, type DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DagReferenceResolver } from '../../src/execution/DagReferenceResolver.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
@@ -158,7 +158,7 @@ class SetDagNode extends MonadicNode<RoutingState, 'success'> {
   }
 }
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 /** DAG-shaped fixtures: terminals and a minimal child DAG. */
 class TestDag {

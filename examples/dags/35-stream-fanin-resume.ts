@@ -19,7 +19,6 @@ import type {
   StreamProducerInterface,
   StreamSinkInterface,
 } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State
@@ -30,18 +29,7 @@ export class FanInState extends NodeStateBase {
   item:    number                       = 0;
   results: number[]                     = [];
 
-  protected override snapshotData(): JsonObjectType {
-    // source is a live channel — not JSON-serialisable; callers supply a
-    // re-positioned channel on resume via StreamChannel.resumable.
-    return { 'results': [...this.results] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const v = snap['results'];
-    if (Array.isArray(v)) {
-      this.results = v.filter((x): x is number => typeof x === 'number');
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

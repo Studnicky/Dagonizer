@@ -12,7 +12,7 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType, JsonValueType } from '@studnicky/dagonizer/entities';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Basic subclass
@@ -76,13 +76,11 @@ export { ItemListState };
 export class RestoredState extends NodeStateBase {
   items: string[] = [];
 
-  // NodeStateBase.restore is static with this-polymorphism.
-  // Subclasses inherit it; RestoredState.restore(snap) returns RestoredState.
-  static demo(): void {
+  static async demo(): Promise<void> {
     const state = new RestoredState();
-    const snap = state.snapshot();
-    const restored = RestoredState.restore(snap);
-    // restored is RestoredState (not NodeStateBase)
+    const snap = state.snapshotJsonLd();
+    const restored = new RestoredState();
+    await restored.restoreJsonLd(state.runIri, snap);
     if (!(restored instanceof RestoredState)) {
       throw new Error('restore did not return RestoredState');
     }
@@ -98,13 +96,7 @@ export class RestoredState extends NodeStateBase {
 export class ApiState extends NodeStateBase {
   data: JsonValueType = null;
 
-  protected override snapshotData(): JsonObjectType {
-    return { data: this.data };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    this.data = snap['data'] ?? null;
-  }
 }
 
 export class ApiNode extends MonadicNode<ApiState, 'success' | 'retry' | 'salvage'> {

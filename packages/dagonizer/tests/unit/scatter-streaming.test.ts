@@ -24,10 +24,10 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
+import { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -35,7 +35,7 @@ import { TestNode } from '../_support/TestNode.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 /** Union type for scatter source fields: array (array-mode) or async iterable (streaming mode). */
 type ScatterSource<T> = T[] | AsyncIterable<T>;
@@ -48,34 +48,7 @@ class StreamState extends NodeStateBase {
   partition_error: number[] = [];
   produced = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    // items may be an AsyncIterable at runtime (scatter engine reads it via
-    // accessor); only array form is JSON-serialisable. Non-array sources are
-    // snapshotted as empty — resume callers supply a re-positioned iterator.
-    const itemsSnap = Array.isArray(this.items) ? [...this.items] : [];
-    return {
-      'items':             itemsSnap,
-      'processed':         [...this.processed],
-      'mappedResults':     [...this.mappedResults],
-      'partition_success': [...this.partition_success],
-      'partition_error':   [...this.partition_error],
-      'produced':          this.produced,
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const num = (k: string): number[] => {
-      const v = snap[k];
-      return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : [];
-    };
-    this.items             = num('items');
-    this.processed         = num('processed');
-    this.mappedResults     = num('mappedResults');
-    this.partition_success = num('partition_success');
-    this.partition_error   = num('partition_error');
-    const p = snap['produced'];
-    if (typeof p === 'number') this.produced = p;
-  }
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -600,8 +573,8 @@ void describe('Scatter: incremental gather', () => {
     dispatcher.registerNode(TestNode.make<StreamState>('urn:noocodec:node:customGather', ['success'], (state) => {
       customNodeCalls++;
       const rawRecords = state.getMetadata('gatherResults');
-      const records: Array<Record<string, unknown>> = Array.isArray(rawRecords)
-        ? rawRecords.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+      const records = Array.isArray(rawRecords)
+        ? rawRecords.filter((x) => JsonObject.is(x))
         : [];
       for (const r of records) {
         if (typeof r['item'] === 'number') state.processed.push(r['item']);

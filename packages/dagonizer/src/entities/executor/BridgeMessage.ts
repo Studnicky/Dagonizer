@@ -22,6 +22,10 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
 
+import type { ExecutionRequestType } from './ExecutionRequest.js';
+import type { ExecutionResponseType } from './ExecutionResponse.js';
+import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
+
 // ---------------------------------------------------------------------------
 // Inline shape copies
 // ---------------------------------------------------------------------------
@@ -37,7 +41,7 @@ const InlineNodeErrorShape = {
  * Inline copy of the dag-only ExecutionRequest shape.
  * See ExecutionRequest.ts for the canonical schema.
  * No `variant` discriminant; no `nodeName`. DagHost runs only whole DAGs.
- * `items` carries one or more `{ id, snapshot }` pairs for batch execution.
+ * `items` carries one or more `{ id, graphState }` pairs for batch execution.
  */
 const InlineExecutionRequestShape = {
   'type': 'object',
@@ -50,10 +54,10 @@ const InlineExecutionRequestShape = {
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'snapshot'],
+        'required': ['id', 'graphState'],
         'properties': {
           'id':       { 'type': 'string', 'minLength': 1 },
-          'snapshot': { 'type': 'object' },
+          'graphState': GraphStateTransferSchema,
         },
         'additionalProperties': false,
       },
@@ -67,7 +71,7 @@ const InlineExecutionRequestShape = {
 /**
  * Inline copy of the dag-only ExecutionResponse shape.
  * See ExecutionResponse.ts for the canonical schema.
- * Per-item results live in `items[*].{ id, snapshot, terminalOutcome }`.
+ * Per-item results live in `items[*].{ id, graphState, terminalOutcome }`.
  * The ExecutorIntermediate items shape (output, skipped, nodeName) is an
  * inline copy of ExecutorIntermediate.ts — intentionally duplicated to
  * avoid $ref resolution at compile time.
@@ -82,11 +86,11 @@ const InlineExecutionResponseShape = {
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'snapshot', 'terminalOutcome'],
+        'required': ['id', 'graphState', 'terminalOutcome'],
         'properties': {
           'id':              { 'type': 'string', 'minLength': 1 },
-          'snapshot':        { 'type': ['object', 'null'] },
           'terminalOutcome': { 'type': 'string' },
+          'graphState':      GraphStateTransferSchema,
         },
         'additionalProperties': false,
       },
@@ -225,7 +229,14 @@ export const BridgeMessageSchema = {
 } as const;
 
 /** TypeScript type derived from `BridgeMessageSchema` via `json-schema-to-ts`. */
-export type BridgeMessageType = FromSchema<typeof BridgeMessageSchema>;
+type BridgeMessageWireType = FromSchema<typeof BridgeMessageSchema>;
+type ExecuteMessageWireType = Extract<BridgeMessageWireType, { variant: 'execute' }>;
+type ResultMessageWireType = Extract<BridgeMessageWireType, { variant: 'result' }>;
+type ExecuteMessageType = Omit<ExecuteMessageWireType, 'request'> & { request: ExecutionRequestType };
+type ResultMessageType = Omit<ResultMessageWireType, 'response'> & { response: ExecutionResponseType };
+
+/** TypeScript bridge contract with canonical graph transfer typing at both wire boundaries. */
+export type BridgeMessageType = Exclude<BridgeMessageWireType, ExecuteMessageWireType | ResultMessageWireType> | ExecuteMessageType | ResultMessageType;
 
 // ---------------------------------------------------------------------------
 // BridgeMessage

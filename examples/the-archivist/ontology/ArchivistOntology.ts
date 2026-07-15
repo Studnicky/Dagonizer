@@ -31,12 +31,14 @@
  *   • Schema reflection: ask what class/domain/range a predicate has
  */
 
-/** @internal Namespace abbreviation. */
-const DAG = 'https://noocodec.dev/ontology/dagonizer/';
+import { DagonizerContexts } from '@studnicky/dagonizer';
+
+/** @internal Namespace abbreviations from the framework registry. */
+const DAG = DagonizerContexts.NAMESPACES.dagonizer;
 const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL  = 'http://www.w3.org/2002/07/owl#';
-const XSD  = 'http://www.w3.org/2001/XMLSchema#';
-const PROV = 'http://www.w3.org/ns/prov#';
+const XSD  = DagonizerContexts.NAMESPACES.xsd;
+const PROV = DagonizerContexts.NAMESPACES.prov;
 
 // ── JSON-LD context ─────────────────────────────────────────────────────────
 

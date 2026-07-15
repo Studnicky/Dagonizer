@@ -24,7 +24,7 @@ RDF 1.2 Concepts is a W3C Candidate Recommendation Snapshot. It defines a triple
 
 RDF 1.2 Turtle is a W3C Working Draft. It defines the `<<( ... )>>` triple-term syntax and annotation syntax. An annotation expands to an asserted triple plus a reifier that points at the asserted triple term with `rdf:reifies`.
 
-JSON-LD 1.1 is the deployed Recommendation. The JSON-LD-star Community Group note defines `@annotation` and embedded-node forms for RDF-star/RDF 1.2-style statements about statements. The 2026 JSON-LD Working Group charter keeps RDF 1.2 compatibility in scope for future Recommendation-track JSON-LD work, but parser implementations already exist. Dagonizer uses those parser-backed JSON-LD-star forms for RDF 1.2 semantic enrichment now while `DAGDocument.load()` remains the JSON-LD 1.1-compatible DAG schema boundary.
+JSON-LD 1.1 is the deployed Recommendation. The JSON-LD-star Community Group note defines `@annotation` and embedded-node forms for RDF-star/RDF 1.2-style statements about statements. The 2026 JSON-LD Working Group charter keeps RDF 1.2 compatibility in scope for future Recommendation-track JSON-LD work, but parser implementations already exist. Dagonizer uses parser-backed JSON-LD forms where authoring requires them, then carries the resulting RDF 1.2 dataset through the entire application.
 
 ## Local Stack Findings
 
@@ -34,11 +34,11 @@ JSON-LD 1.1 is the deployed Recommendation. The JSON-LD-star Community Group not
 
 The N3 focused probe lives at `examples/the-archivist/tests/unit/rdf12-triple-term-probe.test.ts`. It avoids casts and suppression comments by assigning `N3.DataFactory` to the RDF/JS `DataFactory` interface, constructing a reifying triple through RDF/JS `Quad` and `Quad_Object`, and using `Store.readQuads(...)` instead of `Store.getQuads(...)` so the returned quads keep RDF/JS types.
 
-`jsonld-streaming-parser@5.0.1` parses JSON-LD-star embedded-node input with `rdfstar` enabled. The RDF 1.2-aligned form is a reifier node with an `rdf:reifies` value whose `@id` is an embedded triple; parser output is an `rdf:reifies` quad whose object has `termType: 'Quad'`. The parser also accepts the older JSON-LD-star `@annotation` shorthand and emits annotation facts whose subjects have `termType: 'Quad'`.
+`jsonld-streaming-parser@5.0.1` parses JSON-LD-star embedded-node input with `rdfstar` enabled. The RDF 1.2-aligned form is a reifier node with an `rdf:reifies` value whose `@id` is an embedded triple; parser output is an `rdf:reifies` quad whose object has `termType: 'Quad'`. Dagonizer rejects the older JSON-LD-star `@annotation` shorthand because it emits triple terms in subject position, which cannot cross the RDF 1.2 graph-state port.
 
-`jsonld-streaming-serializer@4.0.0` can emit JSON-LD-star from RDF/JS quads. The current round-trip probe uses full-IRI serializer output because context-compacted serializer output does not preserve triple-term subjects when reparsed by the same parser.
+`jsonld-streaming-serializer@4.0.0` can emit JSON-LD-star from RDF/JS quads. Dagonizer emits full-IRI JSON-LD when triple terms are present and rejects context compaction for those datasets because the serializer/parser pair does not preserve the RDF 1.2 shape under compacted output.
 
-The JSON-LD-star focused probe lives at `examples/the-archivist/tests/unit/rdf12-jsonld-star-probe.test.ts`. The runtime helper lives at `examples/the-archivist/memory/Rdf12JsonLd.ts` and exposes `parse(...)` and `serialize(...)` for RDF/JS quads.
+The JSON-LD-star focused probe lives at `examples/the-archivist/tests/unit/rdf12-jsonld-star-probe.test.ts`. The framework-owned `Rdf12JsonLdCodec` exposes `parse(...)` and `serialize(...)` for RDF/JS quads.
 
 `@rdfjs/types` is present through the installed `@types/n3` dependency tree. If RDF 1.2 triple terms move from probe code into exported package APIs, the owning package should declare `@rdfjs/types` directly before exposing those types.
 
@@ -51,9 +51,11 @@ Model DAG composition in two layers:
 - Graph identity: one named graph per DAG document, embedded DAG, run snapshot, or imported source. This keeps MemoryStore snapshots, provenance isolation, and JSON-LD export compatible with the current stack.
 - Statement identity: one RDF 1.2 reifier per annotated edge or placement claim. The reifier carries metadata such as `prov:wasGeneratedBy`, score, timestamp, or source. The reifier points at the route or composition triple via `rdf:reifies`.
 
-Do not wait for JSON-LD Recommendation-track alignment before using RDF 1.2 annotations in graph composition work. Use JSON-LD-star at semantic import/export boundaries through `Rdf12JsonLd.parse(...)` and RDF/JS quads. Prefer RDF 1.2 reifier nodes with `rdf:reifies` for new graph composition data; accept `@annotation` shorthand when interoperating with existing JSON-LD-star producers. Keep `DAGDocument.load()` focused on the canonical DAG schema until the DAG entity model itself adopts statement-level metadata.
+Use JSON-LD-star through `Rdf12JsonLdCodec.parse(...)` and `serialize(...)` at RDF 1.2 parser/serializer boundaries. `GraphStateJsonLdCodec` is the synchronous, context-bound projection used by node state and transfer envelopes; it is not a second RDF parser or a fallback format. Use RDF 1.2 reifier nodes with `rdf:reifies` for statement metadata. A reifier describes a triple term; it does not assert the described base triple, so authoring that relationship requires an explicit asserted quad alongside the reifier.
 
-For persisted DAG topology, keep the current JSON-LD DAG document shape as the schema-validated assembly format. For semantic memory, provenance, graph composition, and DAG analysis, allow RDF 1.2 triple terms inside explicit RDF/JS boundaries and test every boundary that serializes, stores, or reparses those quads.
+JSON-LD is the context-bound intermediate representation between Node.js values and RDF graphs. Graph-backed node state, checkpoint graphs, and graph transfer envelopes expose the same JSON-LD document to Node.js code; `ContextResolver` expands and compacts terms against the document context so application code does not maintain parallel IRI rules. The application projects those documents into RDF datasets, and the same RDF 1.2 substrate carries topology, schemas, node contracts, execution, state, checkpoints, provenance, and memory. N-Quads remains the default dataset transfer and persistence serialization because it streams named graphs and triple terms; the JSON-LD document is the Node.js boundary IR, not a replacement for the graph serialization.
+
+Semantic graph writes are additive assertions. An exact quad is set-idempotent, but a new relationship, annotation, execution event, or provenance assertion receives its own stable identity and is not an upsert of an earlier relationship. Run and checkpoint graphs therefore close through lifecycle facts, summaries, and explicit retention operations. Terminalization records `dagonizer:closed` and `dagonizer:closedAt`; compaction writes a queryable summary graph before pruning transient run detail. Durable memory graphs remain protected by retention policy and are never pruned as a side effect of run compaction. Transfer cleanup is explicit: incomplete snapshot references are discarded, while live checkpoint and external graph references block pruning.
 
 ## Sources
 

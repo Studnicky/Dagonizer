@@ -23,9 +23,9 @@ import type { DispatcherHooksInterface } from './ObserverRelay.js';
  * typed state fields narrow locally via a type guard at their hook implementation.
  */
 export interface DispatcherRelaySourceInterface {
-  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
-  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
-  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
 }
@@ -50,16 +50,16 @@ export class DispatcherHooks implements DispatcherHooksInterface {
     this.#source = source;
   }
 
-  onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
-    this.#source.relayNodeStart(nodeName, state, placementPath, signal);
+  onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void {
+    this.#source.relayNodeStart(nodeName, state, placementPath, signal, placementIri);
   }
 
-  onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
-    this.#source.relayNodeEnd(nodeName, output, state, placementPath, signal);
+  onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void {
+    this.#source.relayNodeEnd(nodeName, output, state, placementPath, signal, placementIri);
   }
 
-  onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
-    this.#source.relayError(nodeName, error, state, placementPath, signal);
+  onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void {
+    this.#source.relayError(nodeName, error, state, placementPath, signal, placementIri);
   }
 
   onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {

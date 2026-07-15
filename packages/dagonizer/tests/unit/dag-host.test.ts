@@ -21,14 +21,16 @@
 
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { InMemoryGraphStateTransferStore } from '../../src/graph/InMemoryGraphStateTransferStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Registry module URL for DagHost dynamic import.
@@ -58,14 +60,27 @@ const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
 // ---------------------------------------------------------------------------
 
 class TestHostPair {
+  private static readonly parentSides: MessageChannelInterface[] = [];
+
   private constructor() {}
-  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
+  static create(options: { graphStateTransferStore?: InMemoryGraphStateTransferStore } = {}): { host: DagHost; parentSide: MessageChannelInterface } {
     const [parentSide, hostSide] = LoopbackChannel.pair();
-    const host = new DagHost(hostSide);
+    const host = new DagHost(hostSide, options);
     host.start();
+    TestHostPair.parentSides.push(parentSide);
     return { host, parentSide };
   }
+
+  static async cleanup(): Promise<void> {
+    const parentSides = TestHostPair.parentSides.splice(0);
+    for (const parentSide of parentSides) {
+      try { parentSide.send({ 'variant': 'shutdown' }); } catch { /* already closed */ }
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
 }
+
+after(async () => TestHostPair.cleanup());
 
 class DagHostFixture {
   private constructor() {}
@@ -107,6 +122,7 @@ void describe('DagHost — init handshake', () => {
     if (reply.variant === 'ready') {
       assert.strictEqual(reply.registryVersion, REGISTRY_VERSION);
       assert.ok(Array.isArray(reply.capabilities));
+      assert.ok(!reply.capabilities.includes('inline-nquads'));
     }
   });
 
@@ -153,7 +169,7 @@ void describe('DagHost — init handshake', () => {
 // ---------------------------------------------------------------------------
 
 void describe('DagHost — execute returns result', () => {
-  void it('runs a dag and returns result with items[0].terminalOutcome + items[0].snapshot + intermediates', async () => {
+  void it('runs a dag and returns result with items[0].terminalOutcome + items[0].graphState + intermediates', async () => {
     const { parentSide } = TestHostPair.create();
 
     const ready = await DagHostFixture.sendInit(parentSide);
@@ -172,7 +188,7 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW2_DAG,   // mutator: sets value=99
         'placementPath': ['parent'],
-        'items': [{ 'id': 'req-exec-1', 'snapshot': initialState.snapshot() }],
+        'items': [{ 'id': 'req-exec-1', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-1',
       },
@@ -187,7 +203,7 @@ void describe('DagHost — execute returns result', () => {
       const item0 = result.response.items[0];
       assert.ok(item0 !== undefined, 'items[0] must exist');
       assert.strictEqual(item0.terminalOutcome, 'completed');
-      assert.ok(item0.snapshot !== null, 'items[0].snapshot must be non-null');
+      assert.ok(item0.graphState.jsonLd !== undefined, 'items[0].graphState must carry JSON-LD');
       assert.ok(Array.isArray(result.response.intermediates));
       assert.ok(result.response.intermediates.length > 0, 'must have at least 1 intermediate (mutator node)');
     }
@@ -213,7 +229,7 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,   // recorder node → done
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-exec-2', 'snapshot': initialState.snapshot() }],
+        'items': [{ 'id': 'req-exec-2', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-2',
       },
@@ -249,8 +265,8 @@ void describe('DagHost — execute returns result', () => {
       'variant': 'execute',
       'request': {
         'dagName': 'dag-does-not-exist',
-        'placementPath': [],
-        'items': [{ 'id': 'req-exec-fail', 'snapshot': initialState.snapshot() }],
+        'placementPath': ['host'],
+        'items': [{ 'id': 'req-exec-fail', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': 1000,
         'correlationId': 'req-exec-fail',
       },
@@ -291,7 +307,7 @@ void describe('DagHost — abort', () => {
       'request': {
         'dagName': BODY_LAW5_DAG,   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-abort', 'snapshot': initialState.snapshot() }],
+        'items': [{ 'id': 'req-abort', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': null,
         'correlationId': 'req-abort',
       },
@@ -351,8 +367,8 @@ void describe('DagHost — execute before init (G8)', () => {
       'variant': 'execute',
       'request': {
         'dagName': BODY_LAW1_DAG,
-        'placementPath': [],
-        'items': [{ 'id': 'req-no-init', 'snapshot': initialState.snapshot() }],
+        'placementPath': ['host'],
+        'items': [{ 'id': 'req-no-init', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': null,
         'correlationId': 'req-no-init',
       },
@@ -378,8 +394,8 @@ void describe('DagHost — execute before init (G8)', () => {
       'variant': 'execute',
       'request': {
         'dagName': BODY_LAW1_DAG,
-        'placementPath': [],
-        'items': [{ 'id': 'req-pre-init-probe', 'snapshot': initialState.snapshot() }],
+        'placementPath': ['host'],
+        'items': [{ 'id': 'req-pre-init-probe', 'graphState': graphStateTransfer(initialState) }],
         'timeoutMs': null,
         'correlationId': 'req-pre-init-probe',
       },

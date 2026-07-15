@@ -220,7 +220,7 @@ import type { DAGLifecycleStateDataType } from '@studnicky/dagonizer/entities';
 
 `$id`: `https://noocodec.dev/schemas/dagonizer/CheckpointData`
 
-Persistable snapshot of an in-flight DAG execution. Required: `dagName` (expanded DAG IRI), `cursor` (placement IRI or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
+Persistable checkpoint of an in-flight DAG execution. Required: `dagName` (expanded DAG IRI), `cursor` (placement IRI or null), `graph` (run graph identity, N-Quads integrity data, and context-bound JSON-LD), `executedNodes`, `skippedNodes`, and `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
 
 ```ts twoslash
 import { CheckpointDataSchema } from '@studnicky/dagonizer/entities';
@@ -299,7 +299,7 @@ import type { JsonValueType, JsonObjectType, JsonArrayType, JsonPrimitiveType } 
 | `JsonObjectType` | `Record<string, JsonValueType>` |
 | `JsonArrayType` | `JsonValueType[]` |
 
-Used as the constraint for `snapshotData()` return values and `restoreData()` arguments.
+Used for JSON-LD values crossing the Node.js and graph boundaries.
 
 ## Details for Nerds
 

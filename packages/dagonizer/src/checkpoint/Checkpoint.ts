@@ -19,8 +19,8 @@
  * // Resume later.
  * const raw: unknown = JSON.parse(await storage.get('ckpt'));
  * const ckpt = Checkpoint.load(raw);
- * const { dagName, state: restoredState, cursor } = ckpt.restoreState(
- *   CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+ * const { dagName, state: restoredState, cursor } = await ckpt.restoreState(
+ *   CheckpointRestoreAdapter.wrap(() => new MyState()),
  * );
  * const finalResult = await dispatcher.resume(dagName, restoredState, cursor);
  * ```
@@ -35,8 +35,8 @@
  * if (ckpt2 !== null) {
  *   const freshMemory = new MemoryStore();
  *   await ckpt2.restoreStores({ memory: freshMemory });
- *   const { dagName, state, cursor } = ckpt2.restoreState(
- *     CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+ *   const { dagName, state, cursor } = await ckpt2.restoreState(
+ *     CheckpointRestoreAdapter.wrap(() => new MyState()),
  *   );
  *   await dispatcher.resume(dagName, state, cursor);
  * }
@@ -49,10 +49,11 @@ import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/Sna
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 import { DAGIdentity } from '../entities/dag/DAG.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
-import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
 import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
-import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
+import { GraphStateTerms } from '../graph/GraphStateTerms.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
+import { NodeStateBase, type NodeStateInterface } from '../NodeStateBase.js';
 import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -63,19 +64,19 @@ import { Validator } from '../validation/Validator.js';
  * that satisfies `CheckpointRestoreAdapterInterface`.
  */
 type StateRestoreType<TState extends NodeStateInterface>
-  = (snapshot: JsonObjectType) => TState;
+  = () => TState;
 
 /**
  * Concrete `CheckpointRestoreAdapterInterface` backed by a plain function.
  *
- * Use `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))` to
+ * Use `CheckpointRestoreAdapter.wrap(() => new MyState())` to
  * wrap an inline lambda for `Checkpoint.restoreState()` without giving up the
  * ergonomics of arrow-function syntax.
  *
  * @example
  * ```ts
- * const { state, dagName, cursor } = ckpt.restoreState(
- *   CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+ * const { state, dagName, cursor } = await ckpt.restoreState(
+ *   CheckpointRestoreAdapter.wrap(() => new MyState()),
  * );
  * ```
  */
@@ -87,14 +88,14 @@ export class CheckpointRestoreAdapter<TState extends NodeStateInterface>
     this.#fn = fn;
   }
 
-  restore(snapshot: JsonObjectType): TState {
-    return this.#fn(snapshot);
+  restore(): TState {
+    return this.#fn();
   }
 
   /**
    * Wrap a plain restore function in a `CheckpointRestoreAdapterInterface`.
-   * The function receives a `JsonObjectType` snapshot and must return a `TState`
-   * instance; the typical pattern is `(snap) => MyState.restore(snap)`.
+   * The function constructs a fresh `TState` instance. The checkpoint graph is
+   * restored by `Checkpoint` through the graph-state port after construction.
    */
   static wrap<TState extends NodeStateInterface>(
     fn: StateRestoreType<TState>,
@@ -173,13 +174,28 @@ export class Checkpoint {
     }
 
     const dagIri = DAGIdentity.id(dagName);
+    const graphJsonLd = await result.state.snapshotJsonLd(result.state.runIri);
+    const graphTransfer = await GraphStateTransferCodec.inlineStream(
+      result.state.runIri,
+      [GraphStateTerms.runGraphIri(result.state.runIri)],
+      result.state.snapshotGraph(),
+      { 'dagIri': dagIri, 'placementPath': [result.cursor], 'placementIri': result.cursor, "jsonLd": graphJsonLd },
+    );
+    const graphNquads = graphTransfer.nquads;
+    const graphHash = graphTransfer.mode === 'inline-nquads' ? graphTransfer.hash : '';
     const base: CheckpointDataType = {
       'dagName': dagIri,
       'cursor': result.cursor,
-      'state': result.state.snapshot(),
       'executedNodes': [...result.executedNodes],
       'skippedNodes': [...result.skippedNodes],
       'stores': {},
+      'graph': {
+        'runIri': result.state.runIri,
+        'graphIri': GraphStateTerms.runGraphIri(result.state.runIri),
+        'nquads': graphNquads,
+        'hash': graphHash,
+        'jsonLd': graphJsonLd,
+      },
     };
 
     const storeMap = options.stores ?? {};
@@ -257,19 +273,24 @@ export class Checkpoint {
    * Rehydrate the state from this checkpoint via the supplied adapter.
    * Returns the rehydrated state, DAG IRI, cursor, and execution history.
    *
-   * Pass a `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`
+   * Pass a `CheckpointRestoreAdapter.wrap(() => new MyState())`
    * to wrap an inline lambda in the adapter contract.
    *
    * Throws `DAGError` (code `VALIDATION_ERROR`) when `this.data.cursor === null`.
    */
-  restoreState<TState extends NodeStateInterface>(
+  async restoreState<TState extends NodeStateInterface>(
     adapter: CheckpointRestoreAdapterInterface<TState>,
-  ): RecalledCheckpointType<TState> {
+  ): Promise<RecalledCheckpointType<TState>> {
     if (this.data.cursor === null) {
       throw new DAGError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`, { 'code': 'VALIDATION_ERROR' });
     }
+    const state = adapter.restore();
+    if (!(state instanceof NodeStateBase)) {
+      throw new DAGError('Checkpoint restore adapters must construct a NodeStateBase instance', { 'code': 'VALIDATION_ERROR' });
+    }
+    await state.restoreJsonLd(this.data.graph.runIri, this.data.graph.jsonLd);
     return {
-      'state': adapter.restore(this.data.state),
+      'state': state,
       'dagName': this.data.dagName,
       'cursor': this.data.cursor,
       'executedNodes': [...this.data.executedNodes],

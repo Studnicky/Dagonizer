@@ -2,24 +2,34 @@
  * CheckpointData: persistable snapshot of an in-flight flow execution.
  *
  * Contains the flow name, the next-node cursor (`null` if the flow has
- * completed), the state snapshot as a JsonObjectType, and the executed /
- * skipped node history.
+ * completed), the graph-state JSON-LD document, and execution history.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
 import type { StoreSnapshotType } from '../../contracts/SnapshottableInterface.js';
-import type { JsonObjectType } from '../json.js';
 
 export const CheckpointDataSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/CheckpointData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
+  'required': ['dagName', 'cursor', 'graph', 'executedNodes', 'skippedNodes', 'stores'],
   'properties': {
     'dagName': { 'type': 'string', 'minLength': 1 },
     'cursor': { 'type': ['string', 'null'] },
-    'state': { 'type': 'object', 'additionalProperties': true },
+    'graph': {
+      'type': 'object',
+      'required': ['runIri', 'graphIri', 'nquads', 'hash', 'jsonLd'],
+      'properties': {
+        'runIri': { 'type': 'string', 'minLength': 1 },
+        'graphIri': { 'type': 'string', 'minLength': 1 },
+        'nquads': { 'type': 'string' },
+        'hash': { 'type': 'string', 'minLength': 1 },
+        'jsonLd': { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
+      },
+      'additionalProperties': false,
+    },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     'skippedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     /**
@@ -58,12 +68,16 @@ export const CheckpointDataSchema = {
 /**
  * TypeScript type derived from `CheckpointDataSchema` via `json-schema-to-ts`.
  *
- * `state` and `stores` are narrowed from the schema's open `object` shapes to
- * the precise in-process types (`JsonObjectType`, `StoreSnapshotType`): the
- * schema validates the wire structure at the ingest boundary, and the JSON it
- * admits is exactly these types, so every call site reads them without a cast.
+ * `stores` is narrowed from the schema's open object shape to the precise
+ * in-process type; graph state is always the context-bound JSON-LD document.
  */
-export type CheckpointDataType = Omit<FromSchema<typeof CheckpointDataSchema>, 'state' | 'stores'> & {
-  state: JsonObjectType;
+export type CheckpointDataType = Omit<FromSchema<typeof CheckpointDataSchema>, 'stores'> & {
   stores: Record<string, StoreSnapshotType>;
+  graph: {
+    runIri: string;
+    graphIri: string;
+    nquads: string;
+    hash: string;
+    jsonLd: GraphStateJsonLdDocumentType;
+  };
 };

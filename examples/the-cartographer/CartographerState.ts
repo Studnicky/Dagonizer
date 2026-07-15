@@ -21,7 +21,7 @@
  *   - `enriched`         – compact EnrichedShipment written by aggregate-event;
  *                          the parent gather appends this to state.records
  *
- * Checkpoint/resume: snapshotData/restoreData round-trip durable state only.
+ * Checkpoint/resume: the graph round-trips durable state only.
  * Durable: eventCount, eventConfig, useStreamingSource, streamCount,
  * ingestBuckets, canonicalEvents, records, sampleRecords, enriched, insights,
  * journeyAccumulators, errorRollup.
@@ -62,7 +62,7 @@ import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
 import type { GeoErrorRecordType } from './errors/GeoErrorRecord.ts';
-import { ErrorRollup, type ErrorGroupType, type ErrorRollupType } from './errors/ErrorRollup.ts';
+import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 import type { JourneyAccumulator } from './core/InsightsFoldGather.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
@@ -627,211 +627,7 @@ export class CartographerState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'eventCount': this.eventCount,
-      'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
-      // AsyncIterable sources are not checkpointable. Snapshot as an empty array
-      // so restoreData leaves the compatibility source stream empty.
-      'sources':    Array.isArray(this.sources)
-        ? this.sources.map((s) => CartographerState.sourceToJson(s))
-        : [],
-      'useStreamingSource': this.useStreamingSource,
-      'streamCount': this.streamCount,
-      'streamChannelCapacity': this.streamChannelCapacity,
-      'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.variantToJson(e))),
-      'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
-      'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
-      'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
-      'enriched': CartographerState.enrichedToJson(this.enriched),
-      'insights': [...this.insights.entries()].map(([key, r]) => ({
-        'key': key,
-        'region': r.region, 'country': r.country, 'hub': r.hub,
-        'deliveries': r.deliveries, 'exceptions': r.exceptions,
-        'onTimeCount': r.onTimeCount, 'lateCount': r.lateCount,
-        'totalSubtotalUsdMinor': r.totalSubtotalUsdMinor,
-        'totalShippingUsdMinor': r.totalShippingUsdMinor,
-        'totalDistanceKm': r.totalDistanceKm,
-        'totalDelayHours': r.totalDelayHours,
-        'consentValid': r.consentValid, 'consentMissing': r.consentMissing, 'consentExpired': r.consentExpired,
-        'sizeTierEnvelope': r.sizeTierEnvelope, 'sizeTierSmall': r.sizeTierSmall,
-        'sizeTierMedium': r.sizeTierMedium, 'sizeTierLarge': r.sizeTierLarge, 'sizeTierFreight': r.sizeTierFreight,
-        'shipmentCount': r.shipmentCount,
-      })),
-      'journeyAccumulators': [...this.journeyAccumulators.entries()].map(([id, acc]) => ({
-        'id': id,
-        'scans': acc.scans.map((s) => ({
-          'scanSeq': s.scanSeq, 'epochMs': s.epochMs, 'localIso': s.localIso,
-          'utcOffset': s.utcOffset, 'timezone': s.timezone, 'jurisdiction': s.jurisdiction,
-          'status': s.status, 'hub': s.hub, 'region': s.region, 'country': s.country,
-          'lat': s.lat, 'lng': s.lng, 'legKm': s.legKm, 'disruptionReason': s.disruptionReason,
-        })),
-        'scanCount': acc.scanCount, 'pathKm': acc.pathKm,
-        'minEpoch': acc.minEpoch, 'maxEpoch': acc.maxEpoch,
-        'offsets': [...acc.offsets], 'timezones': [...acc.timezones], 'jurisdictions': [...acc.jurisdictions],
-        'statusProgression': [...acc.statusProgression],
-        'delivered': acc.delivered, 'etaCaptured': acc.etaCaptured, 'onTime': acc.onTime,
-        'delayHours': acc.delayHours, 'subtotalUsdMinor': acc.subtotalUsdMinor, 'shippingUsdMinor': acc.shippingUsdMinor,
-      })),
-      'errorRollup': {
-        'total': this.errorRollup.total,
-        'groups': [...this.errorRollup.groups.entries()].map(([key, g]) => ({
-          'key': key,
-          'source': g.source, 'variant': g.variant, 'count': g.count,
-          'samples': [...g.samples], 'sampleInput': g.sampleInput,
-        })),
-      },
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
-    if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
-    if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
-    if (typeof snap['streamChannelCapacity'] === 'number') this.streamChannelCapacity = snap['streamChannelCapacity'];
-    if (Array.isArray(snap['sources'])) {
-      this.sources = snap['sources'].map((s) => CartographerState.sourceFromJson(CartographerState.asObject(s) ?? {}));
-    }
-    if (Array.isArray(snap['ingestBuckets'])) {
-      this.ingestBuckets = snap['ingestBuckets'].map((bucket) =>
-        Array.isArray(bucket)
-          ? bucket.map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}))
-          : [],
-      );
-    }
-    if (Array.isArray(snap['canonicalEvents'])) {
-      this.canonicalEvents = snap['canonicalEvents'].map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}));
-    }
-    if (Array.isArray(snap['eventConfig'])) {
-      const loadedEvtCfg: EventTypeConfig = snap['eventConfig']
-        .map((e) => CartographerState.asObject(e))
-        .filter((e): e is JsonObjectType => e !== null)
-        .map((e) => {
-          const mixRaw = Array.isArray(e['formatMix']) ? e['formatMix'] : [];
-          const formatMix = mixRaw
-            .map((m) => CartographerState.asObject(m))
-            .filter((m): m is JsonObjectType => m !== null)
-            .map((m): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly weight: number } => ({
-              'format':      CartographerState.sourceFormat(m['format']),
-              'compression': m['compression'] === 'gzip' ? 'gzip' : 'none',
-              'weight':      CartographerState.num(m['weight'], 1),
-            }));
-          return {
-            'eventType': CartographerState.canonicalEventType(e['eventType']),
-            'count':     CartographerState.num(e['count']),
-            'formatMix': formatMix,
-          };
-        });
-      if (loadedEvtCfg.length > 0) this.eventConfig = loadedEvtCfg;
-    }
-    if (Array.isArray(snap['records'])) {
-      this.records = snap['records'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
-    }
-    if (Array.isArray(snap['sampleRecords'])) {
-      this.sampleRecords = snap['sampleRecords'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
-    }
-    const enObj = CartographerState.asObject(snap['enriched']);
-    if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
-    if (Array.isArray(snap['insights'])) {
-      this.insights = new Map(
-        snap['insights']
-          .map((e) => CartographerState.asObject(e))
-          .filter((e): e is JsonObjectType => e !== null)
-          .map((e): [string, RegionInsights] => [
-            CartographerState.str(e['key']),
-            {
-              'region': CartographerState.str(e['region']),
-              'country': CartographerState.str(e['country']),
-              'hub': CartographerState.str(e['hub']),
-              'deliveries': CartographerState.num(e['deliveries']),
-              'exceptions': CartographerState.num(e['exceptions']),
-              'onTimeCount': CartographerState.num(e['onTimeCount']),
-              'lateCount': CartographerState.num(e['lateCount']),
-              'totalSubtotalUsdMinor': CartographerState.num(e['totalSubtotalUsdMinor']),
-              'totalShippingUsdMinor': CartographerState.num(e['totalShippingUsdMinor']),
-              'totalDistanceKm': CartographerState.num(e['totalDistanceKm']),
-              'totalDelayHours': CartographerState.num(e['totalDelayHours']),
-              'consentValid': CartographerState.num(e['consentValid']),
-              'consentMissing': CartographerState.num(e['consentMissing']),
-              'consentExpired': CartographerState.num(e['consentExpired']),
-              'sizeTierEnvelope': CartographerState.num(e['sizeTierEnvelope']),
-              'sizeTierSmall': CartographerState.num(e['sizeTierSmall']),
-              'sizeTierMedium': CartographerState.num(e['sizeTierMedium']),
-              'sizeTierLarge': CartographerState.num(e['sizeTierLarge']),
-              'sizeTierFreight': CartographerState.num(e['sizeTierFreight']),
-              'shipmentCount': CartographerState.num(e['shipmentCount']),
-            },
-          ])
-      );
-    }
-    if (Array.isArray(snap['journeyAccumulators'])) {
-      this.journeyAccumulators = new Map(
-        snap['journeyAccumulators']
-          .map((e) => CartographerState.asObject(e))
-          .filter((e): e is JsonObjectType => e !== null)
-          .map((e): [string, JourneyAccumulator] => [
-            CartographerState.str(e['id']),
-            {
-              'scans': Array.isArray(e['scans'])
-                ? e['scans']
-                    .map((s) => CartographerState.asObject(s))
-                    .filter((s): s is JsonObjectType => s !== null)
-                    .map((s): JourneyScan => ({
-                      'scanSeq': CartographerState.num(s['scanSeq']),
-                      'epochMs': CartographerState.num(s['epochMs']),
-                      'localIso': CartographerState.str(s['localIso']),
-                      'utcOffset': CartographerState.str(s['utcOffset']),
-                      'timezone': CartographerState.str(s['timezone']),
-                      'jurisdiction': CartographerState.str(s['jurisdiction']),
-                      'status': CartographerState.str(s['status']),
-                      'hub': CartographerState.str(s['hub']),
-                      'region': CartographerState.str(s['region']),
-                      'country': CartographerState.str(s['country']),
-                      'lat': CartographerState.num(s['lat']),
-                      'lng': CartographerState.num(s['lng']),
-                      'legKm': CartographerState.num(s['legKm']),
-                      'disruptionReason': CartographerState.str(s['disruptionReason']),
-                    }))
-                : [],
-              'scanCount': CartographerState.num(e['scanCount']),
-              'pathKm': CartographerState.num(e['pathKm']),
-              'minEpoch': CartographerState.num(e['minEpoch']),
-              'maxEpoch': CartographerState.num(e['maxEpoch']),
-              'offsets': CartographerState.strArr(e['offsets']),
-              'timezones': CartographerState.strArr(e['timezones']),
-              'jurisdictions': CartographerState.strArr(e['jurisdictions']),
-              'statusProgression': CartographerState.strArr(e['statusProgression']),
-              'delivered': CartographerState.bool(e['delivered']),
-              'etaCaptured': CartographerState.bool(e['etaCaptured']),
-              'onTime': CartographerState.bool(e['onTime']),
-              'delayHours': CartographerState.num(e['delayHours']),
-              'subtotalUsdMinor': CartographerState.num(e['subtotalUsdMinor']),
-              'shippingUsdMinor': CartographerState.num(e['shippingUsdMinor']),
-            },
-          ])
-      );
-    }
-    const rollupRaw = CartographerState.asObject(snap['errorRollup']);
-    if (rollupRaw !== null) {
-      const groupsRaw = Array.isArray(rollupRaw['groups']) ? rollupRaw['groups'] : [];
-      const groups = new Map<string, ErrorGroupType>(
-        groupsRaw
-          .map((g) => CartographerState.asObject(g))
-          .filter((g): g is JsonObjectType => g !== null)
-          .map((g): [string, ErrorGroupType] => [
-            CartographerState.str(g['key']),
-            {
-              'source': CartographerState.str(g['source']),
-              'variant': CartographerState.str(g['variant']),
-              'count': CartographerState.num(g['count']),
-              'samples': CartographerState.strArr(g['samples']),
-              'sampleInput': CartographerState.str(g['sampleInput']),
-            },
-          ])
-      );
-      this.errorRollup = { 'total': CartographerState.num(rollupRaw['total']), 'groups': groups };
-    }
-  }
   // #endregion snapshot-restore
 
   // #region snapshot-helpers
@@ -1129,7 +925,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Serialize a CanonicalEventVariant to a JSON-safe object (dispatch map on eventType for exact body fields). */
-  private static variantToJson(v: CanonicalEventVariant): JsonObjectType {
+  static variantToJson(v: CanonicalEventVariant): JsonObjectType {
     const bodyHandler = CartographerState.resolveToJsonBodyHandler(v.eventType);
     return {
       'shipmentId':        v.shipmentId,
@@ -1169,7 +965,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Reconstruct a CanonicalEventVariant from a deserialized JSON object (dispatch map on eventType). */
-  private static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
+  static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
     const eventType = typeof o['eventType'] === 'string' ? o['eventType'] : 'position-ping';
     const b = CartographerState.asObject(o['body']) ?? {};
     const envelope = {
@@ -1202,7 +998,7 @@ export class CartographerState extends NodeStateBase {
     return CartographerState.resolveFromJsonHandler(eventType)(envelope, sharedBody, b, o);
   }
 
-  private static sourceToJson(s: SourcePayload): JsonObjectType {
+  static sourceToJson(s: SourcePayload): JsonObjectType {
     return {
       'sourceId':    s.sourceId,
       'format':      s.format,
@@ -1213,7 +1009,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static sourceFromJson(o: Record<string, unknown>): SourcePayload {
+  static sourceFromJson(o: Record<string, unknown>): SourcePayload {
     return {
       'sourceId':    CartographerState.str(o['sourceId']),
       'format':      CartographerState.sourceFormat(o['format']),
@@ -1287,7 +1083,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── Entity ↔ JSON reconstruction (field-by-field) ──────────────────────────
-  private static enrichedToJson(e: EnrichedShipment): JsonObjectType {
+  static enrichedToJson(e: EnrichedShipment): JsonObjectType {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
       'localIso': e.localIso, 'utcOffset': e.utcOffset, 'timezone': e.timezone, 'jurisdiction': e.jurisdiction,
@@ -1394,7 +1190,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static enrichedFromJson(o: Record<string, unknown>): EnrichedShipment {
+  static enrichedFromJson(o: Record<string, unknown>): EnrichedShipment {
     const sample = CartographerState.asObject(o['redactedSample']) ?? {};
     return {
       'shipmentId': CartographerState.str(o['shipmentId']),

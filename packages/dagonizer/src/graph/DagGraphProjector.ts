@@ -1,4 +1,4 @@
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { QuadType, TermType, TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -8,6 +8,7 @@ import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { SchemaRegistry } from '../schema/SchemaRegistry.js';
+import { StableSchemaHash } from '../schema/StableSchemaHash.js';
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 import { InMemoryTopologyStore } from './InMemoryTopologyStore.js';
@@ -73,6 +74,8 @@ export class DagGraphProjector {
         graph,
       );
     }
+
+    DagGraphProjector.projectRouteSchemaAnnotations(input.dag, input.nodes, input.schemas, input.store, graph);
   }
 
   static bindSelectedDag(
@@ -172,16 +175,87 @@ export class DagGraphProjector {
     const placementNode = DagGraphTerms.namedNode(placementIri);
     const inputPort = DagGraphTerms.namedNode(`${placementIri}/input`);
     const inputSchemaIri = schemas.register(node.inputSchema);
+    DagGraphProjector.projectSchema(inputSchemaIri, node.inputSchema, schemas, store, graph);
     store.assert(placementNode, DagGraphTerms.predicate('inputPort'), inputPort, graph);
     store.assert(inputPort, DagGraphTerms.predicate('schema'), DagGraphTerms.namedNode(inputSchemaIri), graph);
 
     for (const [output, schema] of Object.entries(node.outputSchema)) {
       const outputPort = DagGraphTerms.namedNode(`${placementIri}/output/${encodeURIComponent(output)}`);
       const outputSchemaIri = schemas.register(schema);
+      DagGraphProjector.projectSchema(outputSchemaIri, schema, schemas, store, graph);
       store.assert(placementNode, DagGraphTerms.predicate('outputPort'), outputPort, graph);
       store.assert(outputPort, DagGraphTerms.predicate('label'), DagGraphTerms.literal(output), graph);
       store.assert(outputPort, DagGraphTerms.predicate('schema'), DagGraphTerms.namedNode(outputSchemaIri), graph);
     }
+  }
+
+  private static projectRouteSchemaAnnotations<TState extends NodeStateInterface>(
+    dag: DAGType,
+    nodes: ReadonlyMap<string, NodeInterface<TState, string>>,
+    schemas: SchemaRegistry,
+    store: TripleStoreInterface,
+    graph: TermType,
+  ): void {
+    const context = ContextResolver.contextOf(dag['@context']);
+    const placementByIri = new Map(dag.nodes.map((placement) => [placement['@id'], placement]));
+    for (const placement of dag.nodes) {
+      if (!('outputs' in placement)) continue;
+      const sourceNode = DagGraphProjector.nodeForPlacement(placement, context, nodes);
+      if (sourceNode === undefined) continue;
+      for (const [output, targetIri] of Object.entries(placement.outputs)) {
+        const target = placementByIri.get(targetIri);
+        if (target === undefined) continue;
+        const targetNode = DagGraphProjector.nodeForPlacement(target, context, nodes);
+        if (targetNode === undefined) continue;
+        const produced = sourceNode.outputSchema[output];
+        if (produced === undefined) continue;
+        const sourcePlacement = DagGraphTerms.namedNode(placement['@id']);
+        const routeStatement = DagGraphTerms.tripleTerm(
+          sourcePlacement,
+          DagGraphTerms.predicate('route'),
+          DagGraphTerms.namedNode(targetIri),
+        );
+        store.assert(
+          routeStatement,
+          DagGraphTerms.predicate('producesSchema'),
+          DagGraphTerms.namedNode(schemas.register(produced)),
+          graph,
+        );
+        store.assert(
+          routeStatement,
+          DagGraphTerms.predicate('requiresSchema'),
+          DagGraphTerms.namedNode(schemas.register(targetNode.inputSchema)),
+          graph,
+        );
+      }
+    }
+  }
+
+  private static projectSchema(
+    schemaIri: string,
+    schema: SchemaObjectType,
+    schemas: SchemaRegistry,
+    store: TripleStoreInterface,
+    graph: TermType,
+  ): void {
+    const schemaNode = DagGraphTerms.namedNode(schemaIri);
+    store.assert(schemaNode, DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), DagGraphTerms.class('Schema'), graph);
+    store.assert(
+      schemaNode,
+      DagGraphTerms.predicate('contractHash'),
+      DagGraphTerms.literal(StableSchemaHash.of(schema)),
+      graph,
+    );
+    if (schemas.get(schemaIri) === undefined) schemas.register(schema);
+  }
+
+  private static nodeForPlacement<TState extends NodeStateInterface>(
+    placement: DAGNodeType,
+    context: Record<string, unknown>,
+    nodes: ReadonlyMap<string, NodeInterface<TState, string>>,
+  ): NodeInterface<TState, string> | undefined {
+    if (!Placement.isSingle(placement) && !Placement.isPhase(placement)) return undefined;
+    return nodes.get(ContextResolver.expand(placement.node, context));
   }
 
   private static nodeRefForSchemaProjection(placement: DAGNodeType): string | null {

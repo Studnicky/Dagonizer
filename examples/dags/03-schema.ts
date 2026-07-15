@@ -44,7 +44,7 @@ export class EchoNode extends MonadicNode<NodeStateBase, 'success'> {
 //   '@type':    must be the string literal 'DAG'
 //
 // Node placements use '@type' as the discriminator instead of a flat 'type'
-// key. '@id' on each node is a scoped URN: <dagId>/node/<placementName>.
+// key. Every placement declares its own absolute '@id'; name is only a display label.
 // ---------------------------------------------------------------------------
 
 // #region dag-literal

@@ -34,7 +34,6 @@ import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
@@ -48,19 +47,7 @@ class EmbedMemState extends NodeStateBase {
   items: number[] = [];
   counter: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'value':   this.value,
-      'items':   [...this.items],
-      'counter': this.counter,
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['value'] === 'number')   this.value   = snap['value'];
-    if (Array.isArray(snap['items']))        this.items   = snap['items'].filter((e): e is number => typeof e === 'number');
-    if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
-  }
 }
 
 // ── nodes ─────────────────────────────────────────────────────────────────────

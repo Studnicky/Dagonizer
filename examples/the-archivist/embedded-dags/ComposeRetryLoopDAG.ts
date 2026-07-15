@@ -34,11 +34,11 @@
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
-import { DAGBuilder, DAGIdentity, PlaceholderNode } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 const COMPOSE_RETRY_LOOP_DAG_IRI = 'urn:noocodec:dag:compose-retry-loop';
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(COMPOSE_RETRY_LOOP_DAG_IRI, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${COMPOSE_RETRY_LOOP_DAG_IRI}/node/${placementIdentifier}`;
 const display = <T extends string>(name: T): { name: T } => ({ name });
 
 const composeResponse        = new PlaceholderNode<ArchivistState, 'drafted' | 'retry' | 'salvage'>('urn:noocodec:node:compose-response', ['drafted', 'retry', 'salvage']);

@@ -15,21 +15,13 @@
  */
 
 import type { DAGType } from '../entities/dag/DAG.js';
-import { Placement } from '../entities/dag/Placement.js';
-import type { DAGNodeType } from '../entities/dag/Placement.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../graph/DagGraphQueries.js';
 
 export class PlacementRank {
   private constructor() { /* static class */ }
 
   /** Returns the set of forward next-placement IRIs for a given placement. */
-  private static forwardTargets(placement: DAGNodeType): readonly string[] {
-    if (Placement.isTerminal(placement) || Placement.isPhase(placement)) {
-      return [];
-    }
-    // SingleNode, ScatterNode, EmbeddedDAGNode all have an `outputs` record.
-    return Object.values(placement.outputs);
-  }
-
   /**
    * Memoized DFS computing rank(placementIri) = 1 + max(rank of non-back-edge
    * predecessors). Entrypoint placements have no predecessors → rank 0.
@@ -90,43 +82,32 @@ export class PlacementRank {
    * placements have no predecessors, so their rank is 0.
    */
   static compute(dag: DAGType): ReadonlyMap<string, number> {
-    // Build adjacency map: placement IRI → forward next-placement IRIs.
+    const topology = DagGraphProjector.store(dag);
+    const placementIris = DagGraphQueries.placementIris(topology);
+    // Build adjacency from projected route facts: placement IRI → next placement IRIs.
     const adjacency = new Map<string, readonly string[]>();
-    for (const placement of dag.nodes) {
-      adjacency.set(placement['@id'], PlacementRank.forwardTargets(placement));
+    for (const placementIri of placementIris) {
+      adjacency.set(placementIri, DagGraphQueries.routeTargets(topology, placementIri));
     }
 
     // Build predecessor map: for each placement, which placements forward-edge into it?
     const predecessors = new Map<string, string[]>();
-    for (const placement of dag.nodes) {
-      predecessors.set(placement['@id'], []);
+    for (const placementIri of placementIris) {
+      predecessors.set(placementIri, []);
     }
-    for (const placement of dag.nodes) {
-      const targets = PlacementRank.forwardTargets(placement);
+    for (const placementIri of placementIris) {
+      const targets = adjacency.get(placementIri) ?? [];
       for (const target of targets) {
         const preds = predecessors.get(target);
         if (preds !== undefined) {
-          preds.push(placement['@id']);
+          preds.push(placementIri);
         }
       }
     }
 
     // Compute reachability from every declared entrypoint (forward DFS,
     // forward edges). Multi-entry DAGs treat each entrypoint as rank 0.
-    const reachable = new Set<string>();
-    const reachStack: string[] = Object.values(dag.entrypoints);
-    while (reachStack.length > 0) {
-      const cur = reachStack.pop();
-      if (cur === undefined) continue;
-      if (reachable.has(cur)) continue;
-      reachable.add(cur);
-      const targets = adjacency.get(cur);
-      if (targets !== undefined) {
-        for (const t of targets) {
-          if (!reachable.has(t)) reachStack.push(t);
-        }
-      }
-    }
+    const reachable = new Set(DagGraphQueries.reachablePlacementIris(topology));
 
     // Memoized rank results and DFS ancestor-set for back-edge detection.
     const rankOf = new Map<string, number>();
@@ -139,9 +120,9 @@ export class PlacementRank {
 
     // Assemble result: reachable placements get computed rank, unreachable get MAX.
     const result = new Map<string, number>();
-    for (const placement of dag.nodes) {
-      const rank = rankOf.get(placement['@id']);
-      result.set(placement['@id'], rank !== undefined ? rank : Number.MAX_SAFE_INTEGER);
+    for (const placementIri of placementIris) {
+      const rank = rankOf.get(placementIri);
+      result.set(placementIri, rank !== undefined ? rank : Number.MAX_SAFE_INTEGER);
     }
 
     return result;

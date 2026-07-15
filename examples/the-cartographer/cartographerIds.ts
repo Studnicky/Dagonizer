@@ -41,7 +41,7 @@ function entrypointIri(dagIri: string, label: string): string {
 }
 
 function placementIri(dagIri: string, placementIdentifier: string): string {
-  return DAGIdentity.placementId(dagIri, placementIdentifier);
+  return `${dagIri}/node/${placementIdentifier}`;
 }
 
 function intakeSources(dagIri: string): Readonly<Record<string, object>> {

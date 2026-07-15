@@ -40,7 +40,7 @@ import { normalizeYamlDAG }  from './NormalizeYamlDAG.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 const ingestSourceDagIri = 'urn:noocodec:dag:ingest-source' as const;
 const normalizeCsvDagIri = 'urn:noocodec:dag:normalize-csv' as const;
@@ -48,7 +48,7 @@ const normalizeJsonDagIri = 'urn:noocodec:dag:normalize-json' as const;
 const normalizeNdjsonDagIri = 'urn:noocodec:dag:normalize-ndjson' as const;
 const normalizeYamlDagIri = 'urn:noocodec:dag:normalize-yaml' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(ingestSourceDagIri, placementIdentifier);
+  `${ingestSourceDagIri}/node/${placementIdentifier}`;
 
 export const ingestSourceDAG: DAGType = new DAGBuilder(ingestSourceDagIri, '1.0')
 

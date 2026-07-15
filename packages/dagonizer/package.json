@@ -81,10 +81,14 @@
   "files": [
     "dist",
     "dist-testing",
+    "scripts",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
   ],
+  "bin": {
+    "dagonizer-rdf-json": "scripts/decode-nquads-json.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -209,6 +213,13 @@
     "docs:rasterize-og": "node scripts/rasterize-og-image.mjs",
     "stamp-version": "node scripts/stamp-version.mjs",
     "stamp-version:check": "node scripts/stamp-version.mjs --check",
+    "rdf:decode-json": "node scripts/decode-nquads-json.mjs",
+    "bench": "npm run bench:state && npm run bench:checkpoint && npm run bench:scatter && npm run bench:retention && npm run bench:transfer",
+    "bench:state": "tsx bench/state-baseline.bench.ts && tsx bench/graph-state.bench.ts",
+    "bench:checkpoint": "tsx bench/checkpoint-graph.bench.ts",
+    "bench:scatter": "tsx bench/scatter-graph.bench.ts",
+    "bench:retention": "tsx bench/retention-graph.bench.ts",
+    "bench:transfer": "tsx bench/transfer-graph.bench.ts",
     "clean": "rm -rf dist dist-test dist-testing",
     "build:src": "tsc -p tsconfig.json && cp src/viz/explorer.css dist/viz/explorer.css",
     "build:testing": "tsc -p tsconfig.testing.json",
@@ -249,13 +260,13 @@
     "cytoscape-elk": "^2.3.0",
     "cytoscape-fcose": "^2.2.0",
     "mermaid": "^11.16.0",
-    "n3": "^2.1.1",
     "tsx": "^4.23.0",
     "typescript": "^7.0.2",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17"
   },
   "dependencies": {
+    "@rdfjs/types": "^2.0.1",
     "@studnicky/cache": "^5.0.0",
     "@studnicky/circular-buffer": "^5.0.0",
     "@studnicky/clock": "^5.0.0",
@@ -274,7 +285,11 @@
     "@studnicky/timing": "^5.0.0",
     "@studnicky/types": "^5.0.0",
     "ajv": "^8.20.0",
-    "json-schema-to-ts": "^3.1.1"
+    "json-schema-to-ts": "^3.1.1",
+    "jsonld-streaming-parser": "^5.0.1",
+    "jsonld-streaming-serializer": "^4.0.0",
+    "n3": "^2.1.1",
+    "rdf-canonize": "^5.0.0"
   },
   "dagonizer": {
     "seo": {

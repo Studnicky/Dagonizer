@@ -59,12 +59,11 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import { JsonValue } from '../../src/entities/JsonValue.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
 import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
@@ -72,10 +71,11 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 class ReservoirDispatchState extends NodeStateBase {
   counter: number = 0;
@@ -83,34 +83,7 @@ class ReservoirDispatchState extends NodeStateBase {
   /** Per-item output recorded by the recording gather: value → 'success'|'error'. */
   outputByValue: Record<string, string> = {};
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      'counter': this.counter,
-      'items': JsonValue.from(this.items),
-      'outputByValue': JsonValue.from(this.outputByValue),
-    };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
-    const items = snap['items'];
-    if (Array.isArray(items)) {
-      this.items = items.filter(
-        (x): x is { group: string; value: number; dagIri?: string } =>
-          typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['group'] === 'string' && typeof x['value'] === 'number' &&
-          (x['dagIri'] === undefined || typeof x['dagIri'] === 'string'),
-      );
-    }
-    const recorded = snap['outputByValue'];
-    if (recorded !== null && typeof recorded === 'object' && !Array.isArray(recorded)) {
-      const safe: Record<string, string> = {};
-      for (const [k, v] of Object.entries(recorded)) {
-        if (typeof v === 'string') safe[k] = v;
-      }
-      this.outputByValue = safe;
-    }
-  }
 }
 
 // ── shared counting gather strategy ──────────────────────────────────────────
@@ -681,7 +654,7 @@ class LoopbackContainer {
           return {
             'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
             'errors': [...terminal.state.errors],
-            'stateSnapshot': terminal.state.snapshot(),
+            'graphState': graphStateTransfer(terminal.state),
             'intermediates': [],
           };
         } catch (err: unknown) {
@@ -695,7 +668,7 @@ class LoopbackContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'stateSnapshot': null,
+            'graphState': emptyGraphStateTransfer(),
             'intermediates': [],
           };
         }
@@ -939,11 +912,7 @@ const SUITE_D_REGISTRY_VERSION = '1.0.0';
  * router reads `currentItem` on the host side).
  */
 const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface> =
-  CheckpointRestoreAdapter.wrap((snap: JsonObjectType): NodeStateInterface => {
-    const state = new ReservoirDispatchState();
-    state.applySnapshot(snap);
-    return state;
-  });
+  CheckpointRestoreAdapter.wrap(() => new ReservoirDispatchState());
 
 const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
   // RouterNode extends MonadicNode<NodeStateBase, ...> which is structurally

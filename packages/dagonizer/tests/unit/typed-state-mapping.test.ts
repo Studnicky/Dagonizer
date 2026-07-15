@@ -22,7 +22,6 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
-import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../../src/entities/dag/EmbeddedDAGNode.js';
 import { Placement } from '../../src/entities/index.js';
@@ -46,7 +45,7 @@ class ParentState extends NodeStateBase {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const terminal = TestNode.make('urn:noocodec:node:terminal', ['success']);
-const placementIri = (dagIri: string, placement: string): string => DAGIdentity.placementId(dagIri, placement);
+const placementIri = (dagIri: string, placement: string): string => `${dagIri}/node/${placement}`;
 const WIRE_TEST_DAG_IRI = 'urn:noocodec:dag:state-mapping-test';
 const PATH_TEST_DAG_IRI = 'urn:noocodec:dag:state-mapping-path-test';
 const INPUTS_TEST_DAG_IRI = 'urn:noocodec:dag:state-mapping-inputs';

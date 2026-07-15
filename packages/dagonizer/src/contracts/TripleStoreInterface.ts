@@ -15,11 +15,30 @@
  * the minimal shapes here so they don't pull n3 into every consumer.
  */
 
-/** RDF-JS TermType: NamedNode, Literal, BlankNode, or DefaultGraph. */
-export type TermType = {
-  termType: 'NamedNode' | 'Literal' | 'BlankNode' | 'DefaultGraph' | 'Variable' | 'QuadType';
+/** RDF-JS named-node term. */
+export type NamedNodeTermType = {
+  termType: 'NamedNode';
   value: string;
-}
+};
+
+/** RDF-JS literal term. Omitted datatype means xsd:string; language is exclusive with datatype. */
+export type LiteralTermType = {
+  termType: 'Literal';
+  value: string;
+  language?: string;
+  datatype?: NamedNodeTermType;
+};
+
+/** RDF-JS TermType, including RDF 1.2 triple terms. */
+export type TermType = NamedNodeTermType | LiteralTermType | {
+  termType: 'BlankNode' | 'DefaultGraph' | 'Variable';
+  value: string;
+} | {
+  /** An RDF 1.2 triple used as an RDF term. */
+  termType: 'Quad';
+  value: '';
+  quad: QuadType;
+};
 
 /** RDF-JS QuadType: subject, predicate, object, graph. */
 export type QuadType = {

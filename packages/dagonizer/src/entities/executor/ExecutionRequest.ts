@@ -5,7 +5,7 @@
  * DAG-only: no `variant` discriminant, no `nodeName`. A container runs
  * only whole DAGs, never individual nodes.
  *
- * `items` carries one or more `{ id, snapshot }` pairs. Single-item
+ * `items` carries one or more `{ id, graphState }` pairs. Single-item
  * requests (N=1) use `items[0]`; multi-item batch requests (N>1) run
  * all items through the same DAG in one transport round-trip. The
  * `correlationId` identifies the request envelope; individual item ids
@@ -15,6 +15,10 @@
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
+
+import type { GraphStateTransferType } from '../../contracts/GraphStateTransfer.js';
+
+import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
 
 export const ExecutionRequestSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionRequest',
@@ -29,10 +33,10 @@ export const ExecutionRequestSchema = {
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'snapshot'],
+        'required': ['id', 'graphState'],
         'properties': {
           'id':       { 'type': 'string', 'minLength': 1 },
-          'snapshot': { 'type': 'object' },
+          'graphState': GraphStateTransferSchema,
         },
         'additionalProperties': false,
       },
@@ -43,5 +47,8 @@ export const ExecutionRequestSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `ExecutionRequestSchema` via `json-schema-to-ts`. */
-export type ExecutionRequestType = FromSchema<typeof ExecutionRequestSchema>;
+type ExecutionRequestWireType = FromSchema<typeof ExecutionRequestSchema>;
+type ExecutionRequestItemType = Omit<ExecutionRequestWireType['items'][number], 'graphState'> & { graphState: GraphStateTransferType };
+
+/** TypeScript type derived from `ExecutionRequestSchema` with canonical graph transfer typing. */
+export type ExecutionRequestType = Omit<ExecutionRequestWireType, 'items'> & { items: ExecutionRequestItemType[] };

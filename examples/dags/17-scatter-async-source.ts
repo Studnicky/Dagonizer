@@ -61,7 +61,7 @@ export class AsyncSourceState extends NodeStateBase {
   /**
    * The scatter source. The engine reads this field (path `'stream'`) and
    * normalises it to an `AsyncIterator` automatically. An `AsyncIterable`
-   * set here is NOT captured by snapshot — snapshotData deliberately
+   * set here is NOT captured by the graph — the durable projection deliberately
    * omits it because async generators are not JSON-serialisable. Resume
    * from mid-async-source requires the caller to re-provide the generator
    * at the correct position (documented in the lesson comment at the bottom

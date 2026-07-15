@@ -33,6 +33,7 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 import { Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
@@ -144,7 +145,7 @@ class MinimalTask implements DagTaskInterface {
     return {
       'dagName': this.dagName,
       'placementPath': this.placementPath,
-      'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() }],
+      'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
@@ -326,7 +327,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
       class AbortableTask extends NodeStateBase {}
       const abortTask: DagTaskInterface = {
         'dagName': CONFORMANCE_DAG.law1,
-        'placementPath': [],
+        'placementPath': ['urn:dagonizer:placement:test'],
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
@@ -335,7 +336,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
           return {
             'dagName': this.dagName,
             'placementPath': this.placementPath,
-            'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() }],
+            'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };

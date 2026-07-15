@@ -262,8 +262,8 @@ export class DomArchivistSession extends ArchivistSession {
       }
       await recalled.restoreStores({ 'memory': this.store });
       this.#callbacks.onMemoryChanged?.();
-      const { dagName, state, cursor } = recalled.restoreState(
-        CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+      const { dagName, state, cursor } = await recalled.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
       );
       state.query = humanText;
       this.#dom.hitlInput.value = '';

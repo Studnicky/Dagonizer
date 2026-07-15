@@ -30,14 +30,7 @@ class HitlState extends NodeStateBase {
   decision = '';
   log: string[] = [];
 
-  protected override snapshotData() {
-    return { 'decision': this.decision, 'log': [...this.log] };
-  }
 
-  protected override restoreData(snap: Record<string, unknown>) {
-    if (typeof snap['decision'] === 'string') this.decision = snap['decision'];
-    if (Array.isArray(snap['log'])) this.log = snap['log'] as string[];
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -236,8 +229,8 @@ void describe('Engine — park-and-correlate integration', () => {
 
     // Human makes a decision; restore state via checkpoint + resume
     const ckpt = await Checkpoint.capture('urn:noocodec:dag:hitl-resume', parkedResult);
-    const { "state": restoredState, cursor } = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => HitlState.restore(snap)),
+    const { "state": restoredState, cursor } = await ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap(() => new HitlState()),
     );
 
     // Set the decision on the restored state to simulate human input

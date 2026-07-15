@@ -25,7 +25,6 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import { JsonObject } from '../entities/json.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
@@ -82,6 +81,8 @@ export class ChannelDispatch {
   readonly #channel: MessageChannelInterface;
   readonly #pending: Map<string, PendingEntry | BatchPendingEntry>;
   #initWaiter: InitWaiter | null;
+  /** Capabilities declared by the initialized host. */
+  #capabilities: readonly string[];
   // Stable bound handler — allocated once at construction so the same
   // function reference is always registered with the channel. An inline
   // closure would create a fresh function on every construction, preventing
@@ -92,6 +93,7 @@ export class ChannelDispatch {
     this.#channel = channel;
     this.#pending = new Map<string, PendingEntry | BatchPendingEntry>();
     this.#initWaiter = null;
+    this.#capabilities = [];
     this.#onMessage = (msg: BridgeMessageType): void => { this.#route(msg); };
 
     // EXACTLY ONE onMessage registration for the channel's lifetime.
@@ -102,6 +104,15 @@ export class ChannelDispatch {
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
+
+  /** Capabilities declared by the host during the last successful init. */
+  get capabilities(): readonly string[] {
+    return this.#capabilities;
+  }
+
+  supports(capability: string): boolean {
+    return this.#capabilities.includes(capability);
+  }
 
   /**
    * Send init, await ready. Rejects on version mismatch or 'error' message.
@@ -180,7 +191,7 @@ export class ChannelDispatch {
     relay: ObserverRelayInterface | null,
   ): Promise<BatchRunResultType[]> {
     const { correlationId } = request;
-    const itemIds = request.items.map((item: { id: string; snapshot: Record<string, unknown> }) => item.id);
+    const itemIds = request.items.map((item) => item.id);
 
     return new Promise<BatchRunResultType[]>((resolve) => {
       const entry: BatchPendingEntry = {
@@ -321,6 +332,7 @@ export class ChannelDispatch {
             `Channel registry version mismatch: expected '${waiter.expectedVersion}', got '${m.registryVersion}'`,
           ));
         } else {
+          this.#capabilities = [...m.capabilities];
           waiter.resolve();
         }
       },
@@ -329,30 +341,25 @@ export class ChannelDispatch {
         const correlationId = m.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
-        // Protocol-boundary narrowing: the BridgeMessage 'result' branch carries
-        // an inline error shape structurally identical to the canonical
-        // `NodeErrorWireType`. `item.snapshot` (schema `{ type: ['object','null'] }`)
-        // is narrowed to `JsonObjectType | null` via `JsonObject.is`.
         const errors: readonly NodeErrorWireType[] = m.response.errors;
 
         if (entry.variant === 'single') {
           // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
           const firstItem = m.response.items[0];
-          const firstSnapshot = firstItem?.snapshot;
           entry.settle({
             'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
             'errors': errors,
-            'stateSnapshot': JsonObject.is(firstSnapshot) ? firstSnapshot : null,
             'intermediates': m.response.intermediates,
+            ...(firstItem?.graphState === undefined ? {} : { 'graphState': firstItem.graphState }),
           });
         } else {
           // Batch (N>1): produce one BatchRunResultType per item.
-          const results: BatchRunResultType[] = m.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
+          const results: BatchRunResultType[] = m.response.items.map((item: { id: string; terminalOutcome: string; graphState?: typeof m.response.items[number]['graphState'] }) => ({
             'id': item.id,
             'terminalOutput': item.terminalOutcome,
             'errors': errors,
-            'stateSnapshot': JsonObject.is(item.snapshot) ? item.snapshot : null,
             'intermediates': m.response.intermediates,
+            ...(item.graphState === undefined ? {} : { 'graphState': item.graphState }),
           }));
           entry.settle(results);
         }

@@ -32,17 +32,16 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const placementIri = (dagName: string, placementName: string): string => DAGIdentity.placementId(dagName, placementName);
+const placementIri = (dagName: string, placementName: string): string => `${dagName}/node/${placementName}`;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -50,15 +49,7 @@ class BoundState extends NodeStateBase {
   items: number[] = [];
   counter: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'items': [...this.items], 'counter': this.counter };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const rawItems = snap['items'];
-    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-    if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
-  }
 }
 
 // ── Inner nodes for the 3-node sequential sub-DAG body ────────────────────────

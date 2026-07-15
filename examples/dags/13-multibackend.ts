@@ -31,7 +31,6 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -45,29 +44,7 @@ export class MultiBackendState extends NodeStateBase {
   lastResult: number   = 0;    // scalar per-item, gathered by 'append'
   total:      number   = 0;    // sum of all squared results (written by sum node)
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      "tasks":      [...this.tasks],
-      "results":    [...this.results],
-      "lastResult": this.lastResult,
-      "total":      this.total,
-    };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const tasks = snapshot['tasks'];
-    if (Array.isArray(tasks)) {
-      this.tasks = tasks.filter((x): x is number => typeof x === 'number');
-    }
-    const results = snapshot['results'];
-    if (Array.isArray(results)) {
-      this.results = results.filter((x): x is number => typeof x === 'number');
-    }
-    const last = snapshot['lastResult'];
-    if (typeof last === 'number') this.lastResult = last;
-    const total = snapshot['total'];
-    if (typeof total === 'number') this.total = total;
-  }
 }
 // #endregion state
 

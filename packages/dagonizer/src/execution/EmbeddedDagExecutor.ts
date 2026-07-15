@@ -1,6 +1,6 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
+import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
-import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
@@ -34,7 +34,7 @@ export type EmbeddedDagExecutorSourceType = {
   /** Per-DAG child-state factories — used to spawn isolated child state when registered. */
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   /** Runtime topology graph sink for selected embedded-DAG bindings. */
-  readonly executionTopologyStore: TripleStoreInterface;
+  readonly executionTopologyStore: GraphDatasetInterface;
 };
 
 /**

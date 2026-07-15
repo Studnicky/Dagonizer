@@ -37,7 +37,7 @@ export class WorkSetCheckpoint {
 
   /**
    * Persist the work-set progress blob to metadata. Called at the abort
-   * boundary so the captured `state.snapshot()` includes the blob and
+   * boundary so the captured graph state includes the blob and
    * `Checkpoint.capture` picks it up automatically.
    */
   static write(state: NodeStateInterface, progress: WorkSetProgressType): void {

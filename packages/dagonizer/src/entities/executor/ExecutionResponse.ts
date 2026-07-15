@@ -2,7 +2,7 @@
  * ExecutionResponse: wire-safe result returned from an isolating container
  * backend to the dispatcher after completing a whole embedded DAG.
  *
- * `items` carries one per-item result `{ id, snapshot, terminalOutcome }`.
+ * `items` carries one per-item result `{ id, graphState, terminalOutcome }`.
  * Single-item responses (N=1) use `items[0]`; multi-item batch responses
  * (N>1) carry one entry per item in the original request. The per-item
  * `terminalOutcome` is the routing output the child DAG resolved to for
@@ -22,7 +22,10 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { GraphStateTransferType } from '../../contracts/GraphStateTransfer.js';
 import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
+
+import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
 
 export const ExecutionResponseSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionResponse',
@@ -36,10 +39,10 @@ export const ExecutionResponseSchema = {
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'snapshot', 'terminalOutcome'],
+        'required': ['id', 'graphState', 'terminalOutcome'],
         'properties': {
           'id':              { 'type': 'string', 'minLength': 1 },
-          'snapshot':        { 'type': ['object', 'null'] },
+          'graphState':      GraphStateTransferSchema,
           'terminalOutcome': { 'type': 'string' },
         },
         'additionalProperties': false,
@@ -71,5 +74,8 @@ export const ExecutionResponseSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `ExecutionResponseSchema` via `json-schema-to-ts`. */
-export type ExecutionResponseType = FromSchema<typeof ExecutionResponseSchema>;
+type ExecutionResponseWireType = FromSchema<typeof ExecutionResponseSchema>;
+type ExecutionResponseItemType = Omit<ExecutionResponseWireType['items'][number], 'graphState'> & { graphState: GraphStateTransferType };
+
+/** TypeScript type derived from `ExecutionResponseSchema` with canonical graph transfer typing. */
+export type ExecutionResponseType = Omit<ExecutionResponseWireType, 'items'> & { items: ExecutionResponseItemType[] };

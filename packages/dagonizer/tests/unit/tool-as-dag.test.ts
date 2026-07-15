@@ -25,6 +25,7 @@ import { ToolInvocationState } from '../../src/tool/ToolInvocationState.js';
 import { ToolInvokeNode } from '../../src/tool/ToolInvokeNode.js';
 import { ToolRegistry } from '../../src/tool/ToolRegistry.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 
 const PARENT_CALCULATOR_DAG_IRI = 'urn:noocodec:dag:tool-parent-calculator';
 const PARENT_CALCULATOR_CALL_IRI = 'urn:noocodec:dag:tool-parent-calculator/node/call-calculator';
@@ -160,13 +161,14 @@ void describe('ToolRegistry: definitions and names', () => {
 // ── ToolInvocationState: snapshot / restore ───────────────────────────────────
 
 void describe('ToolInvocationState: snapshot / restore', () => {
-  void it('round-trips input and output through snapshot / applySnapshot', () => {
+  void it('round-trips input and output through graph JSON-LD', async () => {
     const state   = new ToolInvocationState();
     state.input   = { 'a': 1, 'b': 2 };
     state.output  = { 'result': 3 };
 
-    const snap      = state.snapshot();
-    const restored  = ToolInvocationState.restore(snap);
+    const snap      = graphStateDocument(state);
+    const restored  = new ToolInvocationState();
+    await restored.restoreJsonLd(state.runIri, snap);
 
     assert.deepEqual(restored.input,  { 'a': 1, 'b': 2 });
     assert.deepEqual(restored.output, { 'result': 3 });

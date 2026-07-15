@@ -4,13 +4,13 @@
  * Tests for the batch-native container transport (Wave 2):
  *   (a) Single-item request(): items[0] is unpacked into a flat DagOutcomeType.
  *   (b) Multi-item requestBatch(): N items produce N BatchRunResultType entries, each
- *       carrying its own id, terminalOutput, stateSnapshot, errors, intermediates.
+ *       carrying its own id, terminalOutput, graphState, errors, intermediates.
  *   (c) Batch abort: aborting mid-batch sends an 'abort' BridgeMessageType; the result
  *       is determined by the host's response (no client-side fabrication on abort).
  *   (d) Batch send failure: when channel.send throws before the result arrives,
  *       all items resolve to transport-error BatchRunResults.
  *   (e) DagOutcome.batchItemTransportError: shape contract (id, terminalOutput,
- *       stateSnapshot, errors, intermediates, errorCode).
+ *       graphState, errors, intermediates, errorCode).
  */
 
 import assert from 'node:assert/strict';
@@ -28,11 +28,11 @@ import type { MessageChannelInterface } from '../../src/contracts/MessageChannel
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TestState
@@ -41,14 +41,7 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 class TestState extends NodeStateBase {
   value: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'value': this.value };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const v = snap['value'];
-    if (typeof v === 'number') this.value = v;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +64,7 @@ class BatchTestTask {
   ): DagTaskInterface {
     return {
       'dagName': 'test-dag',
-      'placementPath': [],
+      'placementPath': ['urn:dagonizer:placement:test'],
       correlationId,
       'timeout': Timeout.none(),
       state,
@@ -79,8 +72,8 @@ class BatchTestTask {
       toRequest(): ExecutionRequestType {
         return {
           'dagName': 'test-dag',
-          'placementPath': [],
-          'items': [{ 'id': correlationId, 'snapshot': state.snapshot() }],
+          'placementPath': ['urn:dagonizer:placement:test'],
+          'items': [{ 'id': correlationId, 'graphState': graphStateTransfer(state) }],
           'timeoutMs': null,
           correlationId,
         };
@@ -142,7 +135,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
           'variant': 'result',
           'response': {
             correlationId,
-            'items': [{ 'id': correlationId, 'snapshot': { 'value': 7 }, 'terminalOutcome': 'completed' }],
+            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
             'errors': [],
             'intermediates': [],
           },
@@ -156,13 +149,14 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
 
     // items[0].terminalOutcome → outcome.terminalOutput
     assert.strictEqual(outcome.terminalOutput, 'completed');
-    // items[0].snapshot → outcome.stateSnapshot
-    assert.deepStrictEqual(outcome.stateSnapshot, { 'value': 7 });
+    // items[0].snapshot → outcome.graphState
+    assert.ok(outcome.graphState);
+    assert.equal(outcome.graphState.mode, 'inline-nquads');
     assert.deepStrictEqual(outcome.errors, []);
     assert.deepStrictEqual(outcome.intermediates, []);
   });
 
-  void it('runDag() items[0] with null snapshot → stateSnapshot is null', async () => {
+  void it('runDag() failed item still carries graphState', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
@@ -175,7 +169,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
           'variant': 'result',
           'response': {
             correlationId,
-            'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': 'failed' }],
+            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
             'errors': [],
             'intermediates': [],
           },
@@ -186,7 +180,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     const ac = new AbortController();
     const outcome = await container.runDag(BatchTestTask.of('single-null', ac.signal));
     assert.strictEqual(outcome.terminalOutput, 'failed');
-    assert.strictEqual(outcome.stateSnapshot, null);
+    assert.ok(outcome.graphState);
   });
 
 });
@@ -214,7 +208,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
             correlationId,
             'items': items.map((item) => ({
               'id': item.id,
-              'snapshot': { 'processed': item.id },
+              'graphState': emptyGraphStateTransfer(),
               'terminalOutcome': `done-${item.id}`,
             })),
             'errors': [],
@@ -250,7 +244,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     // Each result is keyed by its item id.
     assert.strictEqual(results[0]?.id, 'item-A');
     assert.strictEqual(results[0]?.terminalOutput, 'done-item-A');
-    assert.deepStrictEqual(results[0]?.stateSnapshot, { 'processed': 'item-A' });
+    assert.equal(results[0]?.graphState?.mode, 'inline-nquads');
 
     assert.strictEqual(results[1]?.id, 'item-B');
     assert.strictEqual(results[1]?.terminalOutput, 'done-item-B');
@@ -277,7 +271,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
             correlationId,
             'items': items.map((item) => ({
               'id': item.id,
-              'snapshot': null,
+              'graphState': emptyGraphStateTransfer(),
               'terminalOutcome': 'completed',
             })),
             'errors': [],
@@ -388,12 +382,12 @@ void describe('batch-container-transport: (d) send failure returns transport-err
 
 void describe('batch-container-transport: (e) DagOutcome.batchItemTransportError shape', () => {
 
-  void it('carries id, terminalOutput:failed, null stateSnapshot, one error, empty intermediates', () => {
+  void it('carries id, terminalOutput:failed, one error, empty intermediates', () => {
     const result = DagOutcome.batchItemTransportError('item-x', 'corr-99');
 
     assert.strictEqual(result.id, 'item-x');
     assert.strictEqual(result.terminalOutput, 'failed');
-    assert.strictEqual(result.stateSnapshot, null);
+    assert.equal(result.graphState, undefined);
     assert.deepStrictEqual(result.intermediates, []);
     assert.strictEqual(result.errors.length, 1);
 

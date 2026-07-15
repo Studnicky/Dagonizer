@@ -74,6 +74,21 @@ export type { StateAccessorInterface } from './StateAccessorInterface.js';
 
 // Triple store: minimal RDF quad-store contract for graph-tier patterns.
 export type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from './TripleStoreInterface.js';
+export type { GraphDatasetInterface } from './GraphDatasetInterface.js';
+export type { GraphStateFieldDefinitionType, GraphStateNestedFieldDefinitionType } from './GraphStateFieldDefinition.js';
+export type { GraphRetentionPolicyType } from './GraphRetentionPolicy.js';
+export { DEFAULT_GRAPH_RETENTION_POLICY } from './GraphRetentionPolicy.js';
+export type { GraphStateDeltaInterface } from './GraphStateDeltaInterface.js';
+export type { GraphStateSnapshotInterface } from './GraphStateSnapshotInterface.js';
+export type { GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStateJsonLdNodeType, GraphStateJsonLdValueType } from './GraphStateJsonLd.js';
+export type { GraphStateLifecycleInterface } from './GraphStateLifecycleInterface.js';
+export type { GraphStateTransferType } from './GraphStateTransfer.js';
+export type { GraphStateTransferIdentityType, GraphStateTransferMetadataType } from './GraphStateTransferMetadata.js';
+export type { GraphStateSnapshotReferenceType } from './GraphStateSnapshotReference.js';
+export type { GraphStateTransferLeaseType } from './GraphStateTransferLease.js';
+export type { GraphStateTransferStoreInterface } from './GraphStateTransferStoreInterface.js';
+export type { GraphRetentionPlanType } from './GraphRetentionPlan.js';
+export type { GraphRetentionReportType } from './GraphRetentionReport.js';
 
 // Remote store: lease-based remote key-value access.
 export type { RemoteStoreInterface } from './RemoteStoreInterface.js';

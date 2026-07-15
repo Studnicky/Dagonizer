@@ -927,9 +927,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       if (output === 'error' && state instanceof ToolInvocationState) {
         const lastErr = state.errors[state.errors.length - 1];
         const rawName = lastErr !== undefined ? lastErr.context['toolName'] : undefined;
-        const toolName = typeof rawName === 'string' && rawName.length > 0
-          ? rawName
-          : (placementPath[placementPath.length - 1] ?? nodeName);
+        const toolName = typeof rawName === 'string' && rawName.length > 0 ? rawName : fullId;
         const errMsg      = lastErr !== undefined ? lastErr.message : '';
         const isRateLimit = /429|too many requests/i.test(errMsg);
         const noteMsg     = isRateLimit

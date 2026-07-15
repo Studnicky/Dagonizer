@@ -7,7 +7,6 @@
 import {
   Batch,
   DAGBuilder,
-  DAGIdentity,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
@@ -71,7 +70,7 @@ export class PersistNode extends MonadicNode<PipelineState, 'done'> {
 // ---------------------------------------------------------------------------
 
 export const dagIri = 'urn:noocodec:dag:streaming-demo' as const;
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 export const dag = new DAGBuilder(dagIri, '1')
   .node(placement('ingest'),  new IngestNode(),  { 'done': placement('enrich') })

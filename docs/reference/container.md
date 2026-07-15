@@ -237,7 +237,7 @@ const outcome: DagOutcomeType = DagOutcome.transportError('corr-1');
 |-------|------|-------------|
 | `terminalOutput` | `string` | Routing output the child resolved to. |
 | `errors` | `readonly NodeErrorWireType[]` | Collected errors from the child run. |
-| `stateSnapshot` | `JsonObjectType \| null` | Terminal child state snapshot (`null` on transport failure). |
+| `graphState` | `GraphStateTransferType` | Terminal child state as an explicit graph transfer envelope. |
 | `intermediates` | `readonly ExecutorIntermediate[]` | Per-node results forwarded to the parent stream. |
 
 ---

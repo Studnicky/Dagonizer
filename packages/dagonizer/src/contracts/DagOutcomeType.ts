@@ -7,21 +7,20 @@
  *                     `'success'` | `'error'`).
  * `errors`          — collected errors from the child run (never thrown;
  *                     always collected).
- * `stateSnapshot`   — terminal child state snapshot; `null` when the
- *                     container cannot produce a snapshot (e.g. transport
- *                     failure). Parent calls
- *                     `cloneState.applySnapshot(stateSnapshot)` when non-null.
+ * `graphState`      — terminal child graph-state transfer restored through
+ *                     the graph-state port.
  * `intermediates`   — per-node results from the child DAG, forwarded to the
  *                     parent execution stream as intermediate yields.
  */
 
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
-import type { JsonObjectType } from '../entities/json.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
+
+import type { GraphStateTransferType } from './GraphStateTransfer.js';
 
 export type DagOutcomeType = {
   readonly terminalOutput: string;
   readonly errors: readonly NodeErrorWireType[];
-  readonly stateSnapshot: JsonObjectType | null;
+  readonly graphState?: GraphStateTransferType;
   readonly intermediates: readonly ExecutorIntermediateType[];
 };

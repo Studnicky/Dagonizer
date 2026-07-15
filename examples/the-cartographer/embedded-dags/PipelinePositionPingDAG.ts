@@ -27,12 +27,12 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder, DAGIdentity } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 const pipelinePositionPingDagIri = 'urn:noocodec:dag:pipeline-position-ping' as const;
 const geoPipelineDagIri = 'urn:noocodec:dag:geo-pipeline' as const;
 const placement = (placementIdentifier: string): string =>
-  DAGIdentity.placementId(pipelinePositionPingDagIri, placementIdentifier);
+  `${pipelinePositionPingDagIri}/node/${placementIdentifier}`;
 
 export const pipelinePositionPingDAG: DAGType = new DAGBuilder(pipelinePositionPingDagIri, '1.0')
 

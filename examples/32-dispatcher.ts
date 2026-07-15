@@ -182,8 +182,8 @@ process.stdout.write(`\n  Step 2c — Operator responds: "${operatorResponse}"\n
 
 // Step 2d: Restore checkpoint, inject operator response, resume
 const recalled = Checkpoint.load(JSON.parse(persisted));
-const { state: resumedState, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => DispatcherState.restore(snap)),
+const { state: resumedState, dagName, cursor } = await recalled.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new DispatcherState()),
 );
 
 // Inject operator response before resume — ParkForOperatorNode checks this
@@ -226,8 +226,8 @@ if (trolleyParked.parked === null) {
 const trolleyCkpt = await Checkpoint.capture('urn:noocodec:dag:support-dispatcher', trolleyParked);
 const trolleyRecalled = Checkpoint.load(JSON.parse(trolleyCkpt.toJson()));
 const { state: trolleyResumedState, dagName: trolleyDagName, cursor: trolleyCursor } =
-  trolleyRecalled.restoreState(
-    CheckpointRestoreAdapter.wrap((snap) => DispatcherState.restore(snap)),
+  await trolleyRecalled.restoreState(
+    CheckpointRestoreAdapter.wrap(() => new DispatcherState()),
   );
 
 trolleyResumedState.response = "We're open Monday–Friday 9am–6pm and Saturday 10am–4pm. [Routed by operator per human mode]";

@@ -120,7 +120,7 @@ When a top-level DAG completes at a terminal placement bound to a `HandoffChanne
 - `dagName` — the DAG IRI/CURIE string that just completed
 - `terminalName` — the terminal placement label for observability
 - `terminalOutput` — the routing output string
-- `stateSnapshot` — by-value terminal state (or `stateSnapshotRef` for size-limited transports)
+- `graphState` — terminal graph-state transfer selected by the negotiated transport strategy
 - `registryVersion` — version the receiving host uses for its handshake
 - `correlationId` — monotonic dispatcher-assigned identifier for deduplication
 - `placementPath` — nesting path for instrumentation
@@ -182,13 +182,13 @@ Exactly-once delivery is out of scope for Dagonizer's channel contract. At-least
 - Check for prior completion in state before calling an external API.
 - Use `correlationId` from the envelope as an idempotency key when the downstream API supports one.
 
-Dagonizer guarantees envelope fidelity (a `stateSnapshot` round-trip is a fixed point) and `correlationId` uniqueness within a dispatcher instance. Delivery semantics above that are a property of the channel transport and the deployment.
+Dagonizer guarantees graph-envelope fidelity and `correlationId` uniqueness within a dispatcher instance. Delivery semantics above that are a property of the channel transport and the deployment.
 
 #### Trust boundaries
 
-**`stateSnapshotRef` URI dereference.** When an envelope carries `stateSnapshotRef` instead of `stateSnapshot`, the receiver must fetch the snapshot from the referenced URI. The receiver owns SSRF and allowlist responsibility: validate that the URI resolves to an operator-controlled storage backend (S3 bucket, GCS object, internal blob store) before fetching. Dagonizer does not fetch `stateSnapshotRef` values; the fetch and the allowlist check are deployment code.
+**Graph references.** When a negotiated graph-reference strategy is selected, the receiver fetches the N-Quads graph through the configured graph transfer adapter. The receiver owns endpoint authorization and allowlist responsibility.
 
-**Incoming state from workers.** State-snapshot keys that arrive from a worker or a remote host are untrusted-shaped. If your `restoreData` override reads state keys from a snapshot, treat incoming keys defensively — validate schema, coerce types, and apply defaults before trusting the values. The engine does not validate the shape of individual state fields; the `JsonObjectType` constraint only guarantees the top-level is an object.
+**Incoming state from workers.** Graph-state transfers are validated by the graph codec and identity checks before import. Domain accessors still validate values at their application boundary.
 
 ---
 

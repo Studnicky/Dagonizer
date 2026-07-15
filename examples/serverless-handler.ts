@@ -14,6 +14,7 @@
  */
 
 import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
+import { OrderState } from './dags/serverless-handler.js';
 
 import {
   InMemoryQueueChannel,
@@ -29,6 +30,10 @@ const downstreamQueue: DAGHandoffType[] = [];
 const egress = new InMemoryQueueChannel(downstreamQueue);
 
 // An inbound envelope, as a queue trigger would deliver it.
+const inboundState = new OrderState();
+inboundState.orderId = 'order-001';
+inboundState.total = 4200;
+inboundState.status = 'pending';
 const inbound: DAGHandoffType = {
   dagName: SETTLE_DAG_IRI,
   terminalName: 'done',
@@ -36,7 +41,7 @@ const inbound: DAGHandoffType = {
   registryVersion: REGISTRY_VERSION,
   correlationId: 'order-001',
   placementPath: [],
-  stateSnapshot: { orderId: 'order-001', total: 4200, status: 'pending' },
+  graphState: inboundState.snapshotJsonLd(),
 };
 
 process.stdout.write(`[inbound]  correlationId="${inbound.correlationId}" status="pending"\n`);

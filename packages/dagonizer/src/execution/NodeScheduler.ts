@@ -7,10 +7,10 @@ import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.j
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
+import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
-import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
@@ -28,7 +28,6 @@ import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
-import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
@@ -85,7 +84,7 @@ export interface NodeSchedulerSourceInterface {
   /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
   readonly accessor: StateAccessorInterface;
   /** Runtime topology graph sink for selected embedded-DAG bindings. */
-  readonly executionTopologyStore: TripleStoreInterface;
+  readonly executionTopologyStore: GraphDatasetInterface;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
 
@@ -94,11 +93,11 @@ export interface NodeSchedulerSourceInterface {
   /** Relay a flow-end event into the dispatcher's `onFlowEnd` hook. */
   relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal): void;
   /** Relay a node-start event into the dispatcher's `onNodeStart` hook. */
-  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   /** Relay a node-end event into the dispatcher's `onNodeEnd` hook. */
-  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   /** Relay an error event into the dispatcher's `onError` hook. */
-  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   /** Relay a phase-enter event into the dispatcher's `onPhaseEnter` hook. */
   relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   /** Relay a phase-exit event into the dispatcher's `onPhaseExit` hook. */
@@ -215,8 +214,7 @@ export class NodeScheduler {
       // have left the lifecycle in a terminal state (failed/cancelled/timed_out)
       // or in the awaiting-input (parked) state for HITL flows. Reset to `pending`
       // so `markRunning()` can re-enter the running state.
-      // Lifecycle is not captured in snapshots; this reset is safe — the
-      // checkpoint data (SCATTER_PROGRESS_KEY, etc.) is in metadata and survives.
+      // Lifecycle is restored from the graph before a resumed run re-enters execution.
       if (fromStage !== null && (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle))) {
         state.resetLifecycle();
       }
@@ -305,36 +303,31 @@ export class NodeScheduler {
       if (fromStage !== null && !runOptions.embedded) {
         const gatherBlob = GatherCheckpoint.read(state);
         if (gatherBlob !== undefined) {
-          gatherBuffers.restore(gatherBlob, state);
+          await gatherBuffers.restore(gatherBlob, state);
           GatherCheckpoint.clear(state);
         }
 
         const workSetBlob = WorkSetCheckpoint.read(state);
         if (workSetBlob !== undefined) {
-          // Rebuild pending from the blob: for each placement, reconstruct each
-          // item's state via clone + applySnapshot, then accumulate into the
+              // Rebuild pending from the blob: for each placement, reconstruct each
+              // item's state from its graph document, then accumulate into the
           // work set in declaration order.
           //
-          // `state.clone()` copies the current metadata (including the blob),
-          // but `applySnapshot` resets metadata and repopulates from the item
-          // snapshot, so reconstructed item states do not carry the parent blob.
+              // `state.clone()` copies the current graph; graph restore replaces
+              // the clone's run graph with the item's graph document.
           for (const entry of workSetBlob.entries) {
             const items: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const workItem of entry.items) {
               const itemState = state.clone();
-              // workItem.snapshot is typed as `{}` by json-schema-to-ts for
-              // `{ type: 'object' }`; `JsonObject.is` narrows it to JsonObjectType
-              // (cast-free) at the snapshot ingest boundary.
-              itemState.applySnapshot(JsonObject.is(workItem.snapshot) ? workItem.snapshot : {});
+              await itemState.restoreJsonLd(itemState.runIri, workItem.graphState);
               entrypointSourceByState.set(itemState, workItem.source ?? this.#entrypointIri(dagIri, 'main'));
               entrypointRootByState.set(itemState, state);
               items.push({ 'id': workItem.id, 'state': itemState });
             }
             pending.add(entry.placement, Batch.from(items));
           }
-          // Clear the blob from all reconstructed item states (applySnapshot
-          // already reset each clone's metadata from its item snapshot, so the
-          // blob is absent there). Clear from the top-level state too so a
+          // Clear the blob from all reconstructed item states and the top-level
+          // state so a
           // re-interrupted run captures a fresh blob rather than the old one.
           WorkSetCheckpoint.clear(state);
         } else {
@@ -458,9 +451,10 @@ export class NodeScheduler {
                 const items: WorkSetProgressType['entries'][number]['items'] = [];
                 for (const item of batch) {
                   const source = entrypointSourceByState.get(item.state);
+                  const graphState = item.state.snapshotJsonLd(item.state.runIri);
                   items.push(source === undefined
-                    ? { 'id': item.id, 'snapshot': item.state.snapshot() }
-                    : { 'id': item.id, source, 'snapshot': item.state.snapshot() });
+                    ? { 'id': item.id, 'graphState': graphState }
+                    : { 'id': item.id, source, 'graphState': graphState });
                 }
                 entries.push({ placement, items });
               }
@@ -499,7 +493,7 @@ export class NodeScheduler {
         // this is identical to the single cursor state — byte-identical to today.
         const repState = batch.row(0).state;
 
-        this.#source.relayNodeStart(node.name, repState, placementPath, signal);
+        this.#source.relayNodeStart(node.name, repState, placementPath, signal, currentPlacementIri);
 
         if (Placement.isGather(node)) {
           for (const item of batch) {
@@ -519,7 +513,7 @@ export class NodeScheduler {
             }
             pending.add(nextStage, Batch.of(item.state, item.id));
             executedNodes.push(node.name);
-            this.#source.relayNodeEnd(node.name, gatherRun.output, item.state, placementPath, signal);
+            this.#source.relayNodeEnd(node.name, gatherRun.output, item.state, placementPath, signal, currentPlacementIri);
             yield {
               'output': gatherRun.output,
               'skipped': false,
@@ -563,7 +557,7 @@ export class NodeScheduler {
             'state': repState,
             'intermediateResults': [],
           };
-          this.#source.relayNodeEnd(terminal.name, terminal.outcome, repState, placementPath, signal);
+          this.#source.relayNodeEnd(terminal.name, terminal.outcome, repState, placementPath, signal, currentPlacementIri);
           yield terminalResult;
           continue scheduleLoop;
         }
@@ -601,7 +595,7 @@ export class NodeScheduler {
                 'cursor': currentPlacementIri,
                 'dagName': dagName,
               };
-              this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath, signal);
+              this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath, signal, currentPlacementIri);
               const parkResult = this.#composeResult(currentPlacementIri, executedNodes, skippedNodes, null, null, state, parkedEntity);
               await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, signal, placementPath);
               return parkResult;
@@ -646,7 +640,7 @@ export class NodeScheduler {
           }
 
           executedNodes.push(nodeResult.nodeName);
-          this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath, signal);
+          this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath, signal, currentPlacementIri);
           yield nodeResult;
           continue scheduleLoop;
         }
@@ -851,7 +845,7 @@ export class NodeScheduler {
           }
 
           executedNodes.push(node.name);
-          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal);
+          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
             'output': repOutput,
             'skipped': false,
@@ -955,7 +949,7 @@ export class NodeScheduler {
           } else {
             executedNodes.push(soleResult.nodeName);
           }
-          this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath, signal);
+          this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath, signal, currentPlacementIri);
           yield {
             'output': soleResult.output,
             'skipped': soleResult.skipped,
@@ -969,7 +963,7 @@ export class NodeScheduler {
           for (const entry of composite) {
             if (entry.result.output !== repOutput) { repOutput = null; break; }
           }
-          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal);
+          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
             'output': repOutput,
             'skipped': false,
@@ -1161,7 +1155,7 @@ export class NodeScheduler {
     if (terminalNodeName !== null) {
       const channel = this.#source.channels[terminalNodeName];
       if (channel !== undefined) {
-        const stateSnapshot = state.snapshot();
+        const graphState = await state.snapshotJsonLd(state.runIri);
         const handoff: DAGHandoffType = {
           'dagName': dagName,
           'terminalName': terminalNodeName,
@@ -1169,7 +1163,7 @@ export class NodeScheduler {
           'registryVersion': this.#source.registryVersion,
           'correlationId': this.#source.nextCorrelationId(dagName),
           'placementPath': [...placementPath],
-          'stateSnapshot': stateSnapshot,
+          'graphState': graphState,
         };
         try {
           await channel.publish(handoff);

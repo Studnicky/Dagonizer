@@ -29,7 +29,6 @@ import {
   SCATTER_PROGRESS_KEY,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -45,59 +44,21 @@ export class ResumeState extends NodeStateBase {
   /** Gather target: each clone's `processed` label appended in order. */
   completed: string[] = [];
 
-  // snapshotData / restoreData so the checkpoint captures domain fields.
-  // The scatter checkpoint (SCATTER_PROGRESS_KEY in metadata) is automatically
-  // captured by snapshot() via the base class metadata serialization.
-  protected override snapshotData(): JsonObjectType {
-    return {
-      "jobs":      [...this.jobs],
-      "processed": this.processed,
-      "completed": [...this.completed],
-    };
-  }
-
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const jobs = snapshot['jobs'];
-    if (Array.isArray(jobs)) this.jobs = jobs.filter((x): x is string => typeof x === 'string');
-    const proc = snapshot['processed'];
-    if (typeof proc === 'string') this.processed = proc;
-    const done = snapshot['completed'];
-    if (Array.isArray(done)) this.completed = done.filter((x): x is string => typeof x === 'string');
-  }
-  // Use the inherited NodeStateBase.restore() static method to create a
-  // ResumeState from a snapshot. The base method calls applySnapshot() which
-  // restores metadata (including the scatter checkpoint), retries, warnings,
-  // and then calls restoreData() for domain fields. No override needed here.
-}
-// #endregion state
-
-// ---------------------------------------------------------------------------
-// Worker node
-// ---------------------------------------------------------------------------
-
-// #region worker-node
-/**
- * Observable state shared between the node and the entry-point.
- * Using a mutable object (not a bare `let`) so ESM live bindings allow
- * the entry-point to update fields without a setter function.
- */
-export const observable: {
   /** Every job body invocation across all runs, in call order. */
-  execLog: string[];
+  execLog: string[] = [];
   /** Current run number (1 = initial, 2 = resume). Set by the entry-point. */
-  run: number;
-  /**
-   * Abort after this many body invocations in run 1. The node fires the
-   * abort itself so the signal is in effect before the next item is pulled.
-   */
-  abortAfter: number;
-  /** The AbortController for the current run. Set by the entry-point. */
-  controller: AbortController | null;
-} = {
-  execLog: [],
+  run = 1;
+  /** Abort after this many body invocations in run 1. */
+  abortAfter = 0;
+  /** The AbortController for the current run. */
+  controller: AbortController | null = null;
+}
+
+export const observable = {
+  execLog: [] as string[],
   run: 1,
   abortAfter: 0,
-  controller: null,
+  controller: null as AbortController | null,
 };
 
 export class ProcessJobNode extends MonadicNode<ResumeState, 'done'> {

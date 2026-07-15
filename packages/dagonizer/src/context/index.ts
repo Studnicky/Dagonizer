@@ -4,3 +4,4 @@
 
 export { ContextResolver } from '../dag/ContextResolver.js';
 export { DAG_CONTEXT } from '../entities/dag/DAG.js';
+export { DagonizerContexts } from './DagonizerContexts.js';

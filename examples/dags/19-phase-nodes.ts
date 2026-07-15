@@ -7,8 +7,7 @@
 import {
   Batch,
   DAGBuilder,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -105,7 +104,7 @@ export class PostAuditNode extends MonadicNode<PhaseState, 'audited'> {
 
 // #region phase-dag
 export const dagIri = 'urn:noocodec:dag:phase-demo' as const;
-const placement = (placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 const preSetupNode = new PreSetupNode();
 const computeNode = new ComputeNode();

@@ -31,7 +31,6 @@ import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -56,14 +55,7 @@ class EmbedParentState extends NodeStateBase {
   parentValue: string = 'parent-sentinel';
   shared: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'parentValue': this.parentValue, 'shared': this.shared };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['parentValue'] === 'string') this.parentValue = snap['parentValue'];
-    if (typeof snap['shared'] === 'number')     this.shared      = snap['shared'];
-  }
 }
 
 /**
@@ -74,14 +66,7 @@ class EmbedChildState extends NodeStateBase {
   childValue: string = '';
   shared: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'childValue': this.childValue, 'shared': this.shared };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['childValue'] === 'string') this.childValue = snap['childValue'];
-    if (typeof snap['shared'] === 'number')     this.shared     = snap['shared'];
-  }
 }
 
 // Track what class the body node received.
@@ -321,13 +306,7 @@ void describe('Isolated child state: embedded DAG', () => {
 class ScatterItemState extends NodeStateBase {
   itemResult: number = 0;
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'itemResult': this.itemResult };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['itemResult'] === 'number') this.itemResult = snap['itemResult'];
-  }
 }
 
 /**
@@ -338,14 +317,7 @@ class ScatterParentState extends NodeStateBase {
   items: number[] = [];
   results: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'items': [...this.items], 'results': [...this.results] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['items']))   this.items   = snap['items'].filter((e): e is number => typeof e === 'number');
-    if (Array.isArray(snap['results'])) this.results = snap['results'].filter((e): e is number => typeof e === 'number');
-  }
 }
 
 let scatterBodyClassSeen: Set<string>;

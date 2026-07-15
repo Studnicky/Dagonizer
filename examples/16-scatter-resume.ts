@@ -102,8 +102,8 @@ const persisted  = ckpt.toJson();
 
 // Simulate process restart: parse the JSON and restore typed state.
 const restored  = Checkpoint.load(JSON.parse(persisted));
-const { state: resumedState, cursor } = restored.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => ResumeState.restore(snap)),
+const { state: resumedState, cursor } = await restored.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new ResumeState()),
 );
 
 process.stdout.write(`  cursor restored to: "${cursor}"\n`);

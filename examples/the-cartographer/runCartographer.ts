@@ -191,7 +191,7 @@ class InsightsFingerprint {
  *              events (no abort). Produces the reference InsightsFingerprint.
  *   Step A   — Interrupted run: abort after ABORT_AFTER_ITEMS aggregate-event
  *              completions; read durable cursor from checkpoint.
- *   Step B   — Resume: restore from firstState.snapshot() (carries accumulator,
+ *   Step B   — Resume: restore from firstState's graph JSON-LD (carries accumulator,
  *              canonicalEvents, and checkpoint) and resume process-stream.
  *              Assert cursor > 0 and resumeResult.cursor === null (completed).
  *   Proof    — Compare InsightsFingerprint of resumed state to baseline fingerprint.
@@ -275,13 +275,14 @@ class CartographerResumableScenario {
     // ── Step B: Resume ───────────────────────────────────────────────────────
     // Restore from the interrupted snapshot — this is the faithful cross-process
     // restart path: the partial insights accumulator AND the SCATTER_PROGRESS_KEY
-    // checkpoint are both carried by CartographerState.restore(firstState.snapshot()).
+    // checkpoint are both carried by the graph restore.
     // Acked items (below the watermark) already contributed to state.insights and
     // are NOT replayed by the engine; the accumulator carry ensures their folds
     // survive. Un-acked items in the durable inbox are replayed by the engine.
     const resumeDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
 
-    const resumeState = CartographerState.restore(firstState.snapshot());
+    const resumeState = new CartographerState();
+    await resumeState.restoreJsonLd(firstState.runIri, firstState.snapshotJsonLd());
     resumeState.useStreamingSource = true;
     resumeState.eventCount = RESUME_EVENT_COUNT;
     resumeState.streamCount = RESUME_EVENT_COUNT;

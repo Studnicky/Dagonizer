@@ -6,7 +6,7 @@ import type { GatherRecordType } from '../../src/contracts/GatherExecution.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import type { GatherNodeType } from '../../src/entities/dag/GatherNode.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
+import { JsonObject } from '../../src/entities/json.js';
 import { GatherBuffers } from '../../src/execution/GatherBuffers.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -104,7 +104,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     });
     const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -148,7 +148,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const work = TestNode.make<MainSourceState>('urn:noocodec:node:work-main-source', ['success']);
     const merge = TestNode.make<MainSourceState>('urn:noocodec:node:merge-main-source', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source']));
       return 'success';
     });
@@ -184,7 +184,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const right = TestNode.make<EmbeddedMultiEntryState>('urn:noocodec:node:embedded-right', ['success']);
     const merge = TestNode.make<EmbeddedMultiEntryState>('urn:noocodec:node:embedded-merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -246,7 +246,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const right = TestNode.make<AnyState>('urn:noocodec:node:right-any', ['success']);
     const merge = TestNode.make<AnyState>('urn:noocodec:node:merge-any', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -292,7 +292,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const third = TestNode.make<QuorumState>('urn:noocodec:node:third-quorum', ['success']);
     const merge = TestNode.make<QuorumState>('urn:noocodec:node:merge-quorum', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -347,7 +347,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const good = TestNode.make<IncludeErrorsState>('urn:noocodec:node:good-source', ['success']);
     const merge = TestNode.make<IncludeErrorsState>('urn:noocodec:node:merge-include-errors', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -396,7 +396,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const right = TestNode.make<MultiEntryState>('urn:noocodec:node:right', ['success']);
     const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -455,7 +455,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     });
     const merge = TestNode.make<ParentState>('urn:noocodec:node:merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenResults = records.map((record) => record['result']);
       return 'success';
     });
@@ -516,7 +516,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     });
     const merge = TestNode.make<ParentState>('urn:noocodec:node:merge-compact', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenResults = records.map((record) => record['result']);
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
@@ -569,7 +569,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const compacted = buffered.find((record) => record.source === entrypointIri(COMPACT_GATHER_RESULT_DAG_IRI, 'embedded-answer'));
     assert.ok(compacted !== undefined, 'embedded producer record should be checkpointed');
     assert.equal(compacted.result, 'forty-two');
-    assert.equal('snapshot' in compacted, false, 'projected result record should not retain clone snapshot');
+    assert.equal('graphState' in compacted, false, 'compacted result record should not retain clone graph state');
 
     assert.ok(partial.cursor !== null);
     const resumed = await dispatcher.resume(COMPACT_GATHER_RESULT_DAG_IRI, partial.state, partial.cursor);
@@ -589,13 +589,7 @@ void describe('Dagonizer scatter gather strategies', () => {
 
       answer = '';
 
-      protected override snapshotData(): JsonObjectType {
-        return NodeStateBase.snapshotFields(this, ChildState.FIELDS);
-      }
 
-      protected override restoreData(snapshot: JsonObjectType): void {
-        NodeStateBase.restoreFields(this, snapshot, ChildState.FIELDS);
-      }
     }
     class ParentState extends NodeStateBase {
       answers: unknown[] = [];
@@ -661,7 +655,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const retained = buffered.find((record) => record.source === entrypointIri(RETAINED_GATHER_RESULT_DAG_IRI, 'embedded-answer'));
     assert.ok(retained !== undefined, 'embedded producer record should be checkpointed');
     assert.equal(retained.result, 'forty-two');
-    assert.equal('snapshot' in retained, true, 'built-in reducers need clone state for resume');
+    assert.equal('graphState' in retained, true, 'built-in reducers need graph state for resume');
 
     assert.ok(partial.cursor !== null);
     const resumed = await dispatcher.resume(RETAINED_GATHER_RESULT_DAG_IRI, partial.state, partial.cursor);
@@ -685,7 +679,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const right = TestNode.make<MultiEntryState>('urn:noocodec:node:right-source-node', ['success']);
     const merge = TestNode.make<MultiEntryState>('urn:noocodec:node:merge-source-labels', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = records.map((record) => String(record['source'])).sort();
       return 'success';
     });
@@ -749,7 +743,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const classify = TestNode.make<ParentState>('urn:noocodec:node:classify-mixed', ['success'], () => 'success');
     const merge = TestNode.make<ParentState>('urn:noocodec:node:merge-mixed', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
-      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      const records = Array.isArray(raw) ? raw.filter((entry) => JsonObject.is(entry)) : [];
       state.seenSources = [...new Set(records.map((record) => String(record['source'])))].sort();
       state.seenOutputs = [...new Set(records.map((record) => String(record['output'])))].sort();
       return 'success';

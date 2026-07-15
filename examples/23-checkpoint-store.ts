@@ -105,8 +105,8 @@ if (recalled === null) {
   throw new Error(`No checkpoint found under key "${CHECKPOINT_KEY}"`);
 }
 
-const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => PipelineState.restore(snap)),
+const { state, dagName, cursor } = await recalled.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new PipelineState()),
 );
 
 process.stdout.write(`[resume] restored cursor="${cursor}" tally=${String(state.tally)}\n`);

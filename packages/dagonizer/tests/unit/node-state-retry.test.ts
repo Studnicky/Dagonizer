@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 
 void describe('NodeStateBase: retry attempts', () => {
   void it('records and reads per-key attempt counts independently', () => {
@@ -50,19 +51,15 @@ void describe('NodeStateBase: retry attempts', () => {
     assert.equal(state.retriesFor(key), 3);
   });
 
-  void it('snapshot/restore round-trips the retry budget', () => {
+  void it('graph JSON-LD restore round-trips the retry budget', async () => {
     const state = new NodeStateBase();
     state.recordAttempt('extract-query');
     state.recordAttempt('extract-query');
     state.recordAttempt('decide-tools');
 
-    const snap = state.snapshot();
-    // The snapshot carries the retry counter alongside empty metadata/warnings.
-    assert.deepEqual(snap['retries'], { 'extract-query': 2, 'decide-tools': 1 });
-    assert.deepEqual(snap['metadata'], {});
-    assert.deepEqual(snap['warnings'], []);
-
-    const restored = NodeStateBase.restore(snap);
+    const snap = graphStateDocument(state);
+    const restored = new NodeStateBase();
+    await restored.restoreJsonLd(state.runIri, snap);
     assert.equal(restored.retriesFor('extract-query'), 2);
     assert.equal(restored.retriesFor('decide-tools'), 1);
     assert.equal(restored.retriesFor('never-recorded'), 0);

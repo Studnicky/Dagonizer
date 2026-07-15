@@ -219,7 +219,7 @@ text area in the Operator tab.
 ```ts
 const recalled = Checkpoint.load(JSON.parse(json));
 const { state: restoredState, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => DispatcherState.restore(snap)),
+  CheckpointRestoreAdapter.wrap(() => new DispatcherState()),
 );
 
 // Inject the operator's response before resuming.

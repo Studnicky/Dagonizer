@@ -39,6 +39,7 @@ import type { MessageChannelInterface } from '../../src/contracts/MessageChannel
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+import { graphStateTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Registry: reuse the compiled ConformanceRegistry from dist-testing/
@@ -132,7 +133,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
           'placementPath': ['scatter', 'fan'],
           'items': Array.from({ 'length': N }, (_, i) => ({
             'id': `item-${i}`,
-            'snapshot': initialState.snapshot(),
+            'graphState': graphStateTransfer(initialState),
           })),
           'timeoutMs': 10000,
           'correlationId': 'batch-test-1',
@@ -202,7 +203,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
         'request': {
           'dagName': RUNNER_LAW1_DAG,
           'placementPath': ['run-child'],
-          'items': [{ 'id': 'single-1', 'snapshot': initialState.snapshot() }],
+          'items': [{ 'id': 'single-1', 'graphState': graphStateTransfer(initialState) }],
           'timeoutMs': 5000,
           'correlationId': 'single-test-1',
         },
@@ -242,7 +243,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
           'placementPath': ['scatter', 'fan'],
           'items': Array.from({ 'length': N }, (_, i) => ({
             'id': `large-item-${i}`,
-            'snapshot': initialState.snapshot(),
+            'graphState': graphStateTransfer(initialState),
           })),
           'timeoutMs': 30000,
           'correlationId': 'batch-test-large',
@@ -321,7 +322,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
             'placementPath': ['scatter', 'fan'],
             'items': Array.from({ 'length': BATCH_SIZE }, (_, i) => ({
               'id': `heap-batch-${b}-item-${i}`,
-              'snapshot': initialState.snapshot(),
+              'graphState': graphStateTransfer(initialState),
             })),
             'timeoutMs': 30000,
             'correlationId': `heap-batch-${b}`,

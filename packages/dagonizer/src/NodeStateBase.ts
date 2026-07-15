@@ -1,36 +1,34 @@
-import { Predicates } from '@studnicky/predicates';
-
-import type { JsonObjectType, JsonValueType } from './entities/json.js';
+import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js';
+import type { GraphStateDeltaInterface } from './contracts/GraphStateDeltaInterface.js';
+import type { GraphStateFieldDefinitionType } from './contracts/GraphStateFieldDefinition.js';
+import type { GraphStateJsonLdDocumentType } from './contracts/GraphStateJsonLd.js';
+import type { GraphStateLifecycleInterface } from './contracts/GraphStateLifecycleInterface.js';
+import type { GraphStateSnapshotInterface } from './contracts/GraphStateSnapshotInterface.js';
+import type { QuadType } from './contracts/TripleStoreInterface.js';
+import type { JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
+import { DagGraphTerms } from './graph/DagGraphTerms.js';
+import { GraphDatasetRevision } from './graph/GraphDatasetRevision.js';
+import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
+import { GraphStateQueryService } from './graph/GraphStateQueryService.js';
+import { GraphStateTerms } from './graph/GraphStateTerms.js';
+import { InMemoryGraphDataset } from './graph/InMemoryGraphDataset.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
 
-/**
- * The expected runtime type of a state field used in `snapshotFields` /
- * `restoreFields` declarations.
- */
-export type StateFieldType = 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';
-
-/**
- * A map of field name → expected runtime type for schema-driven
- * snapshot/restore helpers on `NodeStateBase`.
- *
- * @example
- * ```ts
- * static readonly FIELDS: StateFieldsType = {
- *   message: 'string',
- *   count:   'number',
- *   active:  'boolean',
- * };
- * ```
- */
-export type StateFieldsType = Readonly<Record<string, StateFieldType>>;
+const GRAPH_HAS_STATE_CELL = GraphStateTerms.DAGONIZER.HasStateCell;
+const GRAPH_KEY = GraphStateTerms.DAGONIZER.StateKey;
+const GRAPH_STATE_VALUE = GraphStateTerms.DAGONIZER.StateValuePredicate;
+const GRAPH_STATE_MEMBER = GraphStateTerms.DAGONIZER.StateMember;
+const GRAPH_STATE_INDEX = GraphStateTerms.DAGONIZER.StateIndex;
+const GRAPH_WARNING_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}warning/`;
+const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
 
 /**
  * Shared state flowing through all nodes in a flow.
@@ -40,12 +38,30 @@ export type StateFieldsType = Readonly<Record<string, StateFieldType>>;
  * Errors are collected in state; they don't stop execution.
  *
  * The data fields (errors, warnings, metadata) mirror `NodeStateData`
- * (the persistence shape returned by `NodeStateBase.snapshot()`).
+ * (the graph projection exposed through the JSON-LD intermediate form).
  * The `lifecycle` field here carries an in-memory `Error` on the `failed`
  * branch, which is not JSON-expressible; `NodeStateData` holds the opaque
  * wire form. See `entities/node/NodeStateData.ts` for the persistence shape.
  */
 export interface NodeStateInterface {
+  /** Shared RDF dataset used by this node state and all lifecycle facts. */
+  readonly graphDataset: GraphDatasetInterface;
+
+  /** Export the run graph as the Node.js JSON-LD intermediate representation. */
+  snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
+
+  /** Restore this state from the context-bound JSON-LD graph document. */
+  restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType): Promise<void>;
+
+  /** Stable IRI identifying this state’s execution run. */
+  readonly runIri: string;
+
+  /** Bind the state to the execution identity minted by the dispatcher. */
+  bindRunIri(runIri: string): void;
+
+  /** Record a placement lifecycle event in the run graph. */
+  recordPlacementEvent(placementIri: string, event: string, output?: string): void;
+
   /**
    * Clone state for isolated execution (scatter clones).
    * Returns `this` so the concrete type is preserved across the interface
@@ -137,7 +153,7 @@ export interface NodeStateInterface {
    * Reset the lifecycle to `pending`. Called by the dispatcher before
    * re-entering a flow on resume when the prior run ended in a terminal
    * state (failed, cancelled, timed_out) due to a crash or interrupt.
-   * Lifecycle is intentionally not captured in snapshots; this method
+   * Lifecycle is represented by graph facts; this method
    * resets it so `markRunning()` can transition `pending → running` again.
    */
   resetLifecycle(): void;
@@ -148,9 +164,8 @@ export interface NodeStateInterface {
   readonly 'metadata': Readonly<Record<string, unknown>>;
 
   /**
-   * Set a metadata value. The value must be JSON-serialisable so the snapshot
-   * boundary (`snapshot()`) can serialise it without error. Non-JSON values
-   * (class instances, functions, cyclic objects) fail at snapshot time.
+   * Set a metadata value. The value crosses the JSON-LD graph boundary and is
+   * therefore required to be JSON-serialisable.
    *
    * The parameter type is `unknown` at the interface level because the schema-
    * derived scatter progress types carry `item: unknown` in their payload
@@ -197,370 +212,477 @@ export interface NodeStateInterface {
    */
   readonly 'warnings': readonly NodeWarningType[];
 
-  /**
-   * Serialize state to a JSON-safe snapshot for transport or checkpointing.
-   * Subclasses with extra fields override `snapshotData()` to add them.
-   */
-  snapshot(): JsonObjectType;
-
-  /**
-   * Apply a snapshot to this instance in place. Used by the container seam
-   * to rehydrate the child clone with the terminal state returned by a
-   * contained DAG execution, preserving the engine invariant
-   * `result.state === initialState`.
-   *
-   * Subclasses override to read domain-specific fields, calling
-   * `super.applySnapshot` to inherit the base behavior.
-   */
-  applySnapshot(snapshot: JsonObjectType): void;
+  /** Graph-backed state implementation. */
 }
 
-/**
- * Base implementation of node state. Lifecycle is the canonical
- * `DAGLifecycleStateType` discriminated union exposed via the `lifecycle`
- * getter.
- *
- * Each `mark*` dispatches the corresponding lifecycle event through the
- * pure reducer. Illegal transitions throw `DAGError`.
- *
- * Extend this class for domain-specific state.
- *
- * @example
- * ```ts
- * class PipelineState extends NodeStateBase {
- *   items: string[] = [];
- *
- *   protected override snapshotData() {
- *     return { items: [...this.items] };
- *   }
- *
- *   protected override restoreData(snap: JsonObjectType) {
- *     const raw = snap['items'];
- *     if (Array.isArray(raw)) this.items = raw as string[];
- *   }
- * }
- *
- * const state = new PipelineState();
- * // After execution:
- * const snap = state.snapshot();
- * const restored = PipelineState.restore(snap);
- * ```
- */
-export class NodeStateBase implements NodeStateInterface {
-  // Retype the `constructor` property to the no-arg constructor convention every
-  // state class follows, so `clone()` can `new this.constructor()` cast-free.
-  declare ['constructor']: new () => this;
-
-  readonly #errors: NodeErrorType[] = [];
-  #lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
-  #metadata: Record<string, unknown> = {};
-  #retries: Map<string, number> = new Map();
-  readonly #warnings: NodeWarningType[] = [];
-
-  // Strict-typed metadata reads (state.getter.string('k')). Constructed once
-  // against this state so the public face is stable; reads route through
-  // getMetadata, so it survives #metadata being replaced on clone/applySnapshot.
-  readonly getter: MetadataGetter;
-
-  constructor() {
-    // Canonical instantiation. Subclass to add domain-specific state.
-    this.getter = new MetadataGetter(this);
-  }
-
-  clone(): this {
-    // Instantiate the actual (sub)class so domain fields and the
-    // snapshotData/restoreData hooks survive clone-then-applySnapshot.
-    // State classes follow the no-arg constructor convention.
-    const cloned = new this.constructor();
-
-    // Lifecycle resets to `pending`, errors/warnings empty for fresh
-    // sub-execution. Only metadata is preserved for data passing between
-    // parent and child.
-    cloned.#metadata = { ...this.#metadata };
-
-    return cloned;
-  }
-
-  collectError(error: NodeErrorType): void {
-    // context is required on NodeErrorType; spread to a stable shape.
-    this.#errors.push({ ...error });
-  }
-
-  collectWarning(warning: NodeWarningType): void {
-    this.#warnings.push(warning);
-  }
-
-  get errors(): readonly NodeErrorType[] {
-    return this.#errors;
-  }
-
-  getMetadata(key: string): unknown {
-    // Metadata holds heterogeneous JSON-serialisable values typed as `unknown`
-    // at the boundary; callers narrow to the concrete shape they wrote.
-    return this.#metadata[key];
-  }
-
-  /**
-   * Current DAG lifecycle state (full discriminated union).
-   */
-  get lifecycle(): DAGLifecycleStateType {
-    return this.#lifecycle;
-  }
-
-  markCancelled(reason: string): void {
-    this.#dispatch({ "type": 'cancel', reason, "at": Clock.monotonicMs() }, 'cancelled');
-  }
-
-  markCompleted(): void {
-    this.#dispatch({ "type": 'succeed', "at": Clock.monotonicMs() }, 'completed');
-  }
-
-  markFailed(error: Error): void {
-    this.#dispatch({ "type": 'fail', error, "at": Clock.monotonicMs() }, 'failed');
-  }
-
-  markRunning(): void {
-    this.#dispatch({ "type": 'start', "at": Clock.monotonicMs() }, 'running');
-  }
-
-  markTimedOut(): void {
-    this.#dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
-  }
-
-  park(correlationKey: string): void {
-    this.#dispatch({ "type": 'park', correlationKey, "at": Clock.monotonicMs() }, 'awaiting-input');
-    this.setMetadata('correlationKey', correlationKey);
-  }
-
-  get parked(): boolean {
-    return DAGLifecycleMachine.isParked(this.#lifecycle);
-  }
-
-  resetLifecycle(): void {
-    this.#lifecycle = DAGLifecycleMachine.initial();
-  }
-
-  get metadata(): Readonly<Record<string, unknown>> {
-    // Returns the live backing record. The dotted-path accessor writes through
-    // this reference (e.g. gather map strategy writes `metadata.result`), so
-    // the returned object must be the same reference every call to preserve
-    // write semantics: `state.metadata.result = value` must persist.
-    return this.#metadata;
-  }
-
-  setMetadata(key: string, value: unknown): void {
-    // Metadata stores heterogeneous JSON-serialisable values at the `unknown`
-    // boundary; the assignment needs no narrowing.
-    this.#metadata[key] = value;
-  }
-
-  deleteMetadata(key: string): void {
-    delete this.#metadata[key];
-  }
-
-  recordAttempt(key: string): number {
-    const next = (this.#retries.get(key) ?? 0) + 1;
-    this.#retries.set(key, next);
-    return next;
-  }
-
-  retriesFor(key: string): number {
-    return this.#retries.get(key) ?? 0;
-  }
-
-  clearAttempts(key: string): void {
-    // Map.delete never alters the object shape — no hidden-class demotion.
-    this.#retries.delete(key);
-  }
-
-  withinRetryBudget(key: string, maxAttempts: number): boolean {
-    return this.recordAttempt(key) < maxAttempts;
-  }
-
-  get warnings(): readonly NodeWarningType[] {
-    return this.#warnings;
-  }
-
-  #dispatch(
-    event: Parameters<typeof DAGLifecycleMachine.transition>[1],
-    targetVariant: DAGLifecycleStateType['variant'],
-  ): void {
-    try {
-      this.#lifecycle = DAGLifecycleMachine.transition(this.#lifecycle, event);
-    } catch {
-      throw new DAGError(
-        `Cannot mark ${targetVariant}: lifecycle is ${this.#lifecycle.variant}`,
-      );
+export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInterface, GraphStateLifecycleInterface, GraphStateDeltaInterface {
+    declare ['constructor']: new () => this;
+    #dataset: GraphDatasetInterface;
+    #runIri: string;
+    #lastSnapshotGraph: QuadType[] | undefined;
+    #lastSnapshotRevision: string | undefined;
+    #metadataProxy: Record<string, unknown>;
+    // Strict-typed metadata reads (state.getter.string('k')). Constructed once
+    // against this state so the public face is stable; reads route through the
+    // graph-backed getMetadata operation.
+    getter;
+    constructor(dataset: GraphDatasetInterface = new InMemoryGraphDataset(), runIri: string = `urn:dagonizer/run/${globalThis.crypto.randomUUID()}`) {
+        this.#dataset = dataset;
+        this.#runIri = runIri;
+        this.getter = new MetadataGetter(this);
+        this.#metadataProxy = new Proxy({}, {
+            "get": (_target, key) => typeof key === 'string' ? this.getMetadata(key) : undefined,
+            "set": (_target, key, value) => {
+                if (typeof key !== 'string')
+                    return false;
+                this.setMetadata(key, value);
+                return true;
+            },
+            "deleteProperty": (_target, key) => {
+                if (typeof key !== 'string')
+                    return false;
+                this.deleteMetadata(key);
+                return true;
+            },
+            "ownKeys": () => [...this.#values().keys()].filter((key) => key.startsWith('metadata.')).map((key) => key.slice('metadata.'.length)),
+            "getOwnPropertyDescriptor": () => ({ 'enumerable': true, 'configurable': true }),
+        });
+        this.#ensureRunFact();
     }
-  }
-
-  /**
-   * Serialize state to a JSON-safe snapshot for checkpointing.
-   *
-   * Subclasses with extra fields override `snapshotData()` to add them;
-   * the base implementation captures metadata, retries, and warnings.
-   * Lifecycle is intentionally NOT captured; resume starts a fresh
-   * execution from `pending`. Errors are intentionally NOT captured;
-   * engine error diagnostics flow via `DagOutcomeType.errors` as the
-   * single authoritative channel, exactly as lifecycle is excluded.
-   */
-  snapshot(): JsonObjectType {
-    return {
-      // `JsonValue.from` deep-copies into a stable snapshot and confirms the
-      // heterogeneous `unknown` metadata values are JSON-safe.
-      'metadata': JsonValue.from(this.#metadata),
-      // Convert Map → plain Record at the wire boundary; JsonValue.from confirms JSON-safety.
-      'retries': JsonValue.from(Object.fromEntries(this.#retries)),
-      // NodeWarning fields are all primitive strings/numbers (schema-derived).
-      // Spread copies them to plain objects; JsonValue.from confirms JSON-safety.
-      'warnings': JsonValue.from(this.#warnings.map((w) => ({ ...w }))),
-      ...this.snapshotData(),
-    };
-  }
-
-  /**
-   * Subclass hook for snapshotting additional fields. Default returns an
-   * empty object. Override to include domain-specific state.
-   */
-  protected snapshotData(): JsonObjectType {
-    return {};
-  }
-
-  /**
-   * Rehydrate state from a snapshot. Lifecycle resets to `pending`; the
-   * resumed execution is a new run on the DAG lifecycle FSM.
-   *
-   * Subclasses with extra fields override `restoreData()` to read them
-   * off the snapshot before the constructor returns.
-   */
-  static restore<T extends NodeStateBase>(this: new () => T, snapshot: JsonObjectType): T {
-    const instance = new this();
-    instance.applySnapshot(snapshot);
-    return instance;
-  }
-
-  /**
-   * Serialize declared fields from a state instance into a `JsonObjectType`.
-   * Reads each key declared in `fields` from `state` and copies it into the
-   * result. Fields absent on `state` are silently skipped.
-   *
-   * @example
-   * ```ts
-   * static readonly FIELDS: StateFieldsType = { message: 'string', count: 'number' };
-   *
-   * protected override snapshotData(): JsonObjectType {
-   *   return NodeStateBase.snapshotFields(this, MyState.FIELDS);
-   * }
-   * ```
-   */
-  static snapshotFields(state: object, fields: StateFieldsType): JsonObjectType {
-    const result: Record<string, JsonValueType> = {};
-    for (const key of Object.keys(fields)) {
-      if (key in state) {
-        // `Reflect.get` reads the field off a state instance without requiring
-        // an index signature on the caller's class — the param stays `object`
-        // so consumer subclasses pass `this` directly. `JsonValue.from` then
-        // narrows the value to a JSON-safe shape.
-        result[key] = JsonValue.from(Reflect.get(state, key));
-      }
+    get graphDataset() {
+        return this.#dataset;
     }
-    return result;
-  }
-
-  /**
-   * Restore declared fields from a `JsonObjectType` snapshot into a state
-   * instance. Performs typed narrowing for each field — no unsafe casts.
-   * Fields missing or null in the snapshot are silently skipped.
-   *
-   * @example
-   * ```ts
-   * protected override restoreData(snap: JsonObjectType): void {
-   *   NodeStateBase.restoreFields(this, snap, MyState.FIELDS);
-   * }
-   * ```
-   */
-  static restoreFields(state: object, snap: JsonObjectType, fields: StateFieldsType): void {
-    // Dispatch map: maps field type → a function that assigns `value` into the
-    // state instance via `Reflect.set` when it passes the narrowing check. The
-    // param stays `object` so consumer subclasses pass `this` directly without
-    // declaring an index signature. Both parameters are passed explicitly; no
-    // shared mutable outer state.
-    const restorers: Record<StateFieldType, (key: string, value: JsonValueType) => void> = {
-      'string':  (k, v) => { if (typeof v === 'string')                      Reflect.set(state, k, v); },
-      'number':  (k, v) => { if (typeof v === 'number')                      Reflect.set(state, k, v); },
-      'boolean': (k, v) => { if (typeof v === 'boolean')                     Reflect.set(state, k, v); },
-      'array':   (k, v) => { if (Predicates.matchesType('array', v))  Reflect.set(state, k, v); },
-      'object':  (k, v) => { if (Predicates.matchesType('object', v)) Reflect.set(state, k, v); },
-      'unknown': (k, v) => {                                                  Reflect.set(state, k, v); },
-    };
-    for (const [key, fieldType] of Object.entries(fields)) {
-      const value = snap[key];
-      if (value === undefined || value === null) continue;
-      restorers[fieldType](key, value);
+    async *snapshotGraph(runIri: string = this.#runIri) {
+        this.#syncRuntimeFields();
+        yield* this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)));
     }
-  }
-
-  /**
-   * Apply a snapshot to this instance. Called by `restore()` and by the
-   * container seam to rehydrate a child clone with terminal state returned
-   * by a contained DAG execution. Subclasses override to read domain-specific
-   * fields, calling `super.applySnapshot` to inherit the base behavior.
-   *
-   * Replace-semantics: resets warnings, metadata, and retries to the values in
-   * the snapshot before populating. Re-applying the same snapshot twice produces
-   * identical state (idempotent). The round-trip `snapshot() → applySnapshot()`
-   * is a fixed point. Errors are NOT restored from the snapshot; they are always
-   * supplied via `outcome.errors` (the single authoritative channel) by the
-   * caller after applying the snapshot.
-   */
-  applySnapshot(snapshot: JsonObjectType): void {
-    // Reset base fields to empty before populating from the snapshot so
-    // this method is idempotent (replace-semantics, not append-semantics).
-    // Errors are intentionally excluded — they flow via outcome.errors, not
-    // via the snapshot, so #errors is left as-is for the caller to populate.
-    this.#warnings.splice(0);
-    // Replace the metadata record wholesale. Reassignment keeps the hidden
-    // class stable (the property type stays `Record<string, JsonValueType>`);
-    // no existing key is deleted in place, so the backing object starts fresh.
-    this.#metadata = {};
-    this.#retries.clear();
-
-    const metadata = snapshot['metadata'];
-    if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
-      // Populate from the plain Record wire shape.
-      for (const [k, v] of Object.entries(metadata)) {
-        this.#metadata[k] = v;
-      }
+    snapshotJsonLd(runIri: string = this.#runIri): GraphStateJsonLdDocumentType {
+        this.#syncRuntimeFields();
+        const quads = [...this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)))];
+        return GraphStateJsonLdCodec.encode(quads);
     }
-    const retries = snapshot['retries'];
-    if (retries !== undefined && typeof retries === 'object' && retries !== null && !Array.isArray(retries)) {
-      // Validate each entry is a number to guard against corrupted snapshots.
-      for (const [k, v] of Object.entries(retries)) {
-        if (typeof v === 'number') {
-          this.#retries.set(k, v);
+    async snapshotGraphDelta(runIri: string = this.#runIri) {
+        this.#syncRuntimeFields();
+        const current = [...this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)))];
+        const previous = this.#lastSnapshotGraph ?? [];
+        const baseRevision = this.#lastSnapshotRevision ?? GraphDatasetRevision.ofQuads([]);
+        const revision = GraphDatasetRevision.ofQuads(current);
+        const currentKeys = new Set(current.map(NodeStateBase.quadKey));
+        const previousKeys = new Set(previous.map(NodeStateBase.quadKey));
+        this.#lastSnapshotGraph = current;
+        this.#lastSnapshotRevision = revision;
+        return {
+            "additions": current.filter((quad) => !previousKeys.has(NodeStateBase.quadKey(quad))),
+            "deletions": previous.filter((quad) => !currentKeys.has(NodeStateBase.quadKey(quad))),
+            baseRevision,
+            revision,
+        };
+    }
+    async restoreGraph(runIri: string, quads: AsyncIterable<QuadType>) {
+        const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri));
+        await this.#dataset.transactAsync(async (dataset) => {
+            if (runIri !== this.#runIri)
+                dataset.clearGraph(this.#graph());
+            dataset.clearGraph(graph);
+            await dataset.importGraphAsync(quads);
+        });
+        this.#runIri = runIri;
+        this.#restoreRuntimeFields();
+    }
+    async restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType) {
+        const quads = GraphStateJsonLdCodec.rebase(GraphStateJsonLdCodec.decode(document), runIri);
+        await this.restoreGraph(runIri, GraphStateJsonLdCodec.asyncQuads(quads));
+    }
+    get runIri() {
+        return this.#runIri;
+    }
+    bindRunIri(runIri: string) {
+        if (runIri === this.#runIri) {
+            this.#ensureRunFact();
+            return;
         }
-      }
+        const previousGraph = this.#graph();
+        if (this.#dataset.count({ "graph": previousGraph }) > 1)
+            throw new Error('Node state identity is immutable after graph facts are written');
+        this.#dataset.clearGraph(previousGraph);
+        this.#runIri = runIri;
+        this.#ensureRunFact();
     }
-    const warnings: unknown = snapshot['warnings'];
-    if (Array.isArray(warnings)) {
-      for (const w of warnings) {
-        if (Validator.nodeWarning.is(w)) {
-          this.#warnings.push(w);
-        } else {
-          this.collectWarning({
-            'code': 'SNAPSHOT_INVALID_WARNING',
-            'message': 'Snapshot contained an invalid warning entry; skipped.',
-            'operation': 'applySnapshot',
-            'timestamp': new Date().toISOString(),
-          });
+    closeGraph(closedAt: string = new Date().toISOString()) {
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        const graph = this.#graph();
+        const lifecycle = DagGraphTerms.namedNode(GraphStateTerms.lifecycleVariantIri(this.lifecycle.variant));
+        this.#dataset.add([
+            { "subject": graph, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.GraphStatus), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Closed), graph },
+            { "subject": graph, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.ClosedAt), "object": DagGraphTerms.literal(closedAt, GraphStateTerms.XSD.dateTime), graph },
+            { "subject": graph, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.LifecycleVariant), "object": lifecycle, graph },
+            { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Lifecycle), "object": lifecycle, graph },
+        ]);
+    }
+    recordPlacementEvent(placementIri: string, event: string, output?: string) {
+        const execution = DagGraphTerms.namedNode(GraphStateTerms.placementExecutionIri(this.#runIri, placementIri));
+        const graph = this.#graph();
+        this.#dataset.add([
+            { "subject": execution, "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.PlacementExecution), graph },
+            { "subject": execution, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.PlacementPredicate), "object": DagGraphTerms.namedNode(placementIri), graph },
+            { "subject": execution, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.LifecycleEvent), "object": DagGraphTerms.literal(event), graph },
+        ]);
+        if (output !== undefined) {
+            this.#dataset.add([{ "subject": execution, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Output), "object": DagGraphTerms.literal(output), graph }]);
         }
-      }
     }
-    this.restoreData(snapshot);
-  }
+    clone() {
+        // Instantiate the actual (sub)class so declared domain fields start at
+        // their normal defaults. State mapping applies domain data explicitly
+        // after cloning; clone itself carries only shared metadata.
+        const cloned = new this.constructor();
+        cloned.#dataset = this.#dataset.fork();
+        cloned.#runIri = `${this.#runIri}/clone/${crypto.randomUUID()}`;
+        cloned.#ensureRunFact();
+        for (const [key, value] of this.#values()) {
+            if (key.startsWith('metadata.'))
+                cloned.#write(key, value);
+        }
+        return cloned;
+    }
+    collectError(error: NodeErrorType) {
+        // context is required on NodeErrorType; spread to a stable shape.
+        this.#append(GRAPH_ERROR_PREFIX, JSON.stringify(error));
+    }
+    collectWarning(warning: NodeWarningType) {
+        this.#append(GRAPH_WARNING_PREFIX, JSON.stringify(warning));
+    }
+    get errors() {
+        return this.#records(GRAPH_ERROR_PREFIX).flatMap((value) => {
+            const parsed = JSON.parse(value);
+            return Validator.nodeError.is(parsed) ? [parsed] : [];
+        });
+    }
+    getMetadata(key: string) {
+        // Metadata holds heterogeneous JSON-serialisable values typed as `unknown`
+        // at the boundary; callers narrow to the concrete shape they wrote.
+        return this.#values().get(`metadata.${key}`);
+    }
+    /**
+     * Current DAG lifecycle state (full discriminated union).
+     */
+    get lifecycle() {
+        return this.#lifecycle() ?? DAGLifecycleMachine.initial();
+    }
+    markCancelled(reason: string) {
+        this.#dispatch({ "type": 'cancel', reason, "at": Clock.monotonicMs() }, 'cancelled');
+    }
+    markCompleted() {
+        this.#dispatch({ "type": 'succeed', "at": Clock.monotonicMs() }, 'completed');
+    }
+    markFailed(error: Error) {
+        this.#dispatch({ "type": 'fail', error, "at": Clock.monotonicMs() }, 'failed');
+    }
+    markRunning() {
+        this.#dispatch({ "type": 'start', "at": Clock.monotonicMs() }, 'running');
+    }
+    markTimedOut() {
+        this.#dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
+    }
+    park(correlationKey: string) {
+        this.#dispatch({ "type": 'park', correlationKey, "at": Clock.monotonicMs() }, 'awaiting-input');
+        this.setMetadata('correlationKey', correlationKey);
+    }
+    get parked() {
+        return DAGLifecycleMachine.isParked(this.lifecycle);
+    }
+    resetLifecycle() {
+        this.#setLifecycle(DAGLifecycleMachine.initial());
+    }
+    get metadata() {
+        // Returns the live backing record. The dotted-path accessor writes through
+        // this reference (e.g. gather map strategy writes `metadata.result`), so
+        // the returned object must be the same reference every call to preserve
+        // write semantics: `state.metadata.result = value` must persist.
+        return this.#metadataProxy;
+    }
+    setMetadata(key: string, value: unknown) {
+        // Metadata stores heterogeneous JSON-serialisable values at the `unknown`
+        // boundary; the assignment needs no narrowing.
+        this.#write(`metadata.${key}`, JsonValue.from(value));
+    }
+    /** Read a JSON value stored in the run graph under a domain key. */
+    protected getGraphStateField(key: string): JsonValueType | undefined {
+        return this.#values().get(`domain.${key}`);
+    }
+    /** Write a JSON value into the run graph under a domain key. */
+    protected setGraphStateField(key: string, value: unknown): void {
+        this.#write(`domain.${key}`, JsonValue.from(value));
+    }
+    deleteMetadata(key: string) {
+        this.#delete(`metadata.${key}`);
+    }
+    recordAttempt(key: string) {
+        const next = this.retriesFor(key) + 1;
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        const sequence = this.#dataset.count({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() }) + 1;
+        const attempt = DagGraphTerms.namedNode(`${this.#runIri}/attempt/${sequence}`);
+        this.#dataset.transact((dataset) => {
+            dataset.add([
+                { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal(String(next), GraphStateTerms.XSD.integer), "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptSequence), "object": DagGraphTerms.literal(String(sequence), GraphStateTerms.XSD.integer), "graph": this.#graph() },
+            ]);
+        });
+        return next;
+    }
+    retriesFor(key: string) {
+        return new GraphStateQueryService(this.#dataset, this.#runIri).attempts().get(key) ?? 0;
+    }
+    clearAttempts(key: string) {
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        const sequence = this.#dataset.count({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() }) + 1;
+        const attempt = DagGraphTerms.namedNode(`${this.#runIri}/attempt/${sequence}`);
+        this.#dataset.add([
+            { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
+            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal('0', GraphStateTerms.XSD.integer), "graph": this.#graph() },
+            { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptSequence), "object": DagGraphTerms.literal(String(sequence), GraphStateTerms.XSD.integer), "graph": this.#graph() },
+        ]);
+    }
+    withinRetryBudget(key: string, maxAttempts: number) {
+        return this.recordAttempt(key) < maxAttempts;
+    }
+    get warnings() {
+        return this.#records(GRAPH_WARNING_PREFIX).flatMap((value) => {
+            const parsed = JSON.parse(value);
+            return Validator.nodeWarning.is(parsed) ? [parsed] : [];
+        });
+    }
+    #graph() {
+        return DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(this.#runIri));
+    }
+    #values() {
+        return new GraphStateQueryService(this.#dataset, this.#runIri).entries();
+    }
+    #write(key: string, value: JsonValueType) {
+        this.#dataset.transact(() => {
+            const definition = this.#fieldDefinition(key);
+            const field = DagGraphTerms.namedNode(definition?.predicate ?? GraphStateTerms.stateFieldIri(key));
+            if (definition !== undefined) {
+                if (definition.write === 'replace')
+                    this.#dataset.delete({ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "graph": this.#graph() });
+                this.#projectDefinedValue(field, value, definition);
+                return;
+            }
+            const cell = DagGraphTerms.namedNode(GraphStateTerms.stateCellIri(this.#runIri, key));
+            this.#clearCell(cell);
+            this.#dataset.add([
+                { "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(GRAPH_HAS_STATE_CELL), "object": cell, "graph": this.#graph() },
+                { "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": cell, "graph": this.#graph() },
+                { "subject": cell, "predicate": DagGraphTerms.namedNode(GRAPH_KEY), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+            ]);
+            this.#projectValue(cell, value, definition);
+        });
+    }
+    #setLiteral(predicate: string, value: string) {
+        this.#deletePredicate(predicate);
+        this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(predicate), "object": DagGraphTerms.literal(value), "graph": this.#graph() }]);
+    }
+    #delete(key: string) {
+        const definition = this.#fieldDefinition(key);
+        if (definition !== undefined) {
+            this.#dataset.delete({ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(definition.predicate), "graph": this.#graph() });
+            return;
+        }
+        const cell = DagGraphTerms.namedNode(GraphStateTerms.stateCellIri(this.#runIri, key));
+        this.#dataset.delete({ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(GRAPH_HAS_STATE_CELL), "object": cell, "graph": this.#graph() });
+        this.#dataset.delete({ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(GraphStateTerms.stateFieldIri(key)), "object": cell, "graph": this.#graph() });
+        this.#clearCell(cell);
+    }
+    #clearCell(cell: QuadType['subject']) {
+        const prefix = `${cell.value}/`;
+        for (const quad of [...this.#dataset.exportGraph(this.#graph())]) {
+            if (quad.subject.termType === 'NamedNode' && (quad.subject.value === cell.value || quad.subject.value.startsWith(prefix)))
+                this.#dataset.delete(quad);
+        }
+    }
+    #projectValue(cell: QuadType['subject'], value: JsonValueType, definition?: GraphStateFieldDefinitionType) {
+        const graph = this.#graph();
+        const valuePredicate = DagGraphTerms.namedNode(GRAPH_STATE_VALUE);
+        this.#dataset.add([{ "subject": cell, "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StateCell), graph }]);
+        if (value === null) {
+            this.#dataset.add([
+                { "subject": cell, "predicate": valuePredicate, "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StateNull), graph },
+            ]);
+            return;
+        }
+        if (typeof value === 'string') {
+            this.#dataset.add([{ "subject": cell, "predicate": valuePredicate, "object": DagGraphTerms.literal(value, definition?.datatype), graph }]);
+            return;
+        }
+        if (typeof value === 'boolean') {
+            this.#dataset.add([{ "subject": cell, "predicate": valuePredicate, "object": DagGraphTerms.literal(String(value), definition?.datatype ?? GraphStateTerms.XSD.boolean), graph }]);
+            return;
+        }
+        if (typeof value === 'number') {
+            const datatype = definition?.datatype ?? (Number.isInteger(value) ? GraphStateTerms.XSD.integer : GraphStateTerms.XSD.double);
+            this.#dataset.add([{ "subject": cell, "predicate": valuePredicate, "object": DagGraphTerms.literal(String(value), datatype), graph }]);
+            return;
+        }
+        const valueNode = DagGraphTerms.namedNode(`${cell.value}/value`);
+        const collectionType = Array.isArray(value) ? GraphStateTerms.DAGONIZER.StateArray : GraphStateTerms.DAGONIZER.StateObject;
+        this.#dataset.add([
+            { "subject": cell, "predicate": valuePredicate, "object": valueNode, graph },
+            { "subject": valueNode, "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), "object": DagGraphTerms.namedNode(collectionType), graph },
+        ]);
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => {
+                const member = DagGraphTerms.namedNode(`${valueNode.value}/item/${index}`);
+                this.#dataset.add([
+                    { "subject": valueNode, "predicate": DagGraphTerms.namedNode(GRAPH_STATE_MEMBER), "object": member, graph },
+                    { "subject": member, "predicate": DagGraphTerms.namedNode(GRAPH_STATE_INDEX), "object": DagGraphTerms.literal(String(index), GraphStateTerms.XSD.integer), graph },
+                ]);
+                this.#projectValue(member, item);
+            });
+            return;
+        }
+        for (const [key, item] of Object.entries(value)) {
+            const member = DagGraphTerms.namedNode(`${valueNode.value}/property/${encodeURIComponent(key)}`);
+            this.#dataset.add([
+                { "subject": valueNode, "predicate": DagGraphTerms.namedNode(GRAPH_STATE_MEMBER), "object": member, graph },
+                { "subject": valueNode, "predicate": DagGraphTerms.namedNode(definition?.nested?.[key]?.predicate ?? GraphStateTerms.nestedFieldIri(key)), "object": member, graph },
+                { "subject": cell, "predicate": DagGraphTerms.namedNode(definition?.nested?.[key]?.predicate ?? GraphStateTerms.nestedFieldIri(key)), "object": member, graph },
+                { "subject": member, "predicate": DagGraphTerms.namedNode(GRAPH_KEY), "object": DagGraphTerms.literal(key), graph },
+            ]);
+            this.#projectValue(member, item);
+        }
+    }
+    #projectDefinedValue(field: QuadType['predicate'], value: JsonValueType, definition: GraphStateFieldDefinitionType) {
+        const graph = this.#graph();
+        if (value === null) {
+            this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StateNull), graph }]);
+            return;
+        }
+        if (typeof value !== 'object' || Array.isArray(value)) {
+            if (Array.isArray(value)) {
+                if (definition.cardinality === 'many') {
+                    value.forEach((item, index) => {
+                        const itemNode = DagGraphTerms.namedNode(`${this.#runIri}/field/${encodeURIComponent(field.value)}/item/${index}`);
+                        this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": itemNode, graph }]);
+                        this.#projectValue(itemNode, item);
+                    });
+                }
+                else {
+                    const valueNode = DagGraphTerms.namedNode(`${this.#runIri}/field/${encodeURIComponent(field.value)}/value`);
+                    this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": valueNode, graph }]);
+                    this.#projectValue(valueNode, value, definition);
+                }
+                return;
+            }
+            const datatype = definition.datatype ?? (typeof value === 'boolean' ? GraphStateTerms.XSD.boolean : typeof value === 'number' ? (Number.isInteger(value) ? GraphStateTerms.XSD.integer : GraphStateTerms.XSD.double) : undefined);
+            this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": DagGraphTerms.literal(String(value), datatype), graph }]);
+            return;
+        }
+        const valueNode = DagGraphTerms.namedNode(`${this.#runIri}/field/${encodeURIComponent(field.value)}`);
+        this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": valueNode, graph }]);
+        for (const [key, item] of Object.entries(value)) {
+            const nested = definition.nested?.[key];
+            if (nested === undefined)
+                continue;
+            const predicate = DagGraphTerms.namedNode(nested.predicate);
+            const datatype = nested.datatype ?? (typeof item === 'boolean' ? GraphStateTerms.XSD.boolean : typeof item === 'number' ? (Number.isInteger(item) ? GraphStateTerms.XSD.integer : GraphStateTerms.XSD.double) : undefined);
+            this.#dataset.add([{ "subject": valueNode, "predicate": predicate, "object": DagGraphTerms.literal(String(item), datatype), graph }]);
+        }
+    }
+    #deletePredicate(predicate: string) {
+        this.#dataset.delete({ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": DagGraphTerms.namedNode(predicate), "graph": this.#graph() });
+    }
+    #fieldDefinition(key: string) {
+        return this.graphStateFields().find((field) => field.key === key || field.key === key.slice('domain.'.length));
+    }
+    #append(prefix: string, value: string) {
+        this.#setLiteral(`${prefix}${this.#records(prefix).length}`, value);
+    }
+    #records(prefix: string) {
+        const records = [];
+        for (const quad of this.#dataset.match({ "subject": DagGraphTerms.namedNode(this.#runIri), "graph": this.#graph() })) {
+            if (quad.predicate.termType === 'NamedNode' && quad.object.termType === 'Literal' && quad.predicate.value.startsWith(prefix))
+                records.push(quad.object.value);
+        }
+        return records;
+    }
+    #lifecycle() {
+        return new GraphStateQueryService(this.#dataset, this.#runIri).lifecycle();
+    }
+    #setLifecycle(lifecycle: DAGLifecycleStateType) {
+        const error = lifecycle.error === null ? null : lifecycle.error instanceof DAGError
+            ? { "kind": 'DAGError', "name": lifecycle.error.name, "message": lifecycle.error.message, "code": lifecycle.error.code, "context": lifecycle.error.context, "retryable": lifecycle.error.retryable }
+            : { "kind": 'Error', "name": lifecycle.error.name, "message": lifecycle.error.message };
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        const graph = this.#graph();
+        const event = DagGraphTerms.namedNode(`${this.#runIri}/lifecycle/${Date.now()}-${globalThis.crypto.randomUUID()}`);
+        this.#dataset.transact((dataset) => {
+        const facts: QuadType[] = [
+                { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.LifecycleEvent), "object": event, graph },
+                { "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.LifecycleVariant), "object": DagGraphTerms.namedNode(GraphStateTerms.lifecycleVariantIri(lifecycle.variant)), graph },
+            ];
+            if (lifecycle.startedAt !== null)
+                facts.push({ "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StartedAt), "object": DagGraphTerms.literal(String(lifecycle.startedAt), GraphStateTerms.XSD.double), graph });
+            if (lifecycle.finishedAt !== null)
+                facts.push({ "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.FinishedAt), "object": DagGraphTerms.literal(String(lifecycle.finishedAt), GraphStateTerms.XSD.double), graph });
+            if (lifecycle.reason !== null)
+                facts.push({ "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Reason), "object": DagGraphTerms.literal(lifecycle.reason), graph });
+            if (lifecycle.correlationKey !== null)
+                facts.push({ "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.CorrelationKey), "object": DagGraphTerms.literal(lifecycle.correlationKey), graph });
+            if (error !== null)
+                facts.push({ "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.ErrorMessage), "object": DagGraphTerms.literal(error.message), graph }, { "subject": event, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.ErrorPayload), "object": DagGraphTerms.literal(JSON.stringify(error)), graph });
+            dataset.delete({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.CurrentLifecycle), graph });
+            facts.push({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.CurrentLifecycle), "object": event, graph });
+            dataset.add(facts);
+        });
+    }
+    #ensureRunFact() {
+        const pattern = {
+            "subject": DagGraphTerms.namedNode(this.#runIri),
+            "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE),
+            "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Run),
+            "graph": this.#graph(),
+        };
+        if (this.#dataset.ask(pattern))
+            return;
+        const graph = this.#graph();
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        this.#dataset.add([
+            { "subject": run, "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Run), graph },
+            { "subject": graph, "predicate": DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.RunDetail), graph },
+            { "subject": graph, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.RetentionClass), "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Transient), graph },
+        ]);
+    }
+    static quadKey(quad: QuadType): string {
+        return JSON.stringify(quad);
+    }
+    #dispatch(event: Parameters<typeof DAGLifecycleMachine.transition>[1], targetVariant: string) {
+        try {
+            this.#setLifecycle(DAGLifecycleMachine.transition(this.lifecycle, event));
+        }
+        catch {
+            throw new DAGError(`Cannot mark ${targetVariant}: lifecycle is ${this.lifecycle.variant}`);
+        }
+    }
+    /** JSON-LD graph fields are the only domain-state boundary. */
+    protected graphStateFields(): readonly GraphStateFieldDefinitionType[] { return []; }
 
-  /**
-   * Subclass hook for restoring additional fields. Default is a no-op.
-   */
-  protected restoreData(snapshot: JsonObjectType): void { void snapshot; /* override */ }
+    #syncRuntimeFields(): void {
+        for (const key of Object.keys(this)) {
+            if (key === 'getter') continue;
+            this.#write(`domain.${key}`, JsonValue.from(Reflect.get(this, key)));
+        }
+    }
+
+    #restoreRuntimeFields(): void {
+        for (const [key, value] of this.#values()) {
+            if (!key.startsWith('domain.')) continue;
+            const property = key.slice('domain.'.length);
+            if (property.length > 0) Reflect.set(this, property, value);
+        }
+    }
+
 }
+//# sourceMappingURL=NodeStateBase.js.map

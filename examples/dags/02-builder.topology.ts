@@ -12,8 +12,7 @@
 import {
   Batch,
   DAGBuilder,
-  DAGIdentity,
-  MonadicNode,
+    MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
@@ -42,7 +41,7 @@ const searchDAGIri = 'urn:noocodec:dag:search' as const;
 const batchDAGIri = 'urn:noocodec:dag:batch' as const;
 const demoDAGIri = 'urn:noocodec:dag:dag' as const;
 
-const placement = (dagIri: string, placementIdentifier: string): string => DAGIdentity.placementId(dagIri, placementIdentifier);
+const placement = (dagIri: string, placementIdentifier: string): string => `${dagIri}/node/${placementIdentifier}`;
 
 // #region nodes
 export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic'> {

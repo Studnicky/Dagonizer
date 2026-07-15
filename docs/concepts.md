@@ -78,7 +78,7 @@ All mutations happen in place on the state object. The dispatcher returns the sa
 
 `clone()` is called by the dispatcher before scatter clones. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.
 
-Override `snapshotData()` and `restoreData()` to make domain fields checkpointable.
+Map domain fields to graph predicates so they remain checkpointable through the shared graph state.
 
 ### Dispatcher
 
@@ -126,7 +126,7 @@ After a scatter body emits per-item records, an outcome reducer maps that set to
 A **checkpoint** records the position and state of an in-flight flow so it can resume later.
 
 - **Cursor**: the name of the next node to run. Set on `ExecutionResultType.cursor` when execution stops early. `null` means the flow ran to completion.
-- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObjectType` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
+- **Graph state**: `NodeStateBase` stores lifecycle, metadata, progress, and domain fields as facts in the run graph. JSON-LD is the Node.js intermediate representation.
 
 Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from the `RecalledCheckpoint` returned by `ckpt.restoreState(adapter)` for inspection; they are not replayed.
 

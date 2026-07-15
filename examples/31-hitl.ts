@@ -90,8 +90,8 @@ process.stdout.write(`Step 3 — Human decision: ${humanDecision}\n\n`);
 // ---------------------------------------------------------------------------
 
 const recalled = Checkpoint.load(JSON.parse(persisted));
-const { state: resumedState, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => HitlState.restore(snap)),
+const { state: resumedState, dagName, cursor } = await recalled.restoreState(
+  CheckpointRestoreAdapter.wrap(() => new HitlState()),
 );
 
 // Apply the human decision to the restored state

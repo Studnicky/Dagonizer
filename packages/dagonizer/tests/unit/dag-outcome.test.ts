@@ -33,12 +33,11 @@ describe('DagOutcome.transportError — default shape', () => {
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
 
-    // All structural fields in one assertion: terminalOutput, stateSnapshot,
-    // intermediates, error count, code, operation, recoverable, message.
+    // All structural fields in one assertion: terminalOutput, intermediates,
+    // error count, code, operation, recoverable, message.
     assert.deepStrictEqual(
       {
         'terminalOutput':          outcome.terminalOutput,
-        'stateSnapshot':           outcome.stateSnapshot,
         'intermediates':           outcome.intermediates,
         'errorCount':              outcome.errors.length,
         'errorCode':               error.code,
@@ -48,7 +47,6 @@ describe('DagOutcome.transportError — default shape', () => {
       },
       {
         'terminalOutput':          'failed',
-        'stateSnapshot':           null,
         'intermediates':           [],
         'errorCount':              1,
         'errorCode':               DAG_CONTAINER_TRANSPORT,
@@ -91,7 +89,6 @@ describe('DagOutcome.transportError — custom code override', () => {
     assert.strictEqual(error.message, 'custom message');
     assert.strictEqual(error.recoverable, false);
     assert.strictEqual(outcome.terminalOutput, 'failed');
-    assert.strictEqual(outcome.stateSnapshot, null);
     assert.deepStrictEqual(outcome.intermediates, []);
   });
 });

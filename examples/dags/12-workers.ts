@@ -26,7 +26,6 @@ import {
   RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -39,26 +38,7 @@ export class WorkState extends NodeStateBase {
   results:    number[] = [];    // gather target: computed results land here
   lastResult: number   = 0;     // scalar written per-item; gathered by 'append'
 
-  protected override snapshotData(): JsonObjectType {
-    return {
-      "tasks":      [...this.tasks],
-      "results":    [...this.results],
-      "lastResult": this.lastResult,
-    };
-  }
 
-  protected override restoreData(snapshot: JsonObjectType): void {
-    const tasks = snapshot['tasks'];
-    if (Array.isArray(tasks)) {
-      this.tasks = tasks.filter((x): x is number => typeof x === 'number');
-    }
-    const results = snapshot['results'];
-    if (Array.isArray(results)) {
-      this.results = results.filter((x): x is number => typeof x === 'number');
-    }
-    const last = snapshot['lastResult'];
-    if (typeof last === 'number') this.lastResult = last;
-  }
 }
 // #endregion state
 

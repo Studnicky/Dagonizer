@@ -14,9 +14,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT, DAGIdentity } from '../../src/entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -25,7 +24,7 @@ const THROTTLE_OFF_DAG_IRI = 'urn:noocodec:dag:throttle-off';
 const THROTTLE_ON_DAG_IRI = 'urn:noocodec:dag:throttle-on';
 const THROTTLE_ABSENT_DAG_IRI = 'urn:noocodec:dag:throttle-absent';
 
-const placementIri = (dagIri: string, placementName: string): string => DAGIdentity.placementId(dagIri, placementName);
+const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 interface ConcurrencyProbe {
   active: number;
@@ -40,16 +39,7 @@ class ItemsState extends NodeStateBase {
   // reaches the parent state; only gather-mediated fields do.
   itemResults: number[] = [];
 
-  protected override snapshotData(): JsonObjectType {
-    return { 'items': [...this.items], 'itemResults': [...this.itemResults] };
-  }
 
-  protected override restoreData(snap: JsonObjectType): void {
-    const rawItems = snap['items'];
-    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
-    const rawResults = snap['itemResults'];
-    if (Array.isArray(rawResults)) this.itemResults = rawResults.filter((x): x is number => typeof x === 'number');
-  }
 }
 
 function createProbe(): ConcurrencyProbe {

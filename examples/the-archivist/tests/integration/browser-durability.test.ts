@@ -241,8 +241,8 @@ describe('Browser durability: IndexedDB park / reload / resume', () => {
       await recalled.restoreStores({ 'memory': freshMemory });
 
       // Restore state.
-      const { dagName, state: resumeState, cursor } = recalled.restoreState(
-        CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+      const { dagName, state: resumeState, cursor } = await recalled.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
       );
 
       // Supply human answer.

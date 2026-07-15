@@ -23,6 +23,8 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
+import { graphStateTransfer } from './GraphStateSupport.js';
+
 export class TestTask {
   private constructor() { /* static class */ }
 
@@ -61,7 +63,7 @@ export class TestTask {
         return {
           'dagName':       dagName,
           'placementPath': [],
-          'items':         [{ 'id': correlationId, 'snapshot': state.snapshot() }],
+          'items':         [{ 'id': correlationId, 'graphState': graphStateTransfer(state) }],
           'timeoutMs':     null,
           correlationId,
         };

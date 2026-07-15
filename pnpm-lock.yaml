@@ -282,6 +282,9 @@ importers:
 
   packages/dagonizer:
     dependencies:
+      '@rdfjs/types':
+        specifier: ^2.0.1
+        version: 2.0.1
       '@studnicky/cache':
         specifier: ^5.0.0
         version: 5.0.0
@@ -339,6 +342,18 @@ importers:
       json-schema-to-ts:
         specifier: ^3.1.1
         version: 3.1.1
+      jsonld-streaming-parser:
+        specifier: ^5.0.1
+        version: 5.0.1
+      jsonld-streaming-serializer:
+        specifier: ^4.0.0
+        version: 4.0.0
+      n3:
+        specifier: ^2.1.1
+        version: 2.1.1
+      rdf-canonize:
+        specifier: ^5.0.0
+        version: 5.0.0
     devDependencies:
       '@cosmos.gl/graph':
         specifier: ^3.2.0
@@ -370,9 +385,6 @@ importers:
       mermaid:
         specifier: ^11.16.0
         version: 11.16.0
-      n3:
-        specifier: ^2.1.1
-        version: 2.1.1
       tsx:
         specifier: ^4.23.0
         version: 4.23.0
@@ -3995,6 +4007,10 @@ packages:
   rbush@2.0.2:
     resolution: {integrity: sha512-XBOuALcTm+O/H8G90b6pzu6nX6v2zCKiFG4BJho8a+bY6AER6t8uQUZdi5bomQc0AprCWhEGa7ncAbbRap0bRA==}
 
+  rdf-canonize@5.0.0:
+    resolution: {integrity: sha512-g8OUrgMXAR9ys/ZuJVfBr05sPPoMA7nHIVs8VEvg9QwM5W4GR2qSFEEHjsyHF1eWlBaf8Ev40WNjQFQ+nJTO3w==}
+    engines: {node: '>=18'}
+
   rdf-data-factory@2.0.2:
     resolution: {integrity: sha512-WzPoYHwQYWvIP9k+7IBLY1b4nIDitzAK4mA37WumAF/Cjvu/KOtYJH9IPZnUTWNSd5K2+pq4vrcE9WZC4sRHhg==}
 
@@ -4095,6 +4111,9 @@ packages:
   serialize-error@7.0.1:
     resolution: {integrity: sha512-8I8TjW5KMOKsZQTvoxjuSIa7foAwPWGOts+6o7sgjz41/qMD9VQHEDxi6PBvK2l0MXUmqZyNpUK+T2tQaaElvw==}
     engines: {node: '>=10'}
+
+  setimmediate@1.0.5:
+    resolution: {integrity: sha512-MATJdZp8sLqDl/68LfQmbP8zKPLQNV6BIZoIgrscFDQ+RsvK/BxeDQOgyxKKoh0y/8h3BqVFnCqQ/gd+reiIXA==}
 
   sharp@0.34.5:
     resolution: {integrity: sha512-Ou9I5Ft9WNcCbXrU9cMgPBcCK8LiwLqcbywW3t4oDV37n1pzpuNLsYiAV8eODnjbtQlSDwZ2cUEeQz4E54Hltg==}
@@ -6283,6 +6302,12 @@ snapshots:
       '@vue/shared': 3.5.39
       vue: 3.5.39(typescript@6.0.3)
 
+  '@vue/server-renderer@3.5.39(vue@3.5.39(typescript@7.0.2))':
+    dependencies:
+      '@vue/compiler-ssr': 3.5.39
+      '@vue/shared': 3.5.39
+      vue: 3.5.39(typescript@7.0.2)
+
   '@vue/shared@3.5.39': {}
 
   '@vueuse/core@12.8.2(typescript@6.0.3)':
@@ -6307,7 +6332,7 @@ snapshots:
     dependencies:
       '@vueuse/core': 12.8.2(typescript@6.0.3)
       '@vueuse/shared': 12.8.2(typescript@6.0.3)
-      vue: 3.5.39(typescript@7.0.2)
+      vue: 3.5.39(typescript@6.0.3)
     optionalDependencies:
       focus-trap: 7.8.0
     transitivePeerDependencies:
@@ -7823,6 +7848,10 @@ snapshots:
     dependencies:
       quickselect: 1.1.1
 
+  rdf-canonize@5.0.0:
+    dependencies:
+      setimmediate: 1.0.5
+
   rdf-data-factory@2.0.2:
     dependencies:
       '@rdfjs/types': 2.0.1
@@ -7961,6 +7990,8 @@ snapshots:
   serialize-error@7.0.1:
     dependencies:
       type-fest: 0.13.1
+
+  setimmediate@1.0.5: {}
 
   sharp@0.34.5:
     dependencies:
@@ -8283,14 +8314,14 @@ snapshots:
       '@vitejs/plugin-vue': 5.2.4(vite@6.4.3(@types/node@26.1.1)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))
       '@vue/devtools-api': 7.7.10
       '@vue/shared': 3.5.39
-      '@vueuse/core': 12.8.2(typescript@7.0.2)
+      '@vueuse/core': 12.8.2(typescript@6.0.3)
       '@vueuse/integrations': 12.8.2(focus-trap@7.8.0)(typescript@6.0.3)
       focus-trap: 7.8.0
       mark.js: 8.11.1
       minisearch: 7.2.0
       shiki: 4.3.1
       vite: 6.4.3(@types/node@26.1.1)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0)
-      vue: 3.5.39(typescript@7.0.2)
+      vue: 3.5.39(typescript@6.0.3)
     optionalDependencies:
       postcss: 8.5.16
     transitivePeerDependencies:
@@ -8396,7 +8427,7 @@ snapshots:
       '@vue/compiler-dom': 3.5.39
       '@vue/compiler-sfc': 3.5.39
       '@vue/runtime-dom': 3.5.39
-      '@vue/server-renderer': 3.5.39(vue@3.5.39(typescript@6.0.3))
+      '@vue/server-renderer': 3.5.39(vue@3.5.39(typescript@7.0.2))
       '@vue/shared': 3.5.39
     optionalDependencies:
       typescript: 7.0.2

@@ -49,7 +49,7 @@ await db.save(firstResult.parked.correlationKey, ckpt.toJson());
 const raw = await db.load(correlationKey);
 const recalled = Checkpoint.load(JSON.parse(raw));
 const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+  CheckpointRestoreAdapter.wrap(() => new MyState()),
 );
 state.response = 'I can help with that order.'; // inject the operator response
 
