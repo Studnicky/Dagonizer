@@ -23,6 +23,7 @@
       "@studnicky/dagonizer-patterns-graph",
       "@studnicky/dagonizer-patterns-rag",
       "@studnicky/dagonizer-store-eventlog",
+      "@studnicky/dagonizer-store-file",
       "@studnicky/dagonizer-store-indexeddb",
       "@studnicky/dagonizer-store-opfs",
       "@studnicky/dagonizer-store-sqlite",
