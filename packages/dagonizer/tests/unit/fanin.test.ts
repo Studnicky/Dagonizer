@@ -1074,7 +1074,7 @@ void describe('NodeStateBase clone semantics', () => {
     });
     state.markRunning();
 
-    const clone = state.clone();
+    const clone = state.clone({ 'runIri': `${state.runIri}/clone`, 'dagIri': state.runIri, 'placementIri': 'test-placement/clone' });
     assert.deepEqual(clone.getMetadata('foo'), { 'bar': 1 });
     assert.equal(clone.errors.length, 0);
     assert.equal(clone.lifecycle.variant, 'pending');

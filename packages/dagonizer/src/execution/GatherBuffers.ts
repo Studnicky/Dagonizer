@@ -1,4 +1,5 @@
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { GatherNodeDefaults } from '../entities/dag/GatherNode.js';
@@ -93,7 +94,12 @@ export class GatherBuffers {
   async restore(progress: GatherProgressType, state: NodeStateInterface): Promise<void> {
     for (const [gatherKey, records] of Object.entries(progress.entries)) {
       for (const record of records) {
-        const cloneState = state.clone();
+        const childScope: GraphScopeType = {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': state.runIri,
+          'placementIri': record.source,
+        };
+        const cloneState = state.clone(childScope);
         if (record.graphState !== undefined) await cloneState.restoreJsonLd(cloneState.runIri, record.graphState);
         this.add(gatherKey, {
           'source': record.source,

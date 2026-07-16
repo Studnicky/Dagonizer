@@ -11,7 +11,7 @@ import {
   NodeStateBase,
   RoutedBatch,
 } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { GraphScopeType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -39,8 +39,8 @@ class SharedConfigState extends NodeStateBase {
   items: string[] = [];
   config: Config = { retries: 3 };
 
-  override clone(): this {
-    const cloned = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const cloned = super.clone(childScope);
     cloned.config = this.config;
     cloned.items = [...this.items];
     return cloned;
@@ -58,8 +58,8 @@ export { SharedConfigState };
 class ItemListState extends NodeStateBase {
   items: string[] = [];
 
-  override clone(): this {
-    const base = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const base = super.clone(childScope);
     base.items = [...this.items];
     return base;
   }

@@ -1,5 +1,6 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -23,8 +24,8 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  */
 export type EmbeddedDagExecutorSourceType = {
   readonly stateMapper: {
-    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
-    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface;
     mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
   };
   /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
@@ -110,9 +111,14 @@ export class EmbeddedDagExecutor {
     // resolver returns a registered DAG IRI; invalid selections route to error
     // without touching the child state meaningfully.
     const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
+    const childScope: GraphScopeType = {
+      'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+      'dagIri': dagIri ?? state.runIri,
+      'placementIri': placement['@id'],
+    };
     const cloneState = factory !== undefined
-      ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
-      : this.#source.stateMapper.cloneChild(state, inputMapping);
+      ? this.#source.stateMapper.spawnChild(state, inputMapping, childScope, factory)
+      : this.#source.stateMapper.cloneChild(state, inputMapping, childScope);
 
     if (dagIri === null) {
       return this.#withGatherRecord(placement, PlacementRouter.assemble(

@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 
 import type { ChildStateFactoryType } from '../../src/contracts/ChildStateFactoryType.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
@@ -93,7 +94,7 @@ class EmbedBodyNode extends MonadicNode<EmbedChildState, 'success'> {
 }
 
 /** Isolation factory for the child DAG: produces a fresh EmbedChildState. */
-const embedChildFactory: ChildStateFactoryType = (_parent: NodeStateInterface): EmbedChildState =>
+const embedChildFactory: ChildStateFactoryType = (_parent: NodeStateInterface, _childScope: GraphScopeType): EmbedChildState =>
   new EmbedChildState();
 
 const ISO_EMBED_CHILD_DAG = 'urn:noocodec:dag:iso-embed-child';
@@ -249,7 +250,7 @@ void describe('Isolated child state: embedded DAG', () => {
     parent.shared = 42;
     parent.parentValue = 'test-marker';
 
-    const child = ChildStateFactory.cloneParent(parent);
+    const child = ChildStateFactory.cloneParent(parent, { 'runIri': `${parent.runIri}/clone`, 'dagIri': parent.runIri, 'placementIri': 'test-placement/clone' });
 
     // DEFAULT factory calls parent.clone() and preserves the parent state class.
     assert.ok(child instanceof EmbedParentState,
@@ -345,7 +346,7 @@ class ScatterBodyNode extends MonadicNode<ScatterItemState, 'success'> {
 const scatterBodyNode = new ScatterBodyNode();
 
 /** Isolation factory for scatter items: produces a fresh ScatterItemState. */
-const scatterItemFactory: ChildStateFactoryType = (_parent: NodeStateInterface): ScatterItemState =>
+const scatterItemFactory: ChildStateFactoryType = (_parent: NodeStateInterface, _childScope: GraphScopeType): ScatterItemState =>
   new ScatterItemState();
 
 class ScatterDag {

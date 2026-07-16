@@ -12,7 +12,7 @@ import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
-import type { ReasoningStepType } from '@studnicky/dagonizer';
+import type { GraphScopeType, ReasoningStepType } from '@studnicky/dagonizer';
 import { Validator } from '@studnicky/dagonizer/validation';
 import { CandidateSchema } from '@studnicky/dagonizer-book-entities';
 
@@ -195,8 +195,8 @@ export class ArchivistState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): this {
-    const copy = super.clone(); // new Constructor() + _metadata copy from base
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope); // new Constructor() + _metadata copy from base
     copy.query        = this.query;
     copy.userLanguage = this.userLanguage;
     copy.intent       = this.intent;

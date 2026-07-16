@@ -13,7 +13,7 @@ export class InMemoryGraphDatasetProvider implements GraphDatasetProviderInterfa
     return new InMemoryGraphDataset();
   }
 
-  reopen(_runIri: string): undefined {
-    return undefined;
+  reopen(_runIri: string): Promise<undefined> {
+    return Promise.resolve(undefined);
   }
 }

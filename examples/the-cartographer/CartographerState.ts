@@ -66,6 +66,7 @@ import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 import type { JourneyAccumulator } from './core/InsightsFoldGather.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
+import type { GraphScopeType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 /** Per-region aggregated insights (fixed-size accumulator). */
@@ -583,8 +584,8 @@ export class CartographerState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): this {
-    const copy = super.clone(); // new Constructor() + _metadata copy from base
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
     copy.eventConfig = this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
     if (Array.isArray(this.sources)) {

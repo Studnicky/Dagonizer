@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -36,6 +37,7 @@ import { TestDag } from '../_support/TestDag.js';
 // ===========================================================================
 
 const placementIri = TestDag.placementIri;
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri': 'test-dag', 'placementIri': 'test-placement' };
 
 class PlacementFixture {
   private constructor() {}
@@ -91,14 +93,12 @@ class ValueState extends NodeStateBase {
     this.log = [];
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     copy.value = this.value;
     copy.log = [...this.log];
     return copy;
   }
-
-
 }
 
 // ===========================================================================
@@ -218,7 +218,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
       const source = batch.row(0).state;
       const values = [5, -3, 7];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
-        const clone = source.clone();
+        const clone = source.clone(TEST_CHILD_SCOPE);
         clone.value = v;
         clone.log.push(`fan:${v}`);
         return { 'id': String(i), 'state': clone };
@@ -317,7 +317,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
       const source = batch.row(0).state;
       const values = [1, -1];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
-        const clone = source.clone();
+        const clone = source.clone(TEST_CHILD_SCOPE);
         clone.value = v;
         clone.log.push(`fan:${v}`);
         return { 'id': String(i), 'state': clone };
@@ -412,7 +412,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       const source = batch.row(0).state;
       const values = [1, 2, 3];
       const items: Array<ItemType<ValueState>> = values.map((v, i) => {
-        const clone = source.clone();
+        const clone = source.clone(TEST_CHILD_SCOPE);
         clone.value = v;
         clone.log.push(`fan:${v}`);
         return { 'id': String(i), 'state': clone };

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -13,6 +14,7 @@ import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri': 'test-dag', 'placementIri': 'test-placement' };
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -157,7 +159,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     const state = new DomainState();
     state.domainValue = 42;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
 
     assert.ok(
       cloned instanceof DomainState,
@@ -169,7 +171,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     const state = new DomainState();
     state.domainValue = 99;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
     // Domain field starts at default (0) in the fresh clone — it hasn't been
     // populated yet. Restoring the original graph populates the field.
     assert.strictEqual(cloned.domainValue, 0, 'fresh clone should have default domainValue');
@@ -185,7 +187,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     state.setMetadata('key', 'value');
     state.domainValue = 7;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
 
     // Metadata crosses the clone boundary.
     assert.strictEqual(cloned.getMetadata('key'), 'value', 'metadata must be preserved in clone');
@@ -203,7 +205,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     parent.domainValue = 55;
     parent.setMetadata('item', 3);
 
-    const child = mapper.cloneChild(parent, { 'item': 'item' });
+    const child = mapper.cloneChild(parent, { 'item': 'item' }, TEST_CHILD_SCOPE);
 
     assert.ok(
       child instanceof DomainState,

@@ -17,21 +17,12 @@ import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
 import { GraphStateQueryService } from './graph/GraphStateQueryService.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
 import { InMemoryGraphDataset } from './graph/InMemoryGraphDataset.js';
+import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
-
-class DatasetForkProvider implements GraphDatasetProviderInterface {
-    readonly #dataset: GraphDatasetInterface;
-    constructor(dataset: GraphDatasetInterface) { this.#dataset = dataset; }
-    root(_runIri: string): GraphDatasetInterface { return this.#dataset; }
-    child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface {
-        return this.#dataset.fork();
-    }
-    reopen(_runIri: string): undefined { return undefined; }
-}
 
 const GRAPH_HAS_STATE_CELL = GraphStateTerms.DAGONIZER.HasStateCell;
 const GRAPH_KEY = GraphStateTerms.DAGONIZER.StateKey;
@@ -61,6 +52,9 @@ export interface NodeStateInterface {
   /** Bind the provider that mints isolated child datasets for this state. */
   bindGraphDatasetProvider(provider: GraphDatasetProviderInterface): void;
 
+  /** Bind the graph scope identifying this state's run/dag/placement position. */
+  bindGraphScope(scope: GraphScopeType): void;
+
   /** Export the run graph as the Node.js JSON-LD intermediate representation. */
   snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
 
@@ -81,7 +75,7 @@ export interface NodeStateInterface {
    * Returns `this` so the concrete type is preserved across the interface
    * without requiring a cast at every call site.
    */
-  clone(): this;
+  clone(childScope: GraphScopeType): this;
 
   /**
    * Collect an error in state. `context` is required on `NodeErrorType`
@@ -234,6 +228,7 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #dataset: GraphDatasetInterface;
     #graphDatasetProvider: GraphDatasetProviderInterface;
     #runIri: string;
+    #scope: GraphScopeType;
     #lastSnapshotGraph: QuadType[] | undefined;
     #lastSnapshotRevision: string | undefined;
     #metadataProxy: Record<string, unknown>;
@@ -244,7 +239,8 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     constructor(dataset: GraphDatasetInterface = new InMemoryGraphDataset(), runIri: string = `urn:dagonizer/run/${globalThis.crypto.randomUUID()}`, graphDatasetProvider?: GraphDatasetProviderInterface) {
         this.#dataset = dataset;
         this.#runIri = runIri;
-        this.#graphDatasetProvider = graphDatasetProvider ?? new DatasetForkProvider(dataset);
+        this.#scope = { "runIri": this.#runIri, "dagIri": this.#runIri, "placementIri": '' };
+        this.#graphDatasetProvider = graphDatasetProvider ?? new InMemoryGraphDatasetProvider();
         this.getter = new MetadataGetter(this);
         this.#metadataProxy = new Proxy({}, {
             "get": (_target, key) => typeof key === 'string' ? this.getMetadata(key) : undefined,
@@ -270,6 +266,9 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     }
     bindGraphDatasetProvider(provider: GraphDatasetProviderInterface) {
         this.#graphDatasetProvider = provider;
+    }
+    bindGraphScope(scope: GraphScopeType) {
+        this.#scope = scope;
     }
     async *snapshotGraph(runIri: string = this.#runIri) {
         this.#syncRuntimeFields();
@@ -350,18 +349,15 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
             this.#dataset.add([{ "subject": execution, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Output), "object": DagGraphTerms.literal(output), graph }]);
         }
     }
-    clone() {
+    clone(childScope: GraphScopeType) {
         // Instantiate the actual (sub)class so declared domain fields start at
         // their normal defaults. State mapping applies domain data explicitly
         // after cloning; clone itself carries only shared metadata.
         const cloned = new this.constructor();
-        const clonedRunIri = `${this.#runIri}/clone/${crypto.randomUUID()}`;
         cloned.#graphDatasetProvider = this.#graphDatasetProvider;
-        cloned.#dataset = this.#graphDatasetProvider.child(
-            { 'runIri': this.#runIri, 'dagIri': '', 'placementIri': '' },
-            { 'runIri': clonedRunIri, 'dagIri': '', 'placementIri': '' },
-        );
-        cloned.#runIri = clonedRunIri;
+        cloned.#dataset = this.#graphDatasetProvider.child(this.#scope, childScope);
+        cloned.#scope = childScope;
+        cloned.#runIri = childScope.runIri;
         cloned.#ensureRunFact();
         for (const [key, value] of this.#values()) {
             if (key.startsWith('metadata.'))

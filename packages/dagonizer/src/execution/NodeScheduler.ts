@@ -8,6 +8,7 @@ import type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
@@ -318,7 +319,11 @@ export class NodeScheduler {
           for (const entry of workSetBlob.entries) {
             const items: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const workItem of entry.items) {
-              const itemState = state.clone();
+              const itemState = state.clone({
+                'runIri': `${state.runIri}/restore/${workItem.id}`,
+                dagIri,
+                'placementIri': entry.placement,
+              });
               await itemState.restoreJsonLd(itemState.runIri, workItem.graphState);
               entrypointSourceByState.set(itemState, workItem.source ?? this.#entrypointIri(dagIri, 'main'));
               entrypointRootByState.set(itemState, state);
@@ -705,9 +710,15 @@ export class NodeScheduler {
             }
 
             const childFactory = this.#source.stateFactories.get(childDagIri);
+            const childScope: GraphScopeType = {
+              'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+              'dagIri': childDagIri,
+              'placementIri': node['@id'],
+              'workItemIri': item.id,
+            };
             const childClone: NodeStateInterface = childFactory !== undefined
-              ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childFactory)
-              : this.#source.stateMapper.cloneChild(item.state, inputMapping);
+              ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childScope, childFactory)
+              : this.#source.stateMapper.cloneChild(item.state, inputMapping, childScope);
             const entries = partitionByDag.get(childDagIri);
             const partitionEntry = {
               'parentItem': item,
@@ -748,7 +759,12 @@ export class NodeScheduler {
 
             // Run each selected child DAG once for its partition. This preserves
             // batch efficiency without collapsing heterogeneous dynamic choices.
-            const childRepState = partition[0]?.parentItem.state.clone() ?? repState.clone();
+            const childRepSourceState = partition[0]?.parentItem.state ?? repState;
+            const childRepState = childRepSourceState.clone({
+              'runIri': `${childRepSourceState.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+              'dagIri': childDagIri,
+              'placementIri': ownerPlacementIri,
+            });
             const childOptions: ExecuteOptionsType = { 'signal': signal };
             const iter = this.run(childDagIri, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
 
@@ -1397,7 +1413,11 @@ export class NodeScheduler {
 
     for (const item of seedBatch) {
       for (const [source] of entrypoints) {
-        const entryState = source === 'main' ? item.state : item.state.clone();
+        const entryState = source === 'main' ? item.state : item.state.clone({
+          'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          dagIri,
+          'placementIri': this.#entrypointIri(dagIri, source),
+        });
         entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
         entrypointRootByState.set(entryState, item.state);
         const gatherKey = this.#gatherBufferKey(gatherTarget, item.id);
@@ -1431,7 +1451,11 @@ export class NodeScheduler {
   ): void {
     for (const item of seedBatch) {
       for (const [source, placementIri] of entrypoints) {
-        const entryState = source === 'main' ? item.state : item.state.clone();
+        const entryState = source === 'main' ? item.state : item.state.clone({
+          'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          dagIri,
+          'placementIri': this.#entrypointIri(dagIri, source),
+        });
         entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
         entrypointRootByState.set(entryState, item.state);
         pending.add(placementIri, Batch.of(entryState, item.id));

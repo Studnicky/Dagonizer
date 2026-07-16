@@ -18,8 +18,8 @@ export class FileGraphDatasetProvider implements GraphDatasetProviderInterface {
     return new FileGraphDataset(this.#pathFor(`${_child.runIri}/child`));
   }
 
-  reopen(runIri: string): GraphDatasetInterface {
-    return new FileGraphDataset(this.#pathFor(runIri));
+  reopen(runIri: string): Promise<GraphDatasetInterface> {
+    return Promise.resolve(new FileGraphDataset(this.#pathFor(runIri)));
   }
 
   #pathFor(runIri: string): string {

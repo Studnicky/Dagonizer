@@ -1,5 +1,23 @@
 # @studnicky/dagonizer-store-indexeddb
 
+## Graph state provider
+
+Use the provider when a browser run must reopen its RDF 1.2 graph after a
+restart. The live dataset remains synchronous; deltas are written behind the
+execution path.
+
+```ts
+import { IndexedDbGraphDatasetProvider } from '@studnicky/dagonizer-store-indexeddb';
+
+const graphStore = await IndexedDbGraphDatasetProvider.open();
+const reopened = await graphStore.reopen(runIri);
+```
+
+Children are volatile and isolated by default. `await reopen(runIri)`
+reconstructs a run's graph from durable storage (compacted snapshot object
+store plus trailing per-delta log object store) and can be passed to
+`resumeWithStateFactory`.
+
 IndexedDB-backed `Store` and `CheckpointStore` for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer).
 
 The durable default for in-browser HITL/resume. Large capacity, async,

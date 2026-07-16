@@ -75,6 +75,7 @@ export type { StateAccessorInterface } from './StateAccessorInterface.js';
 // Triple store: minimal RDF quad-store contract for graph-tier patterns.
 export type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from './TripleStoreInterface.js';
 export type { GraphDatasetInterface } from './GraphDatasetInterface.js';
+export type { GraphDeltaRecordType, GraphJournalStoreInterface } from './GraphJournalStore.js';
 export type { GraphDatasetProviderInterface, GraphScopeType } from './GraphDatasetProviderInterface.js';
 export type { GraphStateFieldDefinitionType, GraphStateNestedFieldDefinitionType } from './GraphStateFieldDefinition.js';
 export type { GraphRetentionPolicyType } from './GraphRetentionPolicy.js';

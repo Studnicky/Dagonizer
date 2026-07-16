@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -38,8 +39,8 @@ import { TestNode } from '../_support/TestNode.js';
 class HandoffState extends NodeStateBase {
   counter = 0;
 
-  override clone(): this {
-    const cloned = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const cloned = super.clone(childScope);
     cloned.counter = this.counter;
     return cloned;
   }

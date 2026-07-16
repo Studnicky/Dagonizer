@@ -36,6 +36,25 @@ If no adapter is reachable, the page renders the cascade's
 
 ## CLI mode
 
+## Durable graph state
+
+Node deployments can select the file or SQLite graph provider without changing
+the Archivist DAG or state model. The provider is the single state/topology
+seam; `resumeWithStateFactory` rehydrates the reopened graph through JSON-LD.
+
+```ts
+import { FileGraphDatasetProvider } from '@studnicky/dagonizer-store-file';
+import { Dagonizer } from '@studnicky/dagonizer';
+
+const dispatcher = new Dagonizer({
+  graphStore: new FileGraphDatasetProvider('./runs'),
+});
+```
+
+The default child policy keeps embedded and scatter graphs isolated and
+volatile. Durable child storage is a provider policy, not a second persistence
+API.
+
 ```
 npx tsx examples/the-archivist/runArchivist.ts
 ```

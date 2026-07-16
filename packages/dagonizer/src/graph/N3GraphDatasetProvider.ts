@@ -12,7 +12,7 @@ export class N3GraphDatasetProvider implements GraphDatasetProviderInterface {
     return new N3GraphDataset();
   }
 
-  reopen(_runIri: string): undefined {
-    return undefined;
+  reopen(_runIri: string): Promise<undefined> {
+    return Promise.resolve(undefined);
   }
 }

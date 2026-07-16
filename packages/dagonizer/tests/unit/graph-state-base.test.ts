@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { N3GraphDataset } from '../../src/adapter/N3GraphDataset.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateQueryService } from '../../src/graph/GraphStateQueryService.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { InMemoryGraphDataset } from '../../src/graph/InMemoryGraphDataset.js';
+import { N3GraphDatasetProvider } from '../../src/graph/N3GraphDatasetProvider.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'urn:dagonizer:run:test/clone', 'dagIri': 'urn:dagonizer:dag:test', 'placementIri': 'urn:dagonizer:dag:test/node/clone' };
 
 class GraphState extends NodeStateBase {
   value = 0;
@@ -83,7 +87,7 @@ void describe('NodeStateBase graph persistence', () => {
     state.markRunning();
     state.setMetadata('answer', 7);
     state.value = 9;
-    const clone = state.clone();
+    const clone = state.clone(TEST_CHILD_SCOPE);
 
     assert.equal(clone.lifecycle.variant, 'pending');
     assert.equal(clone.getMetadata('answer'), 7);
@@ -98,9 +102,10 @@ void describe('NodeStateBase graph persistence', () => {
     assert.equal(restored.lifecycle.variant, 'running');
   });
 
-  void it('delegates clone dataset isolation to the injected graph adapter', () => {
+  void it('delegates clone dataset isolation to the injected graph provider', () => {
     const state = new GraphState(new N3GraphDataset());
-    const clone = state.clone();
+    state.bindGraphDatasetProvider(new N3GraphDatasetProvider());
+    const clone = state.clone(TEST_CHILD_SCOPE);
 
     assert.ok(clone.graphDataset instanceof N3GraphDataset);
     assert.notEqual(clone.graphDataset, state.graphDataset);

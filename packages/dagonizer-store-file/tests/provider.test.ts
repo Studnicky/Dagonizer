@@ -8,7 +8,7 @@ import { DagGraphTerms } from '@studnicky/dagonizer/graph';
 import { FileGraphDataset, FileGraphDatasetProvider } from '../src/index.js';
 
 void describe('FileGraphDatasetProvider', () => {
-  void it('reopens a durable root with its RDF facts intact', () => {
+  void it('reopens a durable root with its RDF facts intact', async () => {
     const directory = mkdtempSync(`${tmpdir()}/dagonizer-file-provider-`);
     try {
       const provider = new FileGraphDatasetProvider(directory);
@@ -16,7 +16,7 @@ void describe('FileGraphDatasetProvider', () => {
       const subject = DagGraphTerms.namedNode('urn:dagonizer:subject');
       graph.assert(subject, DagGraphTerms.namedNode('urn:dagonizer:predicate'), DagGraphTerms.literal('value'));
 
-      const reopened = provider.reopen('urn:dagonizer:run:file-provider');
+      const reopened = await provider.reopen('urn:dagonizer:run:file-provider');
       assert.ok(reopened instanceof FileGraphDataset);
       assert.equal(reopened.count({ 'subject': subject }), 1);
     } finally {

@@ -8,6 +8,7 @@ import type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
@@ -73,8 +74,8 @@ export type RunNodesBatchType = {
  */
 export interface ScatterDispatchAdapterInterface {
   readonly stateMapper: {
-    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
-    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface;
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
@@ -109,8 +110,8 @@ export interface ScatterDispatchAdapterInterface {
  */
 export interface ScatterDispatchSourceInterface {
   readonly stateMapper: {
-    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
-    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface;
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
@@ -150,8 +151,8 @@ export class ScatterDispatchAdapter
   implements ScatterDispatchAdapterInterface
 {
   readonly stateMapper: {
-    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
-    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface;
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
@@ -332,6 +333,12 @@ export class ScatterPoolDriver
       const cloneState = this.#adapter.stateMapper.cloneChild(
         state,
         ScatterNodeDefaults.inputMapping(scatter),
+        {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': state.runIri,
+          'placementIri': scatter['@id'],
+          'workItemIri': `${scatter['@id']}/item/${String(itemIndex)}`,
+        },
       );
       // Strip engine-internal metadata keys from the clone. The parent state's
       // scatter-progress and work-set-progress metadata are engine bookkeeping for
@@ -391,7 +398,12 @@ export class ScatterPoolDriver
         ...(this.#bodyCandidateIris === null ? {} : { 'candidateIris': this.#bodyCandidateIris }),
       });
       if (bodyDagName === null) {
-        const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter), {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': state.runIri,
+          'placementIri': scatter['@id'],
+          'workItemIri': `${scatter['@id']}/item/${String(itemIndex)}`,
+        });
         errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
         errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
         errorClone.setMetadata(itemKey, item);
@@ -407,6 +419,12 @@ export class ScatterPoolDriver
       const cloneState = this.#adapter.stateMapper.spawnChild(
         state,
         ScatterNodeDefaults.inputMapping(scatter),
+        {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': bodyDagName,
+          'placementIri': scatter['@id'],
+          'workItemIri': `${scatter['@id']}/item/${String(itemIndex)}`,
+        },
         factory,
       );
       // Strip engine-internal metadata keys from the clone (see node-body path above).
@@ -530,7 +548,12 @@ export class ScatterPoolDriver
       const clones: NodeStateInterface[] = [];
       const batchItems: { id: string; state: NodeStateInterface }[] = [];
       for (const buffered of items) {
-        const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter), {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': state.runIri,
+          'placementIri': scatter['@id'],
+          'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
+        });
         // Strip engine-internal metadata keys — the child body must not inherit
         // the parent scatter/workset progress (O(N) payload, see executeItem).
         clone.deleteMetadata(SCATTER_PROGRESS_KEY);
@@ -605,7 +628,12 @@ export class ScatterPoolDriver
       });
 
       if (selectedDagIri === null) {
-        const clone = this.#adapter.stateMapper.cloneChild(state, inputMapping);
+        const clone = this.#adapter.stateMapper.cloneChild(state, inputMapping, {
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': state.runIri,
+          'placementIri': scatter['@id'],
+          'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
+        });
         clone.deleteMetadata(SCATTER_PROGRESS_KEY);
         clone.deleteMetadata(WORKSET_PROGRESS_KEY);
         clone.setMetadata(itemKey, buffered.item);
@@ -626,7 +654,12 @@ export class ScatterPoolDriver
       this.#bindItemSelectedDag(buffered.index, selectedDagIri);
 
       const factory = this.#adapter.stateFactories.get(selectedDagIri) ?? ChildStateFactory.cloneParent;
-      const clone = this.#adapter.stateMapper.spawnChild(state, inputMapping, factory);
+      const clone = this.#adapter.stateMapper.spawnChild(state, inputMapping, {
+        'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+        'dagIri': selectedDagIri,
+        'placementIri': scatter['@id'],
+        'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
+      }, factory);
       clone.deleteMetadata(SCATTER_PROGRESS_KEY);
       clone.deleteMetadata(WORKSET_PROGRESS_KEY);
       clone.setMetadata(itemKey, buffered.item);
@@ -649,7 +682,11 @@ export class ScatterPoolDriver
         // ── Branch B: DAG body, in-process (batch-native) ─────────────────────
         const childOptions: ExecuteOptionsType = { 'signal': signal };
         const terminalByItemId = new Map<string, 'completed' | 'failed'>();
-        const repClone = state.clone();
+        const repClone = state.clone({
+          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          'dagIri': selectedDagIri,
+          'placementIri': scatter['@id'],
+        });
         const iter = this.#adapter.runNodes(selectedDagIri, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
 
         let step = await iter.next();

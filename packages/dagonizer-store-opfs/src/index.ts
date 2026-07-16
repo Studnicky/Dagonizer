@@ -1,5 +1,7 @@
 export { OpfsStore } from './OpfsStore.js';
 export type { OpfsStoreOptionsType } from './OpfsStore.js';
+export { OpfsGraphDatasetProvider } from './OpfsGraphDatasetProvider.js';
+export { OpfsGraphJournalStore } from './OpfsGraphJournalStore.js';
 
 export { OpfsCheckpointStore } from './OpfsCheckpointStore.js';
 

@@ -26,6 +26,8 @@ import type { NodeScheduler } from './execution/NodeScheduler.js';
 import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
+import { DagGraphTerms } from './graph/DagGraphTerms.js';
+import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
 import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
@@ -278,6 +280,18 @@ export interface DagonizerInterface<
   resume(
     dagName: string,
     state: TState,
+    fromStage: string,
+    options?: ExecuteOptionsType,
+  ): Execution<TState>;
+
+  /**
+   * Reopen a provider-backed run graph, hydrate a fresh state from it, and
+   * resume without a JSON-LD checkpoint blob.
+   */
+  resumeWithStateFactory(
+    dagName: string,
+    runIri: string,
+    factory: (dataset: GraphDatasetInterface, runIri: string) => TState,
     fromStage: string,
     options?: ExecuteOptionsType,
   ): Execution<TState>;
@@ -1034,6 +1048,43 @@ implements DagonizerInterface<TState> {
     const runIri = state.runIri;
     const scope = this.dagExecutionScope(dagName, runIri, signal);
     return new Execution<TState>(this.runNodes(dagName, state, fromStage, { signal }), scope);
+  }
+
+  /**
+   * Resume a provider-backed run directly from its durable graph dataset.
+   * The provider must have a reopened dataset for `runIri`; callers that use
+   * checkpoint blobs continue to use `resume()`.
+   */
+  resumeWithStateFactory(
+    dagName: string,
+    runIri: string,
+    factory: (dataset: GraphDatasetInterface, runIri: string) => TState,
+    fromStage: string,
+    options: ExecuteOptionsType = {},
+  ): Execution<TState> {
+    const signal = Dagonizer.rootSignal(options);
+    const scope = this.dagExecutionScope(dagName, runIri, signal);
+    return new Execution<TState>(this.resumeReopenedState(dagName, runIri, factory, fromStage, signal), scope);
+  }
+
+  private async *resumeReopenedState(
+    dagName: string,
+    runIri: string,
+    factory: (dataset: GraphDatasetInterface, runIri: string) => TState,
+    fromStage: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void> {
+    const dataset = await this.graphDatasetProvider.reopen(runIri);
+    if (dataset === undefined) {
+      throw new DAGError(`Graph provider cannot reopen run '${runIri}'`);
+    }
+    const state = factory(dataset, runIri);
+    if (state.runIri !== runIri) throw new Error('State factory must construct state with the supplied run identity');
+    state.bindGraphDatasetProvider(this.graphDatasetProvider);
+    const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri));
+    const document = GraphStateJsonLdCodec.encode(dataset.exportGraph(graph));
+    await state.restoreJsonLd(state.runIri, document);
+    return yield* this.runNodes(dagName, state, fromStage, { signal });
   }
 
   /**
