@@ -17,8 +17,12 @@ const props = defineProps<{
 }>();
 
 const mobileOpen = ref(false);
-
-const navItems = computed(() => props.links.map((link) => ({ ...link })));
+const desktopNavItems = computed(() =>
+  props.links.map((link) => ({
+    label: link.label,
+    url: link.href
+  }))
+);
 const mobileNavItems = computed(() =>
   props.links.map((link) => ({
     label: link.label,
@@ -71,19 +75,17 @@ function closeDrawer() {
         </div>
 
         <div class="flex items-center gap-5">
-          <div class="min-w-0 flex-1">
-            <Menubar :model="navItems">
-              <template #item="{ item, props: itemProps }">
-                <a
-                  v-bind="itemProps.action"
-                  :href="item.href"
-                  class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/6 hover:text-white"
-                >
-                  <span>{{ item.label }}</span>
-                </a>
-              </template>
-            </Menubar>
-          </div>
+          <Menubar :model="desktopNavItems" class="min-w-0 flex-1" aria-label="Primary">
+            <template #item="{ item, props: itemProps }">
+              <a
+                v-bind="itemProps.action"
+                :href="item.url"
+                class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/6 hover:text-white"
+              >
+                <span>{{ item.label }}</span>
+              </a>
+            </template>
+          </Menubar>
 
           <UiCtaRow>
             <UiActionLink :href="ctaHref" variant="primary" label="Get started" />

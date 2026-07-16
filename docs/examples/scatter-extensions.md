@@ -16,7 +16,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { scatterExtensionsDAG } from '../.vitepress/theme/exampleDags.ts';
+import { scatterExtensionsDAG } from '../exampleDags.ts';
 </script>
 
 # Scatter Extensions

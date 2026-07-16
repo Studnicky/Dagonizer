@@ -2,6 +2,7 @@
 import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
 import UiActionLink from '@/components/marketing/UiActionLink.astro';
 import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
 import DocSections from '@/components/marketing/DocSections.astro';
 
@@ -10,17 +11,17 @@ interface Crumb {
   readonly label: string;
 }
 
-interface DocSection {
-  readonly level: 1 | 2 | 3;
-  readonly title: string;
-  readonly paragraphs: readonly string[];
+interface HeadingItem {
+  readonly depth: number;
+  readonly slug: string;
+  readonly text: string;
 }
 
 interface Props {
   title: string;
   description: string;
-  headings: readonly string[];
-  sections: readonly DocSection[];
+  headings: readonly HeadingItem[];
+  sections: readonly unknown[];
   sourceLabel?: string;
   sourceHref?: string;
   crumbs: readonly Crumb[];
@@ -39,6 +40,10 @@ const {
 } = Astro.props;
 
 const hasDefaultSlot = Astro.slots.has('default');
+const headingLinks = headings.map((heading) => ({
+  href: `#${heading.slug}`,
+  label: `${heading.depth > 2 ? '↳ ' : heading.depth > 1 ? '– ' : ''}${heading.text}`
+}));
 ---
 
 <DocsArticleShell title={title} description={description}>
@@ -70,11 +75,13 @@ const hasDefaultSlot = Astro.slots.has('default');
         )
       }
 
-      <UiAsideCard title="Headings">
-        <ul class="mt-4 space-y-3">
-          {headings.map((heading) => <li class="text-sm leading-6 text-slate-300">{heading}</li>)}
-        </ul>
-      </UiAsideCard>
+      {
+        headings.length > 0 && (
+          <UiAsideCard title="Headings">
+            <UiLinkList links={headingLinks} />
+          </UiAsideCard>
+        )
+      }
 
       <UiAsideCard title="Reading mode">
         <p class="mt-3 text-sm leading-6 text-slate-300">{readingMode}</p>
@@ -82,3 +89,7 @@ const hasDefaultSlot = Astro.slots.has('default');
     </aside>
   </div>
 </DocsArticleShell>
+
+<script>
+  import '@/lib/doc-diagram-embed-client';
+</script>

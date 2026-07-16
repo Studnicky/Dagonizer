@@ -25,7 +25,7 @@ import {
   reactRoutingDAG,
   reactTraceDAG,
   supportDispatcherDAG,
-} from '../.vitepress/theme/exampleDags.ts';
+} from '../exampleDags.ts';
 </script>
 
 # Chat Event Orchestration

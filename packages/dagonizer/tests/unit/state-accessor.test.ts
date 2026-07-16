@@ -38,6 +38,11 @@ const metadataAccessor: StateAccessorInterface = {
   set(state: NodeStateBase, key: string, value: unknown): void {
     state.setMetadata(key, value);
   },
+  append(state: NodeStateBase, key: string, value: unknown): void {
+    const current = state.getMetadata(key);
+    const list = Array.isArray(current) ? [...current, value] : [value];
+    state.setMetadata(key, list);
+  },
 };
 
 // ── DottedPathAccessor: get/set semantics + prototype-pollution defense ──────
@@ -89,6 +94,48 @@ void describe('DottedPathAccessor', () => {
   });
 });
 
+// ── DottedPathAccessor.append: O(1) in-place array growth ────────────────────
+
+void describe('DottedPathAccessor.append', () => {
+  void it('creates the array when the path is empty', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = {};
+    accessor.append(target, 'items', 1);
+    assert.deepEqual(target['items'], [1]);
+  });
+
+  void it('pushes onto the existing array in place (same reference)', () => {
+    const accessor = new DottedPathAccessor();
+    const array: number[] = [1];
+    const target: Record<string, unknown> = { 'items': array };
+    accessor.append(target, 'items', 2);
+    accessor.append(target, 'items', 3);
+    assert.deepEqual(target['items'], [1, 2, 3]);
+    assert.equal(target['items'], array, 'appends grow the same array, not a fresh copy');
+  });
+
+  void it('starts a fresh array when the current value is not an array', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = { 'items': 'scalar' };
+    accessor.append(target, 'items', 1);
+    assert.deepEqual(target['items'], [1]);
+  });
+
+  void it('auto-vivifies intermediate objects on a nested append', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = {};
+    accessor.append(target, 'a.b.items', 'x');
+    assert.deepEqual(target, { 'a': { 'b': { 'items': ['x'] } } });
+  });
+
+  void it('refuses to append through __proto__ (no prototype pollution)', () => {
+    const accessor = new DottedPathAccessor();
+    accessor.append({}, '__proto__.polluted', 'yes');
+    accessor.append({}, 'a.__proto__.polluted', 'yes');
+    assert.equal(Reflect.get(Object.prototype, 'polluted'), undefined);
+  });
+});
+
 // ── Dagonizer custom StateAccessorInterface injection ─────────────────────────────────
 
 void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
@@ -101,6 +148,9 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
       },
       set(state: object, path: string, value: unknown): void {
         new DottedPathAccessor().set(state, path, value);
+      },
+      append(state: object, path: string, value: unknown): void {
+        new DottedPathAccessor().append(state, path, value);
       },
     };
 

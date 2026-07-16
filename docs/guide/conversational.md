@@ -26,7 +26,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { reactAgentDAG, supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+import { reactAgentDAG, supportDispatcherDAG } from '../exampleDags.ts';
 </script>
 
 # Conversational Agents

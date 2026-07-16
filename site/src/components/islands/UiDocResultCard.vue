@@ -14,32 +14,39 @@ interface DocEntry {
   readonly headings: readonly string[];
 }
 
-defineProps<{
+const props = defineProps<{
   entry: DocEntry;
 }>();
+
+function toDisplaySection(section: string): string {
+  return section
+    .replace(/^\d+-/, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 </script>
 
 <template>
   <Card class="h-full">
     <template #subtitle>
       <div class="flex items-center justify-between gap-3">
-        <Tag :value="entry.section" class="!text-slate-100" />
-        <Tag :value="`${entry.headings.length} headings`" class="!border-white/10 !bg-white/4 !text-slate-300" />
+        <Tag :value="toDisplaySection(props.entry.section)" class="!text-slate-100" />
+        <Tag :value="`${props.entry.headings.length} headings`" class="!border-white/10 !bg-white/4 !text-slate-300" />
       </div>
     </template>
-    <template #title>{{ entry.title }}</template>
+    <template #title>{{ props.entry.title }}</template>
     <template #content>
       <div class="space-y-4">
-        <p>{{ entry.description || entry.excerpt }}</p>
+        <p>{{ props.entry.description || props.entry.excerpt }}</p>
         <div class="flex flex-wrap gap-2">
           <Tag
-            v-for="heading in entry.headings.slice(0, 3)"
+            v-for="heading in props.entry.headings.slice(0, 3)"
             :key="heading"
             :value="heading"
             class="!border-white/10 !bg-white/4 !text-slate-300"
           />
         </div>
-        <Button as="a" :href="siteHref(entry.url)" label="Open page" variant="outlined" severity="contrast" />
+        <Button as="a" :href="siteHref(props.entry.url)" label="Open page" variant="outlined" severity="contrast" />
       </div>
     </template>
   </Card>

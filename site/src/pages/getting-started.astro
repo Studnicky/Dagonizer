@@ -4,6 +4,8 @@ import TopNav from '@/components/marketing/TopNav.astro';
 import SectionShell from '@/components/marketing/SectionShell.astro';
 import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
 import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import { siteHref } from '@/lib/links';
 ---
 
 <BaseLayout title="Getting Started">
@@ -24,6 +26,12 @@ import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
         <UiContentPanel title="3. Open the runnable examples" compact>
           <p>Use the Archivist, Dispatcher, and Cartographer flows to see how real DAGs route, pause, resume, and converge.</p>
         </UiContentPanel>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UiActionLink href={siteHref('/docs/getting-started')} variant="primary">Read the full getting-started guide</UiActionLink>
+        <UiActionLink href={siteHref('/concepts')}>Review core concepts</UiActionLink>
+        <UiActionLink href={siteHref('/docs/examples/the-archivist')}>Open a runnable example</UiActionLink>
       </div>
     </SectionShell>
   </main>

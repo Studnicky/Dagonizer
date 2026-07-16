@@ -11,7 +11,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistStreamProducerDAG } from '../.vitepress/theme/exampleDags.ts';
+import { archivistStreamProducerDAG } from '../exampleDags.ts';
 </script>
 
 # Streaming Producers

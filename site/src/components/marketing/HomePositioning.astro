@@ -11,14 +11,14 @@ import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
   />
 
   <div class="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-  <UiPanelShell>
-    <div class="space-y-3 text-sm leading-6 text-slate-300">
-      <p>Define workflows as explicit graphs instead of hiding control flow inside application code.</p>
-      <p>Use checkpoints, routing, retries, and fan-in as part of one runtime model rather than separate subsystems.</p>
-      <p>Give teams a way to inspect the same workflow they author and execute.</p>
-    </div>
-  </UiPanelShell>
+    <UiPanelShell title="What stays explicit" subtitle="Operator view">
+      <div class="space-y-3 text-sm leading-6 text-slate-300">
+        <p>Define workflows as explicit graphs instead of hiding control flow inside application code.</p>
+        <p>Use checkpoints, routing, retries, and fan-in as part of one runtime model rather than separate subsystems.</p>
+        <p>Give teams a way to inspect the same workflow they author and execute.</p>
+      </div>
+    </UiPanelShell>
 
-  <slot />
+    <slot />
   </div>
 </section>

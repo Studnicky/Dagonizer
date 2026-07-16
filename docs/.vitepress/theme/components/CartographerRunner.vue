@@ -1,12 +1,10 @@
 <script setup lang="ts">
 /**
- * CartographerRunner: docs-side thin wrapper.
+ * CartographerRunner: documentation wrapper.
  *
- * The Cartographer runner component lives at
- * `examples/the-cartographer/app/CartographerRunner.vue` so the standalone
- * Vite demo and the docs page render the identical component. This wrapper
- * exists only so `docs/.vitepress/theme/index.ts` can lazy-load it from a
- * stable in-tree path.
+ * The runtime component lives in
+ * `examples/the-cartographer/app/CartographerRunner.vue` so the docs and
+ * runnable example stay on the same implementation.
  */
 import CartographerRunner from '../../../../examples/the-cartographer/app/CartographerRunner.vue';
 </script>

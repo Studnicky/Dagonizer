@@ -1,14 +1,23 @@
 ---
 import DocPageShell from '@/components/marketing/DocPageShell.astro';
-import { getCollection, getEntry, render } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import { toEditUrl } from '@/lib/docs';
 import { siteHref } from '@/lib/links';
+import { getLeadingMarkdownTitle, renderDocPage } from '@/lib/render-doc-page';
+
+function toCrumbLabel(segment: string): string {
+  return segment
+    .replace(/^\d+-/, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export async function getStaticPaths() {
   const explicitDocSlugs = new Set([
     'examples/the-archivist',
     'examples/the-cartographer',
-    'examples/the-dispatcher'
+    'examples/the-dispatcher',
+    'experiments/modern-home'
   ]);
 
   return (await getCollection('docs'))
@@ -27,23 +36,34 @@ if (doc === undefined) {
   return Astro.redirect(siteHref('/docs'));
 }
 
-const rendered = await render(doc);
-const pageTitle = doc.data.title ?? doc.id;
+const pageTitle = doc.data.title ?? getLeadingMarkdownTitle(doc.body) ?? doc.id;
+const rendered = await renderDocPage(doc.body, { title: pageTitle, slug: doc.id });
 const editUrl = toEditUrl(doc.id);
+const slugParts = doc.id.split('/').filter(Boolean);
 const crumbs = [
   { href: siteHref('/docs'), label: 'Docs' },
-  { href: '#', label: doc.id.split('/')[0] ?? 'overview' }
-] as const;
+  ...slugParts.slice(0, -1).map((_, index) => {
+    const partial = slugParts.slice(0, index + 1).join('/');
+    return {
+      href: siteHref(`/docs/${partial}`),
+      label: toCrumbLabel(slugParts[index])
+    };
+  }),
+  {
+    href: siteHref(`/docs/${doc.id}`),
+    label: pageTitle
+  }
+];
 ---
 
 <DocPageShell
   title={pageTitle}
   description={doc.data.description ?? ''}
-  headings={rendered.headings.map((heading) => heading.text)}
+  headings={rendered.headings}
   sections={[]}
   sourceLabel={`${doc.id}.md`}
   sourceHref={editUrl}
   crumbs={crumbs}
 >
-  <rendered.Content />
+  <Fragment set:html={rendered.html} />
 </DocPageShell>

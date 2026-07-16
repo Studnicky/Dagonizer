@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { reactAgentDAG, reactRoutingDAG } from '../.vitepress/theme/exampleDags.ts';
+import { reactAgentDAG, reactRoutingDAG } from '../exampleDags.ts';
 </script>
 
 # ReAct Agent Routing

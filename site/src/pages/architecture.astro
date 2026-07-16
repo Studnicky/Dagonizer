@@ -4,6 +4,8 @@ import TopNav from '@/components/marketing/TopNav.astro';
 import SectionShell from '@/components/marketing/SectionShell.astro';
 import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
 import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import { siteHref } from '@/lib/links';
 ---
 
 <BaseLayout title="Architecture">
@@ -24,6 +26,12 @@ import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
         <UiContentPanel title="Operational visibility" compact>
           <p>Documentation, runnable examples, and visualization surfaces all point back to the same DAG so teams can inspect what they actually run.</p>
         </UiContentPanel>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UiActionLink href={siteHref('/docs/architecture')} variant="primary">Read the full architecture reference</UiActionLink>
+        <UiActionLink href={siteHref('/docs/guide/visualization')}>Inspect visualization surfaces</UiActionLink>
+        <UiActionLink href={siteHref('/docs/examples/the-cartographer')}>See a data workflow example</UiActionLink>
       </div>
     </SectionShell>
   </main>

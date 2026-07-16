@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
-import { getCollection, render } from 'astro:content';
+import { getCollection } from 'astro:content';
+import { getLeadingMarkdownTitle, renderDocPage } from '@/lib/render-doc-page';
 
 export interface DocEntry {
   readonly slug: string;
@@ -28,6 +29,10 @@ function toTitleFromSlug(slug: string): string {
     .replace(/^\d+-/, '')
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function toDisplayTitle(entry: Awaited<ReturnType<typeof getCollection<'docs'>>>[number]): string {
+  return entry.data.title ?? getLeadingMarkdownTitle(entry.body) ?? toTitleFromSlug(entry.id);
 }
 
 function toSectionFromSlug(slug: string): string {
@@ -70,7 +75,10 @@ function slugToSourcePath(slug: string): string {
 }
 
 async function toDocEntry(entry: Awaited<ReturnType<typeof getCollection<'docs'>>>[number]): Promise<DocEntry> {
-  const rendered = await render(entry);
+  const rendered = await renderDocPage(entry.body, {
+    title: toDisplayTitle(entry),
+    slug: entry.id
+  });
   const headings = rendered.headings.map((heading) => heading.text);
   const excerpt = extractExcerpt(entry.body);
 
@@ -78,7 +86,7 @@ async function toDocEntry(entry: Awaited<ReturnType<typeof getCollection<'docs'>
     slug: entry.id,
     url: `/docs/${entry.id === 'index' ? '' : entry.id}`.replace(/\/$/, '') || '/docs',
     section: toSectionFromSlug(entry.id),
-    title: entry.data.title ?? headings[0] ?? toTitleFromSlug(entry.id),
+    title: toDisplayTitle(entry),
     description: entry.data.description ?? excerpt,
     excerpt,
     headings
@@ -107,7 +115,7 @@ export async function getDocSections(): Promise<readonly { readonly name: string
   }
 
   return Array.from(grouped.entries())
-    .map(([name, entries]) => ({ name, entries }))
+    .map(([name, entries]) => ({ name: toTitleFromSlug(name), entries }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 

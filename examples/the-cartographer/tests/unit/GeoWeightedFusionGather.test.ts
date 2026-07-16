@@ -57,6 +57,12 @@ class DirectAccessor implements StateAccessorInterface {
     if (lastSeg === undefined || current === null || typeof current !== 'object') return;
     Reflect.set(current, lastSeg, value);
   }
+
+  append(state: object, path: string, value: unknown): void {
+    const current = this.get(state, path);
+    if (Array.isArray(current)) current.push(value);
+    else this.set(state, path, [value]);
+  }
 }
 
 // ── FixtureCandidate ──────────────────────────────────────────────────────────

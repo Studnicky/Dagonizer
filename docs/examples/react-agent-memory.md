@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { reactAgentDAG, reactTraceDAG } from '../.vitepress/theme/exampleDags.ts';
+import { reactAgentDAG, reactTraceDAG } from '../exampleDags.ts';
 </script>
 
 # ReAct Agent Memory

@@ -2,7 +2,7 @@
 defineProps<{
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   align?: 'start' | 'between';
 }>();
 </script>
@@ -17,7 +17,7 @@ defineProps<{
     <div class="max-w-3xl space-y-3">
       <p class="text-xs uppercase tracking-[0.28em] text-slate-500">{{ eyebrow }}</p>
       <h2 class="text-3xl font-semibold tracking-tight text-white md:text-4xl">{{ title }}</h2>
-      <p class="text-base leading-7 text-slate-300 md:text-lg">{{ description }}</p>
+      <p v-if="description" class="text-base leading-7 text-slate-300 md:text-lg">{{ description }}</p>
     </div>
 
     <div v-if="$slots.actions" class="flex shrink-0 flex-wrap gap-3">

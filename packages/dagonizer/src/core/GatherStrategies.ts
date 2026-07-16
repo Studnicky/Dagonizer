@@ -109,34 +109,6 @@ export abstract class GatherStrategy {
     _config: GatherConfigType,
     _execution: GatherExecutionType,
   ): Promise<void> { /* no-op */ }
-
-  /**
-   * Narrow an accessor read (typed `unknown`) to a list for append-style
-   * reducers. Returns the value when it is an array, otherwise an empty list —
-   * cast-free; the `readonly unknown[]` annotation keeps `Array.isArray`'s
-   * `any[]` from leaking.
-   */
-  protected static asList(value: unknown): readonly unknown[] {
-    const list: readonly unknown[] = Array.isArray(value) ? value : [];
-    return list;
-  }
-
-  /**
-   * Append grouped values to their target paths with one read and one write per
-   * path. A batch of N append its values in a single concat, not N growing
-   * copies.
-   */
-  protected static flushAppends(
-    state: NodeStateInterface,
-    accessor: StateAccessorInterface,
-    appends: ReadonlyMap<string, readonly unknown[]>,
-  ): void {
-    for (const [path, values] of appends) {
-      if (values.length === 0) continue;
-      const existing = GatherStrategy.asList(accessor.get(state, path));
-      accessor.set(state, path, [...existing, ...values]);
-    }
-  }
 }
 
 class MapGatherStrategy extends GatherStrategy {
@@ -150,17 +122,12 @@ class MapGatherStrategy extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     const mapping = config.mapping ?? {};
-    const appends = new Map<string, unknown[]>();
     for (const item of batch) {
       const record = item.state;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
-        const value = accessor.get(record.cloneState, clonePath);
-        let list = appends.get(parentPath);
-        if (list === undefined) { list = []; appends.set(parentPath, list); }
-        list.push(value);
+        accessor.append(state, parentPath, accessor.get(record.cloneState, clonePath));
       }
     }
-    GatherStrategy.flushAppends(state, accessor, appends);
   }
 }
 
@@ -177,16 +144,12 @@ class AppendGatherStrategy extends GatherStrategy {
     if (config.target === undefined) {
       throw new DAGError('Gather append strategy requires target path');
     }
-    const values: unknown[] = [];
     for (const item of batch) {
       const record = item.state;
-      values.push(config.field !== undefined
+      accessor.append(state, config.target, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
         : record.item);
     }
-    if (values.length === 0) return;
-    const existing = GatherStrategy.asList(accessor.get(state, config.target));
-    accessor.set(state, config.target, [...existing, ...values]);
   }
 }
 
@@ -201,19 +164,14 @@ class PartitionGatherStrategy extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     const partitions = config.partitions ?? {};
-    const appends = new Map<string, unknown[]>();
     for (const item of batch) {
       const record = item.state;
       const targetPath = partitions[record.output];
       if (targetPath === undefined) continue;
-      const value = config.field !== undefined
+      accessor.append(state, targetPath, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
-        : record.item;
-      let list = appends.get(targetPath);
-      if (list === undefined) { list = []; appends.set(targetPath, list); }
-      list.push(value);
+        : record.item);
     }
-    GatherStrategy.flushAppends(state, accessor, appends);
   }
 }
 
@@ -293,16 +251,12 @@ class CollectGatherStrategy extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     if (config.target === undefined) return;
-    const values: unknown[] = [];
     for (const item of batch) {
       const record = item.state;
-      values.push(config.field !== undefined
+      accessor.append(state, config.target, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
         : record.output);
     }
-    if (values.length === 0) return;
-    const existing = GatherStrategy.asList(accessor.get(state, config.target));
-    accessor.set(state, config.target, [...existing, ...values]);
   }
 }
 

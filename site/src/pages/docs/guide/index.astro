@@ -1,0 +1,78 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { siteHref } from '@/lib/links';
+
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: siteHref('/docs/guide'), label: 'Guide' }
+] as const;
+
+const guideTracks = [
+  {
+    eyebrow: 'Authoring',
+    title: 'Graph definition and builder patterns',
+    body: 'Move from hand-authored JSON-LD through the builder, schema constraints, and node composition without losing inspectable graph structure.',
+    href: siteHref('/docs/guide/builder')
+  },
+  {
+    eyebrow: 'Execution',
+    title: 'Runtime behavior, retries, checkpoints, and HITL',
+    body: 'Understand how runs progress, pause, resume, retry, checkpoint, and expose human-in-the-loop control points.',
+    href: siteHref('/docs/guide/checkpoint')
+  },
+  {
+    eyebrow: 'Visualization',
+    title: 'Render and inspect DAGs in the browser',
+    body: 'See how Cytoscape, Mermaid, and related visual surfaces fit the framework and what consumers can customize.',
+    href: siteHref('/docs/guide/visualization')
+  }
+] as const;
+
+const guideLinks = [
+  { href: siteHref('/docs/getting-started'), label: 'Getting started' },
+  { href: siteHref('/docs/guide/builder'), label: 'Builder guide' },
+  { href: siteHref('/docs/guide/schema'), label: 'Schema guide' },
+  { href: siteHref('/docs/guide/checkpoint'), label: 'Checkpoint guide' },
+  { href: siteHref('/docs/guide/retry'), label: 'Retry guide' },
+  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+---
+
+<DocsArticleShell title="Guide" description="Implementation guidance for graph authoring, execution semantics, runtime state, checkpoints, retries, visualization, and deployment.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Guide"
+        description="Use the guide section when you already know what Dagonizer is and need the operational detail: how to author graphs, tune execution, checkpoint state, visualize runs, and wire deployment seams."
+        crumbs={crumbs}
+      />
+
+      <section class="space-y-5">
+        <UiSectionIntro
+          eyebrow="Guide tracks"
+          title="Documentation organized around the runtime lifecycle"
+          description="Start with authoring if you are defining graphs, execution if you are tuning behavior or recovery, and visualization when you need inspectable browser surfaces around the DAG runtime."
+        />
+        <UiMarketingCardGrid client:visible items={guideTracks} linkCards />
+      </section>
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Key guide pages">
+        <UiLinkList links={guideLinks} />
+      </UiAsideCard>
+
+      <UiAsideCard title="Next">
+        <div class="space-y-3 text-sm leading-6 text-slate-300">
+          <p>Use Examples when you want runnable proof instead of isolated explanation.</p>
+          <p>Use Reference when you need the API surface for the runtime contracts and exported types.</p>
+        </div>
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

@@ -14,7 +14,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerResumeDAG } from '../.vitepress/theme/exampleDags.ts';
+import { cartographerResumeDAG } from '../exampleDags.ts';
 </script>
 
 # Example 35: Stream Resume Cursor

@@ -23,7 +23,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { reactAgentDAG, reactRoutingDAG, reactTraceDAG } from '../.vitepress/theme/exampleDags.ts';
+import { reactAgentDAG, reactRoutingDAG, reactTraceDAG } from '../exampleDags.ts';
 </script>
 
 # ReAct Agent: Streaming and Provenance Recall

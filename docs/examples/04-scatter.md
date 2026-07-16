@@ -15,7 +15,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+import { BookSearchScatterDAG } from '../exampleDags.ts';
 </script>
 
 # Example 04: Scatter Scout

@@ -69,13 +69,13 @@ The runnable support DAG classifies the message, composes or parks, and converge
 
 The customer **Send** button seeds `DispatcherState`, registers the live nodes and DAG, then executes `support-dispatcher`.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-run
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-run
 
 #### Browser resume trigger
 
 The operator **Send response** button restores the parked checkpoint and resumes the same DAG from the parked cursor.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-resume
 
 ### Trigger mapping
 

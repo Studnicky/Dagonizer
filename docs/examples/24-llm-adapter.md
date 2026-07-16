@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+import { archivistDAG } from '../exampleDags.ts';
 </script>
 
 # Example 24: LLM Adapter

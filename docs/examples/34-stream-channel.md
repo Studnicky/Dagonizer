@@ -14,7 +14,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerDAG } from '../.vitepress/theme/exampleDags.ts';
+import { cartographerDAG } from '../exampleDags.ts';
 </script>
 
 # Example 34: Producer Feed DAGs

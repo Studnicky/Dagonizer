@@ -1,0 +1,78 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { siteHref } from '@/lib/links';
+
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: siteHref('/docs/reference'), label: 'Reference' }
+] as const;
+
+const referenceTracks = [
+  {
+    eyebrow: 'Core runtime',
+    title: 'Dagonizer, runner, execution, and lifecycle',
+    body: 'Read the main runtime classes, execution contracts, and lifecycle machinery that drive graph evaluation.',
+    href: siteHref('/docs/reference/dagonizer')
+  },
+  {
+    eyebrow: 'Contracts',
+    title: 'Containers, channels, stores, and adapters',
+    body: 'Inspect the seams for worker execution, state persistence, tool integrations, and deployment-specific bindings.',
+    href: siteHref('/docs/reference/contracts')
+  },
+  {
+    eyebrow: 'Visualization',
+    title: 'Graph rendering and control surfaces',
+    body: 'Review the API surface for the visualization package and the controls that sit around it.',
+    href: siteHref('/docs/reference/viz')
+  }
+] as const;
+
+const referenceLinks = [
+  { href: siteHref('/docs/reference/dagonizer'), label: 'Dagonizer runtime' },
+  { href: siteHref('/docs/reference/contracts'), label: 'Contracts' },
+  { href: siteHref('/docs/reference/execution'), label: 'Execution' },
+  { href: siteHref('/docs/reference/runtime'), label: 'Runtime utilities' },
+  { href: siteHref('/docs/reference/store'), label: 'Store' },
+  { href: siteHref('/docs/reference/viz'), label: 'Visualization' }
+] as const;
+---
+
+<DocsArticleShell title="Reference" description="API and type reference for the Dagonizer runtime, contracts, nodes, stores, adapters, lifecycle, and visualization packages.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Reference"
+        description="Use the reference section when you need exported classes, interfaces, entities, and runtime contracts rather than conceptual or tutorial material."
+        crumbs={crumbs}
+      />
+
+      <section class="space-y-5">
+        <UiSectionIntro
+          eyebrow="Reference tracks"
+          title="API surface grouped by runtime responsibility"
+          description="The reference docs are broad. This index narrows them to the three areas users reach for most: runtime execution, deployment seams, and browser visualization."
+        />
+        <UiMarketingCardGrid client:visible items={referenceTracks} linkCards />
+      </section>
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Key reference pages">
+        <UiLinkList links={referenceLinks} />
+      </UiAsideCard>
+
+      <UiAsideCard title="Next">
+        <div class="space-y-3 text-sm leading-6 text-slate-300">
+          <p>Use Guide when you need usage patterns or runtime behavior in prose.</p>
+          <p>Use Examples when you want to see the same contracts exercised in runnable graphs.</p>
+        </div>
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

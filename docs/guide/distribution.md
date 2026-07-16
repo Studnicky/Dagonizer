@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerWorkersDAG, streamEventDAG } from '../.vitepress/theme/exampleDags.ts';
+import { cartographerWorkersDAG, streamEventDAG } from '../exampleDags.ts';
 </script>
 
 # Distribution and Cloud

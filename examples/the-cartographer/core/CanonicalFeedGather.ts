@@ -33,16 +33,13 @@ export class CanonicalFeedGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const existing = CanonicalFeedGather.eventsFrom(accessor.get(state, 'canonicalEvents'));
-    const merged: CanonicalEventVariant[] = [...existing];
-
     for (const item of batch) {
       const record: GatherRecordType = item.state;
       const value = record.result ?? accessor.get(record.cloneState, 'canonicalEvents');
-      merged.push(...CanonicalFeedGather.eventsFrom(value));
+      for (const event of CanonicalFeedGather.eventsFrom(value)) {
+        accessor.append(state, 'canonicalEvents', event);
+      }
     }
-
-    accessor.set(state, 'canonicalEvents', merged);
   }
 
   private static eventsFrom(value: unknown): CanonicalEventVariant[] {

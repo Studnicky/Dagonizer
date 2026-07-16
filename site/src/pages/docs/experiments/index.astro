@@ -1,0 +1,43 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { siteHref } from '@/lib/links';
+
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: siteHref('/docs/experiments'), label: 'Experiments' }
+] as const;
+
+const experimentLinks = [
+  { href: siteHref('/docs/experiments/modern-home'), label: 'Modern home experiment' },
+  { href: siteHref('/docs/examples/the-archivist'), label: 'Runnable Archivist surface' },
+  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+---
+
+<DocsArticleShell title="Experiments" description="Exploratory Astro and UI surfaces used to evaluate the modernized marketing shell without replacing the current documentation model.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Experiments"
+        description="Experimental pages let the site evolve without overwriting the current docs shell. They are the place to validate Astro islands, navigation treatment, content framing, and more modern feature presentation."
+        crumbs={crumbs}
+      />
+
+      <UiSectionIntro
+        eyebrow="Experiment routes"
+        title="Inspectable, linkable Astro experiments"
+        description="These routes exist so experimental marketing and presentation work is inspectable, linkable, and indexable instead of hidden behind ad hoc embedded components. The modern-home experiment is the first of those routes and should remain reachable from its breadcrumb and related links."
+      />
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Experiment pages">
+        <UiLinkList links={experimentLinks} />
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

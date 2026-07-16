@@ -48,9 +48,7 @@ const buttonProps = computed(() => {
   };
 });
 
-const rootClass = computed(() =>
-  [props.block ? 'w-full justify-center' : '', props.className].filter(Boolean).join(' ')
-);
+const rootClass = computed(() => [props.block ? 'w-full' : '', props.className].filter(Boolean).join(' '));
 
 const hasSlotContent = computed(() => slots.default !== undefined);
 </script>

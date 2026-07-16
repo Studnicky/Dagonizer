@@ -56,7 +56,7 @@ This is the right place to integrate UI progress, OpenTelemetry spans, audit log
 
 The Dispatcher runner snippet shows the browser observer subclass and how hook callbacks become trace entries in the runnable page.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-observer
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-observer
 
 ## Details for Nerds
 

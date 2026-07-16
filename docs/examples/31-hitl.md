@@ -79,11 +79,11 @@ API reference.
 
 The browser run trigger starts the support DAG and captures parked results:
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-run
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-run
 
 The browser resume trigger restores the checkpoint, writes the operator response, and resumes from the parked cursor:
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-resume
 
 The DAG definition contains the parking placement and the ready path:
 

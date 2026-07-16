@@ -14,7 +14,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../exampleDags.ts';
 </script>
 
 # Example 33: Plugin-Defined DAGs

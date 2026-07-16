@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { virtualClockDAG } from '../.vitepress/theme/exampleDags.ts';
+import { virtualClockDAG } from '../exampleDags.ts';
 </script>
 
 # Virtual Clock

@@ -2,6 +2,7 @@
 import UiActionLink from '@/components/marketing/UiActionLink.astro';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
 import UiProofGrid from '@/components/islands/UiProofGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
 import { siteHref } from '@/lib/links';
 
 const proofItems = [
@@ -21,19 +22,19 @@ const proofItems = [
 ---
 
 <section class="rounded-[1.75rem] border border-white/10 bg-slate-950/72 px-5 py-5 shadow-[0_20px_72px_-40px_rgba(15,23,42,0.95)] backdrop-blur md:px-6">
-  <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-    <div class="max-w-2xl space-y-3">
-      <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Why this runtime reads differently</p>
-      <h2 class="text-2xl font-semibold tracking-tight text-white md:text-3xl">
-        Understand the workflow model quickly without reverse-engineering behavior from scattered runtime code.
-      </h2>
-    </div>
-
+  <UiSectionIntro
+    eyebrow="Why this runtime reads differently"
+    title="Understand the workflow model quickly without reverse-engineering behavior from scattered runtime code."
+    description=""
+    align="between"
+  >
+    <Fragment slot="actions">
     <UiCtaRow>
       <UiActionLink href={siteHref('/docs')} variant="secondary">Read the docs</UiActionLink>
       <UiActionLink href={siteHref('/architecture')} variant="secondary">See architecture</UiActionLink>
     </UiCtaRow>
-  </div>
+    </Fragment>
+  </UiSectionIntro>
 
   <div class="mt-5">
     <UiProofGrid title="Runtime proof points" items={proofItems} />

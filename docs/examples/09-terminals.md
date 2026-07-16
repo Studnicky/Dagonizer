@@ -14,7 +14,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { gdprComplianceDAG, supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+import { gdprComplianceDAG, supportDispatcherDAG } from '../exampleDags.ts';
 </script>
 
 # Example 09: Terminal Nodes

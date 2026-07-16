@@ -23,3 +23,8 @@ export function siteHref(path: string): string {
 
   return `${normalizedBase}${normalizedPath}`.replace(/\/{2,}/g, '/');
 }
+
+export function repositoryHref(path: string): string {
+  const normalizedPath = path.replace(/^\/+/, '');
+  return `${siteConfig.repoUrl}/blob/main/${normalizedPath}`;
+}

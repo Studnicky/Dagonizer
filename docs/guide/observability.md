@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+import { supportDispatcherDAG } from '../exampleDags.ts';
 </script>
 
 # Observability

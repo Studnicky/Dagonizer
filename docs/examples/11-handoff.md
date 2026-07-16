@@ -89,7 +89,7 @@ Queue-backed hand-off uses the same state snapshot/cursor idea across a transpor
 
 The browser hand-off stores the parked result in memory. A distributed transport uses a `DAGHandoff` envelope and a `HandoffChannelInterface` implementation instead of the in-page operator state.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-resume
 
 See [Distribution and Cloud](../guide/distribution) for the serverless handler pattern, Step Functions wiring, and idempotency guidance.
 

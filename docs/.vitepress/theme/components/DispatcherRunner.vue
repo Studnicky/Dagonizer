@@ -1,12 +1,10 @@
 <script setup lang="ts">
 /**
- * DispatcherRunner: docs-side thin wrapper.
+ * DispatcherRunner: documentation wrapper.
  *
- * The Dispatcher runner component lives at
- * `examples/the-dispatcher/app/DispatcherRunner.vue` so the standalone Vite
- * demo and the docs page render the identical component. This wrapper
- * exists only so `docs/.vitepress/theme/index.ts` can lazy-load it from a
- * stable in-tree path.
+ * The runtime component lives in
+ * `examples/the-dispatcher/app/DispatcherRunner.vue` so the docs and runnable
+ * example stay on the same implementation.
  */
 import DispatcherRunner from '../../../../examples/the-dispatcher/app/DispatcherRunner.vue';
 </script>

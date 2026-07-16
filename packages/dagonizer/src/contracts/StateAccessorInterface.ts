@@ -27,4 +27,14 @@ export interface StateAccessorInterface {
    * on an empty `state`.
    */
   set(state: object, path: string, value: unknown): void;
+
+  /**
+   * Append `value` to the array at `path`, growing it in place — the canonical
+   * way to accumulate into a state array. Callers use this instead of
+   * read-modify-write (`set(path, [...get(path), value])`), which copies the
+   * whole array on every append and is quadratic across a batch. Implementations
+   * create the array when the path is empty and start a fresh array when the
+   * current value is not an array.
+   */
+  append(state: object, path: string, value: unknown): void;
 }

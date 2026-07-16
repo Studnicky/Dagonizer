@@ -24,7 +24,7 @@ const services = GeoResolvers.recorded();
 const geoSourceResolveDAG = GeoSourceResolveDAG.build(
   services.ipGeolocator,
   services.addressGeocoder,
-).dags.find((dag) => dag.name === 'geo-source-resolve');
+).dags.find((dag) => dag.name === 'dag:geo-source-resolve');
 </script>
 
 # Example 14: Gather Strategies

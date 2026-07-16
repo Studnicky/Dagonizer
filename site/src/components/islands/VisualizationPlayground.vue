@@ -17,7 +17,7 @@ import {
   archivistDAG,
   cartographerDAG,
   supportDispatcherDAG
-} from '../../../../docs/.vitepress/theme/exampleDags.ts';
+} from '../../../../docs/exampleDags.ts';
 
 type OrientationType = 'TB' | 'LR' | 'RL' | 'BT';
 

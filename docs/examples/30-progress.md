@@ -61,7 +61,7 @@ They also keep progress out of business logic. Nodes do not emit UI events; the 
 
 The observer snippet shows lifecycle hooks becoming Dispatcher trace state. The DAG snippet is included to show that the graph itself does not contain progress-only nodes.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-observer
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-observer
 
 ## Details for Nerds
 

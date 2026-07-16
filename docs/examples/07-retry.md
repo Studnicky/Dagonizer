@@ -15,7 +15,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../exampleDags.ts';
 </script>
 
 # Example 07: Retry Flow
