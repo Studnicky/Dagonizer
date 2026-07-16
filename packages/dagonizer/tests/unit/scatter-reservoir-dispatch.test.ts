@@ -23,9 +23,9 @@
  *   refactor breaking the node-body path.
  *
  * Suite D — reservoir + DAG body through a REAL DagContainerBase (Branch C
- *   runDagBatch path):
+ *   runDag path):
  *   Wires a real DagHost + LoopbackChannel behind a DagContainerBase subclass
- *   so Branch C takes the `instanceof DagContainerBase` → runDagBatch branch
+ *   so Branch C takes the `instanceof DagContainerBase` → runDag branch
  *   (one transport round-trip per released batch). The host genuinely runs the
  *   sub-DAG, so per-item routing is real: even values route to the `accept`
  *   terminal (outcome completed → success), odd values to the `reject` terminal
@@ -43,7 +43,7 @@ import type { InitMessageShapeType } from '../../src/container/ChannelDispatch.j
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { PoolEntryType } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { CheckpointRestoreAdapterInterface } from '../../src/contracts/CheckpointRestoreAdapterInterface.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
@@ -71,7 +71,7 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer, emptyInlineTransfer } from '../_support/GraphStateSupport.js';
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
@@ -636,10 +636,13 @@ class LoopbackContainer {
     return {
       async runDag(
         task: DagTaskInterface,
+        batch: Batch<NodeStateInterface>,
         _options?: { readonly relay?: ObserverRelayInterface },
-      ): Promise<DagOutcomeType> {
+      ): Promise<RunResultType[]> {
         callCounter.count++;
-        const rawState = task.state;
+        const [item] = batch.items();
+        const id = item?.id ?? task.correlationId;
+        const rawState = item?.state ?? task.state;
         if (!(rawState instanceof ReservoirDispatchState)) {
           throw new Error(`LoopbackContainer: expected ReservoirDispatchState, got ${rawState.constructor.name}`);
         }
@@ -651,14 +654,16 @@ class LoopbackContainer {
             step = await iter.next();
           }
           const terminal = step.value;
-          return {
+          return [{
+            'id': id,
             'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
             'errors': [...terminal.state.errors],
-            'graphState': graphStateTransfer(terminal.state),
+            'graphState': inlineTransfer([terminal.state]),
             'intermediates': [],
-          };
+          }];
         } catch (err: unknown) {
-          return {
+          return [{
+            'id': id,
             'terminalOutput': 'failed',
             'errors': [{
               'code': 'CONTAINER_ERROR',
@@ -668,9 +673,9 @@ class LoopbackContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'graphState': emptyGraphStateTransfer(),
+            'graphState': emptyInlineTransfer(),
             'intermediates': [],
-          };
+          }];
         }
       },
     };
@@ -805,7 +810,7 @@ const routeBodyDDag: DAGType = Validator.dag.validate({
   ],
 });
 
-// Parent DAG dispatched through the container (Branch C runDagBatch).
+// Parent DAG dispatched through the container (Branch C runDag).
 const RESERVOIR_D_CONTAINER_IRI = 'urn:noocodec:dag:scatter-reservoir-d-container';
 const RESERVOIR_D_CONTAINER_NAME = 'scatter-reservoir-d-container';
 const RESERVOIR_D_INPROCESS_IRI = 'urn:noocodec:dag:scatter-reservoir-d-inprocess';
@@ -1025,8 +1030,8 @@ const SUITE_D_ITEMS: Array<{ group: string; value: number }> = [
   { 'group': 'A', 'value': 7 },
 ];
 
-void describe('Scatter reservoir: DAGType body through real DagContainerBase (Branch C runDagBatch)', () => {
-  void it('routes 8 items through runDagBatch (2 batches, 2 execute messages); even→success, odd→error; parity with in-process', async () => {
+void describe('Scatter reservoir: DAGType body through real DagContainerBase (Branch C runDag)', () => {
+  void it('routes 8 items through runDag (2 batches, 2 execute messages); even→success, odd→error; parity with in-process', async () => {
     // ── Real DagHost behind a LoopbackChannel, fronted by DagContainerBase ──
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const countingParent = new ExecuteCountingChannel(parentSide);
@@ -1064,7 +1069,7 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
       assert.strictEqual(
         containerOutputs[String(v)],
         expected,
-        `value ${v} must route to ${expected} through runDagBatch; got ${containerOutputs[String(v)]}`,
+        `value ${v} must route to ${expected} through runDag; got ${containerOutputs[String(v)]}`,
       );
     }
     // Prove the failed terminal was genuinely reached for odd items.
@@ -1074,7 +1079,7 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
       'exactly 4 odd items must reach the failed (reject) terminal',
     );
 
-    // (c) PROOF the runDagBatch path ran: one execute message PER BATCH (2),
+    // (c) PROOF the runDag path ran: one execute message PER BATCH (2),
     //     not per item (8). reservoir capacity 4 over 8 same-group items → 2
     //     released batches → 2 transport round-trips.
     assert.strictEqual(
@@ -1105,13 +1110,13 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     assert.deepStrictEqual(
       inProcResult.state.outputByValue,
       result.state.outputByValue,
-      'per-item output map must be identical between runDagBatch and in-process batch-native',
+      'per-item output map must be identical between runDag and in-process batch-native',
     );
 
     await inProcDispatcher.destroy();
   });
 
-  void it('partitions dynamic DagReference reservoir batches before real runDagBatch dispatch', async () => {
+  void it('partitions dynamic DagReference reservoir batches before real runDag dispatch', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const countingParent = new ExecuteCountingChannel(parentSide);
     const host = new DagHost(hostSide, { 'registry': suiteDRegistry });

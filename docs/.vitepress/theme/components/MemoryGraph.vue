@@ -27,11 +27,20 @@ import type { Quad } from 'n3';
 import { RealTimeScheduler } from '@studnicky/scheduler';
 import type { SchedulerProviderType } from '@studnicky/scheduler';
 
+import { DEFAULT_VISUALIZER_ANIMATION_POLICY } from '../../../../packages/dagonizer/src/viz/AnimationPolicy.ts';
+import { createCameraDpadMachine } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
+import { iriSelection, literalSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import { LegendMachine } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
+import { createViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
+import { viewerAction } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
 import GraphLegend from './graph/GraphLegend.vue';
-import type { LegendEntry, LegendTab } from './graph/GraphLegend.vue';
+import ViewerActions from './graph/ViewerActions.vue';
+import ViewerOverlay from './graph/ViewerOverlay.vue';
+import type { IriSelectionType, LiteralSelectionType } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import type { LegendItemType, LegendSectionType } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
 
 type GraphHandle = {
   setPointPositions(arr: Float32Array, dontRescale?: boolean): void;
@@ -56,10 +65,11 @@ type GraphLayer = 'ontology' | 'memory' | 'state' | 'prov' | 'default';
 const props = defineProps<{
   store: MemoryStore;
   tick: number;
+  selection?: MemorySelection | null;
 }>();
 
 /** Structured selection emitted on node click. */
-export type MemorySelection = { variant: 'iri'; iri: string } | { variant: 'literal'; value: string };
+export type MemorySelection = IriSelectionType | LiteralSelectionType;
 
 const emit = defineEmits<{
   (event: 'clear'): void;
@@ -80,10 +90,11 @@ const PAN_ENABLED = true;
 // Screen-pixel pan step, matching the cytoscape DAG graph's `cy.panBy` (80px).
 // Converted to world units per-call via the current zoom (see `mgPanBy`).
 const PAN_STEP = 80;
+const ANIMATION = DEFAULT_VISUALIZER_ANIMATION_POLICY;
 
 /** Layer entries for GraphLegend: reactive so active state reflects layerVisible. */
-const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
-  const entries: LegendEntry[] = [
+const memoryLegendSections = computed<readonly LegendSectionType[]>(() => {
+  const entries: LegendItemType[] = [
     { key: 'ontology', swatch: 'solid',  color: '#21ee99', label: 'ontology', active: layerVisible.value['ontology'] },
     { key: 'memory',   swatch: 'solid',  color: '#22e8ff', label: 'memory',   active: layerVisible.value['memory'] },
     { key: 'state',    swatch: 'solid',  color: '#d4a649', label: 'state',    active: layerVisible.value['state'] },
@@ -91,6 +102,15 @@ const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
   ];
   return [{ key: 'layers', label: 'Layers', entries }];
 });
+const legendMachine = new LegendMachine({
+  'getSections': () => memoryLegendSections.value,
+  'toggle': onLayerToggle,
+});
+const overlayActions = computed(() => [
+  viewerAction('clear', {
+    'title': 'Clear all triples (irreversible)',
+  }),
+]);
 
 function onLayerToggle(key: string): void {
   const layer = key as GraphLayer;
@@ -124,6 +144,33 @@ let labelMeta: PointMeta[] = [];
 let labelRaf: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const fitScheduler: SchedulerProviderType = RealTimeScheduler.create();
+const dpadMachine = createCameraDpadMachine({
+  'can': (action) => {
+    if (graph.value === null) return false;
+    if (!PAN_ENABLED && (
+      action === 'pan-up'
+      || action === 'pan-down'
+      || action === 'pan-left'
+      || action === 'pan-right'
+    )) return false;
+    return true;
+  },
+  'getZoomLevel': () => zoomLevel.value,
+  'getHint': () => createViewportStatus(zoomLevel.value, 'inline', 'drag · wheel').hint,
+  'zoomIn': mgZoomIn,
+  'zoomOut': mgZoomOut,
+  'pan': (direction) => {
+    switch (direction) {
+      case 'up':    mgPanUp(); break;
+      case 'down':  mgPanDown(); break;
+      case 'left':  mgPanLeft(); break;
+      case 'right': mgPanRight(); break;
+    }
+  },
+  'centre': mgCentre,
+  'fit': mgFit,
+  'expand': mgExpand,
+});
 
 type CosmosCtor = new (div: HTMLDivElement, config: Record<string, unknown>) => GraphHandle;
 let GraphCtor: CosmosCtor | null = null;
@@ -211,7 +258,7 @@ function initCosmos(container: HTMLDivElement): void {
       // animates the layout for tens of seconds after the first paint.
       // 5000 settles the layout in ~1s; the graph picks a stable form
       // and stops jittering well before the visitor reads any node.
-      'simulationDecay': 5000,
+      'simulationDecay': ANIMATION.simulationDecay,
       'enableDrag': true,
       // Deliberately NOT hooked to fitView/centring here: onSimulationTick
       // and onSimulationEnd fire for ANY reason the simulation is active,
@@ -240,9 +287,9 @@ function initCosmos(container: HTMLDivElement): void {
         const meta = labelMeta[index];
         if (meta === undefined) return;
         if (meta.variant === 'literal') {
-          emit('select', { variant: 'literal', value: meta.value });
+          emit('select', literalSelection(meta.value));
         } else {
-          emit('select', { variant: 'iri', iri: meta.value });
+          emit('select', iriSelection(meta.value));
         }
       },
     });
@@ -331,7 +378,7 @@ function mgCentre(): void {
     // (fires onSimulationPause, not onSimulationEnd) and never resumes it.
     // render(0, 0) snaps the position AND suppresses the transition so the
     // physics settle isn't cut short when this runs mid-simulation.
-    g.render(0, 0);
+    g.render(0, ANIMATION.transitionSnapMs);
     scheduleLabelPaint();
   } catch { /* ignore */ }
 }
@@ -358,10 +405,10 @@ function armFitSequence(): void {
   if (handle === null) return;
   try {
     fitScheduler.cancelAll();
-    for (const delayMs of [0, 250, 500, 750]) {
-      fitScheduler.scheduleAt(Date.now() + delayMs, () => { handle.fitView(200); });
+    for (const delayMs of ANIMATION.fitCheckpointsMs) {
+      fitScheduler.scheduleAt(Date.now() + delayMs, () => { handle.fitView(ANIMATION.fitAnimateMs); });
     }
-    fitScheduler.scheduleAt(Date.now() + 800, () => {
+    fitScheduler.scheduleAt(Date.now() + ANIMATION.fitSettleSnapshotMs, () => {
       try {
         const level = graph.value?.getZoomLevel() ?? null;
         if (level !== null) fitZoomLevel.value = level;
@@ -398,7 +445,7 @@ function mgPanBy(dx: number, dy: number): void {
     // See mgCentre() above: render(0, 0) suppresses the implicit transition
     // duration so a pan while the simulation is running can't trip cosmos.gl's
     // force-pause-on-pending-transition path.
-    g.render(0, 0);
+    g.render(0, ANIMATION.transitionSnapMs);
     scheduleLabelPaint();
   } catch { /* ignore */ }
 }
@@ -418,6 +465,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.tick, () => paint());
+watch(() => props.selection, () => paint());
 // Toggling layer chips re-runs paint so the alpha mask updates without
 // disturbing the simulation.
 watch(layerVisible, () => paint(), { 'deep': true });
@@ -425,7 +473,7 @@ watch(layerVisible, () => paint(), { 'deep': true });
 function paint(): void {
   const handle = graph.value;
   if (handle === null) return;
-  const { positions, colors, sizes, links, meta } = buildBuffers(props.store, layerVisible.value);
+  const { positions, colors, sizes, links, meta } = buildBuffers(props.store, layerVisible.value, props.selection);
   labelMeta = meta;
   handle.setPointPositions(positions);
   handle.setPointColors(colors);
@@ -502,6 +550,9 @@ function paintLabels(): void {
   const PAD_Y = 2;
   const claimed = new Set<number>();
   const BUCKET = 60;
+  const selectedKey = props.selection !== undefined && props.selection !== null
+    ? selectionKey(props.selection)
+    : null;
 
   for (let i = 0; i < labelMeta.length; i++) {
     const wx = positions[i * 2];
@@ -521,6 +572,7 @@ function paintLabels(): void {
 
     const meta = labelMeta[i];
     if (meta === undefined) continue;
+    const selected = selectedKey !== null && selectionKeyForMeta(meta) === selectedKey;
     const text = meta.label.length > 22 ? `${meta.label.slice(0, 20)}…` : meta.label;
     const textW = ctx.measureText(text).width;
     const pillW = textW + PAD_X * 2;
@@ -533,13 +585,19 @@ function paintLabels(): void {
     ctx.fillStyle = meta.variant === 'literal' ? 'rgba(28, 12, 36, 0.92)' : 'rgba(8, 22, 32, 0.92)';
     roundRect(ctx, x, y, pillW, pillH, 4);
     ctx.fill();
+    if (selected) {
+      ctx.strokeStyle = '#22e8ff';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x - 1, y - 1, pillW + 2, pillH + 2, 5);
+      ctx.stroke();
+    }
 
     // Label colour matches the node's LAYER color so the eye can scan
     // by colour-band (green = ontology, cyan = memory, gold = state,
     // violet = prov). Literals use the violet "value" tone regardless
     // of layer since they're leaf values, not first-class entities.
     ctx.fillStyle = meta.variant === 'literal'
-      ? '#c89bff'
+      ? (selected ? '#f2dbff' : '#c89bff')
       : (LAYER_LABEL_HEX[meta.layer] ?? '#eaf6ff');
     ctx.fillText(text, x + PAD_X, y + pillH / 2);
   }
@@ -605,6 +663,7 @@ function graphLayer(graphIri: string): GraphLayer {
 function buildBuffers(
   store: MemoryStore,
   visible: Readonly<Record<GraphLayer, boolean>>,
+  selected: MemorySelection | null | undefined,
 ): Buffers {
   const indexById = new Map<string, number>();
   const meta: PointMeta[] = [];
@@ -612,6 +671,10 @@ function buildBuffers(
   const colors:    number[] = [];
   const sizes:     number[] = [];
   const links:     number[] = [];
+
+  const selectedKey = selected !== undefined && selected !== null
+    ? selectionKey(selected)
+    : null;
 
   function intern(id: string, label: string, nodeVariant: 'iri' | 'literal', layer: GraphLayer, value: string): number {
     const existing = indexById.get(id);
@@ -624,9 +687,17 @@ function buildBuffers(
       4096 + (Math.random() - 0.5) * 4000,
     );
     const [r, g, b] = LAYER_COLOR[layer];
+    const isSelected = selectedKey !== null && selectionKeyForValue(nodeVariant, value) === selectedKey;
     const alpha = visible[layer] ? (nodeVariant === 'iri' ? 1.0 : 0.85) : 0.04;
-    colors.push(r, g, b, alpha);
-    sizes.push(nodeVariant === 'iri' ? 18 : 12);
+    colors.push(
+      isSelected ? Math.min(r + 0.20, 1) : r,
+      isSelected ? Math.min(g + 0.08, 1) : g,
+      isSelected ? Math.min(b + 0.20, 1) : b,
+      isSelected ? 1.0 : alpha,
+    );
+    sizes.push(nodeVariant === 'iri'
+      ? (isSelected ? 24 : 18)
+      : (isSelected ? 17 : 12));
     return idx;
   }
 
@@ -661,6 +732,18 @@ function localPart(iri: string): string {
 function objectKey(q: Quad): string {
   if (q.object.termType === 'Literal') return `lit:${q.predicate.value}:${q.object.value}`;
   return q.object.value;
+}
+
+function selectionKey(selection: MemorySelection): string {
+  return selectionKeyForValue(selection.variant, selection.variant === 'iri' ? selection.iri : selection.value);
+}
+
+function selectionKeyForValue(variant: 'iri' | 'literal', value: string): string {
+  return `${variant}:${value}`;
+}
+
+function selectionKeyForMeta(meta: PointMeta): string {
+  return selectionKeyForValue(meta.variant, meta.value);
 }
 
 /**
@@ -712,52 +795,48 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
     </template>
 
     <div class="mg-canvas">
-      <div v-if="loading" class="mg-overlay">Loading cosmos.gl…</div>
-      <div v-else-if="loadError" class="mg-overlay mg-error">Graph failed: {{ loadError }}</div>
+      <ViewerOverlay
+        v-if="loading"
+        kind="loading"
+        message="Loading cosmos.gl…"
+      />
+      <ViewerOverlay
+        v-else-if="loadError"
+        kind="error"
+        :message="`Graph failed: ${loadError}`"
+      />
 
       <!-- Clear-memory control: an in-canvas overlay rather than a frame-header
            button, because this frame renders `frameless` (no header is drawn,
            so a `#controls` slot button would never appear). Wipes the whole
            store and, in persisted mode, the localStorage dump. -->
-      <button
+      <ViewerActions
         v-if="!loading && !loadError"
-        class="mg-clear"
-        type="button"
-        title="Clear all triples (irreversible)"
-        aria-label="Clear all triples"
-        @click="emit('clear')"
-      >🗑 clear</button>
+        :actions="overlayActions"
+        variant="overlay"
+        @action="emit('clear')"
+      />
 
       <div ref="containerRef" class="mg-cosmos" aria-label="Live RDF triple graph (cosmos.gl)"></div>
       <canvas ref="labelsRef" class="mg-labels" aria-hidden="true"></canvas>
 
-      <p v-if="!loading && !loadError && store.size === 0" class="mg-overlay mg-empty">
-        No triples yet. Ask the Archivist and watch the store grow.
-      </p>
+      <ViewerOverlay
+        v-if="!loading && !loadError && store.size === 0"
+        kind="empty"
+        message="No triples yet. Ask the Archivist and watch the store grow."
+      />
 
       <!-- Layer legend: bottom-left corner (replaces chip filter). -->
       <GraphLegend
         v-if="!loading && !loadError"
-        :tabs="memoryLegendTabs"
+        :machine="legendMachine"
         class="mg-legend-pos"
-        @toggle="onLayerToggle"
       />
 
       <!-- D-pad navigation: bottom-right corner (replaces zoom HUD + mg-dpad). -->
-      <div v-if="!loading && !loadError" class="mg-dpad-pos">
+      <div v-if="!loading && !loadError" class="dagonizer-dpad-anchor">
         <GraphDpad
-          :zoom-level="zoomLevel"
-          :pan-enabled="PAN_ENABLED"
-          expand-title="Fullscreen"
-          @zoom-in="mgZoomIn"
-          @zoom-out="mgZoomOut"
-          @centre="mgCentre"
-          @fit="mgFit"
-          @expand="mgExpand"
-          @pan-up="mgPanUp"
-          @pan-down="mgPanDown"
-          @pan-left="mgPanLeft"
-          @pan-right="mgPanRight"
+          :machine="dpadMachine"
         />
       </div>
     </div>
@@ -769,34 +848,6 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
   font-family: var(--vp-font-family-mono);
   font-size: 0.7rem;
   color: var(--dagonizer-brand2);
-}
-
-/* Clear-memory overlay: top-right corner of the canvas. */
-.mg-clear {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.55rem;
-  background: rgba(20, 22, 28, 0.72);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 5px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  color: var(--vp-c-text-2);
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
-}
-
-.mg-clear:hover {
-  border-color: #c0392b;
-  color: #e74c3c;
-  background: rgba(192, 57, 43, 0.12);
 }
 
 .mg-canvas {
@@ -821,51 +872,6 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
   pointer-events: none;
 }
 
-.mg-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.82rem;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  pointer-events: none;
-  padding: 0 1rem;
-  text-align: center;
-}
-
-.mg-error { color: var(--dagonizer-brand3); }
-.mg-empty { color: var(--vp-c-text-3); }
-
-.frame-action {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-1);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-
-.frame-action:hover {
-  background: var(--vp-c-bg);
-  border-color: var(--dagonizer-brand2);
-  color: var(--dagonizer-brand2);
-}
-
-.frame-action-danger:hover {
-  border-color: var(--dagonizer-brand3);
-  color: var(--dagonizer-brand3);
-}
-
 /* Legend: bottom-left positioning anchor. */
 .mg-legend-pos {
   position: absolute;
@@ -875,10 +881,4 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
 }
 
 /* D-pad: bottom-right positioning anchor. */
-.mg-dpad-pos {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  z-index: 5;
-}
 </style>

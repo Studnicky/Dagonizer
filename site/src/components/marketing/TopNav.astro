@@ -1,0 +1,22 @@
+---
+import { siteConfig } from '@/config/site';
+import { siteHref } from '@/lib/links';
+import MarketingTopNav from '@/components/islands/MarketingTopNav.vue';
+
+const links = [
+  { label: 'Overview', href: siteHref('/') },
+  { label: 'Docs', href: siteHref('/docs') },
+  { label: 'Features', href: siteHref('/#features') },
+  { label: 'Visualize', href: siteHref('/#visualize') },
+  { label: 'Examples', href: siteHref('/#examples') }
+];
+---
+
+<MarketingTopNav
+  client:load
+  links={links}
+  homeHref={siteHref('/')}
+  iconHref={siteHref('/dagonizer-icon.svg')}
+  ctaHref={siteHref('/getting-started')}
+  repoUrl={siteConfig.repoUrl}
+/>

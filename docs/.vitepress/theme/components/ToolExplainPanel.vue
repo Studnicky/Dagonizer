@@ -15,6 +15,8 @@ import { LruCache } from '@studnicky/cache';
 import { Coalesce } from '@studnicky/concurrency/coalesce';
 import { ref, watch } from 'vue';
 import type { LlmClientInterface } from '../../../../examples/the-archivist/services.ts';
+import InspectorShell from './graph/InspectorShell.vue';
+import StateSurface from './ui/StateSurface.vue';
 
 const props = defineProps<{
   selectedTool: string | null;
@@ -83,101 +85,26 @@ watch(() => props.selectedTool, async (name) => {
 </script>
 
 <template>
-  <aside
+  <InspectorShell
     v-if="selectedTool !== null"
-    class="tool-explain-panel"
-    role="dialog"
-    :aria-label="`Explanation for ${selectedTool}`"
+    :title="selectedTool"
+    :ariaLabel="`Explanation for ${selectedTool}`"
+    accent="var(--dagonizer-brand2)"
+    width="320px"
+    @close="emit('close')"
   >
-    <header class="tep-header">
-      <span class="tep-name">{{ selectedTool }}</span>
-      <button class="tep-close" title="Close" @click="emit('close')">✕</button>
-    </header>
-
-    <p v-if="loading" class="tep-loading">Generating explanation…</p>
+    <StateSurface v-if="loading" kind="loading">Generating explanation…</StateSurface>
 
     <p v-else-if="explanation !== null" class="tep-body">{{ explanation }}</p>
 
-    <p v-else class="tep-empty">No explanation available.</p>
-  </aside>
+    <StateSurface v-else kind="empty">No explanation available.</StateSurface>
+  </InspectorShell>
 </template>
 
 <style scoped>
-.tool-explain-panel {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 320px;
-  max-width: 88%;
-  max-height: calc(100% - 20px);
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--dagonizer-brand2);
-  border-radius: 6px;
-  padding: 0.75rem 0.9rem;
-  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.45);
-  z-index: 6;
-  overflow-y: auto;
-  font-family: var(--vp-font-family-base);
-  font-size: 0.82rem;
-  animation: tep-in 0.18s ease-out;
-}
-
-.tep-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.tep-name {
-  color: var(--dagonizer-brand2);
-  font-weight: 700;
-  font-size: 0.9rem;
-  font-family: var(--vp-font-family-mono);
-  overflow-wrap: anywhere;
-}
-
-.tep-close {
-  background: transparent;
-  border: 0;
-  color: var(--vp-c-text-3);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0 0.3rem;
-  flex-shrink: 0;
-}
-.tep-close:hover { color: var(--dagonizer-brand3); }
-
-.tep-loading {
-  margin: 0;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  animation: tep-pulse 1.4s ease-in-out infinite;
-}
-
 .tep-body {
   margin: 0;
   color: var(--vp-c-text-1);
   line-height: 1.6;
-}
-
-.tep-empty {
-  margin: 0;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-}
-
-@keyframes tep-in {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes tep-pulse {
-  0%, 100% { opacity: 0.5; }
-  50%       { opacity: 1; }
 }
 </style>

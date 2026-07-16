@@ -37,9 +37,32 @@ import { fileURLToPath } from 'node:url';
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { ExecutionRequestItemType } from '../../src/entities/executor/ExecutionRequest.js';
+import type { GraphStateInlineType } from '../../src/entities/executor/GraphStateTransferSchema.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer } from '../_support/GraphStateSupport.js';
+
+// ---------------------------------------------------------------------------
+// BatchFixture: builds a batch of N distinct clone states with unique run
+// IRIs, the combined `graphState` transfer, and the lean request `items`
+// array (`{ id, runIri }`) the new wire contract carries per item.
+// ---------------------------------------------------------------------------
+
+class BatchFixture {
+  private constructor() {}
+
+  static of(ids: readonly string[]): { graphState: GraphStateInlineType; items: ExecutionRequestItemType[] } {
+    const entries = ids.map((id) => {
+      const state = new NodeStateBase(undefined, `urn:dagonizer:run:${id}`);
+      return { id, state };
+    });
+    return {
+      'graphState': inlineTransfer(entries.map((entry) => entry.state)),
+      'items': entries.map((entry) => ({ 'id': entry.id, 'runIri': entry.state.runIri })),
+    };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Registry: reuse the compiled ConformanceRegistry from dist-testing/
@@ -112,7 +135,6 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     await HostSetup.init(parentSide);
 
     const N = 5; // Small N — we test the structural contract, not heap scale
-    const initialState = new NodeStateBase();
 
     const { result, intermediateMessages } = await new Promise<{
       result: BridgeMessageType & { variant: 'result' };
@@ -126,15 +148,14 @@ void describe('DagHost — batch request: intermediates are empty, live messages
         }
       });
       // Send N items in a single batch request.
+      const batch = BatchFixture.of(Array.from({ 'length': N }, (_, i) => `item-${i}`));
       parentSide.send({
         'variant': 'execute',
         'request': {
           'dagName': BODY_LAW1_DAG,
           'placementPath': ['scatter', 'fan'],
-          'items': Array.from({ 'length': N }, (_, i) => ({
-            'id': `item-${i}`,
-            'graphState': graphStateTransfer(initialState),
-          })),
+          'graphState': batch.graphState,
+          'items': batch.items,
           'timeoutMs': 10000,
           'correlationId': 'batch-test-1',
         },
@@ -192,7 +213,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     const { parentSide } = TestHostPair.create();
     await HostSetup.init(parentSide);
 
-    const initialState = new NodeStateBase();
+    const single = BatchFixture.of(['single-1']);
 
     const singleResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
@@ -203,7 +224,8 @@ void describe('DagHost — batch request: intermediates are empty, live messages
         'request': {
           'dagName': RUNNER_LAW1_DAG,
           'placementPath': ['run-child'],
-          'items': [{ 'id': 'single-1', 'graphState': graphStateTransfer(initialState) }],
+          'graphState': single.graphState,
+          'items': single.items,
           'timeoutMs': 5000,
           'correlationId': 'single-test-1',
         },
@@ -230,21 +252,19 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     await HostSetup.init(parentSide);
 
     const N = 50;
-    const initialState = new NodeStateBase();
 
     const batchResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.variant === 'result') resolve(msg);
       });
+      const batch = BatchFixture.of(Array.from({ 'length': N }, (_, i) => `large-item-${i}`));
       parentSide.send({
         'variant': 'execute',
         'request': {
           'dagName': BODY_LAW1_DAG,
           'placementPath': ['scatter', 'fan'],
-          'items': Array.from({ 'length': N }, (_, i) => ({
-            'id': `large-item-${i}`,
-            'graphState': graphStateTransfer(initialState),
-          })),
+          'graphState': batch.graphState,
+          'items': batch.items,
           'timeoutMs': 30000,
           'correlationId': 'batch-test-large',
         },
@@ -305,7 +325,6 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
 
     const BATCH_SIZE = 100;
     const NUM_BATCHES = 5;
-    const initialState = new NodeStateBase();
 
     gc();
     const baseline = process.memoryUsage().heapUsed;
@@ -315,15 +334,14 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
         parentSide.onMessage((msg) => {
           if (msg.variant === 'result') resolve();
         });
+        const batch = BatchFixture.of(Array.from({ 'length': BATCH_SIZE }, (_, i) => `heap-batch-${b}-item-${i}`));
         parentSide.send({
           'variant': 'execute',
           'request': {
             'dagName': BODY_LAW1_DAG,
             'placementPath': ['scatter', 'fan'],
-            'items': Array.from({ 'length': BATCH_SIZE }, (_, i) => ({
-              'id': `heap-batch-${b}-item-${i}`,
-              'graphState': graphStateTransfer(initialState),
-            })),
+            'graphState': batch.graphState,
+            'items': batch.items,
             'timeoutMs': 30000,
             'correlationId': `heap-batch-${b}`,
           },

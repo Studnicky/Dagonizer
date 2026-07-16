@@ -1,0 +1,24 @@
+---
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+
+interface LinkItem {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface Props {
+  links: readonly LinkItem[];
+}
+
+const { links } = Astro.props;
+---
+
+<div class="mt-4 space-y-3 text-sm">
+  {
+    links.map((link) => (
+      <UiActionLink href={link.href} variant="text" block class="justify-start">
+        {link.label}
+      </UiActionLink>
+    ))
+  }
+</div>

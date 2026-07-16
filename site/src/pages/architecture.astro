@@ -1,0 +1,31 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import SectionShell from '@/components/marketing/SectionShell.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
+---
+
+<BaseLayout title="Architecture">
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+    <SectionShell
+      eyebrow="Architecture"
+      title="A runtime model that stays explicit from authoring through execution."
+      description="Dagonizer is built around a graph document, a deterministic execution model, and inspection surfaces that let teams understand routing, checkpoints, state flow, and terminal outcomes."
+    >
+      <div class="grid gap-4 md:grid-cols-3">
+        <UiContentPanel title="Graph definition" compact>
+          <p>Placements, routing, terminals, and shared state remain part of the workflow model instead of disappearing into implicit control flow.</p>
+        </UiContentPanel>
+        <UiContentPanel title="Execution behavior" compact>
+          <p>Retries, cancellation, fan-out, fan-in, streaming, and checkpoint resume are visible runtime concerns, not hidden implementation details.</p>
+        </UiContentPanel>
+        <UiContentPanel title="Operational visibility" compact>
+          <p>Documentation, runnable examples, and visualization surfaces all point back to the same DAG so teams can inspect what they actually run.</p>
+        </UiContentPanel>
+      </div>
+    </SectionShell>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

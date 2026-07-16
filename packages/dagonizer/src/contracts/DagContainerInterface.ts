@@ -11,18 +11,23 @@
  * pool resources when the dispatcher shuts down.
  */
 
-import type { DagOutcomeType } from './DagOutcomeType.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
+
+import type { RunResultType } from './DagOutcomeType.js';
 import type { DagTaskInterface } from './DagTaskInterface.js';
 import type { ObserverRelayInterface } from './ObserverRelayInterface.js';
 
 export interface DagContainerInterface {
   /**
-   * Run a whole embedded DAG to completion inside the isolate.
+   * Run a batch of items through the same embedded DAG to completion inside
+   * the isolate, in one transport round-trip. A single item is a batch of one
+   * through the identical path — there is no separate single-item path.
    *
-   * The task carries a live seeded child clone (`task.state`) and a composed
-   * abort signal (`task.context.signal`). Isolating containers call
-   * `task.toRequest()` to snapshot the clone for transport; in-process
-   * containers may use `task.state` directly.
+   * `task` supplies the DAG IRI, placement path, timeout, and abort signal
+   * (`task.context.signal`). `batch` carries the per-item states. Isolating
+   * containers call `task.toRequest()` to snapshot the batch for transport;
+   * in-process containers may use the batch states directly.
    *
    * The optional `options.relay` is an internal observer provided by the parent
    * `Dagonizer` so that worker-side hook events (nodeStart, nodeEnd, error,
@@ -30,10 +35,14 @@ export interface DagContainerInterface {
    * The container must forward this relay to its channel routing layer.
    *
    * Must never throw. Transport failures, host crashes, and serialization
-   * errors are returned as collected errors in `DagOutcomeType.errors`
-   * with `recoverable: false`.
+   * errors are returned as collected errors in each `RunResultType.errors`
+   * with `recoverable: false`, one entry per item.
    */
-  runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(
+    task: DagTaskInterface,
+    batch: Batch<NodeStateInterface>,
+    options?: { readonly relay?: ObserverRelayInterface },
+  ): Promise<RunResultType[]>;
 
   /**
    * Release pool resources. Called by the dispatcher's `destroy()`. Optional:

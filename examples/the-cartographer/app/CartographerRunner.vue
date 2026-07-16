@@ -18,19 +18,12 @@
  * SSR-safe: all browser-only work is guarded to onMounted / click handlers.
  */
 
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue';
 
 import { CartographerState } from '../CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { cartographerWorkersDAG, CartographerWorkersDag, cartographerWorkerRuntimeBundle } from '../dag.ts';
-import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
-import { producerFeedBundle } from '../embedded-dags/ProducerFeedDAG.ts';
-import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
-import { gdprComplianceBundle } from '../embedded-dags/GdprComplianceDAG.ts';
-import { orderEnrichmentBundle } from '../embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
-import { normalizeSourcesPlugin } from '../plugins/NormalizeSourcesPlugin.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import type { FormatMix } from '../services.ts';
@@ -40,11 +33,12 @@ import { ObservedDag } from '../../the-archivist/ObservedDag.ts';
 import { ConsoleLogger } from '../../the-archivist/logger/ConsoleLogger.ts';
 import { WebWorkerContainer } from '@studnicky/dagonizer-executor-web';
 import type { WebWorkerLikeInterface } from '@studnicky/dagonizer-executor-web';
-import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
-import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
-import AboxAccordion from '../../../docs/.vitepress/theme/components/AboxAccordion.vue';
 import type { AboxEntity } from '../../../docs/.vitepress/theme/components/AboxAccordion.vue';
-import Spinner from '../../../docs/.vitepress/theme/components/Spinner.vue';
+
+const DagGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/DagGraph.vue'));
+const PanesTabs = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/PanesTabs.vue'));
+const AboxAccordion = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/AboxAccordion.vue'));
+const Spinner = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/Spinner.vue'));
 
 // ── Web-worker container ───────────────────────────────────────────────────────
 // Runs the CPU-heavy typed event pipeline off the main thread. `spawnWorker` is
@@ -99,7 +93,11 @@ const canonicalEvents = ref<CanonicalEventVariant[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
-const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
+const dagGraph = ref<any>(null);
+const cartographerDag = ref<DAGType | null>(null);
+const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
+const embeddedTopologyLoaded = ref(false);
+const loadingEmbeddedTopology = ref(false);
 
 // Every sub-DAG the cartographer DAG embeds, keyed by canonical IRI and display
 // name. The renderer expands literal DAG references by IRI while click handlers
@@ -112,20 +110,91 @@ const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 // recorded transports purely to register their topology, so the graph expands
 // the full per-concept geo resolution (route-signal → resolve-coords / -address
 // / -ip / -code / -phone / -locale / -none) instead of one collapsed node.
-const geoDocServices = GeoResolvers.recorded();
-const geoDocBundle = GeoSourceResolveDAG.build(
-  geoDocServices.ipGeolocator,
-  geoDocServices.addressGeocoder,
-);
-const embeddedDagRegistry = new Map(
-  [
-    ...producerFeedBundle.dags,
-    ...ingestSourceBundle.dags,
-    ...cartographerWorkerRuntimeBundle.dags,
-    ...geoDocBundle.dags,
-  ]
-    .flatMap((dag) => [[dag['@id'], dag], [dag.name, dag]] as const),
-);
+let runtimeDagModulesPromise:
+  | Promise<{
+      cartographerWorkersDAG: DAGType;
+      CartographerWorkersDag: typeof import('../dag.ts').CartographerWorkersDag;
+      cartographerWorkerRuntimeBundle: typeof import('../dag.ts').cartographerWorkerRuntimeBundle;
+      ingestSourceBundle: typeof import('../embedded-dags/IngestSourceDAG.ts').ingestSourceBundle;
+      producerFeedBundle: typeof import('../embedded-dags/ProducerFeedDAG.ts').producerFeedBundle;
+      GeoSourceResolveDAG: typeof import('../embedded-dags/GeoSourceResolveDAG.ts').GeoSourceResolveDAG;
+      gdprComplianceBundle: typeof import('../embedded-dags/GdprComplianceDAG.ts').gdprComplianceBundle;
+      orderEnrichmentBundle: typeof import('../embedded-dags/OrderEnrichmentDAG.ts').orderEnrichmentBundle;
+      normalizeSourcesPlugin: typeof import('../plugins/NormalizeSourcesPlugin.ts').normalizeSourcesPlugin;
+    }>
+  | null = null;
+
+let topLevelDagPromise: Promise<DAGType> | null = null;
+
+function loadTopLevelDag() {
+  if (topLevelDagPromise === null) {
+    topLevelDagPromise = import('../dag.ts').then((dagModule) => dagModule.cartographerWorkersDAG);
+  }
+  return topLevelDagPromise;
+}
+
+function loadRuntimeDagModules() {
+  if (runtimeDagModulesPromise === null) {
+    runtimeDagModulesPromise = Promise.all([
+      import('../dag.ts'),
+      import('../embedded-dags/IngestSourceDAG.ts'),
+      import('../embedded-dags/ProducerFeedDAG.ts'),
+      import('../embedded-dags/GeoSourceResolveDAG.ts'),
+      import('../embedded-dags/GdprComplianceDAG.ts'),
+      import('../embedded-dags/OrderEnrichmentDAG.ts'),
+      import('../plugins/NormalizeSourcesPlugin.ts'),
+    ]).then(([
+      dagModule,
+      ingestModule,
+      producerModule,
+      geoModule,
+      gdprModule,
+      orderModule,
+      pluginModule,
+    ]) => ({
+      cartographerWorkersDAG: dagModule.cartographerWorkersDAG,
+      CartographerWorkersDag: dagModule.CartographerWorkersDag,
+      cartographerWorkerRuntimeBundle: dagModule.cartographerWorkerRuntimeBundle,
+      ingestSourceBundle: ingestModule.ingestSourceBundle,
+      producerFeedBundle: producerModule.producerFeedBundle,
+      GeoSourceResolveDAG: geoModule.GeoSourceResolveDAG,
+      gdprComplianceBundle: gdprModule.gdprComplianceBundle,
+      orderEnrichmentBundle: orderModule.orderEnrichmentBundle,
+      normalizeSourcesPlugin: pluginModule.normalizeSourcesPlugin,
+    }));
+  }
+
+  return runtimeDagModulesPromise;
+}
+
+async function primeTopLevelDag(): Promise<void> {
+  cartographerDag.value = await loadTopLevelDag();
+}
+
+async function loadEmbeddedTopology(): Promise<void> {
+  if (embeddedTopologyLoaded.value || loadingEmbeddedTopology.value) return;
+  loadingEmbeddedTopology.value = true;
+  try {
+    const modules = await loadRuntimeDagModules();
+    const geoDocServices = GeoResolvers.recorded();
+    const geoDocBundle = modules.GeoSourceResolveDAG.build(
+      geoDocServices.ipGeolocator,
+      geoDocServices.addressGeocoder,
+    );
+
+    embeddedDagRegistry.value = new Map(
+      [
+        ...modules.producerFeedBundle.dags,
+        ...modules.ingestSourceBundle.dags,
+        ...modules.cartographerWorkerRuntimeBundle.dags,
+        ...geoDocBundle.dags,
+      ].flatMap((dag) => [[dag['@id'], dag], [dag.name, dag]] as const),
+    );
+    embeddedTopologyLoaded.value = true;
+  } finally {
+    loadingEmbeddedTopology.value = false;
+  }
+}
 
 const cartographerGraphLayoutOptions = {
   rankSep: 126,
@@ -138,6 +207,13 @@ const cartographerGraphLayoutOptions = {
   edgeMinLen: 2,
   edgeWeight: 4,
 } satisfies CytoscapeGraphOptionsType['layoutOptions'];
+
+/**
+ * Browser graph-state contract for Cartographer demo traffic: N-Quads transfer
+ * only, with inline payloads and codec-backed streaming on both sides of the
+ * container boundary.
+ */
+const CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS = ['application/n-quads'] as const;
 
 // ── Feed configuration ───────────────────────────────────────────────────────
 
@@ -396,7 +472,14 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     placementPath: readonly string[],
     signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath, signal);
+    // Base ObservedDag logging (timing + structured LogBody + logger.debug) is
+    // skipped for inner nodes: a streaming scatter fires this hook once per
+    // event × sub-DAG node, and the base work is O(1) allocation + a log call
+    // per firing. Top-level nodes keep full logging/timing/trace behavior;
+    // inner-node animation still runs via the frame-Set updates below.
+    if (placementPath.length === 0) {
+      super.onNodeStart(nodeName, state, placementPath, signal);
+    }
     const fullId = [...placementPath, nodeName].join('/');
     frameActiveNodes.add(fullId);
     // Trace records top-level node events only; inner per-clone activity is
@@ -414,7 +497,10 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     placementPath: readonly string[],
     signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath, signal);
+    // See onNodeStart: base logging/timing is skipped for inner nodes.
+    if (placementPath.length === 0) {
+      super.onNodeEnd(nodeName, output, state, placementPath, signal);
+    }
     const fullId = [...placementPath, nodeName].join('/');
     latestRunState = state;
     frameActiveNodes.delete(fullId);
@@ -433,7 +519,10 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     placementPath: readonly string[],
     signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath, signal);
+    // See onNodeStart: base logging/timing is skipped for inner nodes.
+    if (placementPath.length === 0) {
+      super.onError(nodeName, error, state, placementPath, signal);
+    }
     const fullId = [...placementPath, nodeName].join('/');
     frameErroredNode = fullId;
     traceBuffer.push({ 'variant': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) });
@@ -468,6 +557,11 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
 // regardless of event throughput. Node-id and edge sets are bounded by the
 // static sub-DAG (~dozens), never by event count.
 const MAX_TRACE = 60;
+
+// Number of drain-loop stages between macrotask yields (see the `run()`
+// drain loop). Bounds how long the main thread runs uninterrupted during a
+// 1,000,000-event stream so the tab stays responsive to paint and input.
+const DRAIN_YIELD_INTERVAL = 256;
 
 let latestRunState: CartographerState | null = null;
 let traceBuffer: TraceEvent[] = [];
@@ -564,6 +658,8 @@ async function run(): Promise<void> {
   let dispatcher: CartographerBrowserObserver | null = null;
 
   try {
+    await loadEmbeddedTopology();
+    const runtimeModules = await loadRuntimeDagModules();
     // Offline recorded geo on both sides: the worker registry builds its own
     // recorded services record; the main thread (seed + summarize + gather) needs
     // no network. Deterministic and infeasible-to-network-at-1M.
@@ -578,12 +674,16 @@ async function run(): Promise<void> {
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
       'poolSize':        clampedPoolSize.value,
+      'graphStateTransferFormats': CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS,
+      'graphStateTransferMode': 'inline-nquads',
     });
     const ioContainer = new CartographerWorkerContainer({
       'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
       'poolSize':        1,
+      'graphStateTransferFormats': CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS,
+      'graphStateTransferMode': 'inline-nquads',
     });
 
     dispatcher = new CartographerBrowserObserver(_cartographerLogger, {
@@ -595,14 +695,17 @@ async function run(): Promise<void> {
     // #endregion cartographer-browser-containers
 
     // Bundle registration order: sub-DAGs first so their names resolve.
-    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
-    dispatcher.registerBundle(orderEnrichmentBundle);
-    dispatcher.registerBundle(gdprComplianceBundle);
+    dispatcher.registerBundle(runtimeModules.GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
+    dispatcher.registerBundle(runtimeModules.orderEnrichmentBundle);
+    dispatcher.registerBundle(runtimeModules.gdprComplianceBundle);
     // #region cartographer-browser-plugin-registration
-    dispatcher.registerPlugin(normalizeSourcesPlugin);
+    dispatcher.registerPlugin(runtimeModules.normalizeSourcesPlugin);
     // #endregion cartographer-browser-plugin-registration
-    dispatcher.registerBundle(ingestSourceBundle);
-    dispatcher.registerBundle(CartographerWorkersDag.bundle(clampedBatchCapacity.value));
+    dispatcher.registerBundle(runtimeModules.ingestSourceBundle);
+    dispatcher.registerBundle(runtimeModules.CartographerWorkersDag.bundle(
+      clampedBatchCapacity.value,
+      { 'strategy': 'stream-source' },
+    ));
 
     const state = new CartographerState();
 
@@ -623,11 +726,21 @@ async function run(): Promise<void> {
     activeAbortController = new AbortController();
 
     // #region cartographer-streaming-execution
-    const execution = dispatcher.execute(cartographerWorkersDAG['@id'], state, { 'signal': activeAbortController.signal });
+    const execution = dispatcher.execute(runtimeModules.cartographerWorkersDAG['@id'], state, { 'signal': activeAbortController.signal });
+    let stagesSinceYield = 0;
     for await (const stage of execution) {
       // Each yielded stage lights up a node via the observer hooks above.
       // Consume silently; the observer drives the UI.
       void stage;
+      stagesSinceYield += 1;
+      if (stagesSinceYield >= DRAIN_YIELD_INTERVAL) {
+        stagesSinceYield = 0;
+        // Yield to a macrotask (not just a microtask) so the browser event
+        // loop gets a paint/input slot during long runs. `await`ing a
+        // resolved promise only drains microtasks and never lets the tab
+        // render — `setTimeout` schedules a real macrotask.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     }
     await execution;
     // #endregion cartographer-streaming-execution
@@ -662,6 +775,7 @@ function reset(): void {
 // SSR guard: browser-only initialisation goes here.
 onMounted(() => {
   // No auto-run: the visitor clicks Run to start.
+  void primeTopLevelDag();
 });
 </script>
 
@@ -889,11 +1003,29 @@ onMounted(() => {
           <!-- DAG tab: live execution graph -->
           <template #dag>
             <div class="graph-pane">
+              <div
+                v-if="!embeddedTopologyLoaded"
+                class="cr-topology-banner"
+              >
+                <div class="cr-topology-copy">
+                  <span class="cr-topology-title">Parent topology loaded</span>
+                  <span class="cr-topology-body">Load the embedded producer, ingest, worker, and geo sub-DAGs when you need the fully expanded graph.</span>
+                </div>
+                <button
+                  type="button"
+                  class="cr-btn cr-btn--quickpick"
+                  :disabled="loadingEmbeddedTopology"
+                  @click="loadEmbeddedTopology"
+                >
+                  {{ loadingEmbeddedTopology ? 'loading…' : 'load full topology' }}
+                </button>
+              </div>
               <DagGraph
+                :key="embeddedTopologyLoaded ? 'expanded-topology' : 'parent-topology'"
                 ref="dagGraph"
-                :dag="cartographerWorkersDAG"
+                :dag="cartographerDag ?? undefined"
                 :embedded-d-a-gs="embeddedDagRegistry"
-                :expand-all="true"
+                :expand-all="embeddedTopologyLoaded"
                 id-mode="iri"
                 initial-view="fit"
                 :layout-options="cartographerGraphLayoutOptions"
@@ -1902,5 +2034,35 @@ onMounted(() => {
   background: var(--vp-c-bg);
   scrollbar-width: thin;
   scrollbar-color: var(--vp-c-divider) transparent;
+}
+
+.cr-topology-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.8rem 0.95rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 72%, transparent);
+}
+
+.cr-topology-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.cr-topology-title {
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-1);
+}
+
+.cr-topology-body {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--vp-c-text-3);
 }
 </style>

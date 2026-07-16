@@ -3,11 +3,11 @@ layout: doc
 aside: false
 experimental: true
 title: Modern home concept
-description: Experimental Dagonizer landing page direction.
+description: Typed orchestration for agent workflows, resumable pipelines, and inspectable DAG execution.
 hero:
   name: Dagonizer
-  text: One engine. Many DAGs.
-  tagline: 'A type-safe runtime for agent orchestration and data pipelines. Author the graph, observe the run, and resume from the cursor.'
+  text: Typed orchestration, visible execution.
+  tagline: 'Define agent workflows and data pipelines as explicit DAGs, inspect the run in motion, and resume from a durable cursor.'
   image:
     src: /dagonizer-icon.svg
     alt: Dagonizer
@@ -20,16 +20,14 @@ hero:
       link: /architecture
 features:
   - icon: λ
-    title: Type-safe nodes
-    details: Route work with compile-time guarantees and explicit runtime contracts.
+    title: Typed graph contracts
+    details: Route work through explicit ports, declared terminals, and runtime documents that stay legible under change.
   - icon: ↻
-    title: Resume anywhere
-    details: Checkpoint a running graph and continue from its cursor after a restart.
+    title: Durable resume
+    details: Capture execution state, persist it outside process memory, and continue from the recorded cursor.
   - icon: ⬡
-    title: Compose without limits
-    details: Combine scatter, gather, streaming, tools, and embedded DAGs in one model.
+    title: First-class graph behavior
+    details: Compose scatter, gather, embedded DAGs, streaming producers, and hand-offs without hiding control flow.
 ---
 
 <ExperimentalHomeHero />
-
-This page is an isolated visual experiment. The production homepage remains unchanged.

@@ -1,0 +1,30 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import HomeProofBand from '@/components/marketing/HomeProofBand.astro';
+import HomeFaqs from '@/components/islands/HomeFaqs.vue';
+import HomeUseCasesPanel from '@/components/islands/HomeUseCasesPanel.vue';
+import HomeArchitecture from '@/components/marketing/HomeArchitecture.astro';
+import HomeExamples from '@/components/marketing/HomeExamples.astro';
+import HomeFeatureGrid from '@/components/marketing/HomeFeatureGrid.astro';
+import HomeHero from '@/components/marketing/HomeHero.astro';
+import HomePositioning from '@/components/marketing/HomePositioning.astro';
+---
+
+<BaseLayout title="Dagonizer">
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+    <HomeProofBand />
+    <HomeHero />
+    <HomeFeatureGrid />
+    <HomeArchitecture>
+      <HomeFaqs client:idle />
+    </HomeArchitecture>
+    <HomePositioning>
+      <HomeUseCasesPanel client:idle />
+    </HomePositioning>
+    <HomeExamples />
+  </main>
+  <MarketingFooter />
+</BaseLayout>

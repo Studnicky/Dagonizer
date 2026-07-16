@@ -41,20 +41,10 @@ import type { LlmClientInterface } from '../services.ts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { prompts } from './prompts.ts';
-import {
-  AnthropicApiAdapter,
-  GeminiApiAdapter,
-  GeminiNanoAdapter,
-  OllamaApiAdapter,
-  OpenAiCompatibleAdapter,
-  WebLlmAdapter,
-  OllamaProbe,
-  type GeminiNanoAvailabilityType,
-  type WebLlmInitReportType,
-} from './adapters/index.ts';
 import { LlmError } from '@studnicky/dagonizer/adapter';
 import { BaseLlmClient, type BaseLlmClientOptions } from './BaseLlmClient.ts';
 import type { IntentClassifier } from './IntentClassifier.ts';
+import type { GeminiNanoAvailabilityType, WebLlmInitReportType } from './adapters/index.ts';
 
 export type ProviderId =
   | 'gemini-nano'
@@ -153,6 +143,17 @@ export interface InstantiateInputs {
   readonly intentClassifier?: IntentClassifier;
   /** Visitor device language (ISO 639-1); threaded into the instantiated client's prompts. */
   readonly language?: string;
+}
+
+type ProviderRuntimeModuleType = typeof import('./adapters/index.ts');
+
+let providerRuntimePromise: Promise<ProviderRuntimeModuleType> | null = null;
+
+async function loadProviderRuntime(): Promise<ProviderRuntimeModuleType> {
+  if (providerRuntimePromise === null) {
+    providerRuntimePromise = import('./adapters/index.ts');
+  }
+  return providerRuntimePromise;
 }
 
 /**
@@ -299,6 +300,15 @@ export class BackendMatrix {
   }
 
   static async detect(inputs: DetectionInputs = {}): Promise<readonly BackendAvailability[]> {
+    const {
+      AnthropicApiAdapter,
+      GeminiApiAdapter,
+      GeminiNanoAdapter,
+      OllamaApiAdapter,
+      OllamaProbe,
+      OpenAiCompatibleAdapter,
+      WebLlmAdapter,
+    } = await loadProviderRuntime();
     const keys = inputs.apiKeys ?? {};
     const preferredModels: Partial<Record<ProviderId, string>> = {
       ...(inputs.preferredModels ?? {}),
@@ -634,7 +644,15 @@ export class BackendMatrix {
  * absent model means "no explicit override": the adapter uses its internal default.
  */
 export class ProviderInstantiator {
-  static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClientInterface {
+  static async instantiate(id: ProviderId, inputs: InstantiateInputs = {}): Promise<LlmClientInterface> {
+    const {
+      AnthropicApiAdapter,
+      GeminiApiAdapter,
+      GeminiNanoAdapter,
+      OllamaApiAdapter,
+      OpenAiCompatibleAdapter,
+      WebLlmAdapter,
+    } = await loadProviderRuntime();
     const keys = inputs.apiKeys ?? {};
     const model = typeof inputs.model === 'string' && inputs.model.length > 0 ? inputs.model : '';
 
@@ -693,14 +711,5 @@ export class ProviderInstantiator {
 export { BaseLlmClient } from './BaseLlmClient.ts';
 export { EmbedderProvisioner } from './EmbedderProvisioner.ts';
 export type { EmbedderProvisionOptionsType, EmbedderProvisionResultType } from './EmbedderProvisioner.ts';
-export {
-  AnthropicApiAdapter,
-  GeminiApiAdapter,
-  GeminiNanoAdapter,
-  OllamaApiAdapter,
-  OpenAiCompatibleAdapter,
-  WebLlmAdapter,
-  OllamaProbe,
-} from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
 export type { GeminiNanoAvailabilityType, WebLlmInitReportType };

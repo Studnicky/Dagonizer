@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "site"
   - "examples"
   - "examples/the-archivist"
   - "examples/the-cartographer"

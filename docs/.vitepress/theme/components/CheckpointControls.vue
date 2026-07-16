@@ -15,6 +15,8 @@
  */
 
 import { onMounted, ref } from 'vue';
+import UiButton from './ui/UiButton.vue';
+import UiMetaText from './ui/UiMetaText.vue';
 
 const STORAGE_KEY = 'dagonizer-archivist-checkpoint';
 
@@ -51,30 +53,32 @@ function onResume(): void {
 
 <template>
   <div class="ckpt-controls">
-    <button
-      type="button"
+    <UiButton
       class="ckpt-btn ckpt-save"
+      variant="ghost"
+      size="sm"
       :disabled="running || checkpointNode === null"
       :title="checkpointNode !== null ? `Save checkpoint at ${checkpointNode}` : 'No checkpoint available. Run the Archivist first.'"
       @click="onSave"
     >
       <span aria-hidden="true">&#9632;</span> checkpoint
-    </button>
+    </UiButton>
 
-    <button
+    <UiButton
       v-if="hasCheckpoint"
-      type="button"
       class="ckpt-btn ckpt-resume"
+      variant="ghost"
+      size="sm"
       :disabled="running"
       title="Resume from saved checkpoint"
       @click="onResume"
     >
       <span aria-hidden="true">&#9654;</span> resume
-    </button>
+    </UiButton>
 
-    <span v-if="checkpointNode !== null" class="ckpt-label">
+    <UiMetaText v-if="checkpointNode !== null" class="ckpt-label">
       saved at <code>{{ checkpointNode }}</code>
-    </span>
+    </UiMetaText>
   </div>
 </template>
 
@@ -87,20 +91,13 @@ function onResume(): void {
 }
 
 .ckpt-btn {
-  display: inline-flex;
-  align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
+  transition: filter 0.12s ease;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: filter 0.12s ease;
 }
 
-.ckpt-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.ckpt-btn:disabled { filter: none; }
 
 .ckpt-save {
   background: rgba(155, 81, 224, 0.12);
@@ -108,7 +105,7 @@ function onResume(): void {
   border: 1px solid rgba(155, 81, 224, 0.3);
 }
 
-.ckpt-save:hover:not([disabled]) { filter: brightness(1.15); }
+.ckpt-save:hover:not(:disabled) { filter: brightness(1.15); }
 
 .ckpt-resume {
   background: rgba(34, 232, 255, 0.12);
@@ -116,11 +113,9 @@ function onResume(): void {
   border: 1px solid rgba(34, 232, 255, 0.3);
 }
 
-.ckpt-resume:hover:not([disabled]) { filter: brightness(1.15); }
+.ckpt-resume:hover:not(:disabled) { filter: brightness(1.15); }
 
 .ckpt-label {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
   color: var(--vp-c-text-3);
 }
 

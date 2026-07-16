@@ -32,9 +32,8 @@ import {
   DagContainerBase,
   DAG_CONTAINER_WORKER_DIED,
 } from '@studnicky/dagonizer/container';
-import type {
-  PoolEntryType,
-} from '@studnicky/dagonizer/container';
+import type { DagContainerOptionsType, PoolEntryType } from '@studnicky/dagonizer/container';
+import type { GraphStateTransferFormatType } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
@@ -68,6 +67,27 @@ export type WebWorkerContainerOptionsType = {
    * from `navigator` when available, otherwise 2.
    */
   readonly poolSize?: number;
+
+  /**
+   * Contract-negotiated graph-state transfer formats. Defaults to
+   * `DEFAULT_GRAPH_STATE_TRANSFER_FORMATS` (N-Quads only).
+   */
+  readonly graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
+
+  /**
+   * Default graph transfer mode when graph state is present.
+   * Defaults to `inline-nquads`.
+   */
+  readonly graphStateTransferMode?: DagContainerOptionsType['graphStateTransferMode'];
+
+  /**
+   * Opt-out for the host's per-flush instrumentation-event dedup, which
+   * collapses identical `nodeStart`/`nodeEnd`/etc. events from scatter
+   * clones sharing a static placementPath before they cross the worker
+   * boundary. Defaults to `undefined` (host default: `true`, dedup on).
+   * Pass `false` to receive every raw instrumentation event.
+   */
+  readonly coalesceInstrumentation?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -79,10 +99,16 @@ export class WebWorkerContainer extends DagContainerBase<WebWorkerLikeInterface>
   constructor(options: WebWorkerContainerOptionsType) {
     const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();
     const servicesConfig: JsonObjectType = options.servicesConfig ?? {};
+    const graphStateTransferFormats = options.graphStateTransferFormats;
+    const graphStateTransferMode = options.graphStateTransferMode;
+    const coalesceInstrumentation = options.coalesceInstrumentation;
 
     super({
       ...DagContainerBase.defaultOptions,
       'poolSize': poolSize,
+      ...(graphStateTransferFormats === undefined ? {} : { 'graphStateTransferFormats': graphStateTransferFormats }),
+      ...(graphStateTransferMode === undefined ? {} : { 'graphStateTransferMode': graphStateTransferMode }),
+      ...(coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': coalesceInstrumentation }),
       'init': {
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,

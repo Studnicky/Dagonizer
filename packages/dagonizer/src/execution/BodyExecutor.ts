@@ -2,13 +2,12 @@ import { DagTask } from '../container/DagTask.js';
 import { TransportErrorCode } from '../container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
-import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
+import { Batch } from '../entities/batch/Batch.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import { Timeout } from '../entities/Timeout.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
@@ -86,10 +85,6 @@ export type BodyRunResultType = {
  * the caller applies the routing policy its cardinality requires.
  */
 export class BodyExecutor {
-  private static isGraphState(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
-    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
-      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
-  }
   readonly #source: BodyRunPortInterface;
 
   constructor(source: BodyRunPortInterface) {
@@ -196,18 +191,16 @@ export class BodyExecutor {
     );
 
     const relay = this.#source.relayFor(parentState);
-    const outcome = await container.runDag(task, { relay });
+    const batch = Batch.from([{ 'id': correlationId, 'state': cloneState }]);
+    const [outcome] = await container.runDag(task, batch, { relay });
+    if (outcome === undefined) throw new Error('BodyExecutor: invariant — runDag returned no result for the single-item batch');
 
-    // Apply terminal graph state back to clone for domain state (in-place;
-    // parent state identity is preserved). outcome.errors is the single
-    // authoritative error channel — always collect it regardless of whether a
-    // graph state is present. Errors are intentionally not serialized into the
-    // graph state; it carries domain state only (metadata, retries,
-    // warnings, subclass fields).
-    if (outcome.graphState !== undefined) {
-      if (!BodyExecutor.isGraphState(cloneState)) throw new Error('Graph-state outcome requires a graph-backed clone');
-      await GraphStateTransferCodec.restore(cloneState, outcome.graphState);
-    }
+    // The container owns graph-state restore: `runDag` splits the terminal batch
+    // transfer and restores `task.state` (this clone) in-place before returning,
+    // so the clone already carries its terminal domain state here. outcome.errors
+    // is the single authoritative error channel — always collect it. Errors are
+    // intentionally not serialized into the graph state; it carries domain state
+    // only (metadata, retries, warnings, subclass fields).
     for (const err of outcome.errors) cloneState.collectError(err);
 
     // Re-yield each intermediate as a NodeResultType only when buffering is

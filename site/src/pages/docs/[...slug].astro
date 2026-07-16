@@ -1,0 +1,49 @@
+---
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { getCollection, getEntry, render } from 'astro:content';
+import { toEditUrl } from '@/lib/docs';
+import { siteHref } from '@/lib/links';
+
+export async function getStaticPaths() {
+  const explicitDocSlugs = new Set([
+    'examples/the-archivist',
+    'examples/the-cartographer',
+    'examples/the-dispatcher'
+  ]);
+
+  return (await getCollection('docs'))
+    .filter((entry) => entry.id !== 'index' && !explicitDocSlugs.has(entry.id))
+    .map((entry) => ({
+      params: {
+        slug: entry.id
+      }
+    }));
+}
+
+const slugParam = Array.isArray(Astro.params.slug) ? Astro.params.slug.join('/') : Astro.params.slug ?? '';
+const doc = await getEntry('docs', slugParam);
+
+if (doc === undefined) {
+  return Astro.redirect(siteHref('/docs'));
+}
+
+const rendered = await render(doc);
+const pageTitle = doc.data.title ?? doc.id;
+const editUrl = toEditUrl(doc.id);
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: '#', label: doc.id.split('/')[0] ?? 'overview' }
+] as const;
+---
+
+<DocPageShell
+  title={pageTitle}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings.map((heading) => heading.text)}
+  sections={[]}
+  sourceLabel={`${doc.id}.md`}
+  sourceHref={editUrl}
+  crumbs={crumbs}
+>
+  <rendered.Content />
+</DocPageShell>

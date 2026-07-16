@@ -1,0 +1,47 @@
+/**
+ * Shared overlay chrome for visualization loading/error/empty surfaces.
+ *
+ * Parameterization:
+ *   --dagonizer-viewer-overlay-stroke
+ *   --dagonizer-viewer-overlay-surface
+ *   --dagonizer-viewer-overlay-text
+ */
+
+.dagonizer-viewer-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  text-align: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.dagonizer-viewer-overlay__panel {
+  max-width: min(32rem, 88%);
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--dagonizer-viewer-overlay-stroke, var(--vp-c-divider, #2e3748));
+  border-radius: 8px;
+  background: var(--dagonizer-viewer-overlay-surface, rgba(2, 3, 6, 0.58));
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px -14px rgba(0, 0, 0, 0.45);
+  color: var(--dagonizer-viewer-overlay-text, var(--vp-c-text-2, #ccd6f6));
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.dagonizer-viewer-overlay--loading .dagonizer-viewer-overlay__panel {
+  color: var(--dagonizer-viewer-overlay-text, var(--vp-c-text-2, #ccd6f6));
+}
+
+.dagonizer-viewer-overlay--error .dagonizer-viewer-overlay__panel {
+  border-color: color-mix(in srgb, var(--dagonizer-brand3, #e74c3c) 55%, var(--vp-c-divider, #2e3748));
+  color: var(--dagonizer-brand3, #e74c3c);
+}
+
+.dagonizer-viewer-overlay--empty .dagonizer-viewer-overlay__panel {
+  color: var(--vp-c-text-3, #96a4c2);
+  font-style: italic;
+}

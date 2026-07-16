@@ -1,0 +1,13 @@
+---
+import UiAsideCard from '@/components/islands/UiAsideCard.vue';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<UiAsideCard title={title}>
+  <slot />
+</UiAsideCard>

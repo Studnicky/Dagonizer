@@ -24,7 +24,7 @@ export type {
 } from './DagContainerBase.js';
 export { DEFAULT_SHUTDOWN_GRACE_MS } from './DagContainerBase.js';
 export { DagOutcome } from './DagOutcome.js';
-export type { BatchRunResultType } from './DagOutcome.js';
+export type { RunResultType } from './DagOutcome.js';
 export type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 export {
   DAG_CONTAINER_TRANSPORT,

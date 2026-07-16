@@ -60,6 +60,10 @@ function feedDagIri(source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): str
   return `urn:noocodec:dag:cartographer-feed-${source}`;
 }
 
+function streamFeedDagIri(source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): string {
+  return `urn:noocodec:dag:cartographer-stream-feed-${source}`;
+}
+
 function feedSources(dagIri: string): Readonly<Record<string, { readonly resultField: 'canonicalEvents' }>> {
   return Object.freeze(
     Object.fromEntries(
@@ -84,6 +88,7 @@ export const CARTOGRAPHER_IRIS = Object.freeze({
   intakeEventTypes: CARTOGRAPHER_INTAKE_EVENT_TYPES,
   entrypointIri,
   feedDagIri,
+  streamFeedDagIri,
   feedEntrypoints,
   feedPlacementIri,
   feedSources,

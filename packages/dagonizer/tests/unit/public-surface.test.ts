@@ -26,11 +26,12 @@ import type {
   GatherProgressType as RootGatherProgressType,
   GatherRecordProgressType as RootGatherRecordProgressType,
 } from '../../src/index.js';
+import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type {
   GatherProgressType as TypeBarrelGatherProgressType,
   GatherRecordProgressType as TypeBarrelGatherRecordProgressType,
 } from '../../src/types/index.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 
 void describe('public root surface', () => {
   void it('exports the gather progress key', () => {
@@ -40,8 +41,7 @@ void describe('public root surface', () => {
   void it('exports gather checkpoint and progress schemas', () => {
     const progress: RootGatherProgressType = { 'entries': {} };
     const sameProgress: TypeBarrelGatherProgressType = progress;
-    const graphState = emptyGraphStateTransfer().jsonLd;
-    if (graphState === undefined) throw new Error('emptyGraphStateTransfer should include jsonLd');
+    const graphState = graphStateDocument(new NodeStateBase());
     const record: RootGatherRecordProgressType = {
       'source': 'left',
       'index': null,

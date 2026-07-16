@@ -28,9 +28,9 @@ A plugin declares an ID, optional context, nodes, DAGs, and exports. `registerPl
 
 Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@studnicky/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
 
-::: warning Beta
-The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable.
-:::
+<UiCallout kind="warning" title="Beta">
+  <p>The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (<code>./adapter</code>, <code>./tool</code>, <code>./patterns</code>) are stable.</p>
+</UiCallout>
 
 ## Diagrams, Examples, and Outputs
 

@@ -26,17 +26,18 @@ import { describe, it } from 'node:test';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
 
 const INIT_MSG: BridgeMessageType = {
   'variant': 'init',
@@ -210,11 +211,12 @@ class LoopbackTask {
   private constructor() {}
 
   static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
-    const snapshot = emptyGraphStateTransfer();
+    const runIri = `urn:dagonizer:run:${correlationId}`;
     const request: ExecutionRequestType = {
       'dagName': 'test-dag',
       'placementPath': ['urn:dagonizer:placement:test'],
-      'items': [{ 'id': correlationId, 'graphState': snapshot }],
+      'graphState': emptyInlineTransfer([runIri]),
+      'items': [{ 'id': correlationId, 'runIri': runIri }],
       'timeoutMs': null,
       'correlationId': correlationId,
     };
@@ -306,12 +308,15 @@ class LoopbackFakeHost {
         });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
-        const itemId = msg.request.items[0]?.id ?? correlationId;
+        const requestItem = msg.request.items[0];
+        const itemId = requestItem?.id ?? correlationId;
+        const runIri = requestItem?.runIri ?? `urn:dagonizer:run:${correlationId}`;
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': itemId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${correlationId}` }],
+            'graphState': emptyInlineTransfer([runIri]),
+            'items': [{ 'id': itemId, 'runIri': runIri, 'terminalOutcome': `done-${correlationId}` }],
             'errors': [],
             'intermediates': [],
           },
@@ -339,12 +344,14 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     // and then checking the count proves the subscription is installed once.
     const REQUEST_COUNT = 30;
     const ac = new AbortController();
-    const results: DagOutcomeType[] = [];
+    const results: RunResultType[] = [];
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
-      const task = LoopbackTask.of(`req-${i}`, ac.signal);
-      const outcome = await container.runDag(task);
-      results.push(outcome);
+      const id = `req-${i}`;
+      const task = LoopbackTask.of(id, ac.signal);
+      const batch = Batch.from([{ id, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      if (outcome !== undefined) results.push(outcome);
     }
 
     // (a) Core assertion: exactly one onMessage call regardless of request count.
@@ -369,7 +376,9 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     for (let i = 0; i < REQUEST_COUNT; i++) {
       const correlationId = `req-${i}`;
       const task = LoopbackTask.of(correlationId, ac.signal);
-      const outcome = await container.runDag(task);
+      const batch = Batch.from([{ 'id': correlationId, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      assert.ok(outcome !== undefined);
 
       // (b) Each request must receive its own correlated terminalOutput.
       assert.strictEqual(
@@ -406,21 +415,25 @@ void describe('channel-correlation: single subscription + correlationId demux', 
           const firstId = pending[0]?.correlationId ?? '';
           // Respond to second first, then first.
           setImmediate(() => {
+            const secondRunIri = `urn:dagonizer:run:${secondId}`;
             hostSide.send({
               'variant': 'result',
               'response': {
                 'correlationId': secondId,
-                'items': [{ 'id': secondId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${secondId}` }],
+                'graphState': emptyInlineTransfer([secondRunIri]),
+                'items': [{ 'id': secondId, 'runIri': secondRunIri, 'terminalOutcome': `done-${secondId}` }],
                 'errors': [],
                 'intermediates': [],
               },
             });
             setImmediate(() => {
+              const firstRunIri = `urn:dagonizer:run:${firstId}`;
               hostSide.send({
                 'variant': 'result',
                 'response': {
                   'correlationId': firstId,
-                  'items': [{ 'id': firstId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${firstId}` }],
+                  'graphState': emptyInlineTransfer([firstRunIri]),
+                  'items': [{ 'id': firstId, 'runIri': firstRunIri, 'terminalOutcome': `done-${firstId}` }],
                   'errors': [],
                   'intermediates': [],
                 },
@@ -432,11 +445,18 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     });
 
     const ac = new AbortController();
+    const taskA = LoopbackTask.of('req-A', ac.signal);
+    const taskB = LoopbackTask.of('req-B', ac.signal);
+    const batchA = Batch.from([{ 'id': 'req-A', 'state': taskA.state }]);
+    const batchB = Batch.from([{ 'id': 'req-B', 'state': taskB.state }]);
     // Launch both requests concurrently.
-    const [outcomeA, outcomeB] = await Promise.all([
-      container.runDag(LoopbackTask.of('req-A', ac.signal)),
-      container.runDag(LoopbackTask.of('req-B', ac.signal)),
+    const [resultsA, resultsB] = await Promise.all([
+      container.runDag(taskA, batchA),
+      container.runDag(taskB, batchB),
     ]);
+    const [outcomeA] = resultsA;
+    const [outcomeB] = resultsB;
+    assert.ok(outcomeA !== undefined && outcomeB !== undefined);
 
     // (c) Each caller must receive its own outcome despite out-of-order delivery.
     assert.strictEqual(outcomeA.terminalOutput, 'done-req-A',
@@ -480,11 +500,13 @@ void describe('worker observability: forwarded node events reach the parent obse
             'placementPath': ['scatter-placement', 'inner-step'],
           }],
         });
+        const runIri = `urn:dagonizer:run:${correlationId}`;
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'done' }],
+            'graphState': emptyInlineTransfer([runIri]),
+            'items': [{ 'id': correlationId, 'runIri': runIri, 'terminalOutcome': 'done' }],
             'errors': [],
             'intermediates': [],
           },
@@ -507,7 +529,10 @@ void describe('worker observability: forwarded node events reach the parent obse
     };
 
     const ac = new AbortController();
-    const outcome = await container.runDag(LoopbackTask.of('obs-1', ac.signal), { relay });
+    const task = LoopbackTask.of('obs-1', ac.signal);
+    const batch = Batch.from([{ 'id': 'obs-1', 'state': task.state }]);
+    const [outcome] = await container.runDag(task, batch, { relay });
+    assert.ok(outcome !== undefined);
 
     assert.strictEqual(outcome.terminalOutput, 'done');
     assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');

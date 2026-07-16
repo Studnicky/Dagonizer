@@ -240,8 +240,14 @@ export class CartographerState extends NodeStateBase {
    * incrementally as scatter clones complete; memory does not grow
    * with event count. In the streaming path state.records stays empty;
    * this field holds the representative sample the UI consumes.
+   *
+   * `sampleRecordsCursor` and `sampleRecordsWrapped` carry ring metadata while
+   * the run is in progress. Finalize restores `sampleRecords` into
+   * chronological order and clears metadata.
    */
   sampleRecords: EnrichedShipment[] = [];
+  sampleRecordsCursor: number = 0;
+  sampleRecordsWrapped: boolean = false;
 
   /** Fixed-size regional insights aggregate produced by summarizeInsights. */
   insights: Map<string, RegionInsights> = new Map();
@@ -590,6 +596,8 @@ export class CartographerState extends NodeStateBase {
     copy.canonicalEvents        = [];
     copy.records                = [];
     copy.sampleRecords          = [];
+    copy.sampleRecordsCursor    = 0;
+    copy.sampleRecordsWrapped   = false;
     copy.insights               = new Map();
     copy.journeys               = new Map();
     copy.journeyAccumulators    = new Map();

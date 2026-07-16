@@ -14,6 +14,10 @@
  */
 
 import { nextTick, ref, watch } from 'vue';
+import PanelHeader from './ui/PanelHeader.vue';
+import StateSurface from './ui/StateSurface.vue';
+import UiMetaText from './ui/UiMetaText.vue';
+import UiPaneSurface from './ui/UiPaneSurface.vue';
 
 interface Turn {
   readonly role: 'visitor' | 'archivist';
@@ -63,13 +67,14 @@ watch(
 </script>
 
 <template>
-  <section class="conversation">
-    <header class="conversation-header">
-      <h4>Conversation</h4>
-      <span v-if="turns.length > 0" class="conversation-count">
-        {{ turns.length }} {{ turns.length === 1 ? 'turn' : 'turns' }}
-      </span>
-    </header>
+  <UiPaneSurface class="conversation" fill-height padding="lg">
+    <PanelHeader title="Conversation">
+      <template #meta>
+        <UiMetaText v-if="turns.length > 0">
+          {{ turns.length }} {{ turns.length === 1 ? 'turn' : 'turns' }}
+        </UiMetaText>
+      </template>
+    </PanelHeader>
 
     <ol v-if="turns.length > 0" ref="listRef" class="conversation-list">
       <li
@@ -82,46 +87,13 @@ watch(
       </li>
     </ol>
 
-    <p v-else class="conversation-empty">
+    <StateSurface v-else kind="empty">
       {{ emptyHint ?? 'Ask the Archivist something to begin.' }}
-    </p>
-  </section>
+    </StateSurface>
+  </UiPaneSurface>
 </template>
 
 <style scoped>
-.conversation {
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 0.8rem 0.9rem;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.conversation-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.6rem;
-}
-
-.conversation h4 {
-  margin: 0;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-}
-
-.conversation-count {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
-}
-
 .conversation-list {
   list-style: none;
   padding: 0;
@@ -182,13 +154,6 @@ watch(
   font-size: 0.92rem;
   white-space: pre-wrap;
   word-wrap: break-word;
-}
-
-.conversation-empty {
-  margin: auto 0;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  text-align: center;
 }
 
 @keyframes turn-in {

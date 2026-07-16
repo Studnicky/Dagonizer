@@ -14,6 +14,10 @@
  */
 
 import { onMounted, ref, watch } from 'vue';
+import PanelHeader from './ui/PanelHeader.vue';
+import UiButton from './ui/UiButton.vue';
+import UiPaneSurface from './ui/UiPaneSurface.vue';
+import UiRangeField from './ui/UiRangeField.vue';
 
 const STORAGE_KEY = 'dagonizer-archivist-conv-window';
 const DEFAULT_WINDOW = 6;
@@ -67,128 +71,37 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="ccp-pane">
-    <header class="ccp-header">
-      <h4>Conversation context</h4>
-      <span class="ccp-hint">prior turns threaded into each LLM call</span>
-    </header>
+  <UiPaneSurface class="ccp-pane" fill-height padding="lg">
+    <PanelHeader
+      title="Conversation context"
+      hint="prior turns threaded into each LLM call"
+    />
 
     <div class="ccp-body">
-      <div class="ccp-row">
-        <label class="ccp-label" for="ccp-window">window</label>
-        <input
-          id="ccp-window"
-          name="ccp-window"
-          type="range"
-          class="ccp-slider"
-          :value="windowSize"
-          :min="0"
-          :max="20"
-          step="1"
-          @input="onWindowInput"
-        />
-        <input
-          id="ccp-window-num"
-          name="ccp-window-num"
-          type="number"
-          class="ccp-num"
-          :value="windowSize"
-          :min="0"
-          :max="20"
-          step="1"
-          @change="onWindowInput"
-        />
-        <span class="ccp-unit">turns</span>
-      </div>
+      <UiRangeField
+        label="window"
+        :value="windowSize"
+        :min="0"
+        :max="20"
+        :step="1"
+        unit="turns"
+        @update:value="windowSize = clamp($event, MIN_WINDOW, MAX_WINDOW); save()"
+      />
 
       <div class="ccp-footer">
         <span class="ccp-desc">{{ windowSize === 0 ? 'history disabled; each turn is a cold start' : `last ${windowSize} turn${windowSize === 1 ? '' : 's'} injected into prompts` }}</span>
-        <button class="ccp-reset" type="button" @click="reset">reset</button>
+        <UiButton class="ccp-reset" variant="ghost" size="sm" @click="reset">reset</UiButton>
       </div>
     </div>
-  </section>
+  </UiPaneSurface>
 </template>
 
 <style scoped>
-.ccp-pane {
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 0.8rem 0.9rem;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.ccp-header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  margin-bottom: 1.1rem;
-}
-
-.ccp-header h4 {
-  margin: 0;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-  flex-shrink: 0;
-}
-
-.ccp-hint {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-}
-
 .ccp-body {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
   max-width: 560px;
-}
-
-.ccp-row {
-  display: grid;
-  grid-template-columns: 80px 1fr 76px 40px;
-  gap: 0.65rem;
-  align-items: center;
-}
-
-.ccp-label {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.78rem;
-  color: var(--vp-c-text-2);
-  white-space: nowrap;
-}
-
-.ccp-slider {
-  width: 100%;
-  accent-color: var(--dagonizer-brand);
-  cursor: pointer;
-}
-
-.ccp-num {
-  width: 100%;
-  padding: 0.25rem 0.4rem;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 3px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.78rem;
-  text-align: right;
-}
-
-.ccp-num:focus { outline: none; border-color: var(--dagonizer-brand); }
-
-.ccp-unit {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-  color: var(--vp-c-text-3);
 }
 
 .ccp-footer {
@@ -207,18 +120,5 @@ onMounted(() => {
   flex: 1;
 }
 
-.ccp-reset {
-  background: transparent;
-  color: var(--vp-c-text-3);
-  border: 0;
-  padding: 0.15rem 0.3rem;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 0.12s ease;
-}
-
-.ccp-reset:hover { color: var(--dagonizer-brand3); }
+.ccp-reset { margin-left: auto; }
 </style>

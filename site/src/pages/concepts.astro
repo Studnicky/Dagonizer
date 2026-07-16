@@ -1,0 +1,31 @@
+---
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { getEntry, render } from 'astro:content';
+import { toEditUrl } from '@/lib/docs';
+import { siteHref } from '@/lib/links';
+
+const doc = await getEntry('docs', 'concepts');
+
+if (doc === undefined) {
+  throw new Error('Missing docs/concepts.md content for Astro site concepts route.');
+}
+
+const rendered = await render(doc);
+
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: siteHref('/concepts'), label: 'Concepts' }
+] as const;
+---
+
+<DocPageShell
+  title={doc.data.title ?? 'Concepts'}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings.map((heading) => heading.text)}
+  sections={[]}
+  sourceLabel="concepts.md"
+  sourceHref={toEditUrl('concepts')}
+  crumbs={crumbs}
+>
+  <rendered.Content />
+</DocPageShell>

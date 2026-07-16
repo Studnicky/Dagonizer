@@ -32,6 +32,7 @@ import { RealTimeScheduler } from '@studnicky/scheduler';
 import type { ScheduledTaskType, SchedulerProviderType } from '@studnicky/scheduler';
 
 import type { DAGType } from '../../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import { DEFAULT_VISUALIZER_ANIMATION_POLICY } from '../../../../../packages/dagonizer/src/viz/AnimationPolicy.ts';
 import { CytoscapeGraph } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 import type { CytoscapeGraphOptionsType } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 import { CytoscapeRenderer } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
@@ -78,6 +79,7 @@ const FIT_PADDING = 24;
  * still identify the major DAG bodies.
  */
 const OVERVIEW_ZOOM_MAX = 0.11;
+const ANIMATION = DEFAULT_VISUALIZER_ANIMATION_POLICY;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -163,6 +165,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   #onWheel: (() => void) | null = null;
   #onDrag: (() => void) | null = null;
   #onZoom: (() => void) | null = null;
+  #inspectedNodeId: string | null = null;
 
   // ── Constructor ──────────────────────────────────────────────────────────
 
@@ -305,10 +308,10 @@ export class AnimatedDagGraph extends CytoscapeGraph {
         if (nodes === undefined || nodes.length === 0) return;
         void nodes.animate(
           { style: { 'overlay-color': '#22e8ff', 'overlay-opacity': 0.55, 'overlay-padding': 18 } },
-          { duration: 280 },
+          { duration: ANIMATION.nodePulseInMs },
         ).animate(
           { style: { 'overlay-opacity': 0, 'overlay-padding': 0 } },
-          { duration: 360 },
+          { duration: ANIMATION.nodePulseOutMs },
         );
       },
       shake() {
@@ -317,10 +320,10 @@ export class AnimatedDagGraph extends CytoscapeGraph {
         const first = nodes[0] as NodeSingular;
         const pos = first.position();
         void nodes
-          .animate({ position: { x: pos.x - 7, y: pos.y } }, { duration: 70 })
-          .animate({ position: { x: pos.x + 7, y: pos.y } }, { duration: 70 })
-          .animate({ position: { x: pos.x - 4, y: pos.y } }, { duration: 60 })
-          .animate({ position: { x: pos.x,     y: pos.y } }, { duration: 60 });
+          .animate({ position: { x: pos.x - 7, y: pos.y } }, { duration: ANIMATION.nodeShake1Ms })
+          .animate({ position: { x: pos.x + 7, y: pos.y } }, { duration: ANIMATION.nodeShake2Ms })
+          .animate({ position: { x: pos.x - 4, y: pos.y } }, { duration: ANIMATION.nodeShake3Ms })
+          .animate({ position: { x: pos.x,     y: pos.y } }, { duration: ANIMATION.nodeShake4Ms });
       },
     };
   }
@@ -336,10 +339,10 @@ export class AnimatedDagGraph extends CytoscapeGraph {
         if (edges.length === 0) return;
         void edges.animate(
           { style: { 'width': 6, 'line-color': '#22e8ff', 'target-arrow-color': '#22e8ff' } },
-          { duration: 220 },
+          { duration: ANIMATION.edgeFlashInMs },
         ).animate(
           { style: { 'width': 3 } },
-          { duration: 320 },
+          { duration: ANIMATION.edgeFlashOutMs },
         );
       },
     };
@@ -366,6 +369,16 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       elements.removeClass('dag-overview');
       this.#clearOverviewStyleBypass(cy);
     }
+  }
+
+  setInspectedNode(id: string | null): void {
+    this.#inspectedNodeId = id;
+    const cy = this.cyInstance;
+    if (cy === null) return;
+    cy.nodes().removeClass('dag-inspected');
+    if (id === null || id.length === 0) return;
+    const nodes = this.resolveNode(id);
+    if (nodes !== null && nodes.length > 0) nodes.addClass('dag-inspected');
   }
 
   #applyOverviewStyleBypass(cy: Core): void {
@@ -462,7 +475,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   #followActiveSet(): void {
     this.#pendingFitTask?.cancel();
-    this.#pendingFitTask = this.#scheduler.scheduleAt(Date.now() + 200, () => {
+    this.#pendingFitTask = this.#scheduler.scheduleAt(Date.now() + ANIMATION.cameraFollowDebounceMs, () => {
       this.#pendingFitTask = null;
       if (this.#userInteracted) return;
       const cy = this.cyInstance;
@@ -488,7 +501,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       const insideX = centroidX > w * FOLLOW_CENTRE_BAND && centroidX < w * (1 - FOLLOW_CENTRE_BAND);
       const insideY = centroidY > h * FOLLOW_CENTRE_BAND && centroidY < h * (1 - FOLLOW_CENTRE_BAND);
       if (insideX && insideY) return;
-      cy.animate({ 'center': { 'eles': nodes } }, { 'duration': 240, 'easing': 'ease' });
+      cy.animate({ 'center': { 'eles': nodes } }, { 'duration': ANIMATION.cameraFollowPanMs, 'easing': 'ease' });
       this.#pollZoom(cy);
     });
   }
@@ -538,7 +551,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     const stateEls = cy?.elements('.dag-active, .dag-completed, .dag-errored, .dag-traversed');
     if (stateEls !== undefined && stateEls.length > 0) {
       stateEls.addClass('dag-resetting');
-      await new Promise<void>((resolve) => { this.#scheduler.scheduleAt(Date.now() + 280, resolve); });
+      await new Promise<void>((resolve) => { this.#scheduler.scheduleAt(Date.now() + ANIMATION.resetFadeMs, resolve); });
     }
     this.dispatch({ type: 'RESET' });
     this.applyFit();
@@ -681,6 +694,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     this.rerunLayout();
     this.enforceVisibility(cy);
     this.applyFit();
+    this.setInspectedNode(this.#inspectedNodeId);
   }
 
   // ── Public: lifecycle ─────────────────────────────────────────────────────

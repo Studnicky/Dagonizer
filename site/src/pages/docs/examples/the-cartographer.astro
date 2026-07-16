@@ -1,0 +1,59 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import LazyCartographerRunner from '@/components/islands/LazyCartographerRunner.vue';
+import { siteHref } from '@/lib/links';
+
+const relatedLinks = [
+  { href: siteHref('/docs/examples/the-archivist'), label: 'The Archivist' },
+  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' },
+  { href: siteHref('/docs/concepts'), label: 'Concepts' }
+] as const;
+
+const crumbs = [
+  { href: siteHref('/docs'), label: 'Docs' },
+  { href: siteHref('/docs/examples/the-cartographer'), label: 'Examples' }
+] as const;
+---
+
+<BaseLayout
+  title="The Cartographer"
+  description="Runnable Dagonizer example for deterministic intake, enrichment, geo-resolution, and insight fan-in across a data workflow."
+>
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+
+    <section class="rounded-[2rem] border border-white/10 bg-slate-950/72 px-6 py-8 shadow-[0_30px_120px_-48px_rgba(15,23,42,1)] backdrop-blur md:px-8 md:py-10">
+      <UiPageHeader
+        title="The Cartographer"
+        description="A data workflow that demonstrates how Dagonizer handles staged intake, normalization, enrichment, and insight aggregation in one deterministic graph."
+        crumbs={crumbs}
+      />
+
+      <div class="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+        <div class="space-y-8">
+          <LazyCartographerRunner client:visible />
+        </div>
+
+        <aside class="space-y-5">
+          <UiAsideCard title="What this proves">
+            <div class="space-y-3 text-sm leading-6 text-slate-300">
+              <p>Dagonizer is not limited to agent workflows; it also fits deterministic multi-stage data processing.</p>
+              <p>Streaming intake, transformation boundaries, and fan-in remain visible as first-class graph behavior.</p>
+              <p>Teams can inspect how one framework handles both operational data flow and higher-level derived outputs.</p>
+            </div>
+          </UiAsideCard>
+
+          <UiAsideCard title="Related">
+            <UiLinkList links={relatedLinks} />
+          </UiAsideCard>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

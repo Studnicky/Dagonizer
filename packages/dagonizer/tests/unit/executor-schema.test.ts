@@ -25,7 +25,7 @@ import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionRe
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -89,7 +89,8 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'items':         [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer() }],
+  'graphState':    emptyInlineTransfer(['urn:dagonizer:run:child-1']),
+  'items':         [{ 'id': 'child:1', 'runIri': 'urn:dagonizer:run:child-1' }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
 };
@@ -134,7 +135,8 @@ void describe('ExecutionRequest schema', () => {
 
 const validResponse = {
   'correlationId': 'child:1',
-  'items': [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'success' }],
+  'graphState': emptyInlineTransfer(['urn:dagonizer:run:child-1']),
+  'items': [{ 'id': 'child:1', 'runIri': 'urn:dagonizer:run:child-1', 'terminalOutcome': 'success' }],
   'errors': [],
   'intermediates': [
     { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
@@ -146,12 +148,12 @@ void describe('ExecutionResponse schema', () => {
     assert.equal(responseValidator(validResponse), true);
   });
 
-  void it('rejects a missing graph transfer in items[0]', () => {
-    const withNullSnapshot = {
+  void it('rejects an item missing required runIri', () => {
+    const withMissingRunIri = {
       ...validResponse,
-      'items': [{ 'id': 'child:1', 'graphState': null }],
+      'items': [{ 'id': 'child:1', 'terminalOutcome': 'success' }],
     };
-    assert.equal(responseValidator(withNullSnapshot), false);
+    assert.equal(responseValidator(withMissingRunIri), false);
   });
 
   void it('accepts an error item in errors array', () => {
@@ -256,7 +258,8 @@ const validExecute: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer() }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1' }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
   },
@@ -267,7 +270,8 @@ const validExecuteNullTimeout: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'items': [{ 'id': 'req-2', 'graphState': emptyGraphStateTransfer() }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-2']),
+    'items': [{ 'id': 'req-2', 'runIri': 'urn:dagonizer:run:req-2' }],
     'timeoutMs': null,
     'correlationId': 'req-2',
   },
@@ -293,7 +297,8 @@ const validResult: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1', 'terminalOutcome': 'completed' }],
     'errors': [],
     'intermediates': [
       { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
@@ -301,11 +306,15 @@ const validResult: BridgeMessageType = {
   },
 };
 
-const validResultNullSnapshot: BridgeMessageType = {
+// A failed-outcome result: `graphState` is always the batch payload (no
+// null-snapshot arm) — a failed terminal outcome still carries an empty
+// combined transfer rather than omitting graph state.
+const validResultFailedOutcome: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'items': [{ 'id': 'req-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1', 'terminalOutcome': 'failed' }],
     'errors': [{
       'code': 'ERR',
       'context': {},
@@ -392,8 +401,8 @@ describe('BridgeMessageType schema — valid branches', () => {
     assert.ok(Validator.bridgeMessage.is(validResult));
   });
 
-  it('validates result branch with null graphState', () => {
-    assert.ok(Validator.bridgeMessage.is(validResultNullSnapshot));
+  it('validates result branch with a failed terminal outcome', () => {
+    assert.ok(Validator.bridgeMessage.is(validResultFailedOutcome));
   });
 
   it('validates intermediate branch', () => {
@@ -488,9 +497,9 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
       'variant': 'result',
       'response': {
         'correlationId': 'req-1',
-        'terminalOutput': 'completed',
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+        'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1', 'terminalOutcome': 'completed' }],
         'errors': [],
-        'graphState': null,
         'intermediates': [
           { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },
         ],

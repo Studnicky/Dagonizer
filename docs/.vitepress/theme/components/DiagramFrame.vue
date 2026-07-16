@@ -18,7 +18,12 @@
  * `@resize` event we emit on every frame-size change).
  */
 
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ModalController } from '../../../../packages/dagonizer/src/viz/ModalController.ts';
+import { viewerAction } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
+import type { ViewerActionIdType } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
+import ViewerActions from './graph/ViewerActions.vue';
+import PanelHeader from './ui/PanelHeader.vue';
 
 defineProps<{
   title: string;
@@ -35,8 +40,25 @@ const emit = defineEmits<{
 const frameRef = ref<HTMLDivElement | null>(null);
 const expanded = ref(false);
 const isFullscreen = ref(false);
+const frameActions = computed(() => [
+  viewerAction('expand', {
+    'label': expanded.value ? '⤡' : '⤢',
+    'title': expanded.value ? 'Collapse' : 'Expand',
+    'pressed': expanded.value,
+  }),
+  viewerAction('fullscreen', {
+    'title': isFullscreen.value ? 'Exit fullscreen' : 'Fullscreen',
+    'pressed': isFullscreen.value,
+  }),
+]);
 
 let resizeObserver: ResizeObserver | null = null;
+const modalController = new ModalController({
+  'onStateChange': (open) => {
+    expanded.value = open;
+    requestAnimationFrame(() => emit('resize'));
+  },
+});
 
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && frameRef.value !== null) {
@@ -91,19 +113,24 @@ async function toggleFullscreen(): Promise<void> {
 }
 
 function toggleExpand(): void {
-  expanded.value = !expanded.value;
-  // Give the layout a tick to settle, then signal slot to resize.
-  requestAnimationFrame(() => emit('resize'));
+  modalController.toggle();
 }
 
 function onModalKey(event: KeyboardEvent): void {
-  if (event.key === 'Escape') expanded.value = false;
+  modalController.onKeyDown(event.key);
 }
 
 function onDocumentKey(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && expanded.value) {
-    expanded.value = false;
-    requestAnimationFrame(() => emit('resize'));
+  modalController.onKeyDown(event.key);
+}
+
+function onFrameAction(id: ViewerActionIdType): void {
+  if (id === 'expand') {
+    toggleExpand();
+    return;
+  }
+  if (id === 'fullscreen') {
+    void toggleFullscreen();
   }
 }
 
@@ -115,32 +142,28 @@ defineExpose({ toggleFullscreen, toggleExpand });
 <template>
   <div
     ref="frameRef"
-    :class="['diagram-frame', { 'is-fullscreen': isFullscreen, 'is-expanded': expanded }]"
+    :class="['diagram-frame', { 'is-fullscreen': isFullscreen, 'is-expanded dagonizer-modal-card': expanded }]"
     :aria-label="ariaLabel ?? title"
     :tabindex="expanded ? 0 : undefined"
     @keydown="onModalKey"
   >
-    <header v-if="!frameless" class="frame-header">
-      <h4 class="frame-title">{{ title }}</h4>
-      <div class="frame-meta">
+    <PanelHeader
+      v-if="!frameless"
+      class="frame-header"
+      :title="title"
+      variant="band"
+    >
+      <template #meta>
         <slot name="meta" />
-      </div>
-      <div class="frame-actions">
+      </template>
+      <template #actions>
         <slot name="controls" />
-        <button
-          class="frame-action"
-          :title="expanded ? 'Collapse' : 'Expand'"
-          :aria-pressed="expanded"
-          @click="toggleExpand"
-        >{{ expanded ? '⤡' : '⤢' }}</button>
-        <button
-          class="frame-action"
-          :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
-          :aria-pressed="isFullscreen"
-          @click="toggleFullscreen"
-        >{{ isFullscreen ? '⛶' : '⛶' }}</button>
-      </div>
-    </header>
+        <ViewerActions
+          :actions="frameActions"
+          @action="onFrameAction"
+        />
+      </template>
+    </PanelHeader>
 
     <div class="frame-body">
       <slot />
@@ -151,7 +174,7 @@ defineExpose({ toggleFullscreen, toggleExpand });
   <Teleport to="body">
     <div
       v-if="expanded && !isFullscreen"
-      class="frame-overlay-backdrop"
+      class="frame-overlay-backdrop dagonizer-modal-backdrop"
       aria-hidden="true"
       @click="toggleExpand"
     />
@@ -187,71 +210,18 @@ defineExpose({ toggleFullscreen, toggleExpand });
   position: fixed;
   inset: 2rem;
   z-index: 9999;
-  border-radius: 8px;
-  border-color: var(--dagonizer-brand);
-  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--dagonizer-brand);
-  animation: overlay-in 0.18s ease-out;
+  border-radius: var(--dagonizer-modal-radius, 8px);
+  border-color: var(--dagonizer-modal-border, var(--dagonizer-brand));
+  box-shadow: var(--dagonizer-modal-shadow, 0 10px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--dagonizer-brand));
+  background: var(--dagonizer-modal-surface, var(--vp-c-bg-elv));
+  animation: dagonizer-modal-in 0.18s ease-out;
 }
 
 .frame-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.7rem;
-  background: var(--vp-c-bg-alt);
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-
-.frame-title {
-  margin: 0;
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-}
-
-.frame-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  color: var(--vp-c-text-2);
-}
-
-.frame-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.frame-action {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-1);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-
-.frame-action:hover {
-  background: var(--vp-c-bg);
-  border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
-.frame-action:focus-visible {
-  outline: 2px solid var(--dagonizer-brand);
-  outline-offset: 1px;
+  :deep(.dg-panel-header__meta) {
+    font-size: 0.7rem;
+    color: var(--vp-c-text-2);
+  }
 }
 
 .frame-body {
@@ -264,14 +234,9 @@ defineExpose({ toggleFullscreen, toggleExpand });
 .frame-overlay-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(6px);
   z-index: 9998;
-  animation: overlay-in 0.18s ease-out;
-}
-
-@keyframes overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  background: var(--dagonizer-modal-backdrop, rgba(0, 0, 0, 0.78));
+  backdrop-filter: blur(var(--dagonizer-modal-blur, 6px));
+  animation: dagonizer-modal-in 0.18s ease-out;
 }
 </style>

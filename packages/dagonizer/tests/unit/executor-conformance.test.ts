@@ -33,12 +33,11 @@ import {
 } from '../../testing/ConformanceRegistry.js';
 import { DagConformance } from '../../testing/DagConformance.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 import type {
+  Batch,
   DagContainerOptionsType,
-  DagOutcomeType,
   DagTaskInterface,
   DagContainerInterface,
   DispatcherBundleType,
@@ -46,7 +45,7 @@ import type {
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 import { DagContainerBase, DagHost, DAG_CONTAINER_TRANSPORT } from '@studnicky/dagonizer/container';
-import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import type { PoolEntryType, RunResultType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface, ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType, NodeErrorWireType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -295,11 +294,11 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>, options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
-      return this.#inner.runDag(task, options);
+      return this.#inner.runDag(task, batch, options);
     }
     // Subsequent items: RETURN a transport-error outcome (do NOT throw).
     const error: NodeErrorWireType = {
@@ -310,12 +309,12 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
       'recoverable': false,
       'timestamp': new Date().toISOString(),
     };
-    return {
+    return batch.items().map((item) => ({
+      'id': item.id,
       'terminalOutput': 'failed',
       'errors': [error],
-      'graphState': emptyGraphStateTransfer(),
       'intermediates': [],
-    };
+    }));
   }
 
   async destroy(): Promise<void> {

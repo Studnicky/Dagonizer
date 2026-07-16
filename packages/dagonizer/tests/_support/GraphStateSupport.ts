@@ -1,7 +1,8 @@
 import type { GraphStateJsonLdDocumentType } from '../../src/contracts/GraphStateJsonLd.js';
-import type { GraphStateTransferType } from '../../src/contracts/GraphStateTransfer.js';
-import type { GraphStateTransferIdentityType } from '../../src/contracts/GraphStateTransferMetadata.js';
 import type { QuadType } from '../../src/contracts/TripleStoreInterface.js';
+import type { ExecutionRequestItemType } from '../../src/entities/executor/ExecutionRequest.js';
+import type { ExecutionResponseItemType } from '../../src/entities/executor/ExecutionResponse.js';
+import type { GraphStateInlineType } from '../../src/entities/executor/GraphStateTransferSchema.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { GraphStateTransferCodec } from '../../src/graph/GraphStateTransferCodec.js';
@@ -14,39 +15,36 @@ type GraphBackedState = {
   snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
 };
 
+/** One batch entry: an item id paired with its graph-backed state. */
+export type BatchEntry = {
+  readonly id: string;
+  readonly state: GraphBackedState;
+};
+
 export function graphStateDocument(state: GraphBackedState): GraphStateJsonLdDocumentType {
   return state.snapshotJsonLd(state.runIri);
 }
 
-export function graphStateTransfer(state: GraphBackedState, identity: Partial<Omit<GraphStateTransferIdentityType, 'jsonLd'>> = {}): GraphStateTransferType {
-  const document = graphStateDocument(state);
-  const graphIri = GraphStateTerms.runGraphIri(state.runIri);
-  return GraphStateTransferCodec.inline(
-    state.runIri,
-    [graphIri],
-    state.graphDataset.exportGraph(DagGraphTerms.namedNode(graphIri)),
-    {
-      'dagIri': identity.dagIri ?? 'urn:dagonizer:dag:test',
-      'placementPath': identity.placementPath ?? ['urn:dagonizer:placement:test'],
-      'placementIri': identity.placementIri ?? 'urn:dagonizer:placement:test',
-      ...identity,
-      'stateGraphIri': graphIri,
-      'jsonLd': document,
-    },
-  );
+function stateQuads(state: GraphBackedState): QuadType[] {
+  return [...state.graphDataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri)))];
 }
 
-export function emptyGraphStateTransfer(runIri = 'urn:dagonizer:run:test'): GraphStateTransferType {
-  return GraphStateTransferCodec.inline(
-    runIri,
-    [GraphStateTerms.runGraphIri(runIri)],
-    [],
-    {
-      'dagIri': 'urn:dagonizer:dag:test',
-      'placementPath': ['urn:dagonizer:placement:test'],
-      'placementIri': 'urn:dagonizer:placement:test',
-      'stateGraphIri': GraphStateTerms.runGraphIri(runIri),
-      'jsonLd': { '@context': GraphStateTerms.JSON_LD_CONTEXT, '@graph': [] },
-    },
-  );
+/** Combined inline graph-state transfer over every entry's live state graph. */
+export function inlineTransfer(states: readonly GraphBackedState[]): GraphStateInlineType {
+  return GraphStateTransferCodec.inlineSync(states.map((state) => ({ 'runIri': state.runIri, 'quads': stateQuads(state) })));
+}
+
+/** Empty combined inline graph-state transfer for the given run IRIs (a batch of empty graphs). */
+export function emptyInlineTransfer(runIris: readonly string[] = ['urn:dagonizer:run:test']): GraphStateInlineType {
+  return GraphStateTransferCodec.inlineSync(runIris.map((runIri) => ({ runIri, 'quads': [] })));
+}
+
+/** Build the request `items` array (`{ id, runIri, jsonLd }`) for a batch of entries. */
+export function requestItems(entries: readonly BatchEntry[]): ExecutionRequestItemType[] {
+  return entries.map((entry) => ({ 'id': entry.id, 'runIri': entry.state.runIri, 'jsonLd': graphStateDocument(entry.state) }));
+}
+
+/** Build the response `items` array (`{ id, runIri, terminalOutcome, jsonLd }`) for a batch of entries. */
+export function responseItems(entries: readonly (BatchEntry & { readonly terminalOutcome: string })[]): ExecutionResponseItemType[] {
+  return entries.map((entry) => ({ 'id': entry.id, 'runIri': entry.state.runIri, 'terminalOutcome': entry.terminalOutcome, 'jsonLd': graphStateDocument(entry.state) }));
 }

@@ -172,34 +172,13 @@ html::-webkit-scrollbar-corner {
   white-space: normal;
 }
 
-/* Code blocks share the canonical deep surface, same chrome as
-   mermaid frames so both read as the same terminal panel. */
-.vp-doc div[class*="language-"] {
-  border: var(--dagonizer-surface-border);
-  border-radius: var(--dagonizer-surface-radius);
-  background-color: var(--dagonizer-surface-bg-deep);
-  background-image: var(--dagonizer-surface-grain);
-  background-size: var(--dagonizer-surface-grain-size);
-  margin: 1.5rem 0;
-}
-
-/* Shiki token overrides: let the inner <pre class="shiki"> stay
-   transparent so the grain texture from the parent shows through.
-   The night-owl token palette already carries its own foreground
-   colors that satisfy WCAG AAA against the pearl-black surface. */
-.vp-doc div[class*="language-"] .shiki,
-.vp-doc div[class*="language-"] pre {
-  background: transparent !important;
-  font-family: var(--vp-font-family-mono);
-}
+/* Code-block chrome is owned by @studnicky/dagonizer/viz/CodeSample.css
+   so built-in VitePress samples and custom sample panes share one
+   contract. Keep token colors here; keep layout/chrome in the shared
+   stylesheet. */
 /* strings → cyan */
 .vp-doc .shiki .string,
 .vp-doc .shiki [style*="color:#"] { /* let Shiki own fine-grained colors */ }
-
-.vp-doc pre {
-  max-width: 100%;
-  overflow-x: auto;
-}
 
 /* ===== Button hover/active states ===== */
 
@@ -553,7 +532,7 @@ html::-webkit-scrollbar-corner {
      palette.css so the outer .VPNavBar and inner .content-body
      paint as one continuous surface across the viewport.
 
-   TopBar.vue (slotted via nav-bar-content-before) owns the left
+   TopBar.vue (slotted via nav-bar-title-before) owns the left
    zone; VitePress keeps the right zone (search, nav links, theme
    switch). The default VPNavBarTitle is hidden because TopBar
    already shows the brand. */
@@ -584,6 +563,20 @@ html::-webkit-scrollbar-corner {
   /* No bg-color here; .VPNav owns the surface paint. */
   background-image: var(--dagonizer-texture-grain);
   background-size:  160px 160px;
+}
+
+.VPNavBar .content,
+.VPNavBar .content-body,
+.VPNavBar .container {
+  min-width: 0;
+}
+
+.VPNavBar .content-body {
+  gap: 0.75rem;
+}
+
+.VPNavBar .content-body > * {
+  min-width: 0;
 }
 
 .VPNavBar .VPNavBarTitle {

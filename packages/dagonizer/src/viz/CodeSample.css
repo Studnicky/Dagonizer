@@ -1,0 +1,224 @@
+/**
+ * Shared chrome for documentation code samples.
+ *
+ * Covers both VitePress-managed Shiki blocks and custom sample panes that want
+ * the same header/body contract.
+ *
+ * Parameterization:
+ *   --dagonizer-code-sample-radius
+ *   --dagonizer-code-sample-border
+ *   --dagonizer-code-sample-surface
+ *   --dagonizer-code-sample-grain
+ *   --dagonizer-code-sample-grain-size
+ *   --dagonizer-code-sample-header-surface
+ *   --dagonizer-code-sample-header-border
+ *   --dagonizer-code-sample-title
+ *   --dagonizer-code-sample-meta
+ *   --dagonizer-code-sample-accent
+ *   --dagonizer-code-sample-command
+ *   --dagonizer-code-sample-error
+ *   --dagonizer-code-sample-font
+ */
+
+.vp-doc div[class*='language-'],
+.vp-doc .vp-code-group,
+.dagonizer-code-sample {
+  --dagonizer-code-sample-radius: var(--dagonizer-surface-radius, 6px);
+  --dagonizer-code-sample-border: var(--dagonizer-surface-border, 1px solid var(--vp-c-divider, #2e3748));
+  --dagonizer-code-sample-surface: var(--dagonizer-surface-bg-deep, #11161d);
+  --dagonizer-code-sample-grain: var(--dagonizer-surface-grain, none);
+  --dagonizer-code-sample-grain-size: var(--dagonizer-surface-grain-size, 160px 160px);
+  --dagonizer-code-sample-header-surface: color-mix(in srgb, var(--vp-c-bg-alt, rgba(12, 16, 24, 0.92)) 88%, transparent);
+  --dagonizer-code-sample-header-border: var(--vp-c-divider, #2e3748);
+  --dagonizer-code-sample-title: var(--dagonizer-silver, var(--vp-c-text-1, #eef3f7));
+  --dagonizer-code-sample-meta: var(--vp-c-text-2, #a9b6cc);
+  --dagonizer-code-sample-accent: var(--dagonizer-cyan, var(--vp-c-brand-1, #22e8ff));
+  --dagonizer-code-sample-command: var(--dagonizer-gold, var(--vp-c-brand-3, #ffcc66));
+  --dagonizer-code-sample-error: var(--vp-c-danger-1, #e74c3c);
+  --dagonizer-code-sample-font: var(--vp-font-family-mono);
+}
+
+.vp-doc div[class*='language-'],
+.dagonizer-code-sample {
+  margin: 1.5rem 0;
+  border: var(--dagonizer-code-sample-border);
+  border-radius: var(--dagonizer-code-sample-radius);
+  background-color: var(--dagonizer-code-sample-surface);
+  background-image: var(--dagonizer-code-sample-grain);
+  background-size: var(--dagonizer-code-sample-grain-size);
+  overflow: hidden;
+}
+
+.vp-doc div[class*='language-'] .shiki,
+.vp-doc div[class*='language-'] pre,
+.dagonizer-code-sample pre {
+  background: transparent !important;
+  font-family: var(--dagonizer-code-sample-font);
+}
+
+.vp-doc [class*='language-'] > span.lang,
+.dagonizer-code-sample__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--dagonizer-code-sample-meta);
+  font-family: var(--dagonizer-code-sample-font);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vp-doc [class*='language-'] > span.lang {
+  top: 0.8rem;
+  right: 0.75rem;
+  z-index: 2;
+}
+
+.vp-doc [class*='language-'] > button.copy {
+  inset-inline-end: 0.75rem;
+  inset-block-start: 0.7rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid var(--dagonizer-code-sample-header-border);
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--dagonizer-code-sample-header-surface) 92%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.vp-doc [class*='language-'] > button.copy:hover,
+.vp-doc [class*='language-'] > button.copy.copied {
+  border-color: var(--dagonizer-code-sample-accent);
+}
+
+.vp-doc [class*='language-'] > button.copy::before,
+.vp-doc [class*='language-'] > button.copy.copied::before {
+  background-color: var(--dagonizer-code-sample-accent);
+}
+
+.vp-doc [class*='language-'] pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding-top: 3rem;
+}
+
+.vp-doc [class*='language-'].command-line > span.lang,
+.vp-doc [class*='language-'][data-language='bash'] > span.lang,
+.vp-doc [class*='language-'][data-language='sh'] > span.lang,
+.vp-doc [class*='language-'][data-language='shellscript'] > span.lang,
+.dagonizer-code-sample--command .dagonizer-code-sample__meta {
+  color: var(--dagonizer-code-sample-command);
+}
+
+.vp-doc .vp-code-group {
+  margin: 1.5rem 0;
+}
+
+.vp-doc .vp-code-group .tabs {
+  margin: 0;
+  padding: 0.45rem 0.5rem 0;
+  border: var(--dagonizer-code-sample-border);
+  border-bottom: 0;
+  border-radius: var(--dagonizer-code-sample-radius) var(--dagonizer-code-sample-radius) 0 0;
+  background-color: var(--dagonizer-code-sample-surface);
+  background-image: var(--dagonizer-code-sample-grain);
+  background-size: var(--dagonizer-code-sample-grain-size);
+}
+
+.vp-doc .vp-code-group .tabs label {
+  border-radius: 6px 6px 0 0;
+  color: var(--dagonizer-code-sample-meta);
+  font-family: var(--dagonizer-code-sample-font);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vp-doc .vp-code-group .tabs label:hover {
+  color: var(--dagonizer-code-sample-accent);
+}
+
+.vp-doc .vp-code-group .blocks {
+  border-radius: 0 0 var(--dagonizer-code-sample-radius) var(--dagonizer-code-sample-radius);
+}
+
+.vp-doc .vp-code-group .blocks div[class*='language-'] {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.dagonizer-code-sample__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid var(--dagonizer-code-sample-header-border);
+  background: var(--dagonizer-code-sample-header-surface);
+}
+
+.dagonizer-code-sample__title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.dagonizer-code-sample__title {
+  min-width: 0;
+  color: var(--dagonizer-code-sample-title);
+  font-family: var(--dagonizer-code-sample-font);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dagonizer-code-sample__body {
+  min-width: 0;
+}
+
+.dagonizer-code-sample pre {
+  max-width: 100%;
+  max-height: 640px;
+  margin: 0;
+  padding: 0.95rem 1rem;
+  overflow: auto;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.dagonizer-code-sample__body > pre {
+  padding-top: 0.95rem;
+}
+
+.dagonizer-code-sample__source {
+  border-top: 1px solid var(--dagonizer-code-sample-header-border);
+}
+
+.dagonizer-code-sample__source > summary {
+  cursor: pointer;
+  padding: 0.6rem 0.8rem;
+  color: var(--dagonizer-code-sample-accent);
+  font-family: var(--dagonizer-code-sample-font);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dagonizer-code-sample__source > summary:hover {
+  color: var(--dagonizer-code-sample-command);
+}
+
+.dagonizer-code-sample--error {
+  border-color: color-mix(in srgb, var(--dagonizer-code-sample-error) 55%, var(--vp-c-divider, #2e3748));
+}
+
+.dagonizer-code-sample--error .dagonizer-code-sample__title,
+.dagonizer-code-sample--error .dagonizer-code-sample__meta {
+  color: var(--dagonizer-code-sample-error);
+}

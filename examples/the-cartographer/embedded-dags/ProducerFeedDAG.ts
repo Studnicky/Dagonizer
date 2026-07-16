@@ -5,6 +5,9 @@
  * stream, scatters those payloads through the ingest-source unpack/normalize
  * DAG, folds the validated event buckets, and emits canonicalEvents for the
  * top-level open gather.
+ *
+ * Stream mode has a trimmed variant that bypasses normalization and produces
+ * source streams directly for the source-intake/top-level stream-event body.
  */
 
 // #region producer-feed-dags
@@ -82,11 +85,37 @@ export const producerFeedDAGs: DAGType[] = PRODUCER_FEED_SPECS.map((spec) =>
   ProducerFeedDAGBuilder.build(spec),
 );
 
+class ProducerStreamFeedDAGBuilder {
+  private constructor() { /* static-only */ }
+
+  static build(spec: ProducerFeedSpecType): DAGType {
+    const dagIri = CARTOGRAPHER_IRIS.streamFeedDagIri(spec.eventType);
+    const placement = (id: string): string => CARTOGRAPHER_IRIS.placementIri(dagIri, id);
+
+    return new DAGBuilder(dagIri, '1.0')
+      .node(placement(`feed-${spec.eventType}`), spec.feedNode, {
+        'ready': placement('done'),
+        'empty': placement('done'),
+      })
+      .terminal(placement('done'), { outcome: 'completed' })
+      .build();
+  }
+}
+
+const producerStreamFeedDAGs: DAGType[] = PRODUCER_FEED_SPECS.map((spec) =>
+  ProducerStreamFeedDAGBuilder.build(spec),
+);
+
 export const producerFeedBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
     ...producerFeedNodes,
     mergeEvents,
   ],
   'dags': producerFeedDAGs,
+};
+
+export const streamProducerFeedBundle: DispatcherBundleType<CartographerState> = {
+  'nodes': [...producerFeedNodes],
+  'dags': producerStreamFeedDAGs,
 };
 // #endregion producer-feed-dags

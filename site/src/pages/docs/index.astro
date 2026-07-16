@@ -1,0 +1,25 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import SectionShell from '@/components/marketing/SectionShell.astro';
+import DocsBrowser from '@/components/islands/DocsBrowser.vue';
+import { getDocsCatalog, getDocSections } from '@/lib/docs';
+
+const allDocs = getDocsCatalog();
+const groupedSections = getDocSections();
+---
+
+<BaseLayout title="Docs">
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+    <SectionShell
+      eyebrow="Documentation"
+      title="Reference, guides, and runnable examples for building with Dagonizer."
+      description={`Browse ${(await allDocs).length} documentation pages covering graph authoring, execution behavior, checkpoints, visualization, and runnable workflow examples.`}
+    >
+      <DocsBrowser client:idle docs={await allDocs} sections={await groupedSections} />
+    </SectionShell>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

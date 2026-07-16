@@ -592,7 +592,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Returns the greeting text so callers can chain `sampleReply(greeting)`.
    */
   async greet(): Promise<string> {
-    const llm = this.#resolveLlm();
+    const llm = await this.#resolveLlm();
     let greeting = this.#staticGreeting();
 
     if (llm !== null) {
@@ -665,7 +665,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       throw new Error('ArchivistSession.ask: a run is already in progress; call cancel() first');
     }
 
-    const llm = this.#resolveLlm();
+    const llm = await this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.ask: no LLM available; call boot() first');
 
     const cleanQuery = ArchivistSession.#messageText(query);
@@ -1045,14 +1045,14 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  #resolveLlm(): LlmClientInterface | null {
+  async #resolveLlm(): Promise<LlmClientInterface | null> {
     if (this.#injectedLlm !== null) return this.#injectedLlm;
     if (this.activeBackend === null) return null;
     const preferred = this.preferredModels[this.activeBackend];
     const model = typeof preferred === 'string' && preferred.length > 0
       ? preferred
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
-    return ProviderInstantiator.instantiate(this.activeBackend, {
+    return await ProviderInstantiator.instantiate(this.activeBackend, {
       'apiKeys':  this.apiKeys,
       'model':    model,
       'language': this.visitorLanguage,

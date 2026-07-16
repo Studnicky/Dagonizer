@@ -18,7 +18,7 @@ import { describe, it } from 'node:test';
 import { Signal } from '@studnicky/signal';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
@@ -34,10 +34,11 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer, graphStateDocument } from '../_support/GraphStateSupport.js';
+import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -167,8 +168,8 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // Bind one role so the dispatcher is in container-dispatch mode; the DAG
     // below declares a DIFFERENT, unbound role, which is the misalignment.
     const fakeContainer: DagContainerInterface = {
-      async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
+      async runDag(_task: DagTaskInterface, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        return [];
       },
     };
     const dispatcher = new Dagonizer<NodeStateBase>({

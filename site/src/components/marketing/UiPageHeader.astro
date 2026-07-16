@@ -1,0 +1,18 @@
+---
+import UiPageHeader from '@/components/islands/UiPageHeader.vue';
+
+interface Crumb {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  crumbs: readonly Crumb[];
+}
+
+const { title, description, crumbs } = Astro.props;
+---
+
+<UiPageHeader title={title} description={description} crumbs={crumbs} />

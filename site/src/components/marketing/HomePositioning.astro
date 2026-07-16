@@ -1,0 +1,24 @@
+---
+import UiPanelShell from '@/components/islands/UiPanelShell.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+---
+
+<section id="overview" class="space-y-6">
+  <UiSectionIntro
+    eyebrow="Operating model"
+    title="Make orchestration behavior visible and controllable"
+    description="Dagonizer keeps the workflow artifact readable while treating routing, checkpoints, retries, and inspection as one runtime model instead of disconnected subsystems."
+  />
+
+  <div class="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+  <UiPanelShell>
+    <div class="space-y-3 text-sm leading-6 text-slate-300">
+      <p>Define workflows as explicit graphs instead of hiding control flow inside application code.</p>
+      <p>Use checkpoints, routing, retries, and fan-in as part of one runtime model rather than separate subsystems.</p>
+      <p>Give teams a way to inspect the same workflow they author and execute.</p>
+    </div>
+  </UiPanelShell>
+
+  <slot />
+  </div>
+</section>

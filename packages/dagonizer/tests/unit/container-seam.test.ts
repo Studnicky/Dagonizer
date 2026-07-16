@@ -30,7 +30,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
@@ -49,8 +49,9 @@ import { DAGError } from '../../src/errors/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { GraphStateTransferCodec } from '../../src/graph/GraphStateTransferCodec.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -211,8 +212,8 @@ const parentContainerDAG: DAGType = {
 // Minimal CounterState container test double used only to put a dispatcher in
 // container-dispatch mode (its runDag is never invoked by the registration tests).
 const fakeCounterContainer: DagContainerInterface = {
-  async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-    return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
+  async runDag(_task: DagTaskInterface, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+    return [];
   },
 };
 
@@ -274,8 +275,8 @@ const validDagBodyScatterDAG: DAGType = {
 // declares that role registers without tripping the unbound-role throw. Its
 // runDag is never invoked by the registration-only test below.
 const fakeDagContainer: DagContainerInterface = {
-  async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-    return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
+  async runDag(_task: DagTaskInterface, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+    return [];
   },
 };
 
@@ -447,13 +448,19 @@ void describe('Container seam — W1', () => {
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface = {
-      async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        // Restore the child clone from the graph transfer in the task.
-        const request = task.toRequest();
-        const firstItem = request.items[0];
-        if (firstItem === undefined) throw new Error('No items in request');
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        // Simulate an isolating boundary: snapshot the item's live state graph,
+        // encode + restore through the combined transfer, then restore a fresh
+        // child clone from the decoded subgraph.
+        const [item] = batch.items();
+        if (item === undefined) throw new Error('No items in batch');
+        if (!(item.state instanceof NodeStateBase)) throw new Error('Expected a NodeStateBase-backed item state');
+        const graphItems = [{ 'runIri': item.state.runIri, 'quads': GraphStateTransferCodec.asyncQuads(item.state.snapshotGraph(item.state.runIri)) }];
+        const transfer = await GraphStateTransferCodec.inline(graphItems);
+        const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': item.id, 'runIri': item.state.runIri }], null);
+        if (part === undefined) throw new Error('No transfer part for item');
         const childState = new CounterState();
-        await GraphStateTransferCodec.restore(childState, firstItem.graphState);
+        await childState.restoreGraph(part.runIri, part.quads);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();
@@ -463,16 +470,23 @@ void describe('Container seam — W1', () => {
 
         const childResult = await inner.execute(task.dagName, childState);
 
-        return {
+        // The container owns graph-state restore: apply the terminal child
+        // graph back onto the batch item's live clone before returning, so the
+        // caller (BodyExecutor) already has the terminal domain state.
+        await item.state.restoreGraph(childState.runIri, childState.snapshotGraph(childState.runIri));
+
+        return [{
+          'id': item.id,
           'terminalOutput': 'success',
           'errors': [],
-          'graphState': graphStateTransfer(childState),
+          'graphState': inlineTransfer([childState]),
+          'runIri': childState.runIri,
           'intermediates': childResult.executedNodes.map((nodeName) => ({
             'output': 'success',
             'skipped': false,
             nodeName,
           })),
-        };
+        }];
       },
     };
 
@@ -583,17 +597,23 @@ void describe('Container seam — dynamic DAG references', () => {
     const selectedDagIri = DagGraphProjector.dagIri(dynamicChildA);
 
     const container: DagContainerInterface = {
-      async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>): Promise<RunResultType[]> {
         const request = task.toRequest();
         requests.push(request);
+        const [item] = batch.items();
         const childState = new DynamicContainerState();
         childState.value = 77;
-        return {
+        if (item !== undefined && item.state instanceof NodeStateBase) {
+          await item.state.restoreGraph(childState.runIri, childState.snapshotGraph(childState.runIri));
+        }
+        return [{
+          'id': item?.id ?? task.correlationId,
           'terminalOutput': 'success',
           'errors': [],
-          'graphState': graphStateTransfer(childState),
+          'graphState': inlineTransfer([childState]),
+          'runIri': childState.runIri,
           'intermediates': [],
-        };
+        }];
       },
     };
     const dispatcher = new Dagonizer<DynamicContainerState>({
@@ -644,16 +664,19 @@ void describe('Container seam — dynamic DAG references', () => {
     const childBIri = DagGraphProjector.dagIri(dynamicChildB);
 
     const container: DagContainerInterface = {
-      async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>): Promise<RunResultType[]> {
         const request = task.toRequest();
         requests.push(request);
+        const [item] = batch.items();
         const childState = new DynamicContainerState();
-        return {
+        return [{
+          'id': item?.id ?? task.correlationId,
           'terminalOutput': 'success',
           'errors': [],
-          'graphState': graphStateTransfer(childState),
+          'graphState': inlineTransfer([childState]),
+          'runIri': childState.runIri,
           'intermediates': [],
-        };
+        }];
       },
     };
     const dispatcher = new Dagonizer<DynamicContainerState>({
@@ -694,15 +717,16 @@ void describe('Container seam — dynamic DAG references', () => {
     const selectedDagIri = DagGraphProjector.dagIri(dynamicChildA);
 
     const container: DagContainerInterface = {
-      async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>): Promise<RunResultType[]> {
         const request = task.toRequest();
         requests.push(request);
-        return {
+        const [item] = batch.items();
+        return [{
+          'id': item?.id ?? task.correlationId,
           'terminalOutput': 'failed',
           'errors': [transportError('embedded transport lost')],
-          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
-        };
+        }];
       },
     };
     const dispatcher = new Dagonizer<DynamicContainerState>({
@@ -755,15 +779,16 @@ void describe('Container seam — dynamic DAG references', () => {
     const childBIri = DagGraphProjector.dagIri(dynamicChildB);
 
     const container: DagContainerInterface = {
-      async runDag(task: DagTaskInterface): Promise<DagOutcomeType> {
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>): Promise<RunResultType[]> {
         const request = task.toRequest();
         requests.push(request);
-        return {
+        const [item] = batch.items();
+        return [{
+          'id': item?.id ?? task.correlationId,
           'terminalOutput': 'failed',
           'errors': [transportError('scatter transport lost')],
-          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
-        };
+        }];
       },
     };
     const dispatcher = new Dagonizer<DynamicContainerState>({

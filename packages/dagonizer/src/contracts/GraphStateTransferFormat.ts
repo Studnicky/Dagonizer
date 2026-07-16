@@ -29,8 +29,11 @@ export function normalizeGraphStateTransferFormats(
   const uniqueFormats = new Map<GraphStateTransferFormatType, true>(
     DEFAULT_GRAPH_STATE_TRANSFER_FORMATS.map((value): [GraphStateTransferFormatType, true] => [value, true]),
   );
+  const supported = new Set<string>(GRAPH_STATE_TRANSFER_FORMATS);
   for (const format of formats) {
-    uniqueFormats.set(format, true);
+    if (supported.has(format)) {
+      uniqueFormats.set(format, true);
+    }
   }
 
   return [...uniqueFormats.keys()];

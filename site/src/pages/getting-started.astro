@@ -1,0 +1,31 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import SectionShell from '@/components/marketing/SectionShell.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
+---
+
+<BaseLayout title="Getting Started">
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+    <SectionShell
+      eyebrow="Getting started"
+      title="Start with the runtime model, then move into real workflows."
+      description="Dagonizer is easiest to approach in three steps: understand the graph model, see how execution behaves, and then inspect complete runnable examples."
+    >
+      <div class="grid gap-4 md:grid-cols-3">
+        <UiContentPanel title="1. Learn the graph model" compact>
+          <p>Start with placements, terminals, routing, and the JSON-LD document shape that defines a workflow.</p>
+        </UiContentPanel>
+        <UiContentPanel title="2. Understand execution behavior" compact>
+          <p>Focus on retries, streaming, cancellation, checkpoints, and how state flows through a running DAG.</p>
+        </UiContentPanel>
+        <UiContentPanel title="3. Open the runnable examples" compact>
+          <p>Use the Archivist, Dispatcher, and Cartographer flows to see how real DAGs route, pause, resume, and converge.</p>
+        </UiContentPanel>
+      </div>
+    </SectionShell>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

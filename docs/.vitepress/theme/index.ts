@@ -4,14 +4,22 @@ import TwoslashFloatingVue from '@shikijs/vitepress-twoslash/client'
 import '@shikijs/vitepress-twoslash/style.css'
 import { h, defineAsyncComponent } from 'vue'
 import { MermaidExplorer } from '@studnicky/dagonizer/viz'
+import '@studnicky/dagonizer/viz/Dpad.css'
+import '@studnicky/dagonizer/viz/ModalShell.css'
+import '@studnicky/dagonizer/viz/CodeSample.css'
+import '@studnicky/dagonizer/viz/ViewerActions.css'
+import '@studnicky/dagonizer/viz/ViewerOverlay.css'
 import '@studnicky/dagonizer/viz/explorer.css'
 import './palette.css'
 import './base.css'
 
+import { CodeSampleChrome } from './codeSamples'
 import TopBar from './components/TopBar.vue'
 import HomeHero from './components/HomeHero.vue'
 import ExperimentalHomeHero from './components/ExperimentalHomeHero.vue'
 import DocFooter from './components/DocFooter.vue'
+import UiCallout from './components/ui/UiCallout.vue'
+import UiCodeTabs from './components/ui/UiCodeTabs.vue'
 
 // ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
 // lazy-load so doc pages that don't embed it don't pay for the bundle.
@@ -52,17 +60,22 @@ export default {
     app.component('DagGraph', DagGraph)
     app.component('DagJsonMermaid', DagJsonMermaid)
     app.component('ExperimentalHomeHero', ExperimentalHomeHero)
+    app.component('UiCallout', UiCallout)
+    app.component('UiCodeTabs', UiCodeTabs)
     app.use(TwoslashFloatingVue)
     // Mermaid diagrams get the same D-pad + fullscreen explorer as the graph
     // canvases, straight from the package. Client-only; install() wires a
     // MutationObserver for async-rendered SVGs and is a no-op without a DOM.
-    if (typeof window !== 'undefined') MermaidExplorer.install()
+    if (typeof window !== 'undefined') {
+      MermaidExplorer.install()
+      CodeSampleChrome.install()
+    }
   },
   Layout() {
     return h(DefaultTheme.Layout, null, {
-      // TopBar owns the left navbar zone (sidebar toggle + brand);
+      // TopBar owns the left navbar title zone (sidebar toggle + brand);
       // the default VPNavBarTitle is hidden in base.css.
-      'nav-bar-content-before': () => h(TopBar),
+      'nav-bar-title-before': () => h(TopBar),
       // HomeHero renders the hero + features grid from frontmatter
       // when present. The home page uses layout: doc so it gets the
       // canonical sidebar/topbar/footer chrome that every page uses.

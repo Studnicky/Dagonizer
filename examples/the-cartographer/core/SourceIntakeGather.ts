@@ -3,7 +3,8 @@
  *
  * The current runnable Cartographer topology uses producer feed DAGs plus
  * CanonicalFeedGather. This strategy remains registered for source-payload
- * stream examples that need a merged `state.sources` stream.
+ * compatibility examples that can emit either a merged `state['source-payload']`
+ * stream (stream-source strategy) or `state.sources` (legacy consumers).
  */
 
 import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
@@ -23,6 +24,7 @@ export class SourceIntakeGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
+    accessor.set(state, 'source-payload', []);
     accessor.set(state, 'sources', []);
   }
 
@@ -34,7 +36,9 @@ export class SourceIntakeGather extends GatherStrategy {
   ): void {
     const records: GatherRecordType[] = [];
     for (const item of batch) records.push(item.state);
-    accessor.set(state, 'sources', CartographerSourceIntake.mergeRecords(records, state));
+    const mergedPayload = CartographerSourceIntake.mergeRecords(records, state);
+    accessor.set(state, 'source-payload', mergedPayload);
+    accessor.set(state, 'sources', mergedPayload);
   }
 }
 

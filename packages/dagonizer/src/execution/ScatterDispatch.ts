@@ -1,6 +1,6 @@
 import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
 import { DagContainerBase } from '../container/DagContainerBase.js';
-import type { BatchRunResultType } from '../container/DagOutcome.js';
+import type { RunResultType } from '../container/DagOutcome.js';
 import { DagTask } from '../container/DagTask.js';
 import { TransportErrorCode } from '../container/TransportErrorCode.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
@@ -28,7 +28,6 @@ import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { Timeout } from '../entities/Timeout.js';
 import { DAGError } from '../errors/index.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
@@ -524,7 +523,7 @@ export class ScatterPoolDriver
    * - **Branch B (DAG body, in-process):** runs the released batch through the
    *   sub-DAG in a single batch-native `runNodes` call (the `inputBatch` +
    *   `terminalByItemId` seam), deriving each item's `terminalOutcome` from the map.
-   * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDagBatch`
+   * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDag`
    *   when the container is a `DagContainerBase` instance (one transport round-trip
    *   for all items); uses per-item `container.runDag` for plain
    *   `DagContainerInterface` implementations.
@@ -720,7 +719,7 @@ export class ScatterPoolDriver
       const correlationId = this.#adapter.nextCorrelationId(selectedDagIri);
       const context = this.#adapter.context(selectedDagIri, scatter.name, signal);
       const scatterRelay = this.#adapter.relayFor(state);
-      let outcomes: BatchRunResultType[];
+      let outcomes: RunResultType[];
 
       if (container instanceof DagContainerBase) {
         const repCloneForTask: NodeStateInterface = partition.clones[0] ?? state;
@@ -732,7 +731,7 @@ export class ScatterPoolDriver
           repCloneForTask,
           context,
         );
-        outcomes = await container.runDagBatch(task, batch, { 'relay': scatterRelay });
+        outcomes = await container.runDag(task, batch, { 'relay': scatterRelay });
       } else {
         outcomes = [];
         for (let i = 0; i < partition.items.length; i++) {
@@ -749,8 +748,9 @@ export class ScatterPoolDriver
             clone,
             itemContext,
           );
-          const outcome = await container.runDag(task, { 'relay': scatterRelay });
-          outcomes.push({ 'id': String(buffered.index), ...outcome });
+          const singleBatch = Batch.from([{ 'id': String(buffered.index), 'state': clone }]);
+          const results = await container.runDag(task, singleBatch, { 'relay': scatterRelay });
+          outcomes.push(...results);
         }
       }
 
@@ -765,12 +765,13 @@ export class ScatterPoolDriver
         }
       }
 
+      const outcomeByIndex = new Map(outcomes.map((candidate) => [candidate.id, candidate]));
       for (let i = 0; i < partition.items.length; i++) {
         const buffered = partition.items[i];
         if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         const clone = partition.clones[i];
         if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-        const outcome = outcomes.find((candidate) => candidate.id === String(buffered.index));
+        const outcome = outcomeByIndex.get(String(buffered.index));
 
         if (outcome === undefined) {
           for (const err of clone.errors) state.collectError(err);
@@ -786,10 +787,9 @@ export class ScatterPoolDriver
           continue;
         }
 
-        if (outcome.graphState !== undefined) {
-          if (!ScatterDispatchAdapter.isGraphState(clone)) throw new Error('Graph-state outcome requires a graph-backed clone');
-          await GraphStateTransferCodec.restore(clone, outcome.graphState);
-        }
+        // The container owns graph-state restore: `runDag` splits the
+        // terminal batch transfer and restores each clone in-place before
+        // returning, so `clone` already carries its terminal domain state here.
         for (const err of outcome.errors) clone.collectError(err);
 
         const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';

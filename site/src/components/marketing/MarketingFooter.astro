@@ -1,0 +1,45 @@
+---
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import UiCtaRow from '@/components/islands/UiCtaRow.vue';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import { siteHref } from '@/lib/links';
+
+const navigateLinks = [
+  { href: siteHref('/architecture'), label: 'Architecture' },
+  { href: siteHref('/docs/examples/'), label: 'Examples' },
+  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+
+const referenceLinks = [
+  { href: siteHref('/getting-started'), label: 'Getting started' },
+  { href: siteHref('/docs/reference/dagonizer'), label: 'Runtime reference' },
+  { href: 'https://github.com/Studnicky/Dagonizer', label: 'GitHub' }
+] as const;
+---
+
+<footer class="border-t border-white/8 py-10">
+  <div class="mx-auto grid max-w-7xl gap-8 px-6 lg:grid-cols-[1.2fr_0.8fr]">
+    <div class="space-y-4">
+      <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Dagonizer</p>
+      <h2 class="max-w-xl text-2xl font-semibold tracking-tight text-white">
+        Explicit workflow execution for teams that need routing, visualization, and resume to stay legible under real operational pressure.
+      </h2>
+      <UiCtaRow>
+        <UiActionLink href={siteHref('/getting-started')} variant="primary">Get started</UiActionLink>
+        <UiActionLink href={siteHref('/docs')} variant="secondary">Browse docs</UiActionLink>
+      </UiCtaRow>
+    </div>
+
+    <div class="grid gap-6 text-sm text-slate-400 sm:grid-cols-2">
+      <div class="space-y-3">
+        <p class="text-xs uppercase tracking-[0.24em] text-slate-500">Navigate</p>
+        <UiLinkList links={navigateLinks} />
+      </div>
+
+      <div class="space-y-3">
+        <p class="text-xs uppercase tracking-[0.24em] text-slate-500">Reference</p>
+        <UiLinkList links={referenceLinks} />
+      </div>
+    </div>
+  </div>
+</footer>

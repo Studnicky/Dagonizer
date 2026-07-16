@@ -11,25 +11,31 @@ import { DagGraphTerms } from './DagGraphTerms.js';
 import { GraphDatasetRevision } from './GraphDatasetRevision.js';
 
 export class InMemoryTopologyStore implements TripleStoreInterface, GraphDatasetInterface {
-  readonly #quads: QuadType[] = [];
-  readonly #keys = new Set<string>();
+  // Keyed by the quad's `s|p|o|g` term-key string: the key is the dedup identity,
+  // the value is the quad delivered on read — one allocation for both roles.
+  readonly #quads = new Map<string, QuadType>();
   readonly #bySubject = new Map<string, Set<QuadType>>();
   readonly #byPredicate = new Map<string, Set<QuadType>>();
-  readonly #byObject = new Map<string, Set<QuadType>>();
   readonly #byGraph = new Map<string, Set<QuadType>>();
   #revisionCache: string | undefined;
 
+  /** Shared empty result for concrete-term lookups that miss. */
+  static readonly #EMPTY: readonly QuadType[] = [];
+
   assert(subject: TermType, predicate: TermType, object: TermType, graph: TermType = DagGraphTerms.defaultGraph()): void {
-    const quad = { subject, predicate, object, graph };
-    const key = InMemoryTopologyStore.quadKey(quad);
-    if (this.#keys.has(key)) return;
+    // Each term key is computed once and reused for the dedup key and all four indexes.
+    const subjectKey = InMemoryTopologyStore.termKey(subject);
+    const predicateKey = InMemoryTopologyStore.termKey(predicate);
+    const objectKey = InMemoryTopologyStore.termKey(object);
+    const graphKey = InMemoryTopologyStore.termKey(graph);
+    const key = `${subjectKey}|${predicateKey}|${objectKey}|${graphKey}`;
+    if (this.#quads.has(key)) return;
     this.#revisionCache = undefined;
-    this.#keys.add(key);
-    this.#quads.push(quad);
-    this.#addToIndex(this.#bySubject, subject, quad);
-    this.#addToIndex(this.#byPredicate, predicate, quad);
-    this.#addToIndex(this.#byObject, object, quad);
-    this.#addToIndex(this.#byGraph, graph, quad);
+    const quad = { subject, predicate, object, graph };
+    this.#quads.set(key, quad);
+    this.#addToIndex(this.#bySubject, subjectKey, quad);
+    this.#addToIndex(this.#byPredicate, predicateKey, quad);
+    this.#addToIndex(this.#byGraph, graphKey, quad);
   }
 
   add(quads: Iterable<QuadType>): void {
@@ -109,37 +115,32 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   }
 
   clearGraph(graph: TermType): void {
+    // The `#byGraph` bucket holds exactly this graph's quads; iterate a snapshot
+    // because `#removeQuad` mutates the bucket as it goes.
+    const bucket = this.#byGraph.get(InMemoryTopologyStore.termKey(graph));
+    if (bucket === undefined) return;
     this.#revisionCache = undefined;
-    let index = this.#quads.length;
-    while (index > 0) {
-      index -= 1;
-      if (InMemoryTopologyStore.sameTerm(this.#quads[index]?.graph, graph)) {
-        const quad = this.#quads[index];
-        if (quad !== undefined) {
-          this.#removeFromIndexes(quad);
-          this.#keys.delete(InMemoryTopologyStore.quadKey(quad));
-          this.#quads.splice(index, 1);
-        }
-      }
+    for (const quad of [...bucket]) {
+      this.#removeQuad(quad);
     }
   }
 
   delete(pattern: SlotPatternType): void {
+    // Narrow to candidates via the concrete-term index, collect the matches into
+    // a snapshot, then remove them — the snapshot avoids mutating during iteration.
+    const matched: QuadType[] = [];
+    for (const quad of this.#candidates(pattern)) {
+      if (InMemoryTopologyStore.matches(quad, pattern)) matched.push(quad);
+    }
+    if (matched.length === 0) return;
     this.#revisionCache = undefined;
-    let index = this.#quads.length;
-    while (index > 0) {
-      index -= 1;
-      const quad = this.#quads[index];
-      if (quad !== undefined && InMemoryTopologyStore.matches(quad, pattern)) {
-        this.#removeFromIndexes(quad);
-        this.#keys.delete(InMemoryTopologyStore.quadKey(quad));
-        this.#quads.splice(index, 1);
-      }
+    for (const quad of matched) {
+      this.#removeQuad(quad);
     }
   }
 
   *triples(): IterableIterator<QuadType> {
-    yield* this.#quads;
+    yield* this.#quads.values();
   }
 
   private static matchTerm(actual: TermType, expected: TermType | string | undefined, binding: BindingType): boolean {
@@ -158,23 +159,24 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
   }
 
   #candidates(pattern: SlotPatternType): Iterable<QuadType> {
+    // Object is not indexed: no query narrows on object as its most-selective
+    // term, and `matches` filters the candidate set for correctness regardless.
     const subject = this.#concreteBucket(this.#bySubject, pattern.subject);
     if (subject !== undefined) return subject;
     const predicate = this.#concreteBucket(this.#byPredicate, pattern.predicate);
     if (predicate !== undefined) return predicate;
-    const object = this.#concreteBucket(this.#byObject, pattern.object);
-    if (object !== undefined) return object;
     const graph = this.#concreteBucket(this.#byGraph, pattern.graph);
-    return graph ?? this.#quads;
+    return graph ?? this.#quads.values();
   }
 
-  #concreteBucket(index: ReadonlyMap<string, Set<QuadType>>, term: TermType | string | undefined): Set<QuadType> | undefined {
+  #concreteBucket(index: ReadonlyMap<string, Set<QuadType>>, term: TermType | string | undefined): Iterable<QuadType> | undefined {
     if (term === undefined || typeof term === 'string') return undefined;
-    return index.get(InMemoryTopologyStore.termKey(term)) ?? new Set<QuadType>();
+    // A concrete term with no bucket yields the shared empty iterable rather
+    // than a fresh throwaway Set per miss.
+    return index.get(InMemoryTopologyStore.termKey(term)) ?? InMemoryTopologyStore.#EMPTY;
   }
 
-  #addToIndex(index: Map<string, Set<QuadType>>, term: TermType, quad: QuadType): void {
-    const key = InMemoryTopologyStore.termKey(term);
+  #addToIndex(index: Map<string, Set<QuadType>>, key: string, quad: QuadType): void {
     const bucket = index.get(key);
     if (bucket !== undefined) {
       bucket.add(quad);
@@ -183,15 +185,22 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
     index.set(key, new Set([quad]));
   }
 
-  #removeFromIndexes(quad: QuadType): void {
-    this.#removeFromIndex(this.#bySubject, quad.subject, quad);
-    this.#removeFromIndex(this.#byPredicate, quad.predicate, quad);
-    this.#removeFromIndex(this.#byObject, quad.object, quad);
-    this.#removeFromIndex(this.#byGraph, quad.graph, quad);
+  /**
+   * Remove a quad from every index and the keyed quad map. Each term key is
+   * computed once and shared across the four index removals and the map key.
+   */
+  #removeQuad(quad: QuadType): void {
+    const subjectKey = InMemoryTopologyStore.termKey(quad.subject);
+    const predicateKey = InMemoryTopologyStore.termKey(quad.predicate);
+    const objectKey = InMemoryTopologyStore.termKey(quad.object);
+    const graphKey = InMemoryTopologyStore.termKey(quad.graph);
+    this.#removeFromIndex(this.#bySubject, subjectKey, quad);
+    this.#removeFromIndex(this.#byPredicate, predicateKey, quad);
+    this.#removeFromIndex(this.#byGraph, graphKey, quad);
+    this.#quads.delete(`${subjectKey}|${predicateKey}|${objectKey}|${graphKey}`);
   }
 
-  #removeFromIndex(index: Map<string, Set<QuadType>>, term: TermType, quad: QuadType): void {
-    const key = InMemoryTopologyStore.termKey(term);
+  #removeFromIndex(index: Map<string, Set<QuadType>>, key: string, quad: QuadType): void {
     const bucket = index.get(key);
     if (bucket === undefined) return;
     bucket.delete(quad);
@@ -229,9 +238,5 @@ export class InMemoryTopologyStore implements TripleStoreInterface, GraphDataset
       && InMemoryTopologyStore.sameTerm(left.predicate, right.predicate)
       && InMemoryTopologyStore.sameTerm(left.object, right.object)
       && InMemoryTopologyStore.sameTerm(left.graph, right.graph);
-  }
-
-  private static quadKey(quad: QuadType): string {
-    return `${InMemoryTopologyStore.termKey(quad.subject)}|${InMemoryTopologyStore.termKey(quad.predicate)}|${InMemoryTopologyStore.termKey(quad.object)}|${InMemoryTopologyStore.termKey(quad.graph)}`;
   }
 }

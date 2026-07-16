@@ -1,0 +1,42 @@
+---
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import { siteHref } from '@/lib/links';
+
+const examples = [
+  {
+    eyebrow: 'LLM agents',
+    title: 'The Archivist',
+    body: 'Bibliographic orchestration, tool use, retries, provenance, and browser-visible execution state.',
+    href: siteHref('/docs/examples/the-archivist')
+  },
+  {
+    eyebrow: 'Human in the loop',
+    title: 'The Dispatcher',
+    body: 'Warm handoff routing, park-and-correlate, and deterministic resume from checkpoint.',
+    href: siteHref('/docs/examples/the-dispatcher')
+  },
+  {
+    eyebrow: 'Data orchestration',
+    title: 'The Cartographer',
+    body: 'Streaming intake, normalization DAGs, geo-resolution, GDPR redaction, and insight fan-in.',
+    href: siteHref('/docs/examples/the-cartographer')
+  }
+];
+---
+
+<section id="examples" class="space-y-6">
+  <UiSectionIntro
+    eyebrow="Reference workflows"
+    title="Start from runnable flows that expose the runtime model clearly"
+    description="The examples are not toy snippets. Each one demonstrates a concrete orchestration shape you can inspect in docs, adapt to your own DAGs, and use as a starting point for production workflow design."
+    align="between"
+  >
+    <Fragment slot="actions">
+      <UiActionLink href={siteHref('/docs/examples/')} label="Browse all examples" />
+    </Fragment>
+  </UiSectionIntro>
+
+  <UiMarketingCardGrid items={examples} linkCards titleSize="large" />
+</section>

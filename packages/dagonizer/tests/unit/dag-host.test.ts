@@ -25,14 +25,14 @@ import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
-import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { GraphStateTransferFormatType } from '../../src/contracts/GraphStateTransferFormat.js';
+import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import type { InMemoryGraphStateTransferStore } from '../../src/graph/InMemoryGraphStateTransferStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Registry module URL for DagHost dynamic import.
@@ -211,7 +211,8 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW2_DAG,   // mutator: sets value=99
         'placementPath': ['parent'],
-        'items': [{ 'id': 'req-exec-1', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-exec-1', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-1',
       },
@@ -249,7 +250,8 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW2_DAG,
         'placementPath': ['parent'],
-        'items': [{ 'id': 'req-exec-jsonld', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-exec-jsonld', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-jsonld',
       },
@@ -260,9 +262,9 @@ void describe('DagHost — execute returns result', () => {
     if (result.variant === 'result') {
       const item0 = result.response.items[0];
       assert.ok(item0 !== undefined);
-      assert.deepEqual(item0.graphState?.jsonLd?.['@context'], GraphStateTerms.JSON_LD_CONTEXT);
-      assert.ok(item0.graphState?.jsonLd !== undefined, 'graphState must include jsonLd when requested');
-      assert.ok(item0.graphState?.jsonLd['@graph'].length > 0, 'jsonLd graph payload must not be empty');
+      assert.ok(item0.jsonLd !== undefined, 'response item must include jsonLd when requested');
+      assert.deepEqual(item0.jsonLd['@context'], GraphStateTerms.JSON_LD_CONTEXT);
+      assert.ok(item0.jsonLd['@graph'].length > 0, 'jsonLd graph payload must not be empty');
     }
   });
 
@@ -286,7 +288,8 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,   // recorder node → done
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-exec-2', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-exec-2', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-2',
       },
@@ -323,7 +326,8 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': 'dag-does-not-exist',
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-exec-fail', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-exec-fail', 'runIri': initialState.runIri }],
         'timeoutMs': 1000,
         'correlationId': 'req-exec-fail',
       },
@@ -364,7 +368,8 @@ void describe('DagHost — abort', () => {
       'request': {
         'dagName': BODY_LAW5_DAG,   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-abort', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-abort', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-abort',
       },
@@ -425,7 +430,8 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-no-init', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-no-init', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-no-init',
       },
@@ -452,7 +458,8 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,
         'placementPath': ['host'],
-        'items': [{ 'id': 'req-pre-init-probe', 'graphState': graphStateTransfer(initialState) }],
+        'graphState': inlineTransfer([initialState]),
+        'items': [{ 'id': 'req-pre-init-probe', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-pre-init-probe',
       },

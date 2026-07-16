@@ -6,30 +6,32 @@
  * listeners are ever registered.
  *
  * Protocol responsibilities:
- *   init()         — send init, await ready; rejects on version mismatch or error.
- *   request()      — send execute (single-item N=1), await result; unpacks items[0].
- *                    Forwards abort + observer relay hook calls per request.
- *   requestBatch() — send execute (multi-item N>1), await result; returns BatchRunResultType[].
+ *   init()    — send init, await ready; rejects on version mismatch or error.
+ *   request() — send execute for N items (N=1 is a batch of one through the
+ *               identical path), await result, and return one `RunResultType`
+ *               per item. Forwards abort + observer relay hook calls per request.
  *
- * Transport-error contract: request() and requestBatch() never throw. A closed
- * channel, send failure, or unroutable error message produces transport-error
- * outcome(s). init() may reject; its caller (DagContainerBase.initializeChannel)
+ * Transport-error contract: request() never throws. A closed channel, send
+ * failure, or unroutable error message produces transport-error result(s),
+ * one per item. init() may reject; its caller (DagContainerBase.initializeChannel)
  * handles that.
  *
  * V8 shape stability: all fields initialised in constructor in declaration order.
  */
 
 
-import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
+import {
+  DEFAULT_GRAPH_STATE_TRANSFER_FORMATS,
+  type GraphStateTransferFormatType,
+} from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
-import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 
 import { DagOutcome } from './DagOutcome.js';
-import type { BatchRunResultType } from './DagOutcome.js';
+import type { RunResultType } from './DagOutcome.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
@@ -44,26 +46,14 @@ import type { BatchRunResultType } from './DagOutcome.js';
  */
 export type InitMessageShapeType = Omit<BridgeMessageType & { variant: 'init' }, 'variant'>;
 
-/** Per-request correlation entry for single-item (N=1) requests. */
+/** Per-request correlation entry. Every request carries one or more item ids. */
 type PendingEntry = {
   correlationId: string;
-  settle: (outcome: DagOutcomeType) => void;
+  settle: (results: RunResultType[]) => void;
   relay: ObserverRelayInterface | null;
   /** The parent's own signal for this container-node dispatch — see `ObserverRelayInterface`. */
   signal: AbortSignal;
   settled: boolean;
-  variant: 'single';
-}
-
-/** Per-request correlation entry for multi-item batch (N>1) requests. */
-type BatchPendingEntry = {
-  correlationId: string;
-  settle: (results: BatchRunResultType[]) => void;
-  relay: ObserverRelayInterface | null;
-  /** The parent's own signal for this container-node dispatch — see `ObserverRelayInterface`. */
-  signal: AbortSignal;
-  settled: boolean;
-  variant: 'batch';
   itemIds: readonly string[];
 }
 
@@ -80,7 +70,7 @@ type InitWaiter = {
 
 export class ChannelDispatch {
   readonly #channel: MessageChannelInterface;
-  readonly #pending: Map<string, PendingEntry | BatchPendingEntry>;
+  readonly #pending: Map<string, PendingEntry>;
   #initWaiter: InitWaiter | null;
   /** Capabilities declared by the initialized host. */
   #capabilities: readonly string[];
@@ -93,7 +83,7 @@ export class ChannelDispatch {
 
   constructor(channel: MessageChannelInterface) {
     this.#channel = channel;
-    this.#pending = new Map<string, PendingEntry | BatchPendingEntry>();
+    this.#pending = new Map<string, PendingEntry>();
     this.#initWaiter = null;
     this.#capabilities = [];
     this.#graphStateTransferFormats = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
@@ -141,78 +131,37 @@ export class ChannelDispatch {
         'registryModule': message['registryModule'],
         'registryVersion': message['registryVersion'],
         'servicesConfig': message['servicesConfig'],
-        ...(message['graphStateTransferFormats'] === undefined ? {} : { 'graphStateTransferFormats': message['graphStateTransferFormats'] }),
+        ...(message['graphStateTransferFormats'] === undefined
+          ? {}
+          : { 'graphStateTransferFormats': [...message['graphStateTransferFormats']] }),
+        ...(message['coalesceInstrumentation'] === undefined ? {} : { 'coalesceInstrumentation': message['coalesceInstrumentation'] }),
       });
     });
   }
 
   /**
-   * Send execute, await the correlated result. `signal` is a required positional
-   * arg; `relay` receives forwarded worker hook events (nodeStart, nodeEnd, etc.)
-   * and may be null when no observer is bound. Never throws —
-   * transport failures resolve to a transport-error DagOutcomeType.
+   * Send execute for every item in the request, await the correlated result, and
+   * return one `RunResultType` per item (N=1 is a batch of one through the
+   * identical path). `signal` is a required positional arg; `relay` receives
+   * forwarded worker hook events (nodeStart, nodeEnd, etc.) and may be null when
+   * no observer is bound. Never throws — transport failures resolve to
+   * transport-error `RunResultType` entries, one per item.
    */
   request(
     request: ExecutionRequestType,
     signal: AbortSignal,
     relay: ObserverRelayInterface | null,
-  ): Promise<DagOutcomeType> {
+  ): Promise<RunResultType[]> {
     const { correlationId } = request;
+    const itemIds = request.items.map((item) => item.id);
 
-    return new Promise<DagOutcomeType>((resolve) => {
+    return new Promise<RunResultType[]>((resolve) => {
       const entry: PendingEntry = {
         'correlationId': correlationId,
         'settle': resolve,
         'relay': relay,
         'signal': signal,
         'settled': false,
-        'variant': 'single',
-      };
-
-      this.#pending.set(correlationId, entry);
-
-      const onAbort = this.#withAbortHandler(signal, correlationId);
-
-      // Settle helper: settles once, removes abort listener, deletes pending entry.
-      const settleOnce = (outcome: DagOutcomeType): void => {
-        this.#settle(entry, signal, onAbort, resolve, outcome);
-      };
-
-      // Replace settle so #route can call it directly.
-      entry.settle = settleOnce;
-
-      try {
-        this.#channel.send({ 'variant': 'execute', 'request': request });
-      } catch {
-        // Send failure: resolve immediately as transport error.
-        settleOnce(DagOutcome.transportError(correlationId));
-      }
-    });
-  }
-
-  /**
-   * Send a multi-item batch execute request, await the correlated result, and
-   * return a `BatchRunResultType[]` — one entry per item in the request. `signal`
-   * is a required positional arg; `relay` receives forwarded worker hook events
-   * and may be null when no observer is bound. Never throws — transport failures
-   * resolve to transport-error `BatchRunResultType` entries.
-   */
-  requestBatch(
-    request: ExecutionRequestType,
-    signal: AbortSignal,
-    relay: ObserverRelayInterface | null,
-  ): Promise<BatchRunResultType[]> {
-    const { correlationId } = request;
-    const itemIds = request.items.map((item) => item.id);
-
-    return new Promise<BatchRunResultType[]>((resolve) => {
-      const entry: BatchPendingEntry = {
-        'correlationId': correlationId,
-        'settle': resolve,
-        'relay': relay,
-        'signal': signal,
-        'settled': false,
-        'variant': 'batch',
         'itemIds': itemIds,
       };
 
@@ -220,7 +169,7 @@ export class ChannelDispatch {
 
       const onAbort = this.#withAbortHandler(signal, correlationId);
 
-      const settleOnce = (results: BatchRunResultType[]): void => {
+      const settleOnce = (results: RunResultType[]): void => {
         this.#settle(entry, signal, onAbort, resolve, results);
       };
 
@@ -231,7 +180,7 @@ export class ChannelDispatch {
       } catch {
         // Send failure: return transport-error results for all items.
         settleOnce(itemIds.map((id: string) =>
-          DagOutcome.batchItemTransportError(id, correlationId),
+          DagOutcome.transportError(id, correlationId),
         ));
       }
     });
@@ -270,22 +219,20 @@ export class ChannelDispatch {
   /**
    * Settle a pending entry exactly once: flip the `settled` latch, remove the
    * abort listener, drop the correlation entry, then resolve the request's
-   * promise with `value`. Generic over the resolved type so both the
-   * single-item (`DagOutcomeType`) and batch (`BatchRunResultType[]`) paths
-   * share one implementation.
+   * promise with `results`.
    */
-  #settle<T>(
-    entry: PendingEntry | BatchPendingEntry,
+  #settle(
+    entry: PendingEntry,
     signal: AbortSignal,
     onAbort: () => void,
-    resolve: (value: T) => void,
-    value: T,
+    resolve: (results: RunResultType[]) => void,
+    results: RunResultType[],
   ): void {
     if (entry.settled) return;
     entry.settled = true;
     signal.removeEventListener('abort', onAbort);
     this.#pending.delete(entry.correlationId);
-    resolve(value);
+    resolve(results);
   }
 
   /**
@@ -310,16 +257,11 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      if (entry.variant === 'single') {
-        entry.settle(DagOutcome.transportError(entry.correlationId, { code, message }));
-      } else {
-        // Batch entry: produce one transport-error result per item.
-        entry.settle(
-          entry.itemIds.map((id) =>
-            DagOutcome.batchItemTransportError(id, entry.correlationId, { code, message }),
-          ),
-        );
-      }
+      entry.settle(
+        entry.itemIds.map((id) =>
+          DagOutcome.transportError(id, entry.correlationId, { code, message }),
+        ),
+      );
     }
     // settleOnce removes each entry; ensure the map is empty regardless.
     this.#pending.clear();
@@ -345,7 +287,9 @@ export class ChannelDispatch {
           ));
         } else {
           this.#capabilities = [...m.capabilities];
-          this.#graphStateTransferFormats = m.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
+          this.#graphStateTransferFormats = m.graphStateTransferFormats === undefined
+            ? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS
+            : [...m.graphStateTransferFormats];
           waiter.resolve();
         }
       },
@@ -356,26 +300,19 @@ export class ChannelDispatch {
         if (entry === undefined) return;
         const errors: readonly NodeErrorWireType[] = m.response.errors;
 
-        if (entry.variant === 'single') {
-          // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
-          const firstItem = m.response.items[0];
-          entry.settle({
-            'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
-            'errors': errors,
-            'intermediates': m.response.intermediates,
-            ...(firstItem?.graphState === undefined ? {} : { 'graphState': firstItem.graphState }),
-          });
-        } else {
-          // Batch (N>1): produce one BatchRunResultType per item.
-          const results: BatchRunResultType[] = m.response.items.map((item: { id: string; terminalOutcome: string; graphState?: typeof m.response.items[number]['graphState'] }) => ({
-            'id': item.id,
-            'terminalOutput': item.terminalOutcome,
-            'errors': errors,
-            'intermediates': m.response.intermediates,
-            ...(item.graphState === undefined ? {} : { 'graphState': item.graphState }),
-          }));
-          entry.settle(results);
-        }
+        // One RunResultType per item. Every result carries the SAME combined
+        // graphState (shared reference) plus its own runIri; the container
+        // does ONE split/restore over the shared payload.
+        const graphState = m.response.graphState;
+        const results: RunResultType[] = m.response.items.map((item) => ({
+          'id': item.id,
+          'terminalOutput': item.terminalOutcome,
+          'errors': errors,
+          'intermediates': m.response.intermediates,
+          'graphState': graphState,
+          'runIri': item.runIri,
+        }));
+        entry.settle(results);
       },
 
       'instrumentation': (m) => {
@@ -397,15 +334,11 @@ export class ChannelDispatch {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            if (entry.variant === 'single') {
-              entry.settle(DagOutcome.transportError(correlationId, { 'code': m.code, 'message': m.message }));
-            } else {
-              entry.settle(
-                entry.itemIds.map((id) =>
-                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': m.code, 'message': m.message }),
-                ),
-              );
-            }
+            entry.settle(
+              entry.itemIds.map((id) =>
+                DagOutcome.transportError(id, correlationId, { 'code': m.code, 'message': m.message }),
+              ),
+            );
           }
         } else {
           // Channel-scoped error (null correlationId): the host is in a bad state.
@@ -436,7 +369,7 @@ export class ChannelDispatch {
 
   #routeInstrumentation(
     item: Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>,
-    entry: PendingEntry | BatchPendingEntry,
+    entry: PendingEntry,
   ): void {
     const { relay } = entry;
     const { signal } = entry;

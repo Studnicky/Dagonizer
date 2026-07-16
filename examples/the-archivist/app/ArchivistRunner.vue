@@ -16,14 +16,14 @@
  * methods to write to the same reactive refs the template binds.
  */
 
-import { computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../ArchivistState.ts';
-import { archivistDAG as canonicalArchivistDAG } from '../dag.ts';
 import { DomConsoleLogger } from '../logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../logger/ConsoleLogger.ts';
 import { MemoryStore } from '../memory/MemoryStore.ts';
@@ -32,12 +32,7 @@ import { SeedLibrary } from '../data/SeedLibrary.ts';
 import { RdfProvObserver } from '../provenance/RdfProvObserver.ts';
 import { NODE_VARIANTS } from '../nodes/ArchivistNode.ts';
 import { ArchivistNodes } from '../nodes/ArchivistNodes.ts';
-import {
-  ApiKeyStore,
-  BackendMatrix,
-  PreferredModels,
-  ProviderInstantiator,
-} from '../providers/index.ts';
+import { ApiKeyStore, PreferredModels } from '../providers/index.ts';
 import { MobileDetection } from '../providers/MobileDetection.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type {
@@ -50,13 +45,6 @@ import type { IntentClassifier } from '../providers/IntentClassifier.ts';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ArchivistServices } from '../services.ts';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
-import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
-import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
-import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
-import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
-import { bookSearchScatterDAG } from '../embedded-dags/BookSearchScatterDAG.ts';
-import { composeRetryLoopDAG } from '../embedded-dags/ComposeRetryLoopDAG.ts';
-import type { DAGType } from '@studnicky/dagonizer';
 
 import {
   ArchivistSession,
@@ -66,20 +54,26 @@ import type {
   SessionNodeEvent,
 } from '../ArchivistSession.ts';
 
-import BackendPicker from '../../../docs/.vitepress/theme/components/BackendPicker.vue';
-import CheckpointControls from '../../../docs/.vitepress/theme/components/CheckpointControls.vue';
-import Conversation from '../../../docs/.vitepress/theme/components/Conversation.vue';
-import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
-import MemoryGraph from '../../../docs/.vitepress/theme/components/MemoryGraph.vue';
-import type { MemorySelection } from '../../../docs/.vitepress/theme/components/MemoryGraph.vue';
-import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
-import SendForm from '../../../docs/.vitepress/theme/components/SendForm.vue';
-import ConversationContextPane from '../../../docs/.vitepress/theme/components/ConversationContextPane.vue';
+const BackendPicker = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/BackendPicker.vue'));
+const CheckpointControls = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/CheckpointControls.vue'));
+const Conversation = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/Conversation.vue'));
+const DagGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/DagGraph.vue'));
+const MemoryGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/MemoryGraph.vue'));
+const PanesTabs = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/PanesTabs.vue'));
+const SendForm = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/SendForm.vue'));
+const ConversationContextPane = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/ConversationContextPane.vue'));
 import TimeoutPane from '../../../docs/.vitepress/theme/components/TimeoutPane.vue';
 import type { TimeoutSettings } from '../../../docs/.vitepress/theme/components/TimeoutPane.vue';
-import ToolExplainPanel from '../../../docs/.vitepress/theme/components/ToolExplainPanel.vue';
-import TraceFeed from '../../../docs/.vitepress/theme/components/TraceFeed.vue';
-import TripleInspector from '../../../docs/.vitepress/theme/components/TripleInspector.vue';
+const ToolExplainPanel = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/ToolExplainPanel.vue'));
+const TraceFeed = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/TraceFeed.vue'));
+const TripleInspector = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/TripleInspector.vue'));
+import type { IriSelectionType, LiteralSelectionType } from '../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import {
+  SelectionController,
+  selectedInspectTarget,
+  selectedToolName,
+} from '../../../packages/dagonizer/src/viz/SelectionController.ts';
+import type { InspectorTargetType } from '../../../packages/dagonizer/src/viz/InspectorTarget.ts';
 
 import { RunnerMachine } from '../../../docs/.vitepress/theme/runner/RunnerMachine.ts';
 
@@ -161,7 +155,7 @@ const terminalVariant = ref<'pending' | 'completed' | 'failed' | 'cancelled' | '
 const embedder = shallowRef<EmbedderInterface | null>(null);
 const intentClassifier = shallowRef<IntentClassifier | null>(null);
 
-const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
+const dagGraph = ref<any>(null);
 const memoryStore = new MemoryStore();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 // Reactive event sink owned by Vue: DomConsoleLogger.onEmit appends here, so
@@ -258,13 +252,21 @@ async function saveCheckpoint(): Promise<void> {
 // machine's current state instead of independent refs.
 const runnerMachine = new RunnerMachine();
 
-// Selected node in the memory graph; TripleInspector reads this.
-const selectedSelection = ref<MemorySelection | null>(null);
-function onMemorySelect(sel: MemorySelection | null): void { selectedSelection.value = sel; }
-
-// Selected tool/node for the ToolExplainPanel.
-const selectedTool = ref<string | null>(null);
-function onToolSelect(name: string): void { selectedTool.value = name; }
+type MemorySelection = IriSelectionType | LiteralSelectionType;
+const inspectorTarget = ref<InspectorTargetType | null>(null);
+const selectionController = new SelectionController({
+  'onSelectionChange': (target) => { inspectorTarget.value = target; },
+});
+const selectedSelection = computed<MemorySelection | null>(() => {
+  const target = selectedInspectTarget(inspectorTarget.value);
+  return target !== null && (target.variant === 'iri' || target.variant === 'literal')
+    ? target
+    : null;
+});
+const selectedTool = computed<string | null>(() => selectedToolName(inspectorTarget.value));
+function onMemorySelect(sel: MemorySelection | null): void { selectionController.selectInspect(sel); }
+function onToolSelect(name: string): void { selectionController.selectTool(name); }
+function closeInspector(): void { selectionController.clear(); }
 
 /**
  * Static context fed to the LLM prompt for each known tool/node.
@@ -314,11 +316,62 @@ const resolvedModel = computed<string>(() => {
   return entry?.resolvedModel ?? '';
 });
 
+let runtimeModulesPromise:
+  | Promise<{
+      canonicalArchivistDAG: DAGType;
+      bookSearchScatterDAG: DAGType;
+      composeRetryLoopDAG: DAGType;
+      BackendMatrix: typeof import('../providers/index.ts').BackendMatrix;
+      ProviderInstantiator: typeof import('../providers/index.ts').ProviderInstantiator;
+      GoogleBooksTool: typeof import('@studnicky/dagonizer-tool-googlebooks').GoogleBooksTool;
+      OpenLibrarySearchTool: typeof import('@studnicky/dagonizer-tool-openlibrary').OpenLibrarySearchTool;
+      SubjectSearchTool: typeof import('@studnicky/dagonizer-tool-openlibrary').SubjectSearchTool;
+      WikipediaSummaryTool: typeof import('@studnicky/dagonizer-tool-wikipedia').WikipediaSummaryTool;
+    }>
+  | null = null;
+let runtimeBackendMatrix: typeof import('../providers/index.ts').BackendMatrix | null = null;
+let runtimeProviderInstantiator: typeof import('../providers/index.ts').ProviderInstantiator | null = null;
+
+function loadArchivistRuntimeModules() {
+  if (runtimeModulesPromise === null) {
+    runtimeModulesPromise = Promise.all([
+      import('../dag.ts'),
+      import('../embedded-dags/BookSearchScatterDAG.ts'),
+      import('../embedded-dags/ComposeRetryLoopDAG.ts'),
+      import('../providers/index.ts'),
+      import('@studnicky/dagonizer-tool-googlebooks'),
+      import('@studnicky/dagonizer-tool-openlibrary'),
+      import('@studnicky/dagonizer-tool-wikipedia'),
+    ]).then(([
+      dagModule,
+      scatterModule,
+      retryModule,
+      providerModule,
+      googleModule,
+      openLibraryModule,
+      wikipediaModule,
+    ]) => ({
+      canonicalArchivistDAG: dagModule.archivistDAG,
+      bookSearchScatterDAG: scatterModule.bookSearchScatterDAG,
+      composeRetryLoopDAG: retryModule.composeRetryLoopDAG,
+      BackendMatrix: providerModule.BackendMatrix,
+      ProviderInstantiator: providerModule.ProviderInstantiator,
+      GoogleBooksTool: googleModule.GoogleBooksTool,
+      OpenLibrarySearchTool: openLibraryModule.OpenLibrarySearchTool,
+      SubjectSearchTool: openLibraryModule.SubjectSearchTool,
+      WikipediaSummaryTool: wikipediaModule.WikipediaSummaryTool,
+    }));
+  }
+
+  return runtimeModulesPromise;
+}
+
 // #region archivist-browser-llm-client
 /** Construct an LLM client for the active backend, or null when none is selected. */
-function makeLlm() {
+async function makeLlm() {
   if (activeBackend.value === null) return null;
-  return ProviderInstantiator.instantiate(activeBackend.value, {
+  if (runtimeProviderInstantiator === null) return null;
+  return await runtimeProviderInstantiator.instantiate(activeBackend.value, {
     'apiKeys': apiKeys.value,
     'model':   resolvedModel.value,
     ...(intentClassifier.value !== null ? { 'intentClassifier': intentClassifier.value } : {}),
@@ -327,7 +380,11 @@ function makeLlm() {
 // #endregion archivist-browser-llm-client
 
 /** Live LLM client reference for ToolExplainPanel, kept in sync with activeBackend changes. */
-const currentLlm = computed(() => makeLlm());
+const currentLlm = shallowRef<Awaited<ReturnType<typeof makeLlm>>>(null);
+
+watch([activeBackend, apiKeys, resolvedModel, intentClassifier], async () => {
+  currentLlm.value = await makeLlm();
+}, { 'deep': true, 'immediate': true });
 
 function clearMemory(): void {
   // Drop the accumulated memory facts but keep the schema: re-insert the TBox
@@ -357,38 +414,57 @@ const rightTabs = computed(() => [
 ]);
 
 // Top-level archivist DAG reference for DagGraph display.
-const archivistDag = ref<DAGType | null>(canonicalArchivistDAG);
+const archivistDag = ref<DAGType | null>(null);
 
 // Embedded-DAG registry. Keys match the embeddedDAG placement names in the parent DAG.
-const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map([
-  ['book-search-scatter', bookSearchScatterDAG],
-  ['compose-retry-loop',  composeRetryLoopDAG],
-]));
+const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 
 // #region archivist-browser-tool-registry
 // Stable tool instances for the checkpoint resume path and archivistToolRegistry.
 // One instance each: the HTTP tools are stateless.
-const webSearchTool        = new OpenLibrarySearchTool();
-const googleBooksTool      = new GoogleBooksTool();
-const subjectSearchTool    = new SubjectSearchTool();
-const wikipediaSummaryTool = new WikipediaSummaryTool();
+let webSearchTool: InstanceType<typeof import('@studnicky/dagonizer-tool-openlibrary').OpenLibrarySearchTool> | null = null;
+let googleBooksTool: InstanceType<typeof import('@studnicky/dagonizer-tool-googlebooks').GoogleBooksTool> | null = null;
+let subjectSearchTool: InstanceType<typeof import('@studnicky/dagonizer-tool-openlibrary').SubjectSearchTool> | null = null;
+let wikipediaSummaryTool: InstanceType<typeof import('@studnicky/dagonizer-tool-wikipedia').WikipediaSummaryTool> | null = null;
 
 // Tool registry: each tool becomes an embeddable `tool:<name>` DAG that the
 // book-search scatter resolves at runtime via `{ dagFrom: 'dagName' }`. Must be
 // registered before bookSearchScatterDAG or every scatter item fails to
 // resolve its body DAG and routes to 'error'.
 const archivistToolRegistry = new ToolRegistry();
-archivistToolRegistry.register(webSearchTool);
-archivistToolRegistry.register(googleBooksTool);
-archivistToolRegistry.register(subjectSearchTool);
-archivistToolRegistry.register(wikipediaSummaryTool);
+
+async function primeArchivistArtifacts(): Promise<void> {
+  const runtime = await loadArchivistRuntimeModules();
+
+  archivistDag.value = runtime.canonicalArchivistDAG;
+  runtimeBackendMatrix = runtime.BackendMatrix;
+  runtimeProviderInstantiator = runtime.ProviderInstantiator;
+  embeddedDagRegistry.value = new Map([
+    ['book-search-scatter', runtime.bookSearchScatterDAG],
+    ['compose-retry-loop', runtime.composeRetryLoopDAG],
+  ]);
+
+  if (webSearchTool === null) {
+    webSearchTool = new runtime.OpenLibrarySearchTool();
+    googleBooksTool = new runtime.GoogleBooksTool();
+    subjectSearchTool = new runtime.SubjectSearchTool();
+    wikipediaSummaryTool = new runtime.WikipediaSummaryTool();
+    archivistToolRegistry.register(webSearchTool);
+    archivistToolRegistry.register(googleBooksTool);
+    archivistToolRegistry.register(subjectSearchTool);
+    archivistToolRegistry.register(wikipediaSummaryTool);
+  }
+}
 // #endregion archivist-browser-tool-registry
 
 // #region archivist-browser-services
 /** Build a real services record for the checkpoint resume path. */
-function buildServices(): ArchivistServices {
-  const llm = makeLlm();
+async function buildServices(): Promise<ArchivistServices> {
+  const llm = await makeLlm();
   if (llm === null) throw new Error('no backend selected');
+  if (webSearchTool === null || googleBooksTool === null || subjectSearchTool === null || wikipediaSummaryTool === null) {
+    throw new Error('tool registry not initialized');
+  }
   return {
     'webSearch':         webSearchTool,
     'googleBooks':       googleBooksTool,
@@ -663,21 +739,25 @@ const session = new VueArchivistSession(memoryStore, logger, props.lang.length >
 watch(apiKeys, async (keys) => {
   session.setApiKeys(keys);
   ApiKeyStore.save(keys);
-  backends.value = await BackendMatrix.detect({
+  await primeArchivistArtifacts();
+  if (runtimeBackendMatrix === null) return;
+  backends.value = await runtimeBackendMatrix.detect({
     'apiKeys': keys,
     'preferredModels': preferredModels.value,
   });
-  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  noModel.value = runtimeBackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
   session.setBackends(backends.value);
 }, { 'deep': true });
 
 watch(preferredModels, async (models) => {
   session.setPreferredModels(models);
-  backends.value = await BackendMatrix.detect({
+  await primeArchivistArtifacts();
+  if (runtimeBackendMatrix === null) return;
+  backends.value = await runtimeBackendMatrix.detect({
     'apiKeys': apiKeys.value,
     'preferredModels': models,
   });
-  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  noModel.value = runtimeBackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
   session.setBackends(backends.value);
 }, { 'deep': true });
 
@@ -774,6 +854,7 @@ async function runParkedSession(): Promise<void> {
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  await primeArchivistArtifacts();
   // Seed the memory store before the session boots so the memory graph shows
   // the ontology structure and sample books before any run.
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
@@ -830,8 +911,7 @@ async function reset(): Promise<void> {
   conversation.value    = [];
   trace.value           = [];
   terminalVariant.value = 'pending';
-  selectedSelection.value = null;
-  selectedTool.value    = null;
+  selectionController.clear();
   checkpointNode.value  = null;
   lastResult            = null;
   visitorQuery.value    = '';
@@ -897,15 +977,16 @@ async function resumeFromCheckpoint(): Promise<void> {
   let observer: VueResumeObserver | null = null;
 
   try {
-    const services = buildServices();
+    const services = await buildServices();
     const nodes = ArchivistNodes.build(services);
+    const runtime = await loadArchivistRuntimeModules();
 
     observer = new VueResumeObserver(logger, session, prov, restored.cursor);
 
     observer.registerBundle(archivistToolRegistry.bundle());
-    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
-    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
-    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [canonicalArchivistDAG] });
+    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [runtime.bookSearchScatterDAG] });
+    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [runtime.composeRetryLoopDAG] });
+    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [runtime.canonicalArchivistDAG] });
 
     activeAbortController = new AbortController();
     const deadlineMs = overallDeadlineMs();
@@ -1042,7 +1123,7 @@ async function resumeFromCheckpoint(): Promise<void> {
 
             <!-- Trace tab: merged node lifecycle + logger feed -->
             <template #trace>
-              <TraceFeed :entries="trace" :log-events="logEvents" @node-click="onToolSelect" />
+              <TraceFeed :entries="trace" :log-events="logEvents" :selected-tool="selectedTool" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>
@@ -1065,6 +1146,7 @@ async function resumeFromCheckpoint(): Promise<void> {
                   :embedded-d-a-gs="embeddedDagRegistry"
                   :node-variants="NODE_VARIANTS"
                   :expand-all="true"
+                  :selected-node="selectedTool"
                   aria-label="Archivist DAG live execution"
                   @node-click="onToolSelect"
                 />
@@ -1072,7 +1154,7 @@ async function resumeFromCheckpoint(): Promise<void> {
                   :selected-tool="selectedTool"
                   :llm="currentLlm"
                   :tool-context-map="toolContextMap"
-                  @close="selectedTool = null"
+                  @close="closeInspector"
                 />
               </div>
             </template>
@@ -1083,6 +1165,7 @@ async function resumeFromCheckpoint(): Promise<void> {
                 <MemoryGraph
                   :store="memoryStore"
                   :tick="memoryTick"
+                  :selection="selectedSelection"
                   @clear="clearMemory"
                   @select="onMemorySelect"
                 />
@@ -1090,7 +1173,7 @@ async function resumeFromCheckpoint(): Promise<void> {
                   :store="memoryStore"
                   :tick="memoryTick"
                   :selection="selectedSelection"
-                  @close="selectedSelection = null"
+                  @close="closeInspector"
                 />
               </div>
             </template>

@@ -1,0 +1,15 @@
+---
+import SectionShell from '@/components/islands/SectionShell.vue';
+
+interface Props {
+  eyebrow: string;
+  title: string;
+  description: string;
+}
+
+const { eyebrow, title, description } = Astro.props;
+---
+
+<SectionShell eyebrow={eyebrow} title={title} description={description}>
+  <slot />
+</SectionShell>

@@ -175,14 +175,11 @@ export class Checkpoint {
 
     const dagIri = DAGIdentity.id(dagName);
     const graphJsonLd = await result.state.snapshotJsonLd(result.state.runIri);
-    const graphTransfer = await GraphStateTransferCodec.inlineStream(
-      result.state.runIri,
-      [GraphStateTerms.runGraphIri(result.state.runIri)],
-      result.state.snapshotGraph(),
-      { 'dagIri': dagIri, 'placementPath': [result.cursor], 'placementIri': result.cursor, "jsonLd": graphJsonLd },
-    );
+    const graphTransfer = await GraphStateTransferCodec.inline([
+      { 'runIri': result.state.runIri, 'quads': result.state.snapshotGraph() },
+    ]);
     const graphNquads = graphTransfer.nquads;
-    const graphHash = graphTransfer.mode === 'inline-nquads' ? graphTransfer.hash : '';
+    const graphHash = graphTransfer.hash;
     const base: CheckpointDataType = {
       'dagName': dagIri,
       'cursor': result.cursor,

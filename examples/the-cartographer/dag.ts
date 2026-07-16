@@ -63,7 +63,7 @@ import { pipelineCustomsEventDAG }        from './embedded-dags/PipelineCustomsE
 import { pipelineFacilityScanDAG }        from './embedded-dags/PipelineFacilityScanDAG.ts';
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
 import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
-import { producerFeedBundle } from './embedded-dags/ProducerFeedDAG.ts';
+import { producerFeedBundle, streamProducerFeedBundle } from './embedded-dags/ProducerFeedDAG.ts';
 
 import type { CartographerState } from './CartographerState.ts';
 
@@ -100,6 +100,41 @@ function appendCanonicalFeedGather(builder: DAGBuilder, dagIri: string, emptyTar
     CARTOGRAPHER_IRIS.placementIri(dagIri, 'intake-gather'),
     CARTOGRAPHER_IRIS.feedSources(dagIri),
     { 'strategy': 'canonical-feed' },
+    {
+      'success': CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
+      'error':   CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
+      'empty':   emptyTarget,
+    },
+  );
+}
+
+function appendProducerStreamFeedEntrypoints(builder: DAGBuilder, dagIri: string): DAGBuilder {
+  const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(dagIri, 'intake-gather');
+  for (const eventType of CARTOGRAPHER_IRIS.intakeEventTypes) {
+    builder.embed<CartographerState, CartographerState>(
+      CARTOGRAPHER_IRIS.feedPlacementIri(dagIri, eventType),
+      CARTOGRAPHER_IRIS.streamFeedDagIri(eventType),
+      {
+        'success': intakeGatherIri,
+        'error':   intakeGatherIri,
+      },
+    );
+  }
+  return builder;
+}
+
+function appendSourceIntakeGather(builder: DAGBuilder, dagIri: string, emptyTarget: string): DAGBuilder {
+  const sourceBindings = Object.fromEntries(
+    CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+      CARTOGRAPHER_IRIS.feedPlacementIri(dagIri, eventType),
+      { 'resultField': 'sourceFeed' },
+    ]),
+  ) as Record<string, { readonly resultField: 'sourceFeed' }>;
+
+  return builder.gather(
+    CARTOGRAPHER_IRIS.placementIri(dagIri, 'intake-gather'),
+    sourceBindings,
+    { 'strategy': 'source-intake' },
     {
       'success': CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
       'error':   CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
@@ -428,12 +463,7 @@ export const DEFAULT_RESERVOIR_CAPACITY = 1000;
 export class CartographerWorkersDag {
   private constructor() { /* static-only */ }
 
-  /**
-   * Build the cartographer-workers DAG with the given reservoir capacity.
-   * CLI, smoke tests, and dag-validate consumers use cartographerWorkersDAG
-   * (the pre-built constant); the browser demo calls this with a UI-controlled value.
-   */
-  static build(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAGType {
+  private static buildCanonical(capacity: number): DAGType {
     return appendCanonicalFeedGather(
       appendProducerFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0'), CARTOGRAPHER_DAG_IRI),
       CARTOGRAPHER_DAG_IRI,
@@ -479,6 +509,70 @@ export class CartographerWorkersDag {
       .build();
   }
 
+  private static buildStreamSource(capacity: number): DAGType {
+    return appendSourceIntakeGather(
+      appendProducerStreamFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0'), CARTOGRAPHER_DAG_IRI),
+      CARTOGRAPHER_DAG_IRI,
+      CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'),
+    )
+      .scatter(
+        CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'process-stream'),
+        'source-payload',
+        { 'dag': CARTOGRAPHER_IRIS.dag.streamEvent },
+        {
+          'all-success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
+          'partial':     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
+          'all-error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
+          'empty':       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
+        },
+        {
+          'itemKey':     'source-payload',
+          'container':   'cpu',
+          'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
+        },
+      )
+      .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'), {
+        [CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'process-stream')]: {},
+      }, { 'strategy': 'insights-fold' }, {
+        'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
+        'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
+        'empty':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
+      })
+
+      .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'), INSIGHTS_SUMMARY_DAG_IRI, {
+        'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'done'),
+        'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'),
+      }, {
+        'container': 'io',
+      })
+
+      .terminal(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'done'), { outcome: 'completed' })
+      .terminal(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'), { outcome: 'failed' })
+
+      .entrypoints(CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_DAG_IRI))
+
+      .build();
+  }
+
+  /**
+   * Build the cartographer-workers DAG with the given reservoir capacity.
+   * CLI, smoke tests, and dag-validate consumers use cartographerWorkersDAG
+   * (the pre-built constant); the browser demo calls this with a UI-controlled value.
+   *
+   * `strategy: 'canonical'` uses the classic array materialization topology.
+   * `strategy: 'stream-source'` uses a source-intake gather + stream-event DAG
+   * to keep memory growth bounded for very large synthetic runs.
+   */
+  static build(
+    capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+    options: Readonly<{ 'strategy'?: 'canonical' | 'stream-source' }> = {},
+  ): DAGType {
+    if (options.strategy === 'stream-source') {
+      return CartographerWorkersDag.buildStreamSource(capacity);
+    }
+    return CartographerWorkersDag.buildCanonical(capacity);
+  }
+
   /**
    * Build the workers bundle with a configurable reservoir capacity. The returned
    * bundle is identical to cartographerWorkersBundle except that its cartographer
@@ -490,16 +584,18 @@ export class CartographerWorkersDag {
    */
   static bundle(
     capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+    options: Readonly<{ 'strategy'?: 'canonical' | 'stream-source' }> = {},
   ): DispatcherBundleType<CartographerState> {
+    const feedBundle = options.strategy === 'stream-source' ? streamProducerFeedBundle : producerFeedBundle;
     return {
       'nodes': [
-        ...producerFeedBundle.nodes,
+        ...feedBundle.nodes,
         ...cartographerWorkerRuntimeBundle.nodes,
       ],
       'dags': [
-        ...producerFeedBundle.dags,
+        ...feedBundle.dags,
         ...cartographerWorkerRuntimeBundle.dags,
-        CartographerWorkersDag.build(capacity),
+        CartographerWorkersDag.build(capacity, options),
       ],
     };
   }

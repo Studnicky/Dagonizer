@@ -13,8 +13,6 @@ import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
-import { DagGraphTerms } from '../graph/DagGraphTerms.js';
-import { GraphStateTerms } from '../graph/GraphStateTerms.js';
 import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -49,34 +47,24 @@ export class DagTask
   /**
    * Materialise the wire form from the live graph clone. Called by
    * isolating containers before sending the task across the transport boundary.
-   * Produces a single-item request (N=1); multi-item batch requests are
-   * built by `DagContainerBase.runDagBatch` directly.
+   * Produces a single-item request (a batch of one); multi-item batch requests
+   * are built by `DagContainerBase.runDag` directly.
+   *
+   * The `graphState` here is an empty inline batch placeholder — keeping the
+   * request cheap by avoiding graph-snapshot materialization on this synchronous
+   * seam. The real combined graph payload is reconstructed from the live graph
+   * stream by `DagContainerBase` before dispatch.
    */
   toRequest(): ExecutionRequestType {
+    const placementIri = this.placementPath.at(-1);
+    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
     return {
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],
-      'items':         [{ 'id': this.correlationId, 'graphState': this.stateGraph() }],
+      'graphState':    GraphStateTransferCodec.inlineSync([{ 'runIri': this.state.runIri, 'quads': [] }]),
+      'items':         [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
       'timeoutMs':     this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
-  }
-
-  private stateGraph() {
-    const graphIri = GraphStateTerms.runGraphIri(this.state.runIri);
-    const placementIri = this.placementPath.at(-1);
-    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
-    const quads = [...this.state.graphDataset.exportGraph(DagGraphTerms.namedNode(graphIri))];
-    return GraphStateTransferCodec.inline(
-      this.state.runIri,
-      [graphIri],
-      quads,
-      {
-        'dagIri': this.dagName,
-        'placementPath': this.placementPath,
-        'placementIri': placementIri,
-        'stateGraphIri': graphIri,
-      },
-    );
   }
 }

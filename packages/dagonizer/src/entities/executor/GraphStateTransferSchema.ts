@@ -1,82 +1,136 @@
-const MetadataProperties = {
-  'dagIri': { 'type': 'string', 'minLength': 1 },
-  'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-  'placementIri': { 'type': 'string', 'minLength': 1 },
-  'stateGraphIri': { 'type': 'string', 'minLength': 1 },
-  'createdAt': { 'type': 'string', 'minLength': 1 },
-  'byteSize': { 'type': 'number', 'minimum': 0 },
-  'quadCount': { 'type': 'integer', 'minimum': 0 },
-  'jsonLd': { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
+/**
+ * GraphStateTransfer: the batch-level graph-state payload carried by a
+ * container `ExecutionRequest`/`ExecutionResponse`. ONE mode-aware transfer
+ * for the whole batch — every transfer mode is combined-per-batch; there is
+ * no per-item transfer path anywhere in the container protocol.
+ *
+ * A discriminated union over `transport` ∈ the five transfer modes. All arms
+ * are batch-scoped: `graphIris` spans every item's `${runIri}#state` graph,
+ * and the codec work (encode + hash, or store write) is done ONCE for the
+ * batch. The per-item `runIri` (carried on the request/response `items`
+ * array) locates each item's subgraph within the combined payload.
+ *
+ *   - `inline-nquads`        one combined N-Quads document; one encode + one hash.
+ *   - `graph-ref`            one store reference to the whole batch's combined graph.
+ *   - `shared-endpoint`      one lease over every item graph; one combined write.
+ *   - `inline-delta-nquads`  one combined additions/deletions N-Quads batch delta.
+ *   - `delta-ref`            one store-referenced combined batch delta.
+ *
+ * Store-backed modes (`graph-ref`, `shared-endpoint`, `delta-ref`) are reachable
+ * only when a `GraphStateTransferStore` is injected; the default browser/demo
+ * path is `inline-nquads`. `byteSize`/`quadCount` measure the combined payload;
+ * a single `hash` (where present) covers the whole batch.
+ *
+ * JSON Schema 2020-12 entity: schema value + FromSchema-derived TypeScript type.
+ */
+
+import type { FromSchema } from 'json-schema-to-ts';
+
+/**
+ * JSON Schema for the optional Node.js JSON-LD document view of a graph-state
+ * payload. Reused by the transfer metadata and by the per-item `jsonLd` field of
+ * the container execution request/response entities so the ld+json cold path has
+ * one canonical wire shape.
+ */
+export const GraphStateJsonLdSchema = { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true } as const;
+
+/** JSON Schema for the combined per-batch inline N-Quads graph-state payload. */
+export const GraphStateInlineSchema = {
+  'type': 'object',
+  'required': ['transport', 'format', 'nquads', 'graphIris', 'hash', 'byteSize', 'quadCount'],
+  'properties': {
+    'transport': { 'type': 'string', 'const': 'inline-nquads' },
+    'format':    { 'type': 'string', 'const': 'application/n-quads' },
+    'nquads':    { 'type': 'string' },
+    'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
+    'hash':      { 'type': 'string', 'minLength': 1 },
+    'byteSize':  { 'type': 'number', 'minimum': 0 },
+    'quadCount': { 'type': 'integer', 'minimum': 0 },
+  },
+  'additionalProperties': false,
 } as const;
 
-const InlineProperties = {
-  'mode': { 'type': 'string', 'const': 'inline-nquads' },
-  'format': { 'type': 'string', 'const': 'application/n-quads' },
-  'runIri': { 'type': 'string', 'minLength': 1 },
-  'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
-  'nquads': { 'type': 'string' },
-  'hash': { 'type': 'string', 'minLength': 1 },
-  ...MetadataProperties,
+const GraphStateReferenceSchema = {
+  'type': 'object',
+  'required': ['transport', 'format', 'graphIris', 'graphSnapshotRef', 'hash', 'byteSize', 'quadCount'],
+  'properties': {
+    'transport':        { 'type': 'string', 'const': 'graph-ref' },
+    'format':           { 'type': 'string', 'const': 'application/n-quads' },
+    'graphIris':        { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
+    'graphSnapshotRef': { 'type': 'string', 'minLength': 1 },
+    'hash':             { 'type': 'string', 'minLength': 1 },
+    'byteSize':         { 'type': 'number', 'minimum': 0 },
+    'quadCount':        { 'type': 'integer', 'minimum': 0 },
+  },
+  'additionalProperties': false,
 } as const;
 
-const ReferenceProperties = {
-  'mode': { 'type': 'string', 'const': 'graph-ref' },
-  'runIri': { 'type': 'string', 'minLength': 1 },
-  'graphSnapshotRef': { 'type': 'string', 'minLength': 1 },
-  'format': { 'type': 'string', 'const': 'application/n-quads' },
-  'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
-  'hash': { 'type': 'string', 'minLength': 1 },
-  ...MetadataProperties,
+const GraphStateSharedSchema = {
+  'type': 'object',
+  'required': ['transport', 'graphIris', 'endpoint', 'lease', 'byteSize', 'quadCount'],
+  'properties': {
+    'transport': { 'type': 'string', 'const': 'shared-endpoint' },
+    'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
+    'endpoint':  { 'type': 'string', 'minLength': 1 },
+    'lease':     { 'type': 'string', 'minLength': 1 },
+    'byteSize':  { 'type': 'number', 'minimum': 0 },
+    'quadCount': { 'type': 'integer', 'minimum': 0 },
+  },
+  'additionalProperties': false,
 } as const;
 
-const SharedProperties = {
-  'mode': { 'type': 'string', 'const': 'shared-endpoint' },
-  'runIri': { 'type': 'string', 'minLength': 1 },
-  'endpoint': { 'type': 'string', 'minLength': 1 },
-  'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
-  'lease': { 'type': 'string', 'minLength': 1 },
-  ...MetadataProperties,
+const GraphStateInlineDeltaSchema = {
+  'type': 'object',
+  'required': ['transport', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
+  'properties': {
+    'transport':       { 'type': 'string', 'const': 'inline-delta-nquads' },
+    'graphIris':       { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
+    'baseSnapshotRef': { 'type': 'string', 'minLength': 1 },
+    'additions':       { 'type': 'string' },
+    'deletions':       { 'type': 'string' },
+    'hash':            { 'type': 'string', 'minLength': 1 },
+    'byteSize':        { 'type': 'number', 'minimum': 0 },
+    'quadCount':       { 'type': 'integer', 'minimum': 0 },
+  },
+  'additionalProperties': false,
 } as const;
 
-const DeltaProperties = {
-  'mode': { 'type': 'string', 'enum': ['delta-ref', 'inline-delta-nquads'] },
-  'runIri': { 'type': 'string', 'minLength': 1 },
-  'baseSnapshotRef': { 'type': 'string', 'minLength': 1 },
-  'baseRevision': { 'type': 'string', 'minLength': 1 },
-  'revision': { 'type': 'string', 'minLength': 1 },
-  'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
-  'additions': { 'type': 'string' },
-  'deletions': { 'type': 'string' },
-  'hash': { 'type': 'string', 'minLength': 1 },
-  ...MetadataProperties,
+const GraphStateDeltaReferenceSchema = {
+  'type': 'object',
+  'required': ['transport', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
+  'properties': {
+    'transport':       { 'type': 'string', 'const': 'delta-ref' },
+    'graphIris':       { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
+    'baseSnapshotRef': { 'type': 'string', 'minLength': 1 },
+    'additions':       { 'type': 'string' },
+    'deletions':       { 'type': 'string' },
+    'hash':            { 'type': 'string', 'minLength': 1 },
+    'byteSize':        { 'type': 'number', 'minimum': 0 },
+    'quadCount':       { 'type': 'integer', 'minimum': 0 },
+  },
+  'additionalProperties': false,
 } as const;
 
-/** JSON Schema for every graph-state transfer mode. */
+/** JSON Schema for the batch-level graph-state transfer union (all modes batch-native). */
 export const GraphStateTransferSchema = {
-  'oneOf': [
-    {
-      'type': 'object',
-      'required': ['mode', 'format', 'runIri', 'graphIris', 'nquads', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
-      'properties': InlineProperties,
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['mode', 'runIri', 'graphSnapshotRef', 'format', 'graphIris', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
-      'properties': ReferenceProperties,
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['mode', 'runIri', 'endpoint', 'graphIris', 'lease', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
-      'properties': SharedProperties,
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['mode', 'runIri', 'baseSnapshotRef', 'graphIris', 'additions', 'deletions', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
-      'properties': DeltaProperties,
-      'additionalProperties': false,
-    },
-  ],
+  'oneOf': [GraphStateInlineSchema, GraphStateReferenceSchema, GraphStateSharedSchema, GraphStateInlineDeltaSchema, GraphStateDeltaReferenceSchema],
 } as const;
+
+/** TypeScript type derived from `GraphStateInlineSchema` — the inline arm of `GraphStateTransfer`. */
+export type GraphStateInlineType = FromSchema<typeof GraphStateInlineSchema>;
+/** Combined store-reference batch transfer (`graph-ref`). */
+export type GraphStateReferenceType = FromSchema<typeof GraphStateReferenceSchema>;
+/** Combined shared-endpoint batch transfer (`shared-endpoint`). */
+export type GraphStateSharedType = FromSchema<typeof GraphStateSharedSchema>;
+/** Combined inline delta batch transfer (`inline-delta-nquads`). */
+export type GraphStateInlineDeltaType = FromSchema<typeof GraphStateInlineDeltaSchema>;
+/** Combined store-referenced delta batch transfer (`delta-ref`). */
+export type GraphStateDeltaReferenceType = FromSchema<typeof GraphStateDeltaReferenceSchema>;
+
+/** The batch-level graph-state payload: one combined transfer per batch, mode-aware. */
+export type GraphStateTransferType =
+  | GraphStateInlineType
+  | GraphStateReferenceType
+  | GraphStateSharedType
+  | GraphStateInlineDeltaType
+  | GraphStateDeltaReferenceType;

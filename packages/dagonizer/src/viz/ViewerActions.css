@@ -1,0 +1,70 @@
+/**
+ * Shared chrome tokens and layout for viewer action buttons.
+ *
+ * Consumers choose placement; this stylesheet keeps the actual action element
+ * consistent between frame headers and in-canvas overlays.
+ *
+ * Parameterization:
+ *   --dagonizer-viewer-action-surface
+ *   --dagonizer-viewer-action-stroke
+ *   --dagonizer-viewer-action-text
+ *   --dagonizer-viewer-action-accent
+ *   --dagonizer-viewer-action-danger
+ *   --dagonizer-viewer-action-font
+ */
+
+.dagonizer-viewer-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.dagonizer-viewer-actions--overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+}
+
+.dagonizer-viewer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 0.55rem;
+  background: var(--dagonizer-viewer-action-surface, rgba(20, 22, 28, 0.72));
+  border: 1px solid var(--dagonizer-viewer-action-stroke, var(--vp-c-divider, #2e3748));
+  border-radius: 5px;
+  color: var(--dagonizer-viewer-action-text, var(--vp-c-text-1, #eef3f7));
+  cursor: pointer;
+  font-family: var(--dagonizer-viewer-action-font, var(--vp-font-family-mono));
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  backdrop-filter: blur(4px);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.dagonizer-viewer-action:hover:not(:disabled) {
+  border-color: var(--dagonizer-viewer-action-accent, var(--dagonizer-brand, #22e8ff));
+  color: var(--dagonizer-viewer-action-accent, var(--dagonizer-brand, #22e8ff));
+}
+
+.dagonizer-viewer-action:focus-visible {
+  outline: 2px solid var(--dagonizer-viewer-action-accent, var(--dagonizer-brand, #22e8ff));
+  outline-offset: 1px;
+}
+
+.dagonizer-viewer-action--danger:hover:not(:disabled) {
+  border-color: var(--dagonizer-viewer-action-danger, #e74c3c);
+  color: var(--dagonizer-viewer-action-danger, #e74c3c);
+  background: color-mix(in srgb, var(--dagonizer-viewer-action-danger, #e74c3c) 12%, rgba(20, 22, 28, 0.72));
+}
+
+.dagonizer-viewer-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

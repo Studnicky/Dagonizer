@@ -33,19 +33,18 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer } from '../_support/GraphStateSupport.js';
 
-import { Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
+import { Batch, Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
   DagContainerOptionsType,
-  DagOutcomeType,
   DagTaskInterface,
   DagContainerInterface,
   NodeContextType,
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 import { DagContainerBase, DagHost } from '@studnicky/dagonizer/container';
-import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import type { PoolEntryType, RunResultType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 
 
@@ -145,7 +144,8 @@ class MinimalTask implements DagTaskInterface {
     return {
       'dagName': this.dagName,
       'placementPath': this.placementPath,
-      'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
+      'graphState': inlineTransfer([this.state]),
+      'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
@@ -292,7 +292,9 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       const _ch1 = await container.acquireForTest();
 
       // Start a runDag() that will park (no free slot).
-      const runDagPromise: Promise<DagOutcomeType> = container.runDag(new MinimalTask('g3-parked'));
+      const task = new MinimalTask('g3-parked');
+      const batch = Batch.from([{ 'id': 'g3-parked', 'state': task.state }]);
+      const runDagPromise: Promise<RunResultType[]> = container.runDag(task, batch);
 
       // Let the parked acquire register.
       await new Promise<void>((r) => setImmediate(r));
@@ -300,7 +302,8 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       // Destroy — must unblock all waiters. _ch1 is intentionally never released.
       void container.destroy();
 
-      const outcome = await runDagPromise;
+      const [outcome] = await runDagPromise;
+      assert.ok(outcome !== undefined);
       assert.strictEqual(outcome.terminalOutput, 'failed', 'parked runDag must fail after destroy');
       assert.ok(outcome.errors.length > 0, 'must carry at least one error');
     } finally {
@@ -336,15 +339,17 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
           return {
             'dagName': this.dagName,
             'placementPath': this.placementPath,
-            'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
+            'graphState': inlineTransfer([this.state]),
+            'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };
         },
       };
 
+      const abortBatch = Batch.from([{ 'id': 'con1-abort', 'state': abortTask.state }]);
       const start = Date.now();
-      const runDagPromise = container.runDag(abortTask);
+      const runDagPromise = container.runDag(abortTask, abortBatch);
 
       // Let the waiter park.
       await new Promise<void>((r) => setImmediate(r));
@@ -352,7 +357,8 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
       // Abort — must unblock the parked waiter immediately (no free slot).
       controller.abort();
 
-      const outcome = await runDagPromise;
+      const [outcome] = await runDagPromise;
+      assert.ok(outcome !== undefined);
       const elapsed = Date.now() - start;
 
       // Must resolve without waiting for the slot (well under the 2s grace period).
@@ -420,7 +426,10 @@ void describe('DagContainerBase — double-destroy idempotency (G4)', () => {
     const container = new TestLoopbackContainer(1);
     await container.destroy();
 
-    const outcome = await container.runDag(new MinimalTask('post-destroy'));
+    const task = new MinimalTask('post-destroy');
+    const batch = Batch.from([{ 'id': 'post-destroy', 'state': task.state }]);
+    const [outcome] = await container.runDag(task, batch);
+    assert.ok(outcome !== undefined);
     assert.strictEqual(outcome.terminalOutput, 'failed');
     assert.ok(outcome.errors.length > 0);
   });

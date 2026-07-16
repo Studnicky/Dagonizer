@@ -26,7 +26,6 @@ import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
-import { CircularBuffer } from '@studnicky/circular-buffer';
 
 import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
@@ -112,6 +111,8 @@ export class InsightsFoldGather extends GatherStrategy {
     accessor.set(state, 'insights',             new Map<string, RegionInsights>());
     accessor.set(state, 'journeyAccumulators',  new Map<string, JourneyAccumulator>());
     accessor.set(state, 'sampleRecords',        []);
+    accessor.set(state, 'sampleRecordsCursor',  0);
+    accessor.set(state, 'sampleRecordsWrapped', false);
     accessor.set(state, 'errorRollup',          ErrorRollup.empty());
     accessor.set(state, 'journeys',             new Map());
   }
@@ -208,6 +209,25 @@ export class InsightsFoldGather extends GatherStrategy {
 
     execution.accessor.set(execution.state, 'journeys', built);
     // Region insights are exact in state.insights already; finalize does not touch them.
+
+    const rawSample = execution.accessor.get(execution.state, 'sampleRecords');
+    if (Array.isArray(rawSample)) {
+      const cursorRaw = execution.accessor.get(execution.state, 'sampleRecordsCursor');
+      const wrappedRaw = execution.accessor.get(execution.state, 'sampleRecordsWrapped');
+      const cursor = typeof cursorRaw === 'number' ? cursorRaw : 0;
+      const wrapped = typeof wrappedRaw === 'boolean' ? wrappedRaw : false;
+
+      let sampleRecords: EnrichedShipment[] = rawSample.filter(EnrichedShipmentGuard.is);
+      if (sampleRecords.length > MAX_SAMPLE_RECORDS) {
+        sampleRecords = sampleRecords.slice(sampleRecords.length - MAX_SAMPLE_RECORDS);
+      }
+      if (wrapped && sampleRecords.length === MAX_SAMPLE_RECORDS) {
+        sampleRecords = sampleRecords.slice(cursor).concat(sampleRecords.slice(0, cursor));
+      }
+      execution.accessor.set(execution.state, 'sampleRecords', sampleRecords);
+    }
+    execution.accessor.set(execution.state, 'sampleRecordsCursor', 0);
+    execution.accessor.set(execution.state, 'sampleRecordsWrapped', false);
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -391,24 +411,33 @@ export class InsightsFoldGather extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     const rawSample = accessor.get(state, 'sampleRecords');
-    const sampleRing = CircularBuffer.create<EnrichedShipment>({
-      'capacity': MAX_SAMPLE_RECORDS,
-      'overflow': 'overwrite',
-    });
-    if (Array.isArray(rawSample)) {
-      for (const s of rawSample) {
-        if (EnrichedShipmentGuard.is(s)) sampleRing.push(s);
+    if (!Array.isArray(rawSample)) return;
+    const sampleRecords: EnrichedShipment[] = rawSample.filter(EnrichedShipmentGuard.is);
+    const cursorRaw = accessor.get(state, 'sampleRecordsCursor');
+    const wrappedRaw = accessor.get(state, 'sampleRecordsWrapped');
+    const cursor = typeof cursorRaw === 'number' ? cursorRaw : sampleRecords.length;
+    const wrapped = typeof wrappedRaw === 'boolean' ? wrappedRaw : false;
+
+    let nextCursor = cursor;
+    let nextWrapped = wrapped;
+    if (sampleRecords.length < MAX_SAMPLE_RECORDS) {
+      sampleRecords.push(enriched);
+      nextCursor = sampleRecords.length === MAX_SAMPLE_RECORDS ? 0 : sampleRecords.length;
+      if (sampleRecords.length === MAX_SAMPLE_RECORDS) {
+        nextWrapped = false;
       }
+    } else {
+      sampleRecords[nextCursor] = enriched;
+      nextCursor = (nextCursor + 1) % MAX_SAMPLE_RECORDS;
+      nextWrapped = true;
     }
-    sampleRing.push(enriched);
-    const sampleRecords: EnrichedShipment[] = [];
-    let record = sampleRing.shift();
-    while (record !== undefined) {
-      sampleRecords.push(record);
-      record = sampleRing.shift();
-    }
+
     accessor.set(state, 'sampleRecords', sampleRecords);
+    accessor.set(state, 'sampleRecordsCursor', nextCursor);
+    accessor.set(state, 'sampleRecordsWrapped', nextWrapped);
   }
+
+  
 }
 
 // ── Module-load registration ──────────────────────────────────────────────────

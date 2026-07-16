@@ -1,0 +1,19 @@
+---
+import type { DocEntry } from '@/lib/docs';
+import { siteHref } from '@/lib/links';
+import UiLinkCard from '@/components/islands/UiLinkCard.vue';
+
+interface Props {
+  entry: DocEntry;
+}
+
+const { entry } = Astro.props;
+---
+
+<UiLinkCard
+  href={siteHref(entry.url)}
+  eyebrow={entry.section}
+  meta={entry.slug}
+  title={entry.title}
+  body={entry.description || entry.excerpt}
+/>

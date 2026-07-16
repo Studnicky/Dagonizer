@@ -1,15 +1,15 @@
 /**
  * batch-container-transport.test.ts
  *
- * Tests for the batch-native container transport (Wave 2):
- *   (a) Single-item request(): items[0] is unpacked into a flat DagOutcomeType.
- *   (b) Multi-item requestBatch(): N items produce N BatchRunResultType entries, each
+ * Tests for the batch-native container transport:
+ *   (a) Single-item batch: a batch of one produces one `RunResultType` entry.
+ *   (b) Multi-item batch: N items produce N `RunResultType` entries, each
  *       carrying its own id, terminalOutput, graphState, errors, intermediates.
  *   (c) Batch abort: aborting mid-batch sends an 'abort' BridgeMessageType; the result
  *       is determined by the host's response (no client-side fabrication on abort).
  *   (d) Batch send failure: when channel.send throws before the result arrives,
- *       all items resolve to transport-error BatchRunResults.
- *   (e) DagOutcome.batchItemTransportError: shape contract (id, terminalOutput,
+ *       all items resolve to transport-error results.
+ *   (e) DagOutcome.transportError: shape contract (id, terminalOutput,
  *       graphState, errors, intermediates, errorCode).
  */
 
@@ -22,7 +22,7 @@ import {
   DAG_CONTAINER_TRANSPORT,
   DagOutcome,
 } from '../../src/container/DagOutcome.js';
-import type { BatchRunResultType, DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
@@ -32,7 +32,7 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer, emptyInlineTransfer, requestItems } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TestState
@@ -73,7 +73,8 @@ class BatchTestTask {
         return {
           'dagName': 'test-dag',
           'placementPath': ['urn:dagonizer:placement:test'],
-          'items': [{ 'id': correlationId, 'graphState': graphStateTransfer(state) }],
+          'graphState': inlineTransfer([state]),
+          'items': requestItems([{ 'id': correlationId, state }]),
           'timeoutMs': null,
           correlationId,
         };
@@ -116,12 +117,12 @@ class SingleChannelContainer extends DagContainerBase<null> {
 }
 
 // ---------------------------------------------------------------------------
-// (a) Single-item: request() unpacks items[0] into DagOutcomeType
+// (a) Single-item batch: one item in, one RunResultType out
 // ---------------------------------------------------------------------------
 
-void describe('batch-container-transport: (a) single-item request unpacks items[0]', () => {
+void describe('batch-container-transport: (a) single-item batch produces one result', () => {
 
-  void it('runDag() items[0] terminalOutcome maps to DagOutcomeType.terminalOutput', async () => {
+  void it('runDag() results[0].terminalOutcome maps to terminalOutput', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
@@ -130,12 +131,13 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
         hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
-        // Single-item N=1: respond with items[0] carrying terminalOutcome.
+        // Single-item batch (a batch of one): respond with items[0] carrying terminalOutcome.
         hostSide.send({
           'variant': 'result',
           'response': {
             correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+            'graphState': emptyInlineTransfer([correlationId]),
+            'items': [{ 'id': correlationId, 'runIri': correlationId, 'terminalOutcome': 'completed' }],
             'errors': [],
             'intermediates': [],
           },
@@ -144,14 +146,19 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     });
 
     const ac = new AbortController();
-    const task = BatchTestTask.of('single-1', ac.signal);
-    const outcome: DagOutcomeType = await container.runDag(task);
+    const state = new TestState();
+    const task = BatchTestTask.of('single-1', ac.signal, state);
+    const batch = Batch.from([{ 'id': 'single-1', state }]);
+    const results: RunResultType[] = await container.runDag(task, batch);
 
+    assert.strictEqual(results.length, 1);
+    const [outcome] = results;
+    assert.ok(outcome !== undefined);
     // items[0].terminalOutcome → outcome.terminalOutput
     assert.strictEqual(outcome.terminalOutput, 'completed');
     // items[0].snapshot → outcome.graphState
     assert.ok(outcome.graphState);
-    assert.equal(outcome.graphState.mode, 'inline-nquads');
+    assert.equal(outcome.graphState.transport, 'inline-nquads');
     assert.deepStrictEqual(outcome.errors, []);
     assert.deepStrictEqual(outcome.intermediates, []);
   });
@@ -169,7 +176,8 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
           'variant': 'result',
           'response': {
             correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
+            'graphState': emptyInlineTransfer([correlationId]),
+            'items': [{ 'id': correlationId, 'runIri': correlationId, 'terminalOutcome': 'failed' }],
             'errors': [],
             'intermediates': [],
           },
@@ -178,7 +186,11 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     });
 
     const ac = new AbortController();
-    const outcome = await container.runDag(BatchTestTask.of('single-null', ac.signal));
+    const state = new TestState();
+    const task = BatchTestTask.of('single-null', ac.signal, state);
+    const batch = Batch.from([{ 'id': 'single-null', state }]);
+    const [outcome] = await container.runDag(task, batch);
+    assert.ok(outcome !== undefined);
     assert.strictEqual(outcome.terminalOutput, 'failed');
     assert.ok(outcome.graphState);
   });
@@ -186,12 +198,12 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
 });
 
 // ---------------------------------------------------------------------------
-// (b) Multi-item: requestBatch() → N BatchRunResultType entries
+// (b) Multi-item batch: N items → N RunResultType entries
 // ---------------------------------------------------------------------------
 
-void describe('batch-container-transport: (b) multi-item requestBatch returns N results', () => {
+void describe('batch-container-transport: (b) multi-item batch returns N results', () => {
 
-  void it('runDagBatch() with 3 items produces 3 BatchRunResults keyed by item id', async () => {
+  void it('runDag() with 3 items produces 3 results keyed by item id', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
@@ -206,9 +218,10 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
           'variant': 'result',
           'response': {
             correlationId,
+            'graphState': emptyInlineTransfer(items.map((item) => item.runIri)),
             'items': items.map((item) => ({
               'id': item.id,
-              'graphState': emptyGraphStateTransfer(),
+              'runIri': item.runIri,
               'terminalOutcome': `done-${item.id}`,
             })),
             'errors': [],
@@ -237,14 +250,14 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     // Use the first item's task for task identity (correlationId / abort signal).
     const task = BatchTestTask.of('batch-1', ac.signal, stateA);
 
-    const results: BatchRunResultType[] = await container.runDagBatch(task, batch);
+    const results: RunResultType[] = await container.runDag(task, batch);
 
     assert.strictEqual(results.length, 3);
 
     // Each result is keyed by its item id.
     assert.strictEqual(results[0]?.id, 'item-A');
     assert.strictEqual(results[0]?.terminalOutput, 'done-item-A');
-    assert.equal(results[0]?.graphState?.mode, 'inline-nquads');
+    assert.equal(results[0]?.graphState?.transport, 'inline-nquads');
 
     assert.strictEqual(results[1]?.id, 'item-B');
     assert.strictEqual(results[1]?.terminalOutput, 'done-item-B');
@@ -253,7 +266,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     assert.strictEqual(results[2]?.terminalOutput, 'done-item-C');
   });
 
-  void it('runDagBatch() sends a single execute message containing all items', async () => {
+  void it('runDag() sends a single execute message containing all items', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
@@ -269,9 +282,10 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
           'variant': 'result',
           'response': {
             correlationId,
+            'graphState': emptyInlineTransfer(items.map((item) => item.runIri)),
             'items': items.map((item) => ({
               'id': item.id,
-              'graphState': emptyGraphStateTransfer(),
+              'runIri': item.runIri,
               'terminalOutcome': 'completed',
             })),
             'errors': [],
@@ -289,7 +303,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
       { 'id': 'x2', 'state': stateX2 },
     ]);
     const task = BatchTestTask.of('batch-single-msg', ac.signal, stateX1);
-    await container.runDagBatch(task, batch);
+    await container.runDag(task, batch);
 
     // Exactly one execute message sent (the batch round-trip).
     assert.strictEqual(receivedRequests.length, 1);
@@ -308,7 +322,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
 
 void describe('batch-container-transport: (d) send failure returns transport-error for all items', () => {
 
-  void it('when channel.send throws, runDagBatch returns transport-error results for each item', async () => {
+  void it('when channel.send throws, runDag returns transport-error results for each item', async () => {
     // Build a channel whose send throws immediately.
     class FailSendChannel implements MessageChannelInterface {
       #onMessageHandler: ((msg: BridgeMessageType) => void) | null = null;
@@ -361,7 +375,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
       { 'id': 'fail-2', 'state': stateFail2 },
     ]);
     const task = BatchTestTask.of('batch-fail', ac.signal, stateFail1);
-    const results = await container.runDagBatch(task, batch);
+    const results = await container.runDag(task, batch);
 
     // Both items must get transport-error results.
     assert.strictEqual(results.length, 2);
@@ -377,13 +391,13 @@ void describe('batch-container-transport: (d) send failure returns transport-err
 });
 
 // ---------------------------------------------------------------------------
-// (e) DagOutcome.batchItemTransportError — shape contract
+// (e) DagOutcome.transportError — shape contract
 // ---------------------------------------------------------------------------
 
-void describe('batch-container-transport: (e) DagOutcome.batchItemTransportError shape', () => {
+void describe('batch-container-transport: (e) DagOutcome.transportError shape', () => {
 
   void it('carries id, terminalOutput:failed, one error, empty intermediates', () => {
-    const result = DagOutcome.batchItemTransportError('item-x', 'corr-99');
+    const result = DagOutcome.transportError('item-x', 'corr-99');
 
     assert.strictEqual(result.id, 'item-x');
     assert.strictEqual(result.terminalOutput, 'failed');
@@ -399,7 +413,7 @@ void describe('batch-container-transport: (e) DagOutcome.batchItemTransportError
   });
 
   void it('custom code and message override propagate through', () => {
-    const result = DagOutcome.batchItemTransportError('item-y', 'corr-77', {
+    const result = DagOutcome.transportError('item-y', 'corr-77', {
       'code': 'CUSTOM_TRANSPORT_ERR',
       'message': 'custom error text',
     });
@@ -410,8 +424,8 @@ void describe('batch-container-transport: (e) DagOutcome.batchItemTransportError
   });
 
   void it('multiple items produce independent results sharing no references', () => {
-    const r1 = DagOutcome.batchItemTransportError('id-1', 'corr-a');
-    const r2 = DagOutcome.batchItemTransportError('id-2', 'corr-b');
+    const r1 = DagOutcome.transportError('id-1', 'corr-a');
+    const r2 = DagOutcome.transportError('id-2', 'corr-b');
 
     assert.strictEqual(r1.id, 'id-1');
     assert.strictEqual(r2.id, 'id-2');

@@ -1,17 +1,36 @@
 import type * as RDF from '@rdfjs/types';
 import { DataFactory, Parser, Writer } from 'n3';
 
-import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
-import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { GraphStateSnapshotReferenceType } from '../contracts/GraphStateSnapshotReference.js';
-import type { GraphStateTransferType } from '../contracts/GraphStateTransfer.js';
 import type { GraphStateTransferLeaseType } from '../contracts/GraphStateTransferLease.js';
-import type { GraphStateTransferIdentityType, GraphStateTransferMetadataType } from '../contracts/GraphStateTransferMetadata.js';
+import type { GraphStateTransferIdentityType } from '../contracts/GraphStateTransferMetadata.js';
 import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
 import type { LiteralTermType, QuadType, TermType } from '../contracts/TripleStoreInterface.js';
+import type { GraphStateDeltaReferenceType, GraphStateInlineDeltaType, GraphStateInlineType, GraphStateReferenceType, GraphStateSharedType, GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 import { GraphDatasetRevision } from './GraphDatasetRevision.js';
+import { GraphStateTerms } from './GraphStateTerms.js';
+
+/** One batch item's quad stream tagged with the run IRI whose state graph it fills. */
+export type GraphStateTransferItemType = {
+  readonly runIri: string;
+  readonly quads: AsyncIterable<QuadType>;
+}
+
+/** One batch item's additions/deletions streams for a combined batch delta. */
+export type GraphStateTransferDeltaItemType = {
+  readonly runIri: string;
+  readonly additions: Iterable<QuadType>;
+  readonly deletions: Iterable<QuadType>;
+}
+
+/** One batch item's decoded subgraph, partitioned out of a combined payload. */
+export type GraphStateTransferPartType = {
+  readonly id: string;
+  readonly runIri: string;
+  readonly quads: AsyncIterable<QuadType>;
+}
 
 /** RDF 1.2-aware codec for graph-state transfer envelopes. */
 export class GraphStateTransferCodec {
@@ -55,220 +74,189 @@ export class GraphStateTransferCodec {
     }
   }
 
-  static inline(
-    runIri: string,
-    graphIris: readonly string[],
-    quads: Iterable<QuadType>,
-    identity: GraphStateTransferIdentityType,
-  ): Extract<GraphStateTransferType, { readonly mode: 'inline-nquads' }> {
-    const materialized = [...quads];
-    const nquads = GraphStateTransferCodec.encode(materialized);
-    const metadata: GraphStateTransferMetadataType = {
-      "dagIri": identity.dagIri,
-      "placementPath": [...identity.placementPath],
-      "placementIri": identity.placementIri,
-      "stateGraphIri": identity.stateGraphIri ?? graphIris[0] ?? `${runIri}#state`,
-      "createdAt": new Date().toISOString(),
-      "byteSize": new TextEncoder().encode(nquads).byteLength,
-      "quadCount": materialized.length,
-      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
-    };
-    return {
-      "mode": 'inline-nquads',
-      "format": 'application/n-quads',
-      runIri,
-      "graphIris": [...graphIris],
-      nquads,
-      "hash": GraphStateTransferCodec.transferHash(nquads, ''),
-      ...metadata,
-    };
-  }
-
-  static async inlineStream(
-    runIri: string,
-    graphIris: readonly string[],
-    quads: AsyncIterable<QuadType>,
-    identity: GraphStateTransferIdentityType,
-  ): Promise<Extract<GraphStateTransferType, { readonly mode: 'inline-nquads' }>> {
+  /**
+   * Combine every batch item's quad stream into ONE inline N-Quads payload with
+   * a single encode + single hash. Each item's quads already carry its own
+   * `${runIri}#state` graph term, so the union partitions cleanly on decode.
+   * Reuses `encodeStream`/`transferHash` — pays the codec cost once per batch,
+   * not per item.
+   */
+  static async inline(items: readonly GraphStateTransferItemType[]): Promise<GraphStateInlineType> {
     const chunks: string[] = [];
     let quadCount = 0;
     let byteSize = 0;
     const encoder = new TextEncoder();
-    for await (const chunk of GraphStateTransferCodec.encodeStream(quads, () => { quadCount += 1; })) {
+    for await (const chunk of GraphStateTransferCodec.encodeStream(GraphStateTransferCodec.#mergeStreams(items), () => { quadCount += 1; })) {
       chunks.push(chunk);
       byteSize += encoder.encode(chunk).byteLength;
     }
     const nquads = chunks.join('');
-    const metadata: GraphStateTransferMetadataType = {
-      "dagIri": identity.dagIri,
-      "placementPath": [...identity.placementPath],
-      "placementIri": identity.placementIri,
-      "stateGraphIri": identity.stateGraphIri ?? graphIris[0] ?? `${runIri}#state`,
-      "createdAt": new Date().toISOString(),
-      "byteSize": byteSize,
-      "quadCount": quadCount,
-      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
-    };
     return {
-      "mode": 'inline-nquads',
-      "format": 'application/n-quads',
-      runIri,
-      "graphIris": [...graphIris],
-      nquads,
-      "hash": GraphStateTransferCodec.transferHash(nquads, ''),
-      ...metadata,
+      'transport': 'inline-nquads',
+      'format': 'application/n-quads',
+      'nquads': nquads,
+      'graphIris': items.map((item) => GraphStateTerms.runGraphIri(item.runIri)),
+      'hash': GraphStateTransferCodec.transferHash(nquads, ''),
+      'byteSize': byteSize,
+      'quadCount': quadCount,
     };
   }
 
-  static apply(dataset: GraphDatasetInterface, transfer: GraphStateTransferType): void {
-    if (transfer.mode !== 'inline-nquads' && transfer.mode !== 'inline-delta-nquads') throw new Error(`Transfer mode '${transfer.mode}' requires an external graph transfer store`);
-    const additions = transfer.mode === 'inline-nquads' ? transfer.nquads : transfer.additions;
-    if (GraphStateTransferCodec.transferHash(additions, transfer.mode === 'inline-delta-nquads' ? transfer.deletions : '') !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
-    if (transfer.mode === 'inline-delta-nquads') {
-      if (transfer.baseRevision !== undefined && GraphStateTransferCodec.revision(dataset.exportGraph(DagGraphTerms.namedNode(transfer.stateGraphIri))) !== transfer.baseRevision) throw new Error('Graph delta base revision mismatch');
-      dataset.transact((transaction) => {
-        for (const quad of GraphStateTransferCodec.decode(transfer.deletions)) transaction.delete(quad);
-        transaction.importGraph(GraphStateTransferCodec.decode(additions));
-      });
-      return;
-    }
-    dataset.importGraph(GraphStateTransferCodec.decode(additions));
+  /**
+   * Synchronous inline combine from already-materialized quad iterables. Used by
+   * the synchronous `DagTask.toRequest()` seam to build a valid inline batch
+   * payload (typically empty — the real payload is combined asynchronously by the
+   * container from the live graph stream). One encode + one hash, like `inline`.
+   */
+  static inlineSync(items: readonly { readonly runIri: string; readonly quads: Iterable<QuadType> }[]): GraphStateInlineType {
+    const all: QuadType[] = [];
+    for (const item of items) for (const quad of item.quads) all.push(quad);
+    const nquads = GraphStateTransferCodec.encode(all);
+    return {
+      'transport': 'inline-nquads',
+      'format': 'application/n-quads',
+      'nquads': nquads,
+      'graphIris': items.map((item) => GraphStateTerms.runGraphIri(item.runIri)),
+      'hash': GraphStateTransferCodec.transferHash(nquads, ''),
+      'byteSize': new TextEncoder().encode(nquads).byteLength,
+      'quadCount': all.length,
+    };
   }
 
+  /**
+   * Combine every batch item's graph into the store with ONE bulk write, yielding
+   * a single `graph-ref` batch transfer for the whole batch. The combined
+   * multi-graph stream is written through `putSnapshot` once (the adapter sees the
+   * entire batch and can bulk-insert); the returned reference addresses every
+   * item's graph. One hash covers the combined payload.
+   */
   static async reference(
     store: GraphStateTransferStoreInterface,
-    runIri: string,
-    graphIris: readonly string[],
-    quads: Iterable<QuadType>,
+    items: readonly GraphStateTransferItemType[],
     identity: GraphStateTransferIdentityType,
-  ): Promise<Extract<GraphStateTransferType, { readonly mode: 'graph-ref' }>> {
-    return GraphStateTransferCodec.referenceStream(store, runIri, graphIris, GraphStateTransferCodec.asyncQuads(quads), identity);
-  }
-
-  static async referenceStream(
-    store: GraphStateTransferStoreInterface,
-    runIri: string,
-    graphIris: readonly string[],
-    quads: AsyncIterable<QuadType>,
-    identity: GraphStateTransferIdentityType,
-  ): Promise<Extract<GraphStateTransferType, { readonly mode: 'graph-ref' }>> {
+  ): Promise<GraphStateReferenceType> {
+    const graphIris = items.map((item) => GraphStateTerms.runGraphIri(item.runIri));
     const hashState = { 'chunks': [] as string[] };
     let byteSize = 0;
     let quadCount = 0;
-    const referenceId = `snapshot:${runIri}:${globalThis.crypto.randomUUID()}`;
     const reference: GraphStateSnapshotReferenceType = {
-      "reference": referenceId,
-      "format": 'application/n-quads',
-      "graphIris": [...graphIris],
-      "hash": 'pending',
-      "dagIri": identity.dagIri,
-      "placementPath": [...identity.placementPath],
-      "placementIri": identity.placementIri,
-      "stateGraphIri": identity.stateGraphIri ?? graphIris[0] ?? `${runIri}#state`,
-      "createdAt": new Date().toISOString(),
-      "byteSize": 0,
-      "quadCount": 0,
+      'reference': `batch-snapshot:${globalThis.crypto.randomUUID()}`,
+      'format': 'application/n-quads',
+      'graphIris': [...graphIris],
+      'hash': 'pending',
+      'dagIri': identity.dagIri,
+      'placementPath': [...identity.placementPath],
+      'placementIri': identity.placementIri,
+      'stateGraphIri': graphIris[0] ?? `${identity.placementIri}#batch`,
+      'createdAt': new Date().toISOString(),
+      'byteSize': 0,
+      'quadCount': 0,
     };
-    const stored = await store.putSnapshot(GraphStateTransferCodec.hashingStream(quads, hashState, (bytes) => { byteSize += bytes; quadCount += 1; }), reference);
-    const hash = GraphStateTransferCodec.digestOf(hashState);
+    const stored = await store.putSnapshot(GraphStateTransferCodec.hashingStream(GraphStateTransferCodec.#mergeStreams(items), hashState, (bytes) => { byteSize += bytes; quadCount += 1; }), reference);
     return {
-      "mode": 'graph-ref',
-      runIri,
-      "graphSnapshotRef": stored.reference,
-      "format": stored.format,
-      "graphIris": [...stored.graphIris],
-      "hash": hash,
-      ...GraphStateTransferCodec.metadataOf({ ...stored, hash, byteSize, quadCount }, identity.jsonLd),
+      'transport': 'graph-ref',
+      'format': 'application/n-quads',
+      'graphIris': [...stored.graphIris],
+      'graphSnapshotRef': stored.reference,
+      'hash': GraphStateTransferCodec.digestOf(hashState),
+      'byteSize': byteSize,
+      'quadCount': quadCount,
     };
   }
 
+  /**
+   * Combine every batch item's graph into ONE shared-endpoint write under a
+   * single lease covering every item graph. The combined multi-graph stream is
+   * written through `writeShared` once, so the whole batch lands in one bulk op.
+   */
   static async shared(
     store: GraphStateTransferStoreInterface,
-    runIri: string,
-    graphIris: readonly string[],
+    items: readonly GraphStateTransferItemType[],
     ttlMs: number,
-    identity: GraphStateTransferIdentityType,
-  ): Promise<Extract<GraphStateTransferType, { readonly mode: 'shared-endpoint' }>> {
+  ): Promise<GraphStateSharedType> {
+    const graphIris = items.map((item) => GraphStateTerms.runGraphIri(item.runIri));
     const lease = await store.acquireLease(graphIris, ttlMs);
+    const quads: QuadType[] = [];
+    for await (const quad of GraphStateTransferCodec.#mergeStreams(items)) quads.push(quad);
+    await store.writeShared(lease, GraphStateTransferCodec.iterableToAsync(quads));
     return {
-      "mode": 'shared-endpoint',
-      runIri,
-      "endpoint": store.endpoint,
-      "graphIris": [...graphIris],
-      "lease": lease.token,
-      "dagIri": identity.dagIri,
-      "placementPath": [...identity.placementPath],
-      "placementIri": identity.placementIri,
-      "stateGraphIri": identity.stateGraphIri ?? graphIris[0] ?? `${runIri}#state`,
-      "createdAt": new Date().toISOString(),
-      "byteSize": 0,
-      "quadCount": 0,
-      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
+      'transport': 'shared-endpoint',
+      'graphIris': [...lease.graphIris],
+      'endpoint': lease.endpoint,
+      'lease': lease.token,
+      'byteSize': new TextEncoder().encode(GraphStateTransferCodec.encode(quads)).byteLength,
+      'quadCount': quads.length,
     };
   }
 
+  /**
+   * Combine every batch item's delta into ONE additions/deletions N-Quads batch
+   * delta with a single hash. `reference` selects the `delta-ref` transport (the
+   * `baseSnapshotRef` names a store-held base) versus inline `inline-delta-nquads`.
+   *
+   * Per-run revisions are intentionally NOT carried on the batch: scatter clones
+   * are ephemeral (created → transferred → run → transferred back) with no
+   * concurrent-drift window, and the container restore path applies the
+   * additions directly without a compare-and-swap.
+   */
   static delta(
-    runIri: string,
+    items: readonly GraphStateTransferDeltaItemType[],
     baseSnapshotRef: string,
-    additions: Iterable<QuadType>,
-    deletions: Iterable<QuadType>,
-    identity: GraphStateTransferIdentityType & { readonly baseRevision?: string; readonly revision?: string },
-  ): Extract<GraphStateTransferType, { readonly mode: 'inline-delta-nquads' }> {
-    const encodedAdditions = GraphStateTransferCodec.encode([...additions]);
-    const encodedDeletions = GraphStateTransferCodec.encode([...deletions]);
-    return {
-      "mode": 'inline-delta-nquads',
-      runIri,
-      baseSnapshotRef,
-      ...(identity.baseRevision === undefined ? {} : { "baseRevision": identity.baseRevision }),
-      ...(identity.revision === undefined ? {} : { "revision": identity.revision }),
-      "graphIris": [identity.stateGraphIri ?? `${runIri}#state`],
-      "additions": encodedAdditions,
-      "deletions": encodedDeletions,
-      "hash": GraphStateTransferCodec.transferHash(encodedAdditions, encodedDeletions),
-      "dagIri": identity.dagIri,
-      "placementPath": [...identity.placementPath],
-      "placementIri": identity.placementIri,
-      "stateGraphIri": identity.stateGraphIri ?? `${runIri}#state`,
-      "createdAt": identity.createdAt ?? new Date().toISOString(),
-      "byteSize": identity.byteSize ?? new TextEncoder().encode(encodedAdditions + encodedDeletions).byteLength,
-      "quadCount": identity.quadCount ?? GraphStateTransferCodec.decode(encodedAdditions).length,
-      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
-    };
+    options: { readonly reference?: boolean } = {},
+  ): GraphStateInlineDeltaType | GraphStateDeltaReferenceType {
+    const additionsQuads: QuadType[] = [];
+    const deletionsQuads: QuadType[] = [];
+    for (const item of items) {
+      for (const quad of item.additions) additionsQuads.push(quad);
+      for (const quad of item.deletions) deletionsQuads.push(quad);
+    }
+    const additions = GraphStateTransferCodec.encode(additionsQuads);
+    const deletions = GraphStateTransferCodec.encode(deletionsQuads);
+    const shared = {
+      'graphIris': items.map((item) => GraphStateTerms.runGraphIri(item.runIri)),
+      'baseSnapshotRef': baseSnapshotRef,
+      'additions': additions,
+      'deletions': deletions,
+      'hash': GraphStateTransferCodec.transferHash(additions, deletions),
+      'byteSize': new TextEncoder().encode(additions + deletions).byteLength,
+      'quadCount': additionsQuads.length,
+    } as const;
+    if (options.reference === true) return { 'transport': 'delta-ref', ...shared };
+    return { 'transport': 'inline-delta-nquads', ...shared };
   }
 
-  static deltaReference(
-    runIri: string,
-    baseSnapshotRef: string,
-    additions: Iterable<QuadType>,
-    deletions: Iterable<QuadType>,
-    identity: GraphStateTransferIdentityType & { readonly baseRevision?: string; readonly revision?: string },
-  ): Extract<GraphStateTransferType, { readonly mode: 'delta-ref' }> {
-    const inline = GraphStateTransferCodec.delta(runIri, baseSnapshotRef, additions, deletions, identity);
-    return { ...inline, "mode": 'delta-ref' };
-  }
-
-  static async applyExternal(dataset: GraphDatasetInterface, transfer: GraphStateTransferType, store: GraphStateTransferStoreInterface): Promise<void> {
-    if (transfer.mode === 'inline-nquads' || transfer.mode === 'inline-delta-nquads') {
-      GraphStateTransferCodec.apply(dataset, transfer);
-      return;
+  /**
+   * Split a combined batch transfer of ANY mode back into per-item subgraphs,
+   * reading/decoding the combined payload ONCE and partitioning by graph term so
+   * each item `{ id, runIri }` receives exactly its `${runIri}#state` quads.
+   * Callers restore each via `snapshot.restoreGraph(part.runIri, part.quads)`.
+   * Store-backed modes (`graph-ref`, `shared-endpoint`) read the whole batch from
+   * the store once; delta modes apply the combined additions. Integrity hashes are
+   * verified once per batch. An item that contributed no quads yields an empty
+   * stream (its state graph is cleared on restore).
+   */
+  static async restore(
+    transfer: GraphStateTransferType,
+    items: readonly { readonly id: string; readonly runIri: string }[],
+    store: GraphStateTransferStoreInterface | null,
+  ): Promise<GraphStateTransferPartType[]> {
+    if (transfer.transport === 'inline-nquads') {
+      if (GraphStateTransferCodec.transferHash(transfer.nquads, '') !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
+      return GraphStateTransferCodec.#partition(GraphStateTransferCodec.decode(transfer.nquads), items);
     }
-    if (transfer.mode === 'graph-ref') {
-      await GraphStateTransferCodec.importVerified(dataset, store.readSnapshot(transfer.graphSnapshotRef), transfer.hash);
-      return;
+    if (transfer.transport === 'inline-delta-nquads' || transfer.transport === 'delta-ref') {
+      if (GraphStateTransferCodec.transferHash(transfer.additions, transfer.deletions) !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
+      return GraphStateTransferCodec.#partition(GraphStateTransferCodec.decode(transfer.additions), items);
     }
-    if (transfer.mode === 'shared-endpoint') {
-      const lease: GraphStateTransferLeaseType = { "endpoint": transfer.endpoint, "token": transfer.lease, "graphIris": [...transfer.graphIris], "expiresAt": Number.POSITIVE_INFINITY };
-      await GraphStateTransferCodec.importAsync(dataset, store.readShared(lease, transfer.graphIris));
-      return;
+    if (transfer.transport === 'graph-ref') {
+      if (store === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
+      return GraphStateTransferCodec.#partition(await GraphStateTransferCodec.#readVerified(store.readSnapshot(transfer.graphSnapshotRef), transfer.hash), items);
     }
-    if (GraphStateTransferCodec.transferHash(transfer.additions, transfer.deletions) !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
-    await GraphStateTransferCodec.importAsync(dataset, store.readSnapshot(transfer.baseSnapshotRef));
-    if (transfer.baseRevision !== undefined && GraphStateTransferCodec.revision(dataset.exportGraph(DagGraphTerms.namedNode(transfer.stateGraphIri))) !== transfer.baseRevision) throw new Error('Graph delta base revision mismatch');
-    dataset.transact((transaction) => {
-      for (const quad of GraphStateTransferCodec.decode(transfer.deletions)) transaction.delete(quad);
-      transaction.importGraph(GraphStateTransferCodec.decode(transfer.additions));
-    });
+    if (store === null) throw new Error('Shared graph transfer requires a graph transfer store');
+    const lease: GraphStateTransferLeaseType = { 'endpoint': transfer.endpoint, 'token': transfer.lease, 'graphIris': [...transfer.graphIris], 'expiresAt': Number.POSITIVE_INFINITY };
+    const quads: QuadType[] = [];
+    for await (const quad of store.readShared(lease, transfer.graphIris)) quads.push(quad);
+    return GraphStateTransferCodec.#partition(quads, items);
   }
 
   static revision(quads: Iterable<QuadType>): string {
@@ -279,36 +267,18 @@ export class GraphStateTransferCodec {
     await store.deleteSnapshot(reference);
   }
 
-  static async restore(snapshot: GraphStateSnapshotInterface, transfer: GraphStateTransferType): Promise<void> {
-    if (transfer.stateGraphIri !== `${transfer.runIri}#state` || !transfer.graphIris.includes(transfer.stateGraphIri)) {
-      throw new Error('Graph transfer identity does not match the run state graph');
-    }
-    if (transfer.mode === 'inline-nquads') {
-      const expectedHash = GraphStateTransferCodec.transferHash(transfer.nquads, '');
-      if (expectedHash !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
-      const quads = GraphStateTransferCodec.decode(transfer.nquads);
-      await snapshot.restoreGraph(transfer.runIri, GraphStateTransferCodec.asyncQuads(quads));
-      return;
-    }
-    if (transfer.mode === 'inline-delta-nquads') {
-      if (GraphStateTransferCodec.transferHash(transfer.additions, transfer.deletions) !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
-      const additions = GraphStateTransferCodec.decode(transfer.additions);
-      await snapshot.restoreGraph(transfer.runIri, GraphStateTransferCodec.asyncQuads(additions));
-      return;
-    }
-    if (transfer.mode === 'graph-ref') {
-      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for graph-ref mode');
-    }
-    if (transfer.mode === 'shared-endpoint') {
-      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for shared-endpoint mode');
-    }
-    if (transfer.mode === 'delta-ref') {
-      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for delta-ref mode');
-    }
+  static async *asyncQuads(
+    quads: AsyncIterable<QuadType>,
+  ): AsyncIterable<QuadType> {
+    yield* quads;
   }
 
-  static async *asyncQuads(quads: Iterable<QuadType>): AsyncIterable<QuadType> {
-    yield* quads;
+  private static async *iterableToAsync(
+    quads: Iterable<QuadType>,
+  ): AsyncIterable<QuadType> {
+    for (const quad of quads) {
+      yield quad;
+    }
   }
 
   private static toRdfQuad(quad: QuadType): RDF.Quad {
@@ -375,18 +345,6 @@ export class GraphStateTransferCodec {
     return { "termType": term.termType, "value": term.value };
   }
 
-  private static async importAsync(dataset: GraphDatasetInterface, quads: AsyncIterable<QuadType>): Promise<void> {
-    await dataset.transactAsync((transaction) => transaction.importGraphAsync(quads));
-  }
-
-  private static async importVerified(dataset: GraphDatasetInterface, quads: AsyncIterable<QuadType>, expectedHash: string): Promise<void> {
-    const staging = dataset.fork();
-    const hashState = { 'chunks': [] as string[] };
-    await staging.transactAsync((transaction) => transaction.importGraphAsync(GraphStateTransferCodec.hashingStream(quads, hashState, () => undefined)));
-    if (GraphStateTransferCodec.digestOf(hashState) !== expectedHash) throw new Error('Graph transfer integrity hash mismatch');
-    await dataset.transactAsync((transaction) => transaction.importGraphAsync(GraphStateTransferCodec.asyncQuads(staging.triples())));
-  }
-
   private static async *hashingStream(
     quads: AsyncIterable<QuadType>,
     hashState: { chunks: string[] },
@@ -415,23 +373,36 @@ export class GraphStateTransferCodec {
   }
 
   private static digestOf(hashState: { chunks: string[] }): string {
-    return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')}\u0000`)}`;
+    return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')} `)}`;
   }
 
-  private static metadataOf(
-    reference: GraphStateSnapshotReferenceType,
-    jsonLd?: GraphStateTransferMetadataType['jsonLd'],
-  ): GraphStateTransferMetadataType {
-    return {
-      "dagIri": reference.dagIri,
-      "placementPath": [...reference.placementPath],
-      "placementIri": reference.placementIri,
-      "stateGraphIri": reference.stateGraphIri,
-      "createdAt": reference.createdAt,
-      "byteSize": reference.byteSize,
-      "quadCount": reference.quadCount,
-      ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
-    };
+  static async #readVerified(quads: AsyncIterable<QuadType>, expectedHash: string): Promise<QuadType[]> {
+    const hashState = { 'chunks': [] as string[] };
+    const collected: QuadType[] = [];
+    for await (const quad of GraphStateTransferCodec.hashingStream(quads, hashState, () => undefined)) collected.push(quad);
+    if (GraphStateTransferCodec.digestOf(hashState) !== expectedHash) throw new Error('Graph transfer integrity hash mismatch');
+    return collected;
+  }
+
+  static async *#mergeStreams(items: readonly GraphStateTransferItemType[]): AsyncIterable<QuadType> {
+    for (const item of items) yield* item.quads;
+  }
+
+  static #partition(
+    quads: readonly QuadType[],
+    items: readonly { readonly id: string; readonly runIri: string }[],
+  ): GraphStateTransferPartType[] {
+    const byGraph = new Map<string, QuadType[]>();
+    for (const quad of quads) {
+      const bucket = byGraph.get(quad.graph.value);
+      if (bucket === undefined) byGraph.set(quad.graph.value, [quad]);
+      else bucket.push(quad);
+    }
+    return items.map((item) => ({
+      'id': item.id,
+      'runIri': item.runIri,
+      'quads': GraphStateTransferCodec.iterableToAsync(byGraph.get(GraphStateTerms.runGraphIri(item.runIri)) ?? []),
+    }));
   }
 
   private static hash(value: string): string {
@@ -439,6 +410,6 @@ export class GraphStateTransferCodec {
   }
 
   private static transferHash(additions: string, deletions: string): string {
-    return GraphStateTransferCodec.hash(`${additions}\u0000${deletions}`);
+    return GraphStateTransferCodec.hash(`${additions} ${deletions}`);
   }
 }

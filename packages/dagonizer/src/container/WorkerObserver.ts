@@ -39,6 +39,25 @@ const EMIT_DEFAULTS: EmitDefaultsType = {
 };
 type InstrumentationEvent = Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>;
 
+/** Trailing config object for `WorkerObserver`'s constructor. */
+type WorkerObserverOptionsType = {
+  /**
+   * Dedup identical instrumentation events within one flush window before
+   * sending. Default `true`. Inner scatter-clone nodes report a STATIC
+   * placementPath (no per-clone index — see BodyExecutor.ts and
+   * ScatterDispatch.ts), so thousands of clones passing through the same
+   * static node in one microtask window produce identical events that carry
+   * no distinguishing information for a state-based observer. Set `false`
+   * to receive every raw event.
+   */
+  coalesceInstrumentation?: boolean;
+};
+
+/** Module-level default for `WorkerObserverOptionsType`. */
+const WORKER_OBSERVER_DEFAULTS: Required<WorkerObserverOptionsType> = {
+  'coalesceInstrumentation': true,
+};
+
 export class WorkerObserver<
   TState extends NodeStateInterface = NodeStateInterface,
 > extends Dagonizer<TState> {
@@ -48,12 +67,14 @@ export class WorkerObserver<
   readonly #basePath: readonly string[];
   readonly #instrumentationQueue: Array<InstrumentationEvent>;
   #instrumentationFlushScheduled: boolean;
+  readonly #coalesceInstrumentation: boolean;
 
   constructor(
     channel: MessageChannelInterface,
     correlationId: string,
     basePath: readonly string[],
     dagonizerOptions: ConstructorParameters<typeof Dagonizer>[0],
+    options: WorkerObserverOptionsType = {},
   ) {
     super(dagonizerOptions);
     this.#channel = channel;
@@ -61,6 +82,7 @@ export class WorkerObserver<
     this.#basePath = basePath;
     this.#instrumentationQueue = [];
     this.#instrumentationFlushScheduled = false;
+    this.#coalesceInstrumentation = { ...WORKER_OBSERVER_DEFAULTS, ...options }.coalesceInstrumentation;
   }
 
   #composePath(innerPath: readonly string[]): string[] {
@@ -137,10 +159,39 @@ export class WorkerObserver<
     this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
+  /**
+   * Identity key for lossless dedup: two events with the same key differ in
+   * nothing a state-based observer can distinguish. Composed of every
+   * distinguishing field — `output` included, so a clone that routes
+   * nodeEnd→success and a clone that routes nodeEnd→error produce distinct
+   * keys and both survive.
+   */
+  static #instrumentationKeyOf(event: InstrumentationEvent): string {
+    return `${event.hook}|${event.phase}|${event.dagName}|${event.nodeName}|${event.output ?? ''}|${event.placementPath.join(' ')}`;
+  }
+
+  /**
+   * Collapse events sharing an identity key to a single first-occurrence
+   * item, preserving order. Lossless: within one flush window, dropped
+   * duplicates are indistinguishable from the item that represents them.
+   */
+  static #coalesce(events: readonly InstrumentationEvent[]): InstrumentationEvent[] {
+    const seen = new Set<string>();
+    const deduped: InstrumentationEvent[] = [];
+    for (const event of events) {
+      const key = WorkerObserver.#instrumentationKeyOf(event);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(event);
+    }
+    return deduped;
+  }
+
   #flushInstrumentationBatch(): void {
     if (this.#instrumentationQueue.length === 0) return;
-    const items = [...this.#instrumentationQueue];
+    const queued = [...this.#instrumentationQueue];
     this.#instrumentationQueue.length = 0;
+    const items = this.#coalesceInstrumentation ? WorkerObserver.#coalesce(queued) : queued;
     try {
       this.#channel.send({
         'variant': 'instrumentationBatch',

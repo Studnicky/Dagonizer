@@ -349,6 +349,826 @@ Recommended theme sections:
 
 Consumers should be able to change branding without changing renderer logic.
 
+### Shared control chrome contract
+
+Status in the current codebase:
+
+- implemented as a package-owned state machine in `packages/dagonizer/src/viz/DpadMachine.ts`;
+- implemented as a shared camera command surface in `packages/dagonizer/src/viz/CameraControls.ts`;
+- implemented as a shared legend/filter state surface in `packages/dagonizer/src/viz/LegendMachine.ts`;
+- implemented as shared chrome and placement styles in:
+  - `packages/dagonizer/src/viz/Dpad.css`
+  - `packages/dagonizer/src/viz/ModalShell.css`;
+- consumed by:
+  - `docs/.vitepress/theme/components/DagGraph.vue`
+  - `docs/.vitepress/theme/components/MemoryGraph.vue`
+  - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+So this section is no longer purely aspirational. The remaining work is to extend the same treatment to the other visualizer surfaces below.
+
+The current codebase already proves the control surface across all three renderers, but it is not actually shared.
+
+Concrete findings from the code:
+
+- `docs/.vitepress/theme/components/graph/GraphDpad.vue` is the canonical Vue control used by:
+  - `docs/.vitepress/theme/components/DagGraph.vue`
+  - `docs/.vitepress/theme/components/MemoryGraph.vue`
+- `packages/dagonizer/src/viz/MermaidExplorer.ts` re-implements the same 3×3 control grid imperatively with:
+  - its own button factory (`#btn`);
+  - its own inline-diagram D-pad builder (`#dpad`);
+  - a second modal-only D-pad builder inside `#modal`;
+  - a separate CSS namespace in `packages/dagonizer/src/viz/explorer.css`.
+
+This means the project currently has one shared visual contract but multiple code paths for the same control.
+
+The duplicated contract is already visible in the code:
+
+- same 3×3 layout;
+- same glyph set;
+- same tooltips;
+- same zoom step (`1.25`);
+- same pan step (`80px`);
+- same center and fit semantics;
+- same bottom-right anchoring;
+- same expand-slot intent in inline mode.
+
+What differs is not the control itself. What differs is the adapter behind each action.
+
+That is the correct extraction boundary.
+
+#### What should become shared
+
+Make the D-pad a package-owned control contract with these shared pieces:
+
+- action ids:
+  - `zoom-in`
+  - `pan-up`
+  - `zoom-out`
+  - `pan-left`
+  - `centre`
+  - `pan-right`
+  - `expand`
+  - `pan-down`
+  - `fit`
+- canonical labels, glyphs, and titles;
+- canonical ordering in the 3×3 grid;
+- canonical chrome tokens:
+  - surface;
+  - stroke;
+  - accent;
+  - text;
+  - radius;
+  - spacing;
+  - opacity states;
+- canonical sizing:
+  - 32×32 buttons;
+  - 4px gaps;
+  - 6px pad;
+- optional zoom HUD contract for renderers that can report zoom level.
+
+These are renderer-independent.
+
+#### What should stay renderer-specific
+
+The action implementations must stay adapter-owned.
+
+Current renderer differences in the code:
+
+- Cytoscape (`AnimatedDagGraph`) already exposes direct camera methods:
+  - `zoomIn()`
+  - `zoomOut()`
+  - `panUp()`
+  - `panDown()`
+  - `panLeft()`
+  - `panRight()`
+  - `centerView()`
+  - `fitScreen()`
+- cosmos (`MemoryGraph.vue`) cannot pan a camera directly, so it simulates pan by shifting all point positions in world space through `mgPanBy()`.
+- Mermaid (`MermaidExplorer.ts`) owns its own transform camera via `{ scale, tx, ty }` and applies pan/zoom by rewriting the SVG transform.
+
+So the unification target is not one camera implementation.
+
+The unification target is one reusable control element plus one action contract that each renderer binds to.
+
+#### Recommended implementation shape
+
+Model the control as one generic FSM with visualization hooks.
+
+The package-owned machine should own:
+
+- canonical button ordering;
+- canonical labels and titles;
+- inline vs modal lower-left slot behavior;
+- disabled-state resolution;
+- zoom HUD state;
+- press semantics.
+
+The visualization should supply only hooks for what each action actually does.
+
+Example shape:
+
+```ts
+type DpadAction =
+  | 'zoom-in'
+  | 'pan-up'
+  | 'zoom-out'
+  | 'pan-left'
+  | 'centre'
+  | 'pan-right'
+  | 'expand'
+  | 'close'
+  | 'pan-down'
+  | 'fit';
+
+const machine = new DpadMachine({
+  can(action) {
+    return true;
+  },
+  run(action) {
+    // visualization-owned behavior
+  },
+  getZoomLevel() {
+    return 1.25;
+  },
+});
+```
+
+This keeps the control unified without forcing MermaidExplorer onto Vue or forcing the package to depend on a framework.
+
+#### Concrete refactor targets
+
+The code points that should change are clear.
+
+Shared extraction target:
+
+- package-owned shared machine:
+  - `packages/dagonizer/src/viz/DpadMachine.ts`
+
+Vue side:
+
+- `docs/.vitepress/theme/components/graph/GraphDpad.vue`
+  - replace hard-coded nine buttons with rendering from machine state;
+  - keep only Vue rendering and optional zoom HUD behavior.
+
+Mermaid side:
+
+- `packages/dagonizer/src/viz/MermaidExplorer.ts`
+  - replace `#dpad` button-by-button construction with one renderer over shared machine state;
+  - replace modal button-by-button construction with the same machine in `modal` mode so the lower-left slot becomes `close`;
+  - keep camera math and modal lifecycle local.
+- `packages/dagonizer/src/viz/explorer.css`
+  - stop diverging from the Vue control chrome;
+
+### Additional visualizer surfaces that should get the same treatment
+
+The D-pad was the clearest first extraction because it already had one semantic contract across three renderers.
+
+That same pattern still exists elsewhere in the codebase.
+
+These are the next shared-surface candidates, based on the current implementation rather than speculative product ideas.
+
+#### 1. Fullscreen / modal controller
+
+Status in the current codebase:
+
+- shell styling is already shared through `packages/dagonizer/src/viz/ModalShell.css`;
+- a shared controller now exists in `packages/dagonizer/src/viz/ModalController.ts`;
+- that controller is exported from `packages/dagonizer/src/viz/index.ts`;
+- it is now integrated into:
+  - `docs/.vitepress/theme/components/DiagramFrame.vue`
+  - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+- fullscreen lifecycle is still partially split because true browser fullscreen remains local to `DiagramFrame.vue`.
+
+Concrete findings from the code:
+
+- `ModalController.ts` now owns shared lifecycle semantics for:
+  - `open()`
+  - `close(reason)`
+  - `toggle()`
+  - `onKeyDown(key)`
+  - `onBackdropPress(isBackdropTarget)`
+- `DiagramFrame.vue` still owns:
+  - `isFullscreen`
+  - `toggleFullscreen()`
+  - Fullscreen API subscription through `fullscreenchange`
+- `DiagramFrame.vue` now delegates expanded-modal lifecycle through the shared controller instead of mutating `expanded` directly.
+- `MermaidExplorer.ts` now delegates modal open/close, Escape dismissal, and backdrop dismissal through the shared controller instead of a private `#dismiss(...)` path.
+
+The result is no longer two unrelated controller models. The expanded-modal lifecycle is now shared; browser fullscreen remains renderer-host-specific.
+
+What is still split:
+
+- fullscreen API entry and exit;
+- renderer-specific mount / teardown content;
+- resize / fit follow-up behavior after open and close;
+- focus targeting beyond the current shell defaults.
+
+Before this extraction, lifecycle was fully split between:
+  - `docs/.vitepress/theme/components/DiagramFrame.vue`
+  - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+What should become shared:
+
+- open / close semantics;
+- expand vs true fullscreen fallback policy;
+- Escape handling;
+- backdrop click policy;
+- body scroll locking;
+- focus target / accessibility defaults;
+- resize notification hooks after state changes;
+- modal-mode placement of shared controls and hint surfaces.
+
+What should stay renderer-specific:
+
+- the actual diagram content;
+- SVG cloning and transform camera in Mermaid;
+- browser Fullscreen API integration in the Vue frame host;
+- renderer-specific resize / fit behavior after open and close.
+
+Recommended extraction target:
+
+- `packages/dagonizer/src/viz/ModalController.ts`
+
+That controller is now the right framework-neutral seam for the expanded-modal path. The remaining work is to decide whether true fullscreen should stay host-local or be represented through a wider shared viewport-shell contract.
+
+#### 2. Viewport status HUD
+
+Status in the current codebase:
+
+- a minimal shared contract now exists in `packages/dagonizer/src/viz/ViewportStatus.ts`;
+- it is consumed by:
+  - `docs/.vitepress/theme/components/DagGraph.vue`
+  - `docs/.vitepress/theme/components/MemoryGraph.vue`
+  - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+Concrete findings from the code:
+
+- all three renderers now surface the same basic hint string:
+  - inline: `drag · wheel`
+  - modal: `drag · wheel · esc to close`
+- the HUD is still effectively just a D-pad adjunct, not a fuller viewer status surface.
+
+What should become shared next:
+
+- zoom level formatting;
+- mode (`inline` / `modal`);
+- interaction hint text;
+- optional fit / pan availability;
+- optional runtime or simulation state badges;
+- optional “reduced motion” or “live animation” status.
+
+Why this is the right boundary:
+
+The HUD is not a Cytoscape feature or a Mermaid feature. It is viewer chrome. The current code already proves that each renderer can supply the raw state.
+
+Recommended extraction target:
+
+- extend `packages/dagonizer/src/viz/ViewportStatus.ts` into a broader status model instead of leaving the HUD as a plain hint string.
+
+#### 3. Toolbar / action-strip contract
+
+Status in the current codebase:
+
+- a shared action descriptor now exists in `packages/dagonizer/src/viz/ViewerActions.ts`;
+- shared action chrome now exists in `packages/dagonizer/src/viz/ViewerActions.css`;
+- the action surface is now exported from `packages/dagonizer/src/viz/index.ts`;
+- a shared docs-side renderer now exists in `docs/.vitepress/theme/components/graph/ViewerActions.vue`;
+- that shared renderer is now integrated into:
+  - `docs/.vitepress/theme/components/DiagramFrame.vue`
+  - `docs/.vitepress/theme/components/MemoryGraph.vue`
+- actions are still partially split across:
+  - `DiagramFrame.vue` header buttons;
+  - `GraphDpad.vue`;
+  - Mermaid modal controls via `MermaidExplorer.ts`.
+
+Concrete findings from the code:
+
+- `ViewerActions.ts` now owns shared action metadata for:
+  - `expand`
+  - `fullscreen`
+  - `clear`
+- `ViewerActions.vue` now renders shared button metadata instead of each host hand-authoring button markup.
+- `DiagramFrame.vue` now derives its header actions from the shared model rather than hard-coded header buttons.
+- `MemoryGraph.vue` now derives its top-right clear action from the shared model rather than a bespoke `.mg-clear` button contract.
+- `GraphDpad.vue` and Mermaid modal controls still use the D-pad-specific action path, so the overall viewer action vocabulary is not fully unified yet.
+
+What should become shared:
+
+- action ids;
+- grouping and placement rules;
+- button metadata:
+  - label;
+  - icon/glyph;
+  - title;
+  - disabled state;
+  - active state;
+- keyboard shortcut metadata;
+- common styling tokens for toolbar actions and in-canvas actions.
+
+What should stay renderer-specific:
+
+- whether an action appears in the header, overlay, or modal;
+- actual command handlers;
+- renderer-specific actions such as “clear memory”.
+
+Recommended extraction target:
+
+- a package-owned `ViewerActionModel` that can drive:
+  - D-pad rendering;
+  - header action rendering;
+  - modal action rendering;
+  - future export/search/inspect actions.
+
+That work is now partially implemented for header and overlay actions. The remaining step is to unify D-pad and modal actions under the same broader viewer action vocabulary without collapsing the existing camera-control FSM.
+
+#### 4. Overlay panel system
+
+Status in the current codebase:
+
+- shared overlay chrome now exists in `packages/dagonizer/src/viz/ViewerOverlay.css`;
+- a shared docs-side renderer now exists in `docs/.vitepress/theme/components/graph/ViewerOverlay.vue`;
+- that shared renderer is now integrated into:
+  - `docs/.vitepress/theme/components/DagGraph.vue`
+  - `docs/.vitepress/theme/components/MemoryGraph.vue`
+- overlay panels are still only partially unified because Mermaid does not yet consume the same overlay surface.
+
+Concrete findings from the code:
+
+- `DagGraph.vue` now renders loading and error states through `ViewerOverlay.vue`.
+- `MemoryGraph.vue` now renders loading, error, and empty states through `ViewerOverlay.vue`.
+- the old bespoke state-specific overlay classes were removed from those two graph hosts.
+- Mermaid currently has modal hint UI but no comparable shared overlay panel model.
+
+This viewer chrome is no longer duplicated across the two Vue graph surfaces, but it is not yet fully shared across every renderer path.
+
+What should become shared:
+
+- loading state panel;
+- error state panel;
+- empty state panel;
+- in-canvas action panel placement rules;
+- consistent border, blur, surface, spacing, and typography tokens.
+
+What should stay renderer-specific:
+
+- error text;
+- empty-state copy;
+- renderer-specific recovery actions.
+
+Recommended extraction targets:
+
+- `docs/.vitepress/theme/components/graph/ViewerOverlay.vue` for the docs layer;
+- package-owned overlay tokens alongside `ModalShell.css` and `Dpad.css`.
+
+That work is now implemented for the docs-hosted graph surfaces. The remaining step is to decide whether Mermaid should adopt the same overlay renderer directly, or whether package-owned non-Vue rendering helpers should own the same overlay contract for framework-neutral consumers.
+
+#### 5. Hover / focus / highlight policy
+
+Status in the current codebase:
+
+- a shared selection controller now exists in `packages/dagonizer/src/viz/SelectionController.ts`;
+- that controller is exported from `packages/dagonizer/src/viz/index.ts`;
+- the shared selection path is now integrated into:
+  - `examples/the-archivist/app/ArchivistRunner.vue`
+  - `docs/.vitepress/theme/components/TraceFeed.vue`
+  - `docs/.vitepress/theme/components/DagGraph.vue`
+  - `docs/.vitepress/theme/components/viz/AnimatedDagGraph.ts`
+- selection is now partially unified;
+- hover and focus semantics are still renderer-local.
+
+Concrete findings from the code:
+
+- `SelectionController.ts` now owns shared selection semantics for:
+  - `select(target)`
+  - `selectTool(name)`
+  - `selectInspect(selection)`
+  - `clear()`
+  - `selectedTool()`
+  - `selectedInspect()`
+- `DagGraph.vue` still emits normalized DAG node selection through `dagNodeSelection(...)`, and now also accepts `selectedNode` so host-level selection can feed visible graph emphasis back into the Cytoscape surface.
+- `AnimatedDagGraph.ts` now exposes `setInspectedNode(...)` and re-applies that inspected state across rebuilds.
+- `CytoscapeGraph.ts` now defines a `node.dag-inspected` style for selected inspection emphasis.
+- `MemoryGraph.vue` still emits normalized IRI/literal selection through `iriSelection(...)` and `literalSelection(...)`, and now also accepts `selection` so the current inspected RDF target is visibly emphasized in both point sizing/color and label-pill rendering.
+- `MermaidExplorer.ts` now supports click-to-select and clear-selection behavior for rendered Mermaid nodes, with shared visual selected-state emphasis applied through `explorer.css`, but it still does not project those selections into an external inspector-target contract.
+- `TraceFeed.vue` no longer owns a completely separate click/highlight contract; it now accepts `selectedTool` and visually highlights the currently inspected tool node from the same shared selection state that drives the inspector.
+
+What should become shared:
+
+- hover target model;
+- selected target model;
+- clear-selection semantics;
+- optional connected-neighbor emphasis policy;
+- optional dimming of non-selected content;
+- keyboard focus styling and focus-ring tokens.
+
+What should stay renderer-specific:
+
+- how a renderer visually dims or highlights primitives;
+- whether hover is implemented through DOM, canvas, or Cytoscape element state.
+
+Recommended extraction targets:
+
+- extend `packages/dagonizer/src/viz/InspectSelection.ts`;
+- extend `packages/dagonizer/src/viz/InspectorTarget.ts`;
+- add a package-owned interaction/highlight policy surface that downstream surfaces can opt into.
+
+That work is now partially implemented for selected-target, clear-selection, and visible inspected-state parity across the Archivist DAG and memory views. The remaining gap is true hover/focus parity across Cytoscape, cosmos, and Mermaid, plus richer highlight policies such as neighbor emphasis or background dimming.
+
+#### 6. Search / filter / locate surface
+
+Status in the current codebase:
+
+- legend/filter exists;
+- graph search / locate does not exist as a shared viewer surface yet.
+
+Concrete findings from the code:
+
+- `LegendMachine.ts` already provides a shared toggle model for layer/kind visibility.
+- there is no corresponding shared node-locate or result-navigation surface in the current graph viewers.
+
+This is a meaningful missing primitive for downstream consumers who will use Dagonizer DAGs in real applications.
+
+What should become shared:
+
+- query input contract;
+- result list model;
+- jump-to-result command;
+- next / previous result navigation;
+- optional “isolate neighborhood” or “filter to matches” behavior.
+
+Why this belongs in the viewer layer:
+
+Search is not graph-backend-specific. It is a consumer-facing viewer capability that should work regardless of whether the visual backend is Cytoscape, cosmos, or Mermaid.
+
+#### 7. Shared animation scheduler and runtime-truth policy
+
+Status in the current codebase:
+
+- the baseline timing policy is shared through `packages/dagonizer/src/viz/AnimationPolicy.ts`;
+- execution of that policy is still backend-local.
+
+Concrete findings from the code:
+
+- `MemoryGraph.vue` uses:
+  - `ANIMATION.simulationDecay`
+  - `ANIMATION.fitCheckpointsMs`
+  - `ANIMATION.fitAnimateMs`
+  - `ANIMATION.fitSettleSnapshotMs`
+  - `ANIMATION.transitionSnapMs`
+- `AnimatedDagGraph.ts` uses the same package policy for the Cytoscape path.
+- Mermaid still does not participate in the same runtime-event animation semantics because it is a static explorer with camera interaction only.
+
+What should become shared next:
+
+- mapping from runtime events to visual states:
+  - queued
+  - active
+  - completed
+  - failed
+  - settled;
+- duration caps so animation never outlasts the actual underlying execution without explicit slow-mode intent;
+- catch-up behavior when execution finishes faster than the currently visible animation;
+- reduced-motion behavior;
+- rules for suppressing or shortening transitions during direct user interaction.
+
+Why this matters:
+
+The current policy work is valuable, but it is still mostly timing constants. The next step is a real animation scheduler that treats runtime truth as authoritative and renderer effects as a projection of that truth.
+
+#### 8. Theme-token bridge for viewer chrome
+
+Status in the current codebase:
+
+- token sharing exists in pieces;
+- a complete viewer-chrome token layer does not.
+
+Concrete findings from the code:
+
+- D-pad chrome is shared through `Dpad.css`.
+- modal shell chrome is shared through `ModalShell.css`.
+- Mermaid still carries its own explorer-specific CSS namespace in `packages/dagonizer/src/viz/explorer.css`.
+- `MemoryGraph.vue` still defines local overlay/action styles for:
+  - `.mg-clear`
+  - `.mg-overlay`
+  - `.mg-empty`
+- `DiagramFrame.vue` still owns its own frame header/action styles locally.
+
+What should become shared:
+
+- viewer panel background tokens;
+- border tokens;
+- blur tokens;
+- text hierarchy tokens;
+- action button tokens;
+- overlay radius and shadow tokens;
+- focus ring tokens;
+- motion duration tokens for viewer chrome.
+
+This is the CSS-layer equivalent of the D-pad unification: one visual language, renderer-specific content.
+
+## Recommended next extraction order
+
+The next refactor sequence should follow the surfaces with the highest duplication and the widest renderer reach.
+
+1. shared modal/fullscreen controller
+2. shared toolbar/action model
+3. shared overlay panel system
+4. shared hover/focus/highlight policy
+5. shared search/filter/locate surface
+6. shared animation scheduler built on top of `AnimationPolicy`
+7. deeper viewer-chrome token consolidation
+
+That order keeps the work substrate-first:
+
+- controller semantics first;
+- then shared actions;
+- then the panel chrome those actions live in;
+- then richer interaction and runtime behavior on top.
+  - align on the same token names and state classes used by the shared contract.
+
+#### Why this matters
+
+Without this extraction, every control adjustment requires editing at least three places:
+
+- `GraphDpad.vue`
+- `MermaidExplorer.#dpad`
+- `MermaidExplorer.#modal`
+
+That is exactly the kind of small repeated UI primitive that drifts over time.
+
+The control already exists as a product concept. The code just needs to acknowledge it as one thing.
+
+### Shared camera command contract
+
+This part is also now implemented.
+
+The current package-owned camera surface is:
+
+- `zoomIn()`
+- `zoomOut()`
+- `pan('up' | 'down' | 'left' | 'right')`
+- `centre()`
+- `fit()`
+- optional `expand()`
+- optional `close()`
+- optional `getZoomLevel()`
+- optional `can(action)`
+
+Implementation points:
+
+- `packages/dagonizer/src/viz/CameraControls.ts`
+- `packages/dagonizer/src/viz/index.ts`
+
+Current consumers:
+
+- `docs/.vitepress/theme/components/DagGraph.vue`
+- `docs/.vitepress/theme/components/MemoryGraph.vue`
+- `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+This matters because the D-pad machine now dispatches into one stable command vocabulary rather than three local switch statements with duplicated action semantics.
+
+The camera mechanics are still backend-specific:
+
+- Cytoscape uses native camera APIs;
+- cosmos shifts point positions in world space;
+- Mermaid rewrites an SVG transform camera.
+
+But the command surface above those mechanics is now shared.
+
+### Shared fullscreen / modal shell
+
+This is partially implemented.
+
+Shared shell chrome now exists in:
+
+- `packages/dagonizer/src/viz/ModalShell.css`
+
+And it is consumed by:
+
+- `docs/.vitepress/theme/components/DiagramFrame.vue`
+- `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+What is shared now:
+
+- backdrop treatment;
+- blur behavior;
+- modal card tokens;
+- hint bar tokens;
+- shell animation tokens.
+
+What is still separate:
+
+- Mermaid still creates and owns a body-level modal shell directly;
+- `DiagramFrame.vue` still owns its own expand/fullscreen lifecycle in Vue;
+- there is not yet one package-owned modal controller or one reusable cross-runtime shell machine.
+
+So the shell styling contract is shared, but the lifecycle contract is not fully unified yet.
+
+### Shared legend / filter state model
+
+This is now implemented for the current graph legend surface.
+
+The package-owned legend state surface is:
+
+- `packages/dagonizer/src/viz/LegendMachine.ts`
+
+Current consumers:
+
+- `docs/.vitepress/theme/components/graph/GraphLegend.vue`
+- `docs/.vitepress/theme/components/DagGraph.vue`
+- `docs/.vitepress/theme/components/MemoryGraph.vue`
+
+What is shared now:
+
+- legend section structure;
+- legend entry structure;
+- active/inactive toggle state;
+- toggle dispatch surface;
+- renderer-agnostic legend state lookup via `machine.state()`.
+
+Current behavior split after this extraction:
+
+- DAG uses a static, non-toggle legend;
+- MemoryGraph uses a toggleable layer-visibility legend backed by local visibility state.
+
+That means the legend view and legend state contract are shared, while the actual filtering effect still belongs to each visualization.
+
+### Shared selection / inspect contract
+
+This is now implemented at the selection-payload level.
+
+The package-owned inspect selection surface is:
+
+- `packages/dagonizer/src/viz/InspectSelection.ts`
+
+Current shared selection variants:
+
+- `dag-node`
+- `iri`
+- `literal`
+
+Current consumers:
+
+- `docs/.vitepress/theme/components/DagGraph.vue`
+- `docs/.vitepress/theme/components/MemoryGraph.vue`
+- `docs/.vitepress/theme/components/TripleInspector.vue`
+- `examples/the-archivist/app/ArchivistRunner.vue`
+
+What is shared now:
+
+- one package-owned selection type family;
+- one package-owned constructor surface for selection payloads;
+- normalized DAG-node selection payloads from the Cytoscape viewer;
+- normalized IRI/literal selection payloads from the cosmos memory viewer.
+
+What is still separate:
+
+- DAG inspection UI still routes through the docs-side `ToolExplainPanel` with a plain node-name prop;
+- memory inspection UI still routes through `TripleInspector`;
+- Mermaid does not yet emit the same inspect payloads through a consumer-facing selection API;
+- there is not yet one package-owned inspector panel contract or one shared inspect-state controller.
+
+So the selection payload contract is shared, but the inspector presentation and lifecycle are not unified yet.
+
+### Shared inspector shell
+
+This is now partially implemented at the presentation layer.
+
+The shared inspector shell currently lives in:
+
+- `docs/.vitepress/theme/components/graph/InspectorShell.vue`
+
+Current consumers:
+
+- `docs/.vitepress/theme/components/ToolExplainPanel.vue`
+- `docs/.vitepress/theme/components/TripleInspector.vue`
+
+What is shared now:
+
+- absolute overlay positioning;
+- card chrome;
+- close affordance;
+- title row layout;
+- scroll container behavior;
+- entry animation.
+
+What is still separate:
+
+- the data sources and body content are still different;
+- the shell is docs-side, not yet package-owned;
+- there is not yet one package-owned inspector controller that routes different inspector bodies from one selection source.
+
+So the inspector presentation shell is shared, but the inspector controller layer is still only partially unified.
+
+### Shared inspector target / controller state
+
+This is now partially implemented at the state-routing layer.
+
+The shared inspector target surface currently lives in:
+
+- `packages/dagonizer/src/viz/InspectorTarget.ts`
+
+Current shared target variants:
+
+- `tool`
+- `dag-node`
+- `iri`
+- `literal`
+
+Current integration:
+
+- `examples/the-archivist/app/ArchivistRunner.vue`
+
+What is shared now:
+
+- one inspector target union instead of independent `selectedTool` and `selectedSelection` refs;
+- one close path that clears the active inspector target;
+- one state source that routes tool and graph-inspection interactions.
+
+What is still separate:
+
+- inspector bodies still render through separate components;
+- Mermaid still does not participate in the same target flow;
+- there is not yet one package-owned inspector controller class or machine;
+- most consumers outside the Archivist flow do not yet route through the shared target union.
+
+So the inspector target/controller state is shared in the main docs demo flow, but not yet generalized across all consumers.
+
+### Shared viewport status / interaction hints
+
+This is now implemented at the status-payload level.
+
+The shared viewport status surface currently lives in:
+
+- `packages/dagonizer/src/viz/ViewportStatus.ts`
+
+Current integration:
+
+- `packages/dagonizer/src/viz/DpadMachine.ts`
+- `packages/dagonizer/src/viz/CameraControls.ts`
+- `docs/.vitepress/theme/components/graph/GraphDpad.vue`
+- `docs/.vitepress/theme/components/DagGraph.vue`
+- `docs/.vitepress/theme/components/MemoryGraph.vue`
+- `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+What is shared now:
+
+- zoom-level status payload;
+- inline vs modal mode status;
+- shared interaction-hint text payload;
+- shared HUD rendering path through the D-pad machine state;
+- shared modal hint text sourcing for Mermaid.
+
+What is still separate:
+
+- the modal hint strip is still rendered by Mermaid-specific DOM code;
+- there is not yet one package-owned HUD component used outside the docs layer;
+- no reduced-motion or accessibility-specific hint policy has been layered onto the shared status contract yet.
+
+So the viewport status payload and hint text contract are shared, but the full hint presentation layer is not completely package-owned.
+
+### Shared animation policy
+
+This is now implemented at the timing-policy level.
+
+The package-owned animation policy surface is:
+
+- `packages/dagonizer/src/viz/AnimationPolicy.ts`
+
+Current consumers:
+
+- `docs/.vitepress/theme/components/viz/AnimatedDagGraph.ts`
+- `docs/.vitepress/theme/components/MemoryGraph.vue`
+
+What is shared now:
+
+- node pulse durations;
+- node error shake durations;
+- edge traversal flash durations;
+- camera follow debounce timing;
+- camera follow pan duration;
+- reset fade duration;
+- bounded fit checkpoint schedule;
+- fit animation duration;
+- layout-settle snapshot timing;
+- cosmos simulation decay;
+- snap-to-truth transition duration for interaction-driven position updates.
+
+Why this matters:
+
+- the timing decisions are no longer scattered as unrelated magic numbers;
+- runtime-truth behavior for fit/settle/snapping is now expressed as one policy;
+- Cytoscape and cosmos now derive their animation timing from one source even though the render backends remain different.
+
+What is still separate:
+
+- Mermaid does not yet consume the shared policy for any consumer-facing runtime animation;
+- reduced-motion policy is not yet expressed as a first-class shared contract;
+- there is not yet one package-owned live-animation controller spanning all viewers;
+- the visual meaning of animation states is still concentrated in the docs-side Cytoscape live graph.
+
+So the timing policy is shared, but the entire animation lifecycle is not fully unified yet.
+
 ## Recommended consumer-facing modes
 
 The visualizer should explicitly support three modes.
@@ -920,3 +1740,104 @@ The modernization plan for Dagonizer visualization should be:
 7. ship thin framework adapters instead of hiding the good viewer in docs code.
 
 That would make the visualizer materially more useful to people who build on Dagonizer, while preserving the Dagonizer-specific semantics that make it valuable in the first place.
+
+## Completion audit against the pasted objective
+
+The pasted objective named eight shared visualizer surfaces.
+
+Current-state audit:
+
+1. Zoom HUD / viewport readout
+   - implemented through `packages/dagonizer/src/viz/ViewportStatus.ts`
+   - consumed by:
+     - `docs/.vitepress/theme/components/DagGraph.vue`
+     - `docs/.vitepress/theme/components/MemoryGraph.vue`
+     - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+2. Fullscreen / modal shell
+   - shared shell styling implemented through:
+     - `packages/dagonizer/src/viz/ModalShell.css`
+   - shared expanded-modal lifecycle implemented through:
+     - `packages/dagonizer/src/viz/ModalController.ts`
+   - integrated into:
+     - `docs/.vitepress/theme/components/DiagramFrame.vue`
+     - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+3. Legend / layer controls
+   - shared legend/filter state implemented through:
+     - `packages/dagonizer/src/viz/LegendMachine.ts`
+   - shared legend renderer consumed by:
+     - `docs/.vitepress/theme/components/DagGraph.vue`
+     - `docs/.vitepress/theme/components/MemoryGraph.vue`
+
+4. Camera command vocabulary
+   - shared camera command contract implemented through:
+     - `packages/dagonizer/src/viz/CameraControls.ts`
+   - consumed by:
+     - `docs/.vitepress/theme/components/DagGraph.vue`
+     - `docs/.vitepress/theme/components/MemoryGraph.vue`
+     - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+5. Interaction hints / affordance overlays
+   - shared hint text contract implemented through:
+     - `packages/dagonizer/src/viz/ViewportStatus.ts`
+   - shared overlay states implemented for docs-hosted graph views through:
+     - `packages/dagonizer/src/viz/ViewerOverlay.css`
+     - `docs/.vitepress/theme/components/graph/ViewerOverlay.vue`
+
+6. Selection / inspect state
+   - normalized inspect payloads implemented through:
+     - `packages/dagonizer/src/viz/InspectSelection.ts`
+     - `packages/dagonizer/src/viz/InspectorTarget.ts`
+   - shared selected-target controller implemented through:
+     - `packages/dagonizer/src/viz/SelectionController.ts`
+   - visible selected-state parity implemented across:
+     - `docs/.vitepress/theme/components/viz/AnimatedDagGraph.ts`
+     - `docs/.vitepress/theme/components/MemoryGraph.vue`
+     - `docs/.vitepress/theme/components/TraceFeed.vue`
+     - `packages/dagonizer/src/viz/MermaidExplorer.ts`
+
+7. Theme tokens for overlays
+   - shared token families now exist through:
+     - `packages/dagonizer/src/viz/Dpad.css`
+     - `packages/dagonizer/src/viz/ModalShell.css`
+     - `packages/dagonizer/src/viz/ViewerActions.css`
+     - `packages/dagonizer/src/viz/ViewerOverlay.css`
+     - `packages/dagonizer/src/viz/explorer.css`
+
+8. Animation policy
+   - shared baseline animation policy implemented through:
+     - `packages/dagonizer/src/viz/AnimationPolicy.ts`
+   - consumed by:
+     - `docs/.vitepress/theme/components/viz/AnimatedDagGraph.ts`
+     - `docs/.vitepress/theme/components/MemoryGraph.vue`
+
+Validation evidence:
+
+- `pnpm --filter @studnicky/dagonizer run typecheck`
+- `pnpm run typecheck:docs`
+- `pnpm --filter @studnicky/the-archivist-example run typecheck`
+- `git diff --check` on touched files
+
+Override/config hardening completed in the current state:
+
+- `ViewportStatus.ts` now exposes an explicit options contract with:
+  - `hint`
+  - `canPan`
+  - `canFit`
+  - `formatZoom`
+  - shared `zoomText`
+- `DpadMachine.ts` and `GraphDpad.vue` now consume shared zoom text rather than formatting zoom ad hoc in the Vue host.
+- `ViewerActions.ts` now exposes a broader shared action vocabulary and metadata surface, including:
+  - `ariaLabel`
+  - `shortcut`
+  - additional shared action ids beyond the original header/overlay trio
+- `ViewerActions.css`, `ViewerOverlay.css`, `Dpad.css`, and `ModalShell.css` document their CSS custom-property override surfaces explicitly.
+- `explorer.css` now exposes formal Mermaid selected-state override tokens:
+  - `--dag-explorer-selected-stroke`
+  - `--dag-explorer-selected-width`
+  - `--dag-explorer-selected-glow`
+
+Conclusion:
+
+The named shared-surface updates from the pasted objective are implemented in the current codebase.

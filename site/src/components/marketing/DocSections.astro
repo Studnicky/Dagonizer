@@ -1,0 +1,33 @@
+---
+interface DocSection {
+  readonly level: 1 | 2 | 3;
+  readonly title: string;
+  readonly paragraphs: readonly string[];
+}
+
+interface Props {
+  sections: readonly DocSection[];
+}
+
+const { sections } = Astro.props;
+---
+
+<div class="space-y-8">
+  {
+    sections.map((section) => (
+      <section class="space-y-4">
+        <h2
+          class:list={[
+            'font-semibold text-white',
+            section.level === 1 ? 'text-2xl md:text-3xl' : section.level === 2 ? 'text-xl md:text-2xl' : 'text-lg md:text-xl'
+          ]}
+        >
+          {section.title}
+        </h2>
+        <div class="space-y-4">
+          {section.paragraphs.map((paragraph) => <p class="text-sm leading-7 text-slate-300 md:text-base">{paragraph}</p>)}
+        </div>
+      </section>
+    ))
+  }
+</div>

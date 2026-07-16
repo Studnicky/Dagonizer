@@ -160,11 +160,14 @@ export type { BackoffStrategyType } from './runtime/BackoffStrategy.js';
 export { ExecutorIntermediateSchema } from './executor/ExecutorIntermediate.js';
 export type { ExecutorIntermediateType } from './executor/ExecutorIntermediate.js';
 
+export { GraphStateInlineSchema, GraphStateTransferSchema } from './executor/GraphStateTransferSchema.js';
+export type { GraphStateTransferType, GraphStateInlineType, GraphStateReferenceType, GraphStateSharedType, GraphStateInlineDeltaType, GraphStateDeltaReferenceType } from './executor/GraphStateTransferSchema.js';
+
 export { ExecutionRequestSchema } from './executor/ExecutionRequest.js';
-export type { ExecutionRequestType } from './executor/ExecutionRequest.js';
+export type { ExecutionRequestType, ExecutionRequestItemType } from './executor/ExecutionRequest.js';
 
 export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
-export type { ExecutionResponseType } from './executor/ExecutionResponse.js';
+export type { ExecutionResponseType, ExecutionResponseItemType } from './executor/ExecutionResponse.js';
 
 export { BridgeMessage, BridgeMessageSchema } from './executor/BridgeMessage.js';
 export type { BridgeMessageType } from './executor/BridgeMessage.js';

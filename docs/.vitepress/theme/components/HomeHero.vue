@@ -22,6 +22,10 @@
 
 import { computed } from 'vue';
 import { useData, withBase } from 'vitepress';
+import UiActionLink from './ui/UiActionLink.vue';
+import UiCtaRow from './ui/UiCtaRow.vue';
+import UiFeatureCallout from './ui/UiFeatureCallout.vue';
+import UiSectionIntro from './ui/UiSectionIntro.vue';
 
 interface HeroImage {
   readonly src: string;
@@ -58,22 +62,27 @@ function resolve(link: string): string {
 
 <template>
   <section v-if="hero" class="dagonizer-hero">
-    <div class="hero-text">
-      <h1 v-if="hero.name" class="hero-name">{{ hero.name }}</h1>
-      <p  v-if="hero.text"    class="hero-tagline">{{ hero.text }}</p>
-      <p  v-if="hero.tagline" class="hero-subtitle">{{ hero.tagline }}</p>
-
-      <div v-if="hero.actions && hero.actions.length > 0" class="hero-actions">
-        <a
+    <UiSectionIntro
+      v-if="hero.name"
+      class="hero-text"
+      :title="hero.name"
+      :lead="hero.text ?? null"
+      :summary="hero.tagline ?? null"
+      variant="standard"
+    >
+      <template v-if="hero.actions && hero.actions.length > 0" #actions>
+        <UiCtaRow gap="sm">
+          <UiActionLink
           v-for="a in hero.actions"
           :key="a.link"
           :href="resolve(a.link)"
-          :class="['hero-action', `theme-${a.theme ?? 'brand'}`]"
+          :variant="a.theme ?? 'brand'"
         >
           {{ a.text }}
-        </a>
-      </div>
-    </div>
+          </UiActionLink>
+        </UiCtaRow>
+      </template>
+    </UiSectionIntro>
 
     <div v-if="hero.image" class="hero-image">
       <img :src="resolve(hero.image.src)" :alt="hero.image.alt ?? ''" />
@@ -81,17 +90,16 @@ function resolve(link: string): string {
   </section>
 
   <section v-if="features.length > 0" class="dagonizer-features">
-    <component
-      :is="f.link ? 'a' : 'div'"
+    <UiFeatureCallout
       v-for="f in features"
       :key="f.title"
-      :href="f.link ? resolve(f.link) : undefined"
       class="dagonizer-feature"
-    >
-      <div v-if="f.icon" class="feature-icon" aria-hidden="true">{{ f.icon }}</div>
-      <h3 class="feature-title">{{ f.title }}</h3>
-      <p v-if="f.details" class="feature-details">{{ f.details }}</p>
-    </component>
+      v-bind="f.link ? { href: resolve(f.link) } : {}"
+      accent="cyan"
+      :icon="f.icon ?? null"
+      :title="f.title"
+      :details="f.details ?? null"
+    />
   </section>
 </template>
 
@@ -107,72 +115,6 @@ function resolve(link: string): string {
 }
 
 .hero-text { min-width: 0; }
-
-.hero-name {
-  font-family: var(--vp-font-family-display);
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  margin: 0 0 0.8rem;
-  color: var(--dagonizer-silver, var(--vp-c-text-1));
-  line-height: 1.1;
-  border: 0;
-  padding: 0;
-}
-
-.hero-tagline {
-  font-family: var(--vp-font-family-display);
-  font-size: clamp(1.05rem, 2vw, 1.4rem);
-  color: var(--vp-c-text-1);
-  margin: 0 0 0.6rem;
-  line-height: 1.4;
-  font-weight: 500;
-}
-
-.hero-subtitle {
-  font-size: 0.95rem;
-  color: var(--vp-c-text-2);
-  margin: 0 0 1.4rem;
-  line-height: 1.6;
-  max-width: 60ch;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.hero-action {
-  display: inline-block;
-  padding: 0.6rem 1.2rem;
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
-  border: 1px solid transparent;
-  border-radius: var(--dagonizer-surface-radius, 6px);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.hero-action.theme-brand {
-  background: var(--dagonizer-cyan, var(--vp-c-brand-1));
-  color: var(--dagonizer-pearl, var(--vp-c-bg));
-}
-.hero-action.theme-brand:hover {
-  background: var(--dagonizer-gold, var(--vp-c-brand-2));
-  color: var(--dagonizer-pearl, var(--vp-c-bg));
-}
-
-.hero-action.theme-alt {
-  background: transparent;
-  color: var(--vp-c-text-1);
-  border-color: var(--vp-c-divider);
-}
-.hero-action.theme-alt:hover {
-  border-color: var(--dagonizer-gold, var(--vp-c-brand-2));
-  color: var(--dagonizer-gold, var(--vp-c-brand-2));
-  background: rgba(212, 166, 73, 0.08);
-}
 
 .hero-image {
   flex-shrink: 0;
@@ -192,65 +134,8 @@ function resolve(link: string): string {
   margin: 1.5rem 0 2rem;
 }
 
-/* Feature card uses the canonical surface treatment defined in base.css
-   so it reads as the same family as code blocks, mermaid frames, and
-   blockquotes. Only the gradient seam and hover behavior are unique. */
 .dagonizer-feature {
-  background-color: var(--dagonizer-surface-bg, var(--vp-c-bg-alt));
-  background-image: var(--dagonizer-surface-grain);
-  background-size: var(--dagonizer-surface-grain-size, 160px 160px);
-  border: var(--dagonizer-surface-border, 1px solid var(--vp-c-divider));
-  border-radius: var(--dagonizer-surface-radius, 6px);
-  padding: 1rem 1.1rem;
-  position: relative;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s ease, transform 0.15s ease;
-}
-
-.dagonizer-feature[href]:hover {
-  border-color: var(--dagonizer-cyan, var(--vp-c-brand-1));
-  transform: translateY(-1px);
-}
-
-.dagonizer-feature::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--dagonizer-surface-radius, 6px);
-  padding: 1px 0 0;
-  background: linear-gradient(135deg,
-    var(--dagonizer-cyan, var(--vp-c-brand-1)),
-    var(--dagonizer-seagreen, var(--vp-c-brand-2)),
-    var(--dagonizer-violet, var(--vp-c-brand-3))
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-.feature-icon {
-  font-family: var(--vp-font-family-display);
-  font-size: 1.6rem;
-  color: var(--dagonizer-cyan, var(--vp-c-brand-1));
-  margin-bottom: 0.35rem;
-  line-height: 1;
-}
-
-.feature-title {
-  font-family: var(--vp-font-family-display);
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 0 0 0.35rem;
-  color: var(--dagonizer-cyan, var(--vp-c-brand-1));
-}
-
-.feature-details {
-  font-size: 0.85rem;
-  color: var(--vp-c-text-2);
-  margin: 0;
-  line-height: 1.5;
+  height: 100%;
 }
 
 @media (max-width: 720px) {

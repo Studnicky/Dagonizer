@@ -33,6 +33,11 @@
  */
 
 import { Scheduler } from '../runtime/Scheduler.js';
+import { createCameraDpadMachine } from './CameraControls.js';
+import type { CameraControlSurfaceType } from './CameraControls.js';
+import type { DpadMachine } from './DpadMachine.js';
+import { ModalController } from './ModalController.js';
+import { createViewportStatus } from './ViewportStatus.js';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM surface declarations (no DOM lib in this package tsconfig)
@@ -394,6 +399,7 @@ export class MermaidExplorer {
     // Pointer/wheel interaction.
     MermaidExplorer.#pointerPan(svg, camera);
     MermaidExplorer.#wheelZoom(frame, svg, camera);
+    MermaidExplorer.#bindSelection(frame, svg);
 
     // D-pad control overlay.
     if (resolved.controls) {
@@ -702,67 +708,10 @@ export class MermaidExplorer {
     options: Required<MermaidExplorerOptionsType>,
   ): DomElementType {
     const wrap = document.createElement('div');
-    wrap.className = 'dag-mermaid-dpad-wrap';
+    wrap.className = 'dag-mermaid-dpad-wrap dagonizer-dpad-wrap dagonizer-dpad-anchor dagonizer-dpad-anchor--hover';
     wrap.setAttribute('aria-label', 'Diagram navigation controls');
-
-    const grid = document.createElement('div');
-    grid.className = 'dag-mermaid-dpad';
-
-    /** Stage-centre pivot for D-pad zoom buttons. */
-    const stageCentre = (): { 'x': number; 'y': number } => {
-      const r = frame.getBoundingClientRect();
-      return { 'x': r.width / 2, 'y': r.height / 2 };
-    };
-
-    // Row 1: zoom-in · pan-up · zoom-out
-    grid.appendChild(MermaidExplorer.#btn('＋', 'Zoom in', () => {
-      const c = stageCentre();
-      MermaidExplorer.#zoomAbout(svg, camera, ZOOM_STEP, c.x, c.y);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('▲', 'Pan up', () => {
-      camera.ty += PAN_STEP;
-      MermaidExplorer.#paint(svg, camera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('－', 'Zoom out', () => {
-      const c = stageCentre();
-      MermaidExplorer.#zoomAbout(svg, camera, 1 / ZOOM_STEP, c.x, c.y);
-    }));
-
-    // Row 2: pan-left · centre · pan-right
-    grid.appendChild(MermaidExplorer.#btn('◀', 'Pan left', () => {
-      // Translate SVG rightward — reveals content to the left of the viewport.
-      // Matches AnimatedDagGraph.panLeft(): cy.panBy({ x: 80, y: 0 }).
-      camera.tx += PAN_STEP;
-      MermaidExplorer.#paint(svg, camera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('⊙', 'Centre view', () => {
-      MermaidExplorer.#centre(frame, svg, camera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('▶', 'Pan right', () => {
-      camera.tx -= PAN_STEP;
-      MermaidExplorer.#paint(svg, camera);
-    }));
-
-    // Row 3: expand · pan-down · fit
-    if (options.expand) {
-      grid.appendChild(MermaidExplorer.#btn('⛶', 'Expand fullscreen', () => {
-        MermaidExplorer.#modal(svg, options);
-      }));
-    } else {
-      const placeholder = document.createElement('button');
-      placeholder.className = 'dag-mermaid-dpad-btn dag-mermaid-dpad-btn--disabled';
-      placeholder.disabled  = true;
-      placeholder.setAttribute('aria-hidden', 'true');
-      grid.appendChild(placeholder);
-    }
-    grid.appendChild(MermaidExplorer.#btn('▼', 'Pan down', () => {
-      camera.ty -= PAN_STEP;
-      MermaidExplorer.#paint(svg, camera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('⤢', 'Fit to view', () => {
-      MermaidExplorer.#fitContain(frame, svg, camera);
-    }));
-
+    const machine = createCameraDpadMachine(MermaidExplorer.#cameraControls(frame, svg, camera, options), 'inline');
+    const grid = MermaidExplorer.#renderDpad(machine);
     MermaidExplorer.#themed(wrap, options.theme);
     wrap.appendChild(grid);
     return wrap;
@@ -772,19 +721,78 @@ export class MermaidExplorer {
   static #btn(
     label:   string,
     title:   string,
+    disabled: boolean,
     handler: () => void,
   ): DomElementType {
     const btn = document.createElement('button');
-    btn.className   = 'dag-mermaid-dpad-btn';
+    btn.className   = disabled
+      ? 'dagonizer-dpad-btn dagonizer-dpad-btn--disabled'
+      : 'dagonizer-dpad-btn';
     btn.type        = 'button';
     btn.title       = title;
+    btn.disabled    = disabled;
     btn.textContent = label;
     btn.setAttribute('aria-label', title);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (disabled) return;
       handler();
     });
     return btn;
+  }
+
+  static #renderDpad(machine: DpadMachine): DomElementType {
+    const grid = document.createElement('div');
+    grid.className = 'dag-mermaid-dpad dagonizer-dpad';
+    for (const item of machine.state().items) {
+      grid.appendChild(MermaidExplorer.#btn(item.label, item.title, item.disabled, () => {
+        void machine.press(item.action);
+      }));
+    }
+    return grid;
+  }
+
+  static #cameraControls(
+    frame: DomElementType,
+    svg: DomSvgElementType,
+    camera: CameraStateType,
+    options: Required<MermaidExplorerOptionsType>,
+  ): CameraControlSurfaceType {
+    const controls: CameraControlSurfaceType = {
+      'can': (action) => action !== 'expand' || options.expand,
+      'getHint': () => createViewportStatus(camera.scale, 'inline', 'drag · wheel').hint,
+      'zoomIn': () => {
+        const stageRect = frame.getBoundingClientRect();
+        MermaidExplorer.#zoomAbout(svg, camera, ZOOM_STEP, stageRect.width / 2, stageRect.height / 2);
+      },
+      'zoomOut': () => {
+        const stageRect = frame.getBoundingClientRect();
+        MermaidExplorer.#zoomAbout(svg, camera, 1 / ZOOM_STEP, stageRect.width / 2, stageRect.height / 2);
+      },
+      'pan': (direction) => {
+        switch (direction) {
+          case 'up':
+            camera.ty += PAN_STEP;
+            break;
+          case 'down':
+            camera.ty -= PAN_STEP;
+            break;
+          case 'left':
+            camera.tx += PAN_STEP;
+            break;
+          case 'right':
+            camera.tx -= PAN_STEP;
+            break;
+        }
+        MermaidExplorer.#paint(svg, camera);
+      },
+      'centre': () => { MermaidExplorer.#centre(frame, svg, camera); },
+      'fit': () => { MermaidExplorer.#fitContain(frame, svg, camera); },
+    };
+    if (options.expand) {
+      controls.expand = () => { MermaidExplorer.#modal(svg, options); };
+    }
+    return controls;
   }
 
   /**
@@ -825,13 +833,13 @@ export class MermaidExplorer {
     options: Required<MermaidExplorerOptionsType>,
   ): void {
     const overlay = document.createElement('div');
-    overlay.className = 'dag-mermaid-modal';
+    overlay.className = 'dag-mermaid-modal dagonizer-modal-shell';
     overlay.setAttribute('role',       'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Diagram fullscreen view');
 
     const stage = document.createElement('div');
-    stage.className = 'dag-mermaid-modal-stage';
+    stage.className = 'dag-mermaid-modal-stage dagonizer-modal-stage';
 
     // Transfer SVG content into stage via innerHTML/outerHTML. This approach
     // avoids `cloneNode` (no type available without DOM lib) and naturally
@@ -861,29 +869,41 @@ export class MermaidExplorer {
     svgStyle['transform'] = savedTransform;
 
     const hint = document.createElement('div');
-    hint.className   = 'dag-mermaid-modal-hint';
-    hint.textContent = 'drag · wheel · esc to close';
+    hint.className   = 'dag-mermaid-modal-hint dagonizer-modal-hint';
+    hint.textContent = createViewportStatus(1, 'modal', 'drag · wheel · esc to close').hint ?? '';
     hint.setAttribute('aria-hidden', 'true');
 
     const dpadWrap = document.createElement('div');
-    dpadWrap.className = 'dag-mermaid-dpad-wrap';
+    dpadWrap.className = 'dag-mermaid-dpad-wrap dagonizer-dpad-wrap dagonizer-dpad-anchor dagonizer-dpad-anchor--modal dagonizer-dpad-anchor--visible';
     dpadWrap.setAttribute('aria-label', 'Diagram navigation controls');
-
-    const grid = document.createElement('div');
-    grid.className = 'dag-mermaid-dpad';
 
     overlay.appendChild(stage);
     overlay.appendChild(hint);
     overlay.appendChild(dpadWrap);
-    document.body.appendChild(overlay);
-    document.body.style['overflow'] = 'hidden';
+
+    let controller: ModalController | null = null;
+    const onKey: DomListenerType = (e) => {
+      controller?.onKeyDown(e.key);
+    };
+    controller = new ModalController({
+      'onOpen': () => {
+        document.body.appendChild(overlay);
+        document.body.style['overflow'] = 'hidden';
+        document.addEventListener('keydown', onKey);
+      },
+      'onClose': () => {
+        document.body.style['overflow'] = '';
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+      },
+    });
+    controller.open();
 
     // Re-select the cloned SVG that now lives in the stage.
     const clonedSvg = stage.querySelector<DomSvgElementType>('svg');
     if (clonedSvg === null) {
       // Clone failed — clean up and bail.
-      document.body.style['overflow'] = '';
-      overlay.remove();
+      controller.close('programmatic');
       return;
     }
 
@@ -906,72 +926,76 @@ export class MermaidExplorer {
     // Interaction.
     MermaidExplorer.#pointerPan(clonedSvg, modalCamera);
     MermaidExplorer.#wheelZoom(stage, clonedSvg, modalCamera);
+    MermaidExplorer.#bindSelection(stage, clonedSvg);
 
-    // Stage-centre pivot for modal D-pad zoom buttons.
-    const stageCentreModal = (): { 'x': number; 'y': number } => {
-      const r = stage.getBoundingClientRect();
-      return { 'x': r.width / 2, 'y': r.height / 2 };
+    const baseControls = MermaidExplorer.#cameraControls(stage, clonedSvg, modalCamera, options);
+    const modalControls: CameraControlSurfaceType = {
+      'zoomIn': baseControls.zoomIn,
+      'zoomOut': baseControls.zoomOut,
+      'pan': baseControls.pan,
+      'centre': baseControls.centre,
+      'fit': baseControls.fit,
+      'close': () => { controller?.close('programmatic'); },
     };
-
-    // Row 1: zoom-in · pan-up · zoom-out
-    grid.appendChild(MermaidExplorer.#btn('＋', 'Zoom in', () => {
-      const c = stageCentreModal();
-      MermaidExplorer.#zoomAbout(clonedSvg, modalCamera, ZOOM_STEP, c.x, c.y);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('▲', 'Pan up', () => {
-      modalCamera.ty += PAN_STEP;
-      MermaidExplorer.#paint(clonedSvg, modalCamera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('－', 'Zoom out', () => {
-      const c = stageCentreModal();
-      MermaidExplorer.#zoomAbout(clonedSvg, modalCamera, 1 / ZOOM_STEP, c.x, c.y);
-    }));
-
-    // Row 2: pan-left · centre · pan-right
-    grid.appendChild(MermaidExplorer.#btn('◀', 'Pan left', () => {
-      modalCamera.tx += PAN_STEP;
-      MermaidExplorer.#paint(clonedSvg, modalCamera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('⊙', 'Centre view', () => {
-      MermaidExplorer.#centre(stage, clonedSvg, modalCamera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('▶', 'Pan right', () => {
-      modalCamera.tx -= PAN_STEP;
-      MermaidExplorer.#paint(clonedSvg, modalCamera);
-    }));
-
-    // Escape key closes; defined first so close-handlers can reference it.
-    const onKey: DomListenerType = (e) => {
-      if (e.key === 'Escape') MermaidExplorer.#dismiss(overlay, onKey);
-    };
-
-    // Row 3: close (expand slot → close in modal) · pan-down · fit
-    grid.appendChild(MermaidExplorer.#btn('✕', 'Close (Esc)', () => {
-      MermaidExplorer.#dismiss(overlay, onKey);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('▼', 'Pan down', () => {
-      modalCamera.ty -= PAN_STEP;
-      MermaidExplorer.#paint(clonedSvg, modalCamera);
-    }));
-    grid.appendChild(MermaidExplorer.#btn('⤢', 'Fit to view', () => {
-      MermaidExplorer.#fitContain(stage, clonedSvg, modalCamera);
-    }));
+    if (baseControls.can !== undefined) modalControls.can = baseControls.can;
+    if (baseControls.getZoomLevel !== undefined) modalControls.getZoomLevel = baseControls.getZoomLevel;
+    const machine = createCameraDpadMachine(modalControls, 'modal');
+    const grid = MermaidExplorer.#renderDpad(machine);
 
     MermaidExplorer.#themed(dpadWrap, options.theme);
     dpadWrap.appendChild(grid);
 
     // Backdrop click (overlay itself, not stage or buttons) closes the modal.
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) MermaidExplorer.#dismiss(overlay, onKey);
+      controller?.onBackdropPress(e.target === overlay);
     });
-
-    document.addEventListener('keydown', onKey);
   }
 
-  /** Tear down the expanded modal overlay and its document-level key listener. */
-  static #dismiss(overlay: DomElementType, onKey: DomListenerType): void {
-    document.body.style['overflow'] = '';
-    document.removeEventListener('keydown', onKey);
-    overlay.remove();
+  static #bindSelection(
+    stage: DomElementType,
+    svg: DomSvgElementType,
+  ): void {
+    const nodes = svg.querySelectorAll<DomElementType>('.node');
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node === undefined) continue;
+      MermaidExplorer.#ensureClassAbsent(node, 'dag-mermaid-selected');
+      node.addEventListener('click', (e) => {
+        e.stopPropagation();
+        MermaidExplorer.#clearSelection(svg);
+        MermaidExplorer.#ensureClassPresent(node, 'dag-mermaid-selected');
+      });
+    }
+
+    stage.addEventListener('click', (e) => {
+      if (e.target === stage || e.target === svg) {
+        MermaidExplorer.#clearSelection(svg);
+      }
+    });
+  }
+
+  static #clearSelection(svg: DomSvgElementType): void {
+    const selected = svg.querySelectorAll<DomElementType>('.dag-mermaid-selected');
+    for (let i = 0; i < selected.length; i++) {
+      const node = selected[i];
+      if (node !== undefined) MermaidExplorer.#ensureClassAbsent(node, 'dag-mermaid-selected');
+    }
+  }
+
+  static #ensureClassPresent(node: DomElementType, className: string): void {
+    const current = node.className.trim();
+    const classes = current.length === 0 ? [] : current.split(/\s+/u);
+    if (classes.includes(className)) return;
+    classes.push(className);
+    node.className = classes.join(' ');
+  }
+
+  static #ensureClassAbsent(node: DomElementType, className: string): void {
+    const current = node.className.trim();
+    if (current.length === 0) return;
+    node.className = current
+      .split(/\s+/u)
+      .filter((name) => name !== className)
+      .join(' ');
   }
 }

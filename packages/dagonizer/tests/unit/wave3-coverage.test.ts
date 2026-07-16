@@ -36,7 +36,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -74,7 +74,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-1',
-        'items': [{ 'id': 'test-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-1']),
+        'items': [{ 'id': 'test-1', 'runIri': 'urn:dagonizer:run:test-1', 'terminalOutcome': 'completed' }],
         'errors': [validNodeError],
         'intermediates': [],
       },
@@ -103,7 +104,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-2',
-        'items': [{ 'id': 'test-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-2']),
+        'items': [{ 'id': 'test-2', 'runIri': 'urn:dagonizer:run:test-2', 'terminalOutcome': 'completed' }],
         'errors': [withExtra],
         'intermediates': [],
       },
@@ -129,7 +131,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-3',
-        'items': [{ 'id': 'test-3', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-3']),
+        'items': [{ 'id': 'test-3', 'runIri': 'urn:dagonizer:run:test-3', 'terminalOutcome': 'completed' }],
         'errors': [missingTimestamp],
         'intermediates': [],
       },
@@ -144,7 +147,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const validRequest = {
       'dagName': 'pipeline',
       'placementPath': ['parent', 'child'],
-      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer() }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-1']),
+      'items': [{ 'id': 'corr-1', 'runIri': 'urn:dagonizer:run:corr-1' }],
       'timeoutMs': 5000,
       'correlationId': 'corr-1',
     };
@@ -164,7 +168,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const withExtra = {
       'dagName': 'pipeline',
       'placementPath': [],
-      'items': [{ 'id': 'corr-x', 'graphState': {} }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-x']),
+      'items': [{ 'id': 'corr-x', 'runIri': 'urn:dagonizer:run:corr-x' }],
       'timeoutMs': null,
       'correlationId': 'corr-x',
       'nodeName': 'step1',   // additionalProperties: false must reject this
@@ -186,7 +191,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a value valid per ExecutionResponseSchema is accepted in the result.response branch', () => {
     const validResponse = {
       'correlationId': 'corr-1',
-      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-1']),
+      'items': [{ 'id': 'corr-1', 'runIri': 'urn:dagonizer:run:corr-1', 'terminalOutcome': 'completed' }],
       'errors': [],
       'intermediates': [{ 'output': 'ok', 'skipped': false, 'nodeName': 'step1' }],
     };
@@ -205,7 +211,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a response with extra field on intermediate item is rejected by both', () => {
     const withExtra = {
       'correlationId': 'corr-2',
-      'items': [{ 'id': 'corr-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-2']),
+      'items': [{ 'id': 'corr-2', 'runIri': 'urn:dagonizer:run:corr-2', 'terminalOutcome': 'failed' }],
       'errors': [],
       'intermediates': [{
         'output': 'done',

@@ -20,21 +20,20 @@
 import { CircularBuffer } from '@studnicky/circular-buffer';
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
-import type { GraphStateTransferType } from '../contracts/GraphStateTransfer.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType, normalizeGraphStateTransferFormats, supportsJsonLd } from '../contracts/GraphStateTransferFormat.js';
+import type { GraphStateTransferIdentityType } from '../contracts/GraphStateTransferMetadata.js';
 import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
-import type { QuadType } from '../contracts/TripleStoreInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
-import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { ExecutionRequestType, ExecutionRequestItemType } from '../entities/executor/ExecutionRequest.js';
+import type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
-import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType, normalizeGraphStateTransferFormats, supportsJsonLd } from '../contracts/GraphStateTransferFormat.js';
-import { GraphStateTerms } from '../graph/GraphStateTerms.js';
+import type { GraphStateTransferItemType } from '../graph/GraphStateTransferCodec.js';
 import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
@@ -42,7 +41,7 @@ import { Scheduler } from '../runtime/Scheduler.js';
 import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShapeType } from './ChannelDispatch.js';
 import { DagOutcome } from './DagOutcome.js';
-import type { BatchRunResultType } from './DagOutcome.js';
+import type { RunResultType } from './DagOutcome.js';
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +92,12 @@ export type DagContainerOptionsType = {
   graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
   /** Default graph transfer mode; inline N-Quads is the canonical default. */
   graphStateTransferMode?: 'inline-nquads' | 'graph-ref' | 'shared-endpoint' | 'inline-delta-nquads';
+  /**
+   * Opt-out for the host's per-flush instrumentation-event dedup. Omit to
+   * accept the host default (`true`); pass `false` to receive every raw
+   * instrumentation event.
+   */
+  coalesceInstrumentation?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +149,9 @@ export abstract class DagContainerBase<TWorker = unknown>
     this.#poolSize               = options.poolSize;
     this.#init                   = { ...options.init, ...{
       'graphStateTransferFormats': [...normalizeGraphStateTransferFormats(graphStateTransferFormats)],
-    } };
+    },
+      ...(options.coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': options.coalesceInstrumentation }),
+    };
     this.#shutdownGraceMs        = shutdownGraceMs;
     this.#graphStateTransferStore = options.graphStateTransferStore ?? null;
     this.#graphStateTransferMode = options.graphStateTransferMode ?? 'inline-nquads';
@@ -252,160 +259,139 @@ export abstract class DagContainerBase<TWorker = unknown>
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-    const relay: ObserverRelayInterface | null = options?.relay ?? null;
-
-    return this.#withChannel(
-      task.context.signal,
-      async (_channel, dispatch) => {
-        const request = await this.#requestWithGraphState(task, dispatch.graphStateTransferFormats);
-        DagContainerBase.requireGraphCapability(dispatch, request);
-        const outcome = await dispatch.request(request, task.context.signal, relay);
-        await this.#restoreGraphState(task.state, outcome.graphState);
-        return outcome;
-      },
-      (err) => {
-        // R6: forward the real error message so callers see the root cause
-        // rather than the generic transport-failure message.
-        const message = err instanceof Error ? err.message : String(err);
-        return DagOutcome.transportError(task.correlationId, { message });
-      },
-    );
-  }
-
   /**
-   * Run a batch of items through the same DAG in a single transport round-trip.
-   * Returns one `BatchRunResultType` per item in the batch, preserving item order.
+   * Run a batch of items through the same embedded DAG in a single transport
+   * round-trip. Returns one `RunResultType` per item, preserving item order.
+   * A single item is a batch of one through this identical path.
    *
    * `task` supplies the DAG IRI, placement path, timeout, and abort signal.
    * `batch` carries the per-item states. `task.state` is used only for the
    * abort signal and task identity; items come from `batch`.
    *
-   * Never throws — transport failures resolve to transport-error `BatchRunResultType`
-   * entries, one per item.
+   * Never throws — transport failures resolve to transport-error `RunResultType`
+   * entries, one per item. The graph state of every item is combined into ONE
+   * transfer on send and split/restored from ONE decode on receipt.
    */
-  async runDagBatch(
+  async runDag(
     task: DagTaskInterface,
     batch: Batch<NodeStateInterface>,
     options?: { readonly relay?: ObserverRelayInterface },
-  ): Promise<BatchRunResultType[]> {
+  ): Promise<RunResultType[]> {
     const relay: ObserverRelayInterface | null = options?.relay ?? null;
     const correlationId = task.correlationId;
 
     return this.#withChannel(
       task.context.signal,
       async (_channel, dispatch) => {
-        const baseRequest = task.toRequest();
-        const batchItems = await Promise.all(batch.items().map(async (item: ItemType<NodeStateInterface>) => {
-          const graphState = await this.#graphStateOf(item.state, baseRequest, dispatch.graphStateTransferFormats);
-          return {
-            'id': item.id,
-            'graphState': graphState,
-          };
-        }));
+        const entries = batch.items().map((item: ItemType<NodeStateInterface>) => ({ 'id': item.id, 'state': item.state }));
+        const request = await this.#composeRequest(task, entries, dispatch.graphStateTransferFormats);
 
-        const batchRequest = {
-          'dagName':       baseRequest.dagName,
-          'placementPath': baseRequest.placementPath,
-          'items':         batchItems,
-          'timeoutMs':     baseRequest.timeoutMs,
-          'correlationId': correlationId,
-        };
-
-        DagContainerBase.requireGraphCapability(dispatch, batchRequest);
-        const results = await dispatch.requestBatch(batchRequest, task.context.signal, relay);
-        await Promise.all(results.map((result) => this.#restoreGraphState(
-          batch.items().find((item) => item.id === result.id)?.state ?? task.state,
-          result.graphState,
-        )));
+        DagContainerBase.requireGraphCapability(dispatch, request);
+        const results = await dispatch.request(request, task.context.signal, relay);
+        // Index item states by id once (O(N)); a per-result find would be
+        // O(N²) — at reservoir capacity C over T total events that is C×T
+        // comparisons on the dispatcher thread (1000×1_000_000 at defaults).
+        const stateById = new Map(batch.items().map((item) => [item.id, item.state]));
+        // ONE combined decode/split for the whole batch, then restore each clone
+        // by id. All results share the same batch graphState payload; a
+        // transport-error batch carries no graphState and skips restore.
+        const carrier = results.find((result) => result.graphState !== undefined);
+        if (carrier?.graphState !== undefined) {
+          const clones: { id: string; runIri: string; state: NodeStateInterface }[] = [];
+          for (const result of results) {
+            if (result.runIri === undefined) continue;
+            clones.push({ 'id': result.id, 'runIri': result.runIri, 'state': stateById.get(result.id) ?? task.state });
+          }
+          await this.#restoreClones(carrier.graphState, clones);
+        }
         return results;
       },
       (err) => {
         const message = err instanceof Error ? err.message : String(err);
         // Return one transport-error result per item.
         return batch.items().map((item: ItemType<NodeStateInterface>) =>
-          DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
+          DagOutcome.transportError(item.id, correlationId, { message }),
         );
       },
     );
   }
 
-  async #restoreGraphState(state: NodeStateInterface, transfer: DagOutcomeType['graphState']): Promise<void> {
-    if (transfer === undefined) return;
-    if (!DagContainerBase.isGraphSnapshot(state)) {
-      throw new Error('Graph-state transfer requires a graph-backed parent state');
-    }
-    await GraphStateTransferCodec.restore(state, transfer);
+  /**
+   * Restore a batch of clones from ONE combined transfer: one decode/read + one
+   * split for the whole batch, then restore each clone's `${runIri}#state`
+   * subgraph. Store-backed transports read the whole batch from the store once.
+   */
+  async #restoreClones(
+    graphState: GraphStateTransferType,
+    clones: readonly { readonly id: string; readonly runIri: string; readonly state: NodeStateInterface }[],
+  ): Promise<void> {
+    if (clones.length === 0) return;
+    const parts = await GraphStateTransferCodec.restore(graphState, clones.map((clone) => ({ 'id': clone.id, 'runIri': clone.runIri })), this.#graphStateTransferStore);
+    const stateById = new Map(clones.map((clone) => [clone.id, clone.state]));
+    await Promise.all(parts.map((part) => {
+      const state = stateById.get(part.id);
+      if (state === undefined) return Promise.resolve();
+      if (!DagContainerBase.isGraphSnapshot(state)) throw new Error('Graph-state transfer requires a graph-backed parent state');
+      return state.restoreGraph(part.runIri, part.quads);
+    }));
   }
 
   private static requireGraphCapability(dispatch: ChannelDispatch, request: ExecutionRequestType): void {
-    const carriesGraphState = request.items.some((item) => item.graphState !== undefined);
-    if (!carriesGraphState) return;
-    const modes = new Set(request.items.flatMap((item) => item.graphState === undefined ? [] : [item.graphState.mode]));
-    for (const mode of modes) {
-      // Inline N-Quads is the required baseline protocol, not a negotiated
-      // capability. The handshake only advertises optional transfer modes.
-      if (mode === 'inline-nquads') continue;
-      const capability = mode === 'delta-ref' ? 'delta-ref' : mode;
-      if (!dispatch.supports(capability)) throw new Error(`Container host does not support the '${capability}' graph-state transfer capability`);
-    }
+    const transport = request.graphState.transport;
+    // Inline N-Quads is the required baseline protocol, not a negotiated
+    // capability. The handshake only advertises the optional transfer modes.
+    if (transport === 'inline-nquads') return;
+    if (!dispatch.supports(transport)) throw new Error(`Container host does not support the '${transport}' graph-state transfer capability`);
   }
 
-  async #requestWithGraphState(task: DagTaskInterface, formats: readonly GraphStateTransferFormatType[]): Promise<ExecutionRequestType> {
-    const request = task.toRequest();
-    const graphState = await this.#graphStateOf(task.state, request, formats);
-    if (graphState === undefined) return request;
-    const item = request.items[0];
-    if (item === undefined) throw new Error('DagContainerBase: request has no item');
-    return { ...request, 'items': [{ ...item, 'graphState': graphState }] };
+  /**
+   * Build a wire `ExecutionRequest` for a batch of entries: `task.toRequest()`
+   * supplies the identity fields (dagName, placementPath, timeout, correlationId)
+   * and the batch's combined `graphState` + `items` are computed here. A single
+   * `runDag` task is a batch of one through the identical path.
+   */
+  async #composeRequest(
+    task: DagTaskInterface,
+    entries: readonly { readonly id: string; readonly state: NodeStateInterface }[],
+    formats: readonly GraphStateTransferFormatType[],
+  ): Promise<ExecutionRequestType> {
+    const base = task.toRequest();
+    const supportsLd = supportsJsonLd(formats);
+    const graphItems: GraphStateTransferItemType[] = [];
+    const items: ExecutionRequestItemType[] = [];
+    for (const entry of entries) {
+      if (!DagContainerBase.isGraphSnapshot(entry.state)) throw new Error('Every node state must expose the graph-state port');
+      const jsonLd = supportsLd ? entry.state.snapshotJsonLd(entry.state.runIri) : undefined;
+      items.push({ 'id': entry.id, 'runIri': entry.state.runIri, ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }) });
+      graphItems.push({ 'runIri': entry.state.runIri, 'quads': GraphStateTransferCodec.asyncQuads(entry.state.snapshotGraph(entry.state.runIri)) });
+    }
+    const graphState = await this.#combineTransfer(graphItems, base);
+    return { ...base, 'graphState': graphState, 'items': items };
   }
 
-  async #graphStateOf(
-    state: NodeStateInterface,
-    request: ExecutionRequestType,
-    graphStateTransferFormats: readonly GraphStateTransferFormatType[],
-  ): Promise<GraphStateTransferType> {
-    if (!DagContainerBase.isGraphSnapshot(state)) throw new Error('Every node state must expose the graph-state port');
-    const quads: QuadType[] = [];
-    for await (const quad of state.snapshotGraph(state.runIri)) quads.push(quad);
-    const jsonLd = supportsJsonLd(graphStateTransferFormats) ? state.snapshotJsonLd(state.runIri) : undefined;
-    const graphStream = GraphStateTransferCodec.asyncQuads(quads);
-    const placementIri = request.placementPath.at(-1);
-    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
-    if (this.#graphStateTransferMode === 'shared-endpoint') {
-      if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
-      const lease = await this.#graphStateTransferStore.acquireLease([GraphStateTerms.runGraphIri(state.runIri)], 60_000);
-      await this.#graphStateTransferStore.writeShared(lease, graphStream);
-      return {
-        "mode": 'shared-endpoint',
-        "runIri": state.runIri,
-        "endpoint": lease.endpoint,
-        "graphIris": [...lease.graphIris],
-        "lease": lease.token,
-        ...{
-          'dagIri': request.dagName,
-          'placementPath': request.placementPath,
-          'placementIri': placementIri,
-          'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri),
-          'createdAt': new Date().toISOString(),
-          'byteSize': 0,
-          'quadCount': 0,
-          ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
-        },
-      };
-    }
-    const identity = {
-      'dagIri': request.dagName,
-      'placementPath': request.placementPath,
-      'placementIri': placementIri,
-      'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri),
-      ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
-    };
+  /**
+   * Combine a batch of graph streams into ONE transfer, selecting the transport
+   * from the container's configured mode. Store-backed modes write the whole
+   * batch to the store in one bulk operation; the default inline mode does one
+   * encode + one hash. Delta modes seed as inline (there is no base for a seeded
+   * child), matching the pre-batch request behaviour.
+   */
+  async #combineTransfer(graphItems: readonly GraphStateTransferItemType[], request: ExecutionRequestType): Promise<GraphStateTransferType> {
     if (this.#graphStateTransferMode === 'graph-ref') {
       if (this.#graphStateTransferStore === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
-      return GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
+      return GraphStateTransferCodec.reference(this.#graphStateTransferStore, graphItems, DagContainerBase.transferIdentity(request));
     }
-    return GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
+    if (this.#graphStateTransferMode === 'shared-endpoint') {
+      if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
+      return GraphStateTransferCodec.shared(this.#graphStateTransferStore, graphItems, 60_000);
+    }
+    return GraphStateTransferCodec.inline(graphItems);
+  }
+
+  private static transferIdentity(request: ExecutionRequestType): GraphStateTransferIdentityType {
+    const placementIri = request.placementPath.at(-1);
+    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
+    return { 'dagIri': request.dagName, 'placementPath': request.placementPath, 'placementIri': placementIri };
   }
 
   private static isGraphSnapshot(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
@@ -417,7 +403,7 @@ export abstract class DagContainerBase<TWorker = unknown>
    * Acquire a channel, run `fn` against it and its dispatch, and always release
    * the channel — even when `fn` throws. On error, `onError` produces the
    * caller-defined value so callers never see the lease throw. This is the single
-   * acquire/try/catch/finally lease block shared by `runDag` and `runDagBatch`.
+   * acquire/try/catch/finally lease block shared by the acquire path of `runDag`.
    */
   async #withChannel<T>(
     signal: AbortSignal,

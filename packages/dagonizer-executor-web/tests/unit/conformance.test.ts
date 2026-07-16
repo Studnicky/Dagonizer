@@ -27,7 +27,7 @@ import { describe, it } from 'node:test';
 import { setImmediate, setTimeout } from 'node:timers';
 import { URL } from 'node:url';
 
-import { Dagonizer } from '@studnicky/dagonizer';
+import { Batch, Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 import { DagTask } from '@studnicky/dagonizer/container';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
@@ -466,11 +466,14 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
     // (zombie drops execute). runDag #2 will park (pool full: poolSize=1).
     const outcomes: Array<{ index: number; terminalOutput: string }> = [];
 
-    const p1 = container.runDag(task1).then((outcome) => {
-      outcomes.push({ 'index': 1, 'terminalOutput': outcome.terminalOutput });
+    const batch1 = Batch.from([{ 'id': 'corr-1', 'state': task1.state }]);
+    const batch2 = Batch.from([{ 'id': 'corr-2', 'state': task2.state }]);
+
+    const p1 = container.runDag(task1, batch1).then(([outcome]) => {
+      if (outcome !== undefined) outcomes.push({ 'index': 1, 'terminalOutput': outcome.terminalOutput });
     });
-    const p2 = container.runDag(task2).then((outcome) => {
-      outcomes.push({ 'index': 2, 'terminalOutput': outcome.terminalOutput });
+    const p2 = container.runDag(task2, batch2).then(([outcome]) => {
+      if (outcome !== undefined) outcomes.push({ 'index': 2, 'terminalOutput': outcome.terminalOutput });
     });
 
     // Wait for the zombie worker to be spawned and for runDag #1 to be hung

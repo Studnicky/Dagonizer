@@ -521,10 +521,24 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         this.#clearCell(cell);
     }
     #clearCell(cell: QuadType['subject']) {
+        // Every descendant node's IRI is prefixed with `${cell.value}/` and is
+        // reachable as an object edge from the cell, so a subject-indexed
+        // traversal of the subtree touches only the cell's quads — not the whole
+        // graph, which grows unboundedly across a run.
+        const graph = this.#graph();
         const prefix = `${cell.value}/`;
-        for (const quad of [...this.#dataset.exportGraph(this.#graph())]) {
-            if (quad.subject.termType === 'NamedNode' && (quad.subject.value === cell.value || quad.subject.value.startsWith(prefix)))
+        const queue: QuadType['subject'][] = [cell];
+        const seen = new Set<string>([cell.value]);
+        while (queue.length > 0) {
+            const node = queue.pop();
+            if (node === undefined) break;
+            for (const quad of [...this.#dataset.match({ 'subject': node, graph })]) {
+                if (quad.object.termType === 'NamedNode' && quad.object.value.startsWith(prefix) && !seen.has(quad.object.value)) {
+                    seen.add(quad.object.value);
+                    queue.push(quad.object);
+                }
                 this.#dataset.delete(quad);
+            }
         }
     }
     #projectValue(cell: QuadType['subject'], value: JsonValueType, definition?: GraphStateFieldDefinitionType) {

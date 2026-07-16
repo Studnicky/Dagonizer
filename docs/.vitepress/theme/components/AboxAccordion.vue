@@ -15,6 +15,9 @@
 import { computed, ref } from 'vue';
 import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
+import UiReadoutColumn from './ui/UiReadoutColumn.vue';
+import UiReadoutGroup from './ui/UiReadoutGroup.vue';
+import UiReadoutRow from './ui/UiReadoutRow.vue';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 export interface AboxEntity {
@@ -111,6 +114,20 @@ interface DerivedEntity {
   readonly after: EnrichedShipment;
 }
 
+interface ReadoutRowEntry {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string;
+  readonly mono?: boolean;
+  readonly valueClass?: string;
+}
+
+interface ReadoutGroupEntry {
+  readonly key: string;
+  readonly title: string;
+  readonly rows: readonly ReadoutRowEntry[];
+}
+
 const props = defineProps<{
   entities: AboxEntity[];
 }>();
@@ -151,6 +168,134 @@ function fmtWeight(weight: number, unit: string): string {
   if (unit === 'lb') return `${weight}lb`;
   if (unit === 'oz') return `${weight}oz`;
   return `${weight} ${unit}`;
+}
+
+function beforeGroups(before: BeforeDisplay): readonly ReadoutGroupEntry[] {
+  return [
+    {
+      'key': 'identity',
+      'title': 'identity',
+      'rows': [
+        { 'key': 'shipmentId', 'label': 'shipmentId', 'value': before.shipmentId, 'mono': true },
+        { 'key': 'eventId', 'label': 'eventId', 'value': before.eventId, 'mono': true },
+        { 'key': 'eventType', 'label': 'eventType', 'value': before.eventType, 'mono': true },
+        { 'key': 'source', 'label': 'source', 'value': `${before.sourceId} (${before.sourceFormat})`, 'mono': true },
+      ],
+    },
+    {
+      'key': 'timestamp',
+      'title': 'timestamp',
+      'rows': [
+        { 'key': 'epochMs', 'label': 'epochMs', 'value': fmtEpoch(before.epochMs), 'mono': true },
+        { 'key': 'raw', 'label': 'raw', 'value': before.rawTimestamp || '—', 'mono': true },
+      ],
+    },
+    {
+      'key': 'location',
+      'title': 'location (raw)',
+      'rows': [
+        { 'key': 'latLng', 'label': 'lat/lng', 'value': fmtLatLng(before.latitude, before.longitude), 'mono': true },
+        { 'key': 'geo', 'label': 'geo pre-resolved', 'value': before.geoContinent !== '' ? `${before.geoContinent} / ${before.geoCountry}` : 'no', 'mono': true },
+      ],
+    },
+    {
+      'key': 'parcel',
+      'title': 'parcel',
+      'rows': [
+        { 'key': 'carrier', 'label': 'carrier', 'value': before.carrier || '—', 'mono': true },
+        { 'key': 'weight', 'label': 'weight', 'value': before.weight > 0 ? fmtWeight(before.weight, before.weightUnit) : '—', 'mono': true },
+        { 'key': 'status', 'label': 'status', 'value': before.status || '—', 'mono': true },
+      ],
+    },
+    {
+      'key': 'pii',
+      'title': 'pii',
+      'rows': [
+        { 'key': 'name', 'label': 'name', 'value': before.recipientName || '—', 'mono': true },
+        { 'key': 'email', 'label': 'email', 'value': before.recipientEmail || '—', 'mono': true },
+        { 'key': 'phone', 'label': 'phone', 'value': before.recipientPhone || '—', 'mono': true },
+        { 'key': 'lawfulBasis', 'label': 'lawful basis', 'value': before.lawfulBasis || '—', 'mono': true },
+        { 'key': 'consentHandled', 'label': 'consent handled', 'value': before.consentHandled !== undefined ? String(before.consentHandled) : 'not set', 'mono': true },
+      ],
+    },
+  ];
+}
+
+function afterGroups(after: EnrichedShipment): readonly ReadoutGroupEntry[] {
+  return [
+    {
+      'key': 'identity',
+      'title': 'identity',
+      'rows': [
+        { 'key': 'shipmentId', 'label': 'shipmentId', 'value': after.shipmentId, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'scanSeq', 'label': 'scanSeq', 'value': String(after.scanSeq), 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'status', 'label': 'status', 'value': after.status, 'mono': true, 'valueClass': 'cr-brand' },
+      ],
+    },
+    {
+      'key': 'timestamp',
+      'title': 'timestamp (normalized)',
+      'rows': [
+        { 'key': 'epochMs', 'label': 'epochMs', 'value': fmtEpoch(after.epochMs), 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'localIso', 'label': 'localIso', 'value': after.localIso || '—', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'utcOffset', 'label': 'utcOffset', 'value': after.utcOffset || 'UTC', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'timezone', 'label': 'timezone', 'value': after.timezone, 'mono': true, 'valueClass': 'cr-brand' },
+      ],
+    },
+    {
+      'key': 'location',
+      'title': 'location (resolved)',
+      'rows': [
+        { 'key': 'coords', 'label': 'coords', 'value': `${fmtLatLng(after.lat, after.lng)}${after.coordsCoarsened ? ' (coarsened)' : ''}`, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'continent', 'label': 'continent', 'value': after.continent, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'country', 'label': 'country', 'value': after.country, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'region', 'label': 'region', 'value': after.region || '—', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'hub', 'label': 'hub', 'value': after.hub || '—', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'jurisdiction', 'label': 'jurisdiction', 'value': after.jurisdiction, 'mono': true, 'valueClass': 'cr-brand' },
+      ],
+    },
+    {
+      'key': 'classification',
+      'title': 'classification',
+      'rows': [
+        { 'key': 'serviceTier', 'label': 'serviceTier', 'value': after.serviceTier, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'sizeTier', 'label': 'sizeTier', 'value': after.sizeTier, 'mono': true, 'valueClass': 'cr-brand' },
+      ],
+    },
+    {
+      'key': 'pricing',
+      'title': 'pricing / shipping',
+      'rows': [
+        { 'key': 'subtotal', 'label': 'subtotal', 'value': usdFromMinor(after.subtotalUsdMinor), 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'shipping', 'label': 'shipping', 'value': usdFromMinor(after.shippingUsdMinor), 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'distance', 'label': 'distance', 'value': `${after.distanceKm.toFixed(1)} km`, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'transitHours', 'label': 'transitHours', 'value': `${after.transitHours.toFixed(1)}h`, 'mono': true, 'valueClass': 'cr-brand' },
+      ],
+    },
+    {
+      'key': 'pii',
+      'title': 'pii / redaction',
+      'rows': [
+        { 'key': 'redactionApplied', 'label': 'redactionApplied', 'value': String(after.redactionApplied), 'mono': true, 'valueClass': after.redactionApplied ? 'cr-brand3' : 'cr-muted' },
+        { 'key': 'name', 'label': 'name', 'value': after.redactedSample.recipientName || '[redacted]', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'email', 'label': 'email', 'value': after.redactedSample.recipientEmail || '[redacted]', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'phone', 'label': 'phone', 'value': after.redactedSample.recipientPhone || '[redacted]', 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'consentStatus', 'label': 'consentStatus', 'value': after.consentStatus, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'coordsCoarsened', 'label': 'coordsCoarsened', 'value': String(after.coordsCoarsened), 'mono': true, 'valueClass': after.coordsCoarsened ? 'cr-brand3' : 'cr-muted' },
+      ],
+    },
+    {
+      'key': 'routing',
+      'title': 'routing',
+      'rows': [
+        { 'key': 'path', 'label': 'path', 'value': after.routing.path, 'mono': true, 'valueClass': 'cr-brand' },
+        { 'key': 'geoResolve', 'label': 'geo-resolve', 'value': after.routing.geoLookupRun ? 'ran' : 'skipped', 'valueClass': after.routing.geoLookupRun ? 'cr-tag--ran' : 'cr-tag--skipped' },
+        { 'key': 'redaction', 'label': 'redaction', 'value': after.routing.redactionRun ? 'ran' : 'skipped', 'valueClass': after.routing.redactionRun ? 'cr-tag--ran' : 'cr-tag--skipped' },
+        { 'key': 'pricing', 'label': 'pricing', 'value': after.routing.pricingRun ? 'ran' : 'skipped', 'valueClass': after.routing.pricingRun ? 'cr-tag--ran' : 'cr-tag--skipped' },
+        { 'key': 'eta', 'label': 'eta', 'value': after.routing.etaRun ? 'ran' : 'skipped', 'valueClass': after.routing.etaRun ? 'cr-tag--ran' : 'cr-tag--skipped' },
+      ],
+    },
+  ];
 }
 </script>
 
@@ -194,242 +339,45 @@ function fmtWeight(weight: number, unit: string): string {
         <div class="abox-cols">
 
           <!-- BEFORE column -->
-          <div class="abox-col abox-col--before">
-            <div class="abox-col-head">before</div>
+          <UiReadoutColumn title="before" muted>
             <template v-if="entity.beforeDisplay !== null">
-              <div class="abox-field-group">
-                <div class="abox-field-head">identity</div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">shipmentId</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.shipmentId }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">eventId</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.eventId }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">eventType</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.eventType }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">source</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.sourceId }} ({{ entity.beforeDisplay.sourceFormat }})</span>
-                </div>
-              </div>
-              <div class="abox-field-group">
-                <div class="abox-field-head">timestamp</div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">epochMs</span>
-                  <span class="abox-field-val mono">{{ fmtEpoch(entity.beforeDisplay.epochMs) }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">raw</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.rawTimestamp || '—' }}</span>
-                </div>
-              </div>
-              <div class="abox-field-group">
-                <div class="abox-field-head">location (raw)</div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">lat/lng</span>
-                  <span class="abox-field-val mono">{{ fmtLatLng(entity.beforeDisplay.latitude, entity.beforeDisplay.longitude) }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">geo pre-resolved</span>
-                  <span class="abox-field-val mono">
-                    <template v-if="entity.beforeDisplay.geoContinent !== ''">{{ entity.beforeDisplay.geoContinent }} / {{ entity.beforeDisplay.geoCountry }}</template>
-                    <template v-else>no</template>
-                  </span>
-                </div>
-              </div>
-              <div class="abox-field-group">
-                <div class="abox-field-head">parcel</div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">carrier</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.carrier || '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">weight</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.weight > 0 ? fmtWeight(entity.beforeDisplay.weight, entity.beforeDisplay.weightUnit) : '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">status</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.status || '—' }}</span>
-                </div>
-              </div>
-              <div class="abox-field-group">
-                <div class="abox-field-head">pii</div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">name</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientName || '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">email</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientEmail || '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">phone</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientPhone || '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">lawful basis</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.lawfulBasis || '—' }}</span>
-                </div>
-                <div class="abox-field-row">
-                  <span class="abox-field-key">consent handled</span>
-                  <span class="abox-field-val mono">{{ entity.beforeDisplay.consentHandled !== undefined ? String(entity.beforeDisplay.consentHandled) : 'not set' }}</span>
-                </div>
-              </div>
+              <UiReadoutGroup
+                v-for="group in beforeGroups(entity.beforeDisplay)"
+                :key="group.key"
+                :title="group.title"
+              >
+                <UiReadoutRow
+                  v-for="row in group.rows"
+                  :key="row.key"
+                  :label="row.label"
+                  :mono="row.mono === true"
+                >
+                  <span :class="row.valueClass">{{ row.value }}</span>
+                </UiReadoutRow>
+              </UiReadoutGroup>
             </template>
             <template v-else>
               <div class="abox-no-before">pre-stream event not matched</div>
             </template>
-          </div>
+          </UiReadoutColumn>
 
           <!-- AFTER column -->
-          <div class="abox-col abox-col--after">
-            <div class="abox-col-head">after</div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">identity</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">shipmentId</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.shipmentId }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">scanSeq</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.scanSeq }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">status</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.status }}</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">timestamp (normalized)</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">epochMs</span>
-                <span class="abox-field-val mono cr-brand">{{ fmtEpoch(entity.after.epochMs) }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">localIso</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.localIso || '—' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">utcOffset</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.utcOffset || 'UTC' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">timezone</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.timezone }}</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">location (resolved)</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">coords</span>
-                <span class="abox-field-val mono cr-brand">{{ fmtLatLng(entity.after.lat, entity.after.lng) }}<template v-if="entity.after.coordsCoarsened"> (coarsened)</template></span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">continent</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.continent }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">country</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.country }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">region</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.region || '—' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">hub</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.hub || '—' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">jurisdiction</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.jurisdiction }}</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">classification</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">serviceTier</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.serviceTier }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">sizeTier</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.sizeTier }}</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">pricing / shipping</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">subtotal</span>
-                <span class="abox-field-val mono cr-brand">{{ usdFromMinor(entity.after.subtotalUsdMinor) }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">shipping</span>
-                <span class="abox-field-val mono cr-brand">{{ usdFromMinor(entity.after.shippingUsdMinor) }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">distance</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.distanceKm.toFixed(1) }} km</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">transitHours</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.transitHours.toFixed(1) }}h</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">pii / redaction</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">redactionApplied</span>
-                <span class="abox-field-val mono" :class="entity.after.redactionApplied ? 'cr-brand3' : 'cr-muted'">{{ entity.after.redactionApplied }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">name</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.redactedSample.recipientName || '[redacted]' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">email</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.redactedSample.recipientEmail || '[redacted]' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">phone</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.redactedSample.recipientPhone || '[redacted]' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">consentStatus</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.consentStatus }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">coordsCoarsened</span>
-                <span class="abox-field-val mono" :class="entity.after.coordsCoarsened ? 'cr-brand3' : 'cr-muted'">{{ entity.after.coordsCoarsened }}</span>
-              </div>
-            </div>
-            <div class="abox-field-group">
-              <div class="abox-field-head">routing</div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">path</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.routing.path }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">geo-resolve</span>
-                <span class="abox-field-val" :class="entity.after.routing.geoLookupRun ? 'cr-tag--ran' : 'cr-tag--skipped'">{{ entity.after.routing.geoLookupRun ? 'ran' : 'skipped' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">redaction</span>
-                <span class="abox-field-val" :class="entity.after.routing.redactionRun ? 'cr-tag--ran' : 'cr-tag--skipped'">{{ entity.after.routing.redactionRun ? 'ran' : 'skipped' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">pricing</span>
-                <span class="abox-field-val" :class="entity.after.routing.pricingRun ? 'cr-tag--ran' : 'cr-tag--skipped'">{{ entity.after.routing.pricingRun ? 'ran' : 'skipped' }}</span>
-              </div>
-              <div class="abox-field-row">
-                <span class="abox-field-key">eta</span>
-                <span class="abox-field-val" :class="entity.after.routing.etaRun ? 'cr-tag--ran' : 'cr-tag--skipped'">{{ entity.after.routing.etaRun ? 'ran' : 'skipped' }}</span>
-              </div>
-            </div>
-          </div>
+          <UiReadoutColumn title="after" tone="brand">
+            <UiReadoutGroup
+              v-for="group in afterGroups(entity.after)"
+              :key="group.key"
+              :title="group.title"
+            >
+              <UiReadoutRow
+                v-for="row in group.rows"
+                :key="row.key"
+                :label="row.label"
+                :mono="row.mono === true"
+              >
+                <span :class="row.valueClass">{{ row.value }}</span>
+              </UiReadoutRow>
+            </UiReadoutGroup>
+          </UiReadoutColumn>
 
         </div>
       </div>
@@ -541,60 +489,6 @@ function fmtWeight(weight: number, unit: string): string {
   background: var(--vp-c-bg-alt);
 }
 
-/* ── Payload action bar ──────────────────────────────────────────────────── */
-.abox-payload-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.55rem;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 5px;
-  font-size: 0.72rem;
-}
-
-.abox-payload-label {
-  font-size: 0.67rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  white-space: nowrap;
-}
-
-.abox-payload-actions {
-  display: flex;
-  gap: 0.3rem;
-}
-
-/* ── Small action buttons ────────────────────────────────────────────────── */
-.abox-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  border: 1px solid var(--vp-c-divider);
-  background: transparent;
-  color: var(--vp-c-text-2);
-  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
-}
-
-.abox-btn:hover:not(:disabled) {
-  border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
-.abox-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
 /* ── Two-column layout ───────────────────────────────────────────────────── */
 .abox-cols {
   display: grid;
@@ -607,95 +501,6 @@ function fmtWeight(weight: number, unit: string): string {
   .abox-cols {
     grid-template-columns: 1fr;
   }
-}
-
-/* ── Column ──────────────────────────────────────────────────────────────── */
-.abox-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  background: var(--vp-c-bg);
-  min-width: 0;
-}
-
-.abox-col--before {
-  border-left: 2px solid var(--vp-c-text-3);
-  opacity: 0.85;
-}
-
-.abox-col--after {
-  border-left: 2px solid var(--dagonizer-brand);
-}
-
-.abox-col-head {
-  font-size: 0.63rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid var(--vp-c-divider);
-  margin-bottom: 0.1rem;
-}
-
-.abox-col--after .abox-col-head {
-  color: var(--dagonizer-brand);
-}
-
-/* ── Field groups ────────────────────────────────────────────────────────── */
-.abox-field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.abox-field-head {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  padding: 0.2rem 0 0.1rem;
-  margin-top: 0.25rem;
-  border-bottom: 1px solid var(--vp-c-divider);
-  margin-bottom: 0.15rem;
-}
-
-.abox-field-row {
-  display: flex;
-  gap: 0.4rem;
-  align-items: baseline;
-  padding: 0.1rem 0;
-  font-size: 0.74rem;
-  border-bottom: 1px solid transparent;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-
-.abox-field-key {
-  flex-shrink: 0;
-  width: 100px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--vp-c-text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.abox-field-val {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 0.74rem;
-  color: var(--vp-c-text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ── "No match" state ────────────────────────────────────────────────────── */

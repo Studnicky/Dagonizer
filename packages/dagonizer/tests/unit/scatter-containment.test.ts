@@ -18,17 +18,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer, graphStateDocument, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { inlineTransfer, emptyInlineTransfer, graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
@@ -221,12 +223,15 @@ class TestContainer {
     innerDispatcher.registerDAG(bodyDag);
 
     return {
-      async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        const cloneState = task.state;
+      async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        const [item] = batch.items();
+        const id = item?.id ?? task.correlationId;
+        const cloneState = item?.state ?? task.state;
         const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
         if (!(cloneState instanceof ScatterContainerState)) {
-          return {
+          return [{
+            'id': id,
             'terminalOutput': 'failed',
             'errors': [{
               'code': 'UNEXPECTED_STATE_TYPE',
@@ -236,9 +241,9 @@ class TestContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'graphState': emptyGraphStateTransfer(),
+            'graphState': emptyInlineTransfer(),
             'intermediates': [],
-          };
+          }];
         }
 
         try {
@@ -258,14 +263,16 @@ class TestContainer {
             step = await iter.next();
           }
           const terminal = step.value;
-          return {
+          return [{
+            'id': id,
             'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
             'errors': [...terminal.state.errors],
-            'graphState': graphStateTransfer(terminal.state),
+            'graphState': inlineTransfer([terminal.state]),
             'intermediates': intermediates,
-          };
+          }];
         } catch (err: unknown) {
-          return {
+          return [{
+            'id': id,
             'terminalOutput': 'failed',
             'errors': [{
               'code': 'CONTAINER_ERROR',
@@ -275,9 +282,9 @@ class TestContainer {
               'recoverable': false,
               'timestamp': new Date().toISOString(),
             }],
-            'graphState': emptyGraphStateTransfer(),
+            'graphState': emptyInlineTransfer(),
             'intermediates': [],
-          };
+          }];
         }
       },
     };
@@ -312,9 +319,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     let runDagCallCount = 0;
     const trackingContainer: DagContainerInterface = {
-      async runDag(task, options): Promise<DagOutcomeType> {
+      async runDag(task, batch, options): Promise<RunResultType[]> {
         runDagCallCount++;
-        return testContainer.runDag(task, options);
+        return testContainer.runDag(task, batch, options);
       },
     };
 
@@ -346,14 +353,15 @@ void describe('Scatter dag-body container seam (W4)', () => {
     let inlineNodeCalls = 0;
 
     const container: DagContainerInterface = {
-      async runDag(_task, _options): Promise<DagOutcomeType> {
+      async runDag(_task, batch, _options): Promise<RunResultType[]> {
         containerCalls++;
-        return {
+        return batch.items().map((item) => ({
+          'id': item.id,
           'terminalOutput': 'completed',
           'errors': [],
-          'graphState': emptyGraphStateTransfer(),
+          'graphState': emptyInlineTransfer(),
           'intermediates': [],
-        };
+        }));
       },
     };
 
@@ -388,8 +396,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (d) Container error → collected error, not unhandled throw ───────────
   void it('transport failure from container collects error; scatter routes to error output', async () => {
     const failContainer: DagContainerInterface = {
-      async runDag(task, _options): Promise<DagOutcomeType> {
-        return {
+      async runDag(_task, batch, _options): Promise<RunResultType[]> {
+        return batch.items().map((item) => ({
+          'id': item.id,
           'terminalOutput': 'failed',
           'errors': [{
             'code': 'TRANSPORT_FAILURE',
@@ -399,9 +408,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
             'recoverable': false,
             'timestamp': new Date().toISOString(),
           }],
-          'graphState': graphStateTransfer(task.state),
+          'graphState': inlineTransfer([item.state]),
           'intermediates': [],
-        };
+        }));
       },
     };
 

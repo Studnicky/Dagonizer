@@ -1,0 +1,84 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import DocSections from '@/components/marketing/DocSections.astro';
+
+interface Crumb {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface DocSection {
+  readonly level: 1 | 2 | 3;
+  readonly title: string;
+  readonly paragraphs: readonly string[];
+}
+
+interface Props {
+  title: string;
+  description: string;
+  headings: readonly string[];
+  sections: readonly DocSection[];
+  sourceLabel?: string;
+  sourceHref?: string;
+  crumbs: readonly Crumb[];
+  readingMode?: string;
+}
+
+const {
+  title,
+  description,
+  headings,
+  sections,
+  sourceLabel,
+  sourceHref,
+  crumbs,
+  readingMode = 'This page focuses on the core model, contracts, and operating semantics so the content stays readable, indexable, and easy to reference.'
+} = Astro.props;
+
+const hasDefaultSlot = Astro.slots.has('default');
+---
+
+<DocsArticleShell title={title} description={description}>
+  <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <article class="space-y-8">
+      <UiPageHeader title={title} description={description} crumbs={crumbs} />
+      {
+        hasDefaultSlot ? (
+          <div class="docs-content">
+            <slot />
+          </div>
+        ) : (
+          <DocSections sections={sections} />
+        )
+      }
+    </article>
+
+    <aside class="space-y-5">
+      {
+        (sourceLabel || sourceHref) && (
+          <UiAsideCard title="Source file">
+            {sourceLabel && <p class="mt-3 break-all text-sm text-slate-300">{sourceLabel}</p>}
+            {sourceHref && (
+              <UiActionLink href={sourceHref} target="_blank" rel="noreferrer" variant="text" class="mt-4 justify-start px-0">
+                View source on GitHub
+              </UiActionLink>
+            )}
+          </UiAsideCard>
+        )
+      }
+
+      <UiAsideCard title="Headings">
+        <ul class="mt-4 space-y-3">
+          {headings.map((heading) => <li class="text-sm leading-6 text-slate-300">{heading}</li>)}
+        </ul>
+      </UiAsideCard>
+
+      <UiAsideCard title="Reading mode">
+        <p class="mt-3 text-sm leading-6 text-slate-300">{readingMode}</p>
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

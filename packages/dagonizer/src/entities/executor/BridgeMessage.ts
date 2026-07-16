@@ -24,7 +24,7 @@ import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
 
 import type { ExecutionRequestType } from './ExecutionRequest.js';
 import type { ExecutionResponseType } from './ExecutionResponse.js';
-import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
+import { GraphStateJsonLdSchema, GraphStateTransferSchema } from './GraphStateTransferSchema.js';
 
 // ---------------------------------------------------------------------------
 // Inline shape copies
@@ -41,23 +41,26 @@ const InlineNodeErrorShape = {
  * Inline copy of the dag-only ExecutionRequest shape.
  * See ExecutionRequest.ts for the canonical schema.
  * No `variant` discriminant; no `nodeName`. DagHost runs only whole DAGs.
- * `items` carries one or more `{ id, graphState }` pairs for batch execution.
+ * `graphState` is the batch-level `GraphStateTransfer` union; `items` carries
+ * one `{ id, runIri, jsonLd? }` entry per batch item.
  */
 const InlineExecutionRequestShape = {
   'type': 'object',
-  'required': ['dagName', 'placementPath', 'items', 'timeoutMs', 'correlationId'],
+  'required': ['dagName', 'placementPath', 'graphState', 'items', 'timeoutMs', 'correlationId'],
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
+    'graphState':    GraphStateTransferSchema,
     'items': {
       'type': 'array',
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'graphState'],
+        'required': ['id', 'runIri'],
         'properties': {
-          'id':       { 'type': 'string', 'minLength': 1 },
-          'graphState': GraphStateTransferSchema,
+          'id':     { 'type': 'string', 'minLength': 1 },
+          'runIri': { 'type': 'string', 'minLength': 1 },
+          'jsonLd': GraphStateJsonLdSchema,
         },
         'additionalProperties': false,
       },
@@ -71,26 +74,29 @@ const InlineExecutionRequestShape = {
 /**
  * Inline copy of the dag-only ExecutionResponse shape.
  * See ExecutionResponse.ts for the canonical schema.
- * Per-item results live in `items[*].{ id, graphState, terminalOutcome }`.
+ * `graphState` is the batch-level `GraphStateTransfer` union; per-item results
+ * live in `items[*].{ id, runIri, terminalOutcome, jsonLd? }`.
  * The ExecutorIntermediate items shape (output, skipped, nodeName) is an
  * inline copy of ExecutorIntermediate.ts — intentionally duplicated to
  * avoid $ref resolution at compile time.
  */
 const InlineExecutionResponseShape = {
   'type': 'object',
-  'required': ['correlationId', 'items', 'errors', 'intermediates'],
+  'required': ['correlationId', 'graphState', 'items', 'errors', 'intermediates'],
   'properties': {
     'correlationId': { 'type': 'string', 'minLength': 1 },
+    'graphState':    GraphStateTransferSchema,
     'items': {
       'type': 'array',
       'minItems': 1,
       'items': {
         'type': 'object',
-        'required': ['id', 'graphState', 'terminalOutcome'],
+        'required': ['id', 'runIri', 'terminalOutcome'],
         'properties': {
           'id':              { 'type': 'string', 'minLength': 1 },
+          'runIri':          { 'type': 'string', 'minLength': 1 },
           'terminalOutcome': { 'type': 'string' },
-          'graphState':      GraphStateTransferSchema,
+          'jsonLd':          GraphStateJsonLdSchema,
         },
         'additionalProperties': false,
       },
@@ -156,6 +162,10 @@ export const BridgeMessageSchema = {
             'enum': ['application/n-quads', 'application/ld+json'],
           },
         },
+        // R2: opt-out for WorkerObserver's per-flush instrumentation-event
+        // dedup. Optional — the genuine boundary default (true) lives in
+        // WorkerObserver, not here. See WorkerObserver.ts.
+        'coalesceInstrumentation': { 'type': 'boolean' },
       },
       'additionalProperties': false,
     },
