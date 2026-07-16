@@ -74,7 +74,7 @@ void describe('GraphStateTransferCodec', () => {
     assert.deepEqual(GraphStateJsonLdCodec.decode(document), source);
   });
 
-  void it('restores a Node.js boundary transfer from JSON-LD before N-Quads', async () => {
+  void it('restores a Node.js boundary transfer from inline N-Quads payload', async () => {
     const runIri = 'urn:state:jsonld-transfer';
     const graphIri = `${runIri}#state`;
     const source = [{

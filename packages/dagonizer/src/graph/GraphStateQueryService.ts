@@ -42,6 +42,17 @@ export class GraphStateQueryService {
     return cell === undefined ? undefined : this.#valueFromCell(cell);
   }
 
+  valueForField(definition: GraphStateFieldDefinitionType): JsonValueType | undefined {
+    const object = this.#dataset.match({
+      "subject": DagGraphTerms.namedNode(this.#runIri),
+      "predicate": DagGraphTerms.namedNode(definition.predicate),
+      "graph": this.#graph,
+    }).next().value?.object;
+    if (object?.termType === 'Literal') return GraphStateQueryService.valueFromLiteral(object);
+    if (object?.termType !== 'NamedNode' || object.value === GraphStateTerms.DAGONIZER.StateNull) return undefined;
+    return this.#valueFromCell(object);
+  }
+
   /** Return direct RDF objects for a subject/predicate query in this run graph. */
   objectsFor(subject: TermType, predicate: string): readonly TermType[] {
     return [...this.#dataset.match({ "subject": subject, "predicate": DagGraphTerms.namedNode(predicate), "graph": this.#graph })].map((quad) => quad.object);

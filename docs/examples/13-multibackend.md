@@ -107,9 +107,9 @@ entry. The registry contains every DAG the worker can execute: the stream-event
 compatibility tree, the event-pipeline-typed tree for `cpu`, and the
 insights-summary DAG for `io`.
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-containers
 
-<<< @/../docs/.vitepress/theme/components/cartographerWorkerRegistry.ts#cartographer-worker-registry
+<<< @/../examples/the-cartographer/app/cartographerWorkerRegistry.ts#cartographer-worker-registry
 
 ## Details for Nerds
 

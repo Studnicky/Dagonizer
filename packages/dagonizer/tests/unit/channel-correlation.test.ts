@@ -352,15 +352,18 @@ void describe('worker observability: forwarded node events reach the parent obse
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         hostSide.send({
-          'variant': 'instrumentation',
+          'variant': 'instrumentationBatch',
           'correlationId': correlationId,
-          'hook': 'nodeStart',
-          'phase': '',
-          'dagName': 'inner-dag',
-          'nodeName': 'inner-step',
-          'output': null,
-          'message': '',
-          'placementPath': ['scatter-placement', 'inner-step'],
+          'items': [{
+            'correlationId': correlationId,
+            'hook': 'nodeStart',
+            'phase': '',
+            'dagName': 'inner-dag',
+            'nodeName': 'inner-step',
+            'output': null,
+            'message': '',
+            'placementPath': ['scatter-placement', 'inner-step'],
+          }],
         });
         hostSide.send({
           'variant': 'result',

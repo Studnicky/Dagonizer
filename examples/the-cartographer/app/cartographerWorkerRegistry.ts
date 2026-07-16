@@ -14,10 +14,10 @@
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
-import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
-import { cartographerWorkerRuntimeBundle } from '../../../../examples/the-cartographer/dag.ts';
-import { GeoSourceResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts';
-import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
+import { CartographerState } from '../CartographerState.ts';
+import { cartographerWorkerRuntimeBundle } from '../dag.ts';
+import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
+import { GeoResolvers } from '../services/GeoResolvers.ts';
 
 // #region cartographer-worker-registry
 const registry: RegistryModuleInterface = {

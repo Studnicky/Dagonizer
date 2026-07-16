@@ -40,20 +40,20 @@ The checkpoint store does not execute the DAG and does not know application stat
 
 ### DAG registration and diagram
 
-The graph is the live [Archivist](./the-archivist) DAG; persistence is the checkpoint store used between park and resume. The browser session persists parked checkpoints and restores state plus memory before resuming.
+The graph is the live [Archivist](./the-archivist) DAG; persistence is the checkpoint round-trip between park and resume. The browser runner captures a checkpoint on demand and restores state plus memory before resuming.
 
 <DagJsonMermaid :dag="archivistDAG" title="Archivist checkpoint-store DAG" aria-label="Archivist JSON-LD DAG beside Mermaid generated from it." />
 
-Full checkpoint-store lifecycle in the browser runner:
+Full checkpoint lifecycle in the browser runner:
 
-1. Execute the Archivist DAG until it parks for HITL.
-2. Capture the parked result as a `Checkpoint`, including the memory store.
-3. Persist the checkpoint under the parked correlation key.
-4. Recall the checkpoint when the user provides the resume input.
+1. Execute the Archivist DAG until a run completes or parks for HITL.
+2. Visitor clicks **Save Checkpoint**: capture the result as a `Checkpoint`, including the memory store.
+3. Serialise it with `ckpt.toJson()` and store the JSON blob under a local key.
+4. Visitor clicks **Resume from Checkpoint**: load the JSON blob and rebuild a `Checkpoint` with `Checkpoint.load()`.
 5. Restore `ArchivistState` and stores.
-6. Resume from the parked cursor.
+6. Resume from the captured cursor.
 
-The CLI uses `MemoryCheckpointStore`; the browser runner uses an IndexedDB-backed checkpoint store through the same `CheckpointStore` contract.
+The CLI persists through the `CheckpointStore` contract (`ckpt.persist(store, key)` / `Checkpoint.recall(store, key)`) against `MemoryCheckpointStore`; the browser runner serialises the same `Checkpoint` object directly to and from local storage with `ckpt.toJson()` / `Checkpoint.load()`, skipping the store indirection since the browser tab is its own storage boundary.
 
 ### Run
 
@@ -69,17 +69,18 @@ This is the piece that turns checkpoint/resume from an in-memory trick into an a
 
 ## Code Samples
 
-The browser snippets show capture and restore around a parked Archivist session. The CLI snippet shows the same lifecycle against `MemoryCheckpointStore`.
+The browser snippets show capture and restore around a saved Archivist checkpoint. The CLI snippet shows the same lifecycle against `MemoryCheckpointStore`.
 
-<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-capture
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-capture
 
-<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-restore
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-restore
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 
 ## Details for Nerds
 
 - **`Checkpoint.capture(dagName, result)`.** Produces a `Checkpoint` instance for an in-progress parked flow.
+- **`ckpt.toJson()` / `Checkpoint.load(parsed)`.** The browser runner's direct serialise/deserialise pair; used in place of `persist`/`recall` when the caller is already holding the storage boundary (a browser tab's local storage).
 - **`ckpt.persist(store, key)`.** Serialises the checkpoint and passes it to `store.save(key, json)`.
 - **`Checkpoint.recall(store, key)`.** Reads from the store, deserialises, and returns a `Checkpoint` or `null`.
 - **`ckpt.restoreState(adapter)`.** Calls `adapter(snapshot)` to reconstruct the domain state from the serialised snapshot. The adapter is the `restoreState` function registered on the dispatcher.

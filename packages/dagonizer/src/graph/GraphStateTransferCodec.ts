@@ -12,7 +12,6 @@ import type { LiteralTermType, QuadType, TermType } from '../contracts/TripleSto
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 import { GraphDatasetRevision } from './GraphDatasetRevision.js';
-import { GraphStateJsonLdCodec } from './GraphStateJsonLdCodec.js';
 
 /** RDF 1.2-aware codec for graph-state transfer envelopes. */
 export class GraphStateTransferCodec {
@@ -72,7 +71,7 @@ export class GraphStateTransferCodec {
       "createdAt": new Date().toISOString(),
       "byteSize": new TextEncoder().encode(nquads).byteLength,
       "quadCount": materialized.length,
-      "jsonLd": identity.jsonLd,
+      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
     };
     return {
       "mode": 'inline-nquads',
@@ -108,7 +107,7 @@ export class GraphStateTransferCodec {
       "createdAt": new Date().toISOString(),
       "byteSize": byteSize,
       "quadCount": quadCount,
-      "jsonLd": identity.jsonLd,
+      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
     };
     return {
       "mode": 'inline-nquads',
@@ -169,7 +168,6 @@ export class GraphStateTransferCodec {
       "createdAt": new Date().toISOString(),
       "byteSize": 0,
       "quadCount": 0,
-      "jsonLd": identity.jsonLd,
     };
     const stored = await store.putSnapshot(GraphStateTransferCodec.hashingStream(quads, hashState, (bytes) => { byteSize += bytes; quadCount += 1; }), reference);
     const hash = GraphStateTransferCodec.digestOf(hashState);
@@ -205,7 +203,7 @@ export class GraphStateTransferCodec {
       "createdAt": new Date().toISOString(),
       "byteSize": 0,
       "quadCount": 0,
-      "jsonLd": identity.jsonLd,
+      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
     };
   }
 
@@ -235,7 +233,7 @@ export class GraphStateTransferCodec {
       "createdAt": identity.createdAt ?? new Date().toISOString(),
       "byteSize": identity.byteSize ?? new TextEncoder().encode(encodedAdditions + encodedDeletions).byteLength,
       "quadCount": identity.quadCount ?? GraphStateTransferCodec.decode(encodedAdditions).length,
-      "jsonLd": identity.jsonLd,
+      ...(identity.jsonLd === undefined ? {} : { 'jsonLd': identity.jsonLd }),
     };
   }
 
@@ -282,12 +280,31 @@ export class GraphStateTransferCodec {
   }
 
   static async restore(snapshot: GraphStateSnapshotInterface, transfer: GraphStateTransferType): Promise<void> {
-    if (transfer.jsonLd === undefined) throw new Error(`Graph transfer '${transfer.mode}' is missing its JSON-LD node intermediate representation`);
     if (transfer.stateGraphIri !== `${transfer.runIri}#state` || !transfer.graphIris.includes(transfer.stateGraphIri)) {
       throw new Error('Graph transfer identity does not match the run state graph');
     }
-    const quads = GraphStateJsonLdCodec.rebase(GraphStateJsonLdCodec.decode(transfer.jsonLd), transfer.runIri);
-    await snapshot.restoreGraph(transfer.runIri, GraphStateJsonLdCodec.asyncQuads(quads));
+    if (transfer.mode === 'inline-nquads') {
+      const expectedHash = GraphStateTransferCodec.transferHash(transfer.nquads, '');
+      if (expectedHash !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
+      const quads = GraphStateTransferCodec.decode(transfer.nquads);
+      await snapshot.restoreGraph(transfer.runIri, GraphStateTransferCodec.asyncQuads(quads));
+      return;
+    }
+    if (transfer.mode === 'inline-delta-nquads') {
+      if (GraphStateTransferCodec.transferHash(transfer.additions, transfer.deletions) !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
+      const additions = GraphStateTransferCodec.decode(transfer.additions);
+      await snapshot.restoreGraph(transfer.runIri, GraphStateTransferCodec.asyncQuads(additions));
+      return;
+    }
+    if (transfer.mode === 'graph-ref') {
+      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for graph-ref mode');
+    }
+    if (transfer.mode === 'shared-endpoint') {
+      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for shared-endpoint mode');
+    }
+    if (transfer.mode === 'delta-ref') {
+      throw new Error('GraphStateTransferCodec.restore currently requires local transport payload for delta-ref mode');
+    }
   }
 
   static async *asyncQuads(quads: Iterable<QuadType>): AsyncIterable<QuadType> {
@@ -401,7 +418,10 @@ export class GraphStateTransferCodec {
     return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')}\u0000`)}`;
   }
 
-  private static metadataOf(reference: GraphStateSnapshotReferenceType, jsonLd: GraphStateTransferMetadataType['jsonLd']): GraphStateTransferMetadataType {
+  private static metadataOf(
+    reference: GraphStateSnapshotReferenceType,
+    jsonLd?: GraphStateTransferMetadataType['jsonLd'],
+  ): GraphStateTransferMetadataType {
     return {
       "dagIri": reference.dagIri,
       "placementPath": [...reference.placementPath],
@@ -410,7 +430,7 @@ export class GraphStateTransferCodec {
       "createdAt": reference.createdAt,
       "byteSize": reference.byteSize,
       "quadCount": reference.quadCount,
-      jsonLd,
+      ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
     };
   }
 

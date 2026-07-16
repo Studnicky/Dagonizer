@@ -15,6 +15,9 @@ file. Child graphs are isolated and volatile by default; `await
 reopen(runIri)` reconstructs a run's graph from durable storage (snapshot
 plus trailing delta log) for durable resume.
 
+Pass `{ durableChildren: true }` to `rooted()` when child placement graphs must
+also survive a restart. Children remain isolated in either mode.
+
 OPFS-backed `Store` and `CheckpointStore` for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer).
 
 Uses the Origin Private File System (`navigator.storage.getDirectory()`) — one file per key, async `createWritable` path (works on the main thread), streaming-native iteration via the directory's async entries iterator.

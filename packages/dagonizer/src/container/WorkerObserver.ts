@@ -17,6 +17,7 @@
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import { Dagonizer } from '../Dagonizer.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /** Shape of the co-located `WorkerObserver.#emit()` option defaults. */
@@ -36,6 +37,7 @@ const EMIT_DEFAULTS: EmitDefaultsType = {
   'output': null,
   'message': '',
 };
+type InstrumentationEvent = Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>;
 
 export class WorkerObserver<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -44,6 +46,8 @@ export class WorkerObserver<
   readonly #channel: MessageChannelInterface;
   readonly #correlationId: string;
   readonly #basePath: readonly string[];
+  readonly #instrumentationQueue: Array<InstrumentationEvent>;
+  #instrumentationFlushScheduled: boolean;
 
   constructor(
     channel: MessageChannelInterface,
@@ -55,6 +59,8 @@ export class WorkerObserver<
     this.#channel = channel;
     this.#correlationId = correlationId;
     this.#basePath = basePath;
+    this.#instrumentationQueue = [];
+    this.#instrumentationFlushScheduled = false;
   }
 
   #composePath(innerPath: readonly string[]): string[] {
@@ -79,8 +85,7 @@ export class WorkerObserver<
   ): void {
     const { phase, dagName, nodeName, output, message } = { ...EMIT_DEFAULTS, ...options };
     try {
-      this.#channel.send({
-        'variant': 'instrumentation',
+      this.#instrumentationQueue.push({
         'correlationId': this.#correlationId,
         'hook': hook,
         'phase': phase,
@@ -90,6 +95,13 @@ export class WorkerObserver<
         'message': message,
         'placementPath': composedPath,
       });
+      if (!this.#instrumentationFlushScheduled) {
+        this.#instrumentationFlushScheduled = true;
+        queueMicrotask((): void => {
+          this.#instrumentationFlushScheduled = false;
+          this.#flushInstrumentationBatch();
+        });
+      }
     } catch { /* channel closed — suppress */ }
   }
 
@@ -123,5 +135,18 @@ export class WorkerObserver<
     placementPath: readonly string[],
   ): void {
     this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+  }
+
+  #flushInstrumentationBatch(): void {
+    if (this.#instrumentationQueue.length === 0) return;
+    const items = [...this.#instrumentationQueue];
+    this.#instrumentationQueue.length = 0;
+    try {
+      this.#channel.send({
+        'variant': 'instrumentationBatch',
+        'correlationId': this.#correlationId,
+        'items': items,
+      });
+    } catch { /* channel closed — suppress */ }
   }
 }

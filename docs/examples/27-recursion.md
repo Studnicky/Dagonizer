@@ -71,7 +71,7 @@ The embedded DAG owns runtime DAG-reference resolution:
 
 The browser demo registers the same tool DAGs before registering the parent Archivist DAG:
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-tool-registry
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-tool-registry
 
 ## Details for Nerds
 

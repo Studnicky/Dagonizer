@@ -71,7 +71,7 @@ The ingest DAG embeds the plugin-provided child DAG IRIs through the normal buil
 
 The browser demo registers the plugin before registering the ingest and top-level bundles:
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-plugin-registration
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-plugin-registration
 
 ## Details for Nerds
 

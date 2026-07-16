@@ -31,6 +31,7 @@
 import type { GraphStateDeltaInterface } from '../contracts/GraphStateDeltaInterface.js';
 import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { GraphStateTransferType } from '../contracts/GraphStateTransfer.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType, normalizeGraphStateTransferFormats, supportsJsonLd } from '../contracts/GraphStateTransferFormat.js';
 import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
@@ -43,7 +44,6 @@ import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { NodeError } from '../entities/node/NodeError.js';
 import { DAGError } from '../errors/DAGError.js';
-import { GraphStateJsonLdCodec } from '../graph/GraphStateJsonLdCodec.js';
 import { GraphStateTerms } from '../graph/GraphStateTerms.js';
 import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -78,6 +78,7 @@ export class DagHost {
   readonly #registry: RegistryModuleInterface | null;
   readonly #graphStateTransferStore: GraphStateTransferStoreInterface | null;
   readonly #capabilities: string[];
+  #graphStateTransferFormats: readonly GraphStateTransferFormatType[];
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
 
@@ -86,6 +87,7 @@ export class DagHost {
     this.#inflight = new Map();
     this.#registry = options.registry ?? null;
     this.#graphStateTransferStore = options.graphStateTransferStore ?? null;
+    this.#graphStateTransferFormats = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
     // Inline N-Quads is the mandatory graph-state wire format, so it is not
     // negotiated as an optional capability. Only transfer modes that require
     // an injected adapter appear in the ready handshake.
@@ -146,6 +148,7 @@ export class DagHost {
           m.registryModule,
           m.registryVersion,
           servicesConfig,
+          m.graphStateTransferFormats,
         );
       },
       'execute': (m) => {
@@ -210,7 +213,10 @@ export class DagHost {
     registryModule: string,
     expectedVersion: string,
     servicesConfig: JsonObjectType,
+    graphStateTransferFormats?: readonly GraphStateTransferFormatType[],
   ): Promise<void> {
+    const normalizedFormats = normalizeGraphStateTransferFormats(graphStateTransferFormats);
+    this.#graphStateTransferFormats = normalizedFormats;
     try {
       let registry: RegistryModuleInterface;
       if (this.#registry !== null) {
@@ -254,11 +260,12 @@ export class DagHost {
 
       this.#bundle = bundle;
 
-      this.#channel.send({
-        'variant': 'ready',
-        'registryVersion': bundle.registryVersion,
-        'capabilities': [...this.#capabilities],
-      });
+        this.#channel.send({
+          'variant': 'ready',
+          'registryVersion': bundle.registryVersion,
+          'capabilities': [...this.#capabilities],
+          'graphStateTransferFormats': [...normalizedFormats],
+        });
     } catch (error) {
       const message = DAGError.messageOf(error);
       this.#channel.send({
@@ -470,8 +477,8 @@ export class DagHost {
         // Collect all errors across all items.
         const allErrors = restoredItems.flatMap(({ state }) => [...state.errors]);
 
-        const responseItems = await Promise.all(restoredItems.map(async ({ id, state }) => {
-          const graphState = await this.#graphStateOf(state, request, restoredItems.find((item) => item.id === id)?.graphState);
+        const responseItems = await Promise.all(restoredItems.map(async ({ id, state, "graphState": requested }) => {
+          const graphState = await this.#graphStateOf(state, request, requested);
           return {
             'id': id,
             'terminalOutcome': terminalByItemId.get(id) ?? 'failed',
@@ -492,8 +499,8 @@ export class DagHost {
       const message = DAGError.messageOf(error);
 
       // On unhandled exception, return failed items for all items in the request.
-      const failedItems = await Promise.all(restoredItems.map(async ({ id, state }) => {
-        const graphState = await this.#graphStateOf(state, request, restoredItems.find((item) => item.id === id)?.graphState);
+      const failedItems = await Promise.all(restoredItems.map(async ({ id, state, "graphState": requested }) => {
+        const graphState = await this.#graphStateOf(state, request, requested);
         return {
           'id': id,
           'terminalOutcome': 'failed',
@@ -538,11 +545,12 @@ export class DagHost {
     if (!DagHost.isGraphSnapshot(state)) throw new Error('Every node state must expose the graph-state port');
     const quads: QuadType[] = [];
     for await (const quad of state.snapshotGraph(state.runIri)) quads.push(quad);
-    const jsonLd = GraphStateJsonLdCodec.encode(quads);
+    const jsonLd = supportsJsonLd(this.#graphStateTransferFormats) ? state.snapshotJsonLd(state.runIri) : undefined;
+    const graphStream = GraphStateTransferCodec.asyncQuads(quads);
     if (requested?.mode === 'shared-endpoint') {
       if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
-      await this.#graphStateTransferStore.writeShared({ "endpoint": requested.endpoint, "token": requested.lease, "graphIris": [...requested.graphIris], "expiresAt": Number.POSITIVE_INFINITY }, state.snapshotGraph(state.runIri));
-      return { ...requested, jsonLd };
+      await this.#graphStateTransferStore.writeShared({ "endpoint": requested.endpoint, "token": requested.lease, "graphIris": [...requested.graphIris], "expiresAt": Number.POSITIVE_INFINITY }, graphStream);
+      return { ...requested, ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }) };
     }
     const placementIri = request.placementPath[request.placementPath.length - 1];
     if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
@@ -551,25 +559,25 @@ export class DagHost {
       'placementPath': request.placementPath,
       'placementIri': placementIri,
       'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri),
-      jsonLd,
+      ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
     };
     if (requested?.mode === 'graph-ref') {
       if (this.#graphStateTransferStore === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
-      return { ...(await GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+      return GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
     }
     if (requested === undefined || requested.mode === 'inline-nquads') {
-      return { ...(await GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+      return GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
     }
     if (requested?.mode === 'delta-ref') {
       if (this.#graphStateTransferStore === null) throw new Error('Delta-reference transfer requires a graph transfer store');
       if (!DagHost.isGraphDelta(state)) throw new Error('Delta-reference transfer requires graph delta support');
       const delta = await state.snapshotGraphDelta(state.runIri);
-      return { ...GraphStateTransferCodec.deltaReference(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision }), jsonLd };
+      return GraphStateTransferCodec.deltaReference(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision });
     }
     if (requested?.mode === 'inline-delta-nquads') {
       if (!DagHost.isGraphDelta(state)) throw new Error('Inline delta transfer requires graph delta support');
       const delta = await state.snapshotGraphDelta(state.runIri);
-      return { ...GraphStateTransferCodec.delta(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision }), jsonLd };
+      return GraphStateTransferCodec.delta(state.runIri, requested.baseSnapshotRef, delta.additions, delta.deletions, { ...identity, "baseRevision": delta.baseRevision, "revision": delta.revision });
     }
     throw new Error('Unsupported graph transfer mode');
   }

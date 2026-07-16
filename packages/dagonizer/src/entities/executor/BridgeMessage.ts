@@ -116,6 +116,22 @@ const InlineExecutionResponseShape = {
   'additionalProperties': false,
 } as const;
 
+const InstrumentationEventShape = {
+  'type': 'object',
+  'required': ['correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
+  'properties': {
+    'correlationId': { 'type': 'string' },
+    'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
+    'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
+    'dagName':       { 'type': 'string' },
+    'nodeName':      { 'type': 'string' },
+    'output':        { 'type': ['string', 'null'] },
+    'message':       { 'type': 'string' },
+    'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
+  },
+  'additionalProperties': false,
+} as const;
+
 // ---------------------------------------------------------------------------
 // BridgeMessage schema
 // ---------------------------------------------------------------------------
@@ -133,6 +149,13 @@ export const BridgeMessageSchema = {
         'registryModule':  { 'type': 'string', 'minLength': 1 },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'servicesConfig':  { 'type': 'object' },
+        'graphStateTransferFormats': {
+          'type': 'array',
+          'items': {
+            'type': 'string',
+            'enum': ['application/n-quads', 'application/ld+json'],
+          },
+        },
       },
       'additionalProperties': false,
     },
@@ -172,6 +195,13 @@ export const BridgeMessageSchema = {
         'variant':         { 'type': 'string', 'const': 'ready' },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'capabilities':    { 'type': 'array', 'items': { 'type': 'string' } },
+        'graphStateTransferFormats': {
+          'type': 'array',
+          'items': {
+            'type': 'string',
+            'enum': ['application/n-quads', 'application/ld+json'],
+          },
+        },
       },
       'additionalProperties': false,
     },
@@ -200,16 +230,22 @@ export const BridgeMessageSchema = {
       'type': 'object',
       'required': ['variant', 'correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
       'properties': {
-        'variant':       { 'type': 'string', 'const': 'instrumentation' },
+        'variant': { 'type': 'string', 'const': 'instrumentation' },
+        ...InstrumentationEventShape.properties,
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['variant', 'correlationId', 'items'],
+      'properties': {
+        'variant':       { 'type': 'string', 'const': 'instrumentationBatch' },
         'correlationId': { 'type': 'string' },
-        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
-        // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
-        'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
-        'dagName':       { 'type': 'string' },
-        'nodeName':      { 'type': 'string' },
-        'output':        { 'type': ['string', 'null'] },
-        'message':       { 'type': 'string' },
-        'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
+        'items': {
+          'type': 'array',
+          'minItems': 1,
+          'items': InstrumentationEventShape,
+        },
       },
       'additionalProperties': false,
     },

@@ -26,9 +26,11 @@ import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
+import type { GraphStateTransferFormatType } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { InMemoryGraphStateTransferStore } from '../../src/graph/InMemoryGraphStateTransferStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 import { graphStateTransfer } from '../_support/GraphStateSupport.js';
 
@@ -97,6 +99,7 @@ class DagHostFixture {
     parentSide: MessageChannelInterface,
     registryModule: string = REGISTRY_MODULE_URL,
     registryVersion: string = REGISTRY_VERSION,
+    graphStateTransferFormats?: GraphStateTransferFormatType[],
   ): Promise<BridgeMessageType> {
     const reply = DagHostFixture.nextMessage(parentSide);
     parentSide.send({
@@ -104,6 +107,7 @@ class DagHostFixture {
       'registryModule': registryModule,
       'registryVersion': registryVersion,
       'servicesConfig': {},
+      ...(graphStateTransferFormats === undefined ? {} : { 'graphStateTransferFormats': graphStateTransferFormats }),
     });
     return reply;
   }
@@ -121,8 +125,27 @@ void describe('DagHost — init handshake', () => {
     assert.strictEqual(reply.variant, 'ready');
     if (reply.variant === 'ready') {
       assert.strictEqual(reply.registryVersion, REGISTRY_VERSION);
+      assert.deepEqual(reply.graphStateTransferFormats, ['application/n-quads']);
       assert.ok(Array.isArray(reply.capabilities));
       assert.ok(!reply.capabilities.includes('inline-nquads'));
+    }
+  });
+
+  void it('echoes graph-state transfer formats requested during init', async () => {
+    const { parentSide } = TestHostPair.create();
+    const reply = await DagHostFixture.sendInit(
+      parentSide,
+      REGISTRY_MODULE_URL,
+      REGISTRY_VERSION,
+      ['application/ld+json', 'application/n-quads'],
+    );
+
+    assert.strictEqual(reply.variant, 'ready');
+    if (reply.variant === 'ready') {
+      assert.deepEqual(
+        reply.graphStateTransferFormats,
+        ['application/n-quads', 'application/ld+json'],
+      );
     }
   });
 
@@ -203,9 +226,43 @@ void describe('DagHost — execute returns result', () => {
       const item0 = result.response.items[0];
       assert.ok(item0 !== undefined, 'items[0] must exist');
       assert.strictEqual(item0.terminalOutcome, 'completed');
-      assert.ok(item0.graphState.jsonLd !== undefined, 'items[0].graphState must carry JSON-LD');
       assert.ok(Array.isArray(result.response.intermediates));
       assert.ok(result.response.intermediates.length > 0, 'must have at least 1 intermediate (mutator node)');
+    }
+  });
+
+  void it('returns real JSON-LD when ld+json is requested in negotiation', async () => {
+    const { parentSide } = TestHostPair.create();
+
+    const ready = await DagHostFixture.sendInit(parentSide, REGISTRY_MODULE_URL, REGISTRY_VERSION, ['application/ld+json']);
+    assert.strictEqual(ready.variant, 'ready');
+
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
+      parentSide.onMessage((msg) => {
+        if (msg.variant === 'result') resolve(msg);
+      });
+    });
+
+    const initialState = new NodeStateBase();
+    parentSide.send({
+      'variant': 'execute',
+      'request': {
+        'dagName': BODY_LAW2_DAG,
+        'placementPath': ['parent'],
+        'items': [{ 'id': 'req-exec-jsonld', 'graphState': graphStateTransfer(initialState) }],
+        'timeoutMs': 5000,
+        'correlationId': 'req-exec-jsonld',
+      },
+    });
+
+    const result = await resultPromise;
+    assert.strictEqual(result.variant, 'result');
+    if (result.variant === 'result') {
+      const item0 = result.response.items[0];
+      assert.ok(item0 !== undefined);
+      assert.deepEqual(item0.graphState?.jsonLd?.['@context'], GraphStateTerms.JSON_LD_CONTEXT);
+      assert.ok(item0.graphState?.jsonLd !== undefined, 'graphState must include jsonLd when requested');
+      assert.ok(item0.graphState?.jsonLd['@graph'].length > 0, 'jsonLd graph payload must not be empty');
     }
   });
 

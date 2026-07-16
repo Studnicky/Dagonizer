@@ -6,9 +6,13 @@
     "noEmit":           true,
     "target":           "es2022",
     "allowImportingTsExtensions": true,
-    "types":            ["node"]
+    "types":            ["vite/client", "node"],
+    "lib":              ["ES2024", "DOM", "DOM.Iterable"]
   },
   "include": [
+    "vue-shims.d.ts",
+    "main.ts",
+    "vite.config.ts",
     "CartographerState.ts",
     "CartographerServices.ts",
     "dag.ts",
@@ -17,6 +21,7 @@
     "runCartographer.ts",
     "services.ts",
     "tz-lookup.d.ts",
+    "app/**/*.ts",
     "contracts/**/*.ts",
     "embedded-dags/**/*.ts",
     "entities/**/*.ts",

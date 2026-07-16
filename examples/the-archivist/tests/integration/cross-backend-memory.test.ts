@@ -355,7 +355,7 @@ describe('Archivist DAG — cross-backend persistent memory', () => {
   it('turn 1: classifies as on-topic intent', () => {
     const onTopicIntents = new Set([
       'on-topic', 'search', 'describe', 'recommend',
-      'lookup-author', 'find-reviews', 'describe-book', 'recommend-similar',
+      'lookup-author', 'find-reviews', 'describe-book', 'book-detail', 'recommend-similar',
     ]);
     assert.ok(
       onTopicIntents.has(state1.intent),

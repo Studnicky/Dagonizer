@@ -67,7 +67,7 @@ The parent DAG declares the container role; the browser runner binds it. Those t
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-containers
 
 ## Details for Nerds
 

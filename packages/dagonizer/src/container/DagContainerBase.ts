@@ -33,7 +33,7 @@ import type { ItemType } from '../entities/batch/Item.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
-import { GraphStateJsonLdCodec } from '../graph/GraphStateJsonLdCodec.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType, normalizeGraphStateTransferFormats, supportsJsonLd } from '../contracts/GraphStateTransferFormat.js';
 import { GraphStateTerms } from '../graph/GraphStateTerms.js';
 import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -89,6 +89,8 @@ export type DagContainerOptionsType = {
   shutdownGraceMs?: number;
   /** Adapter for graph-reference, shared-endpoint, and delta transfer modes. */
   graphStateTransferStore?: GraphStateTransferStoreInterface;
+  /** Graph-state transfer formats declared to host during init handshake. */
+  graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
   /** Default graph transfer mode; inline N-Quads is the canonical default. */
   graphStateTransferMode?: 'inline-nquads' | 'graph-ref' | 'shared-endpoint' | 'inline-delta-nquads';
 }
@@ -131,6 +133,7 @@ export abstract class DagContainerBase<TWorker = unknown>
     DAG_CONTAINER_DEFAULTS;
 
   constructor(options: DagContainerOptionsType) {
+    const graphStateTransferFormats = normalizeGraphStateTransferFormats(options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS);
     const { shutdownGraceMs } = { ...DAG_CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>();
@@ -139,7 +142,9 @@ export abstract class DagContainerBase<TWorker = unknown>
     this.#waiters                = CircularBuffer.create({ 'capacity': options.poolSize, 'overflow': 'grow' });
     this.#destroyed              = false;
     this.#poolSize               = options.poolSize;
-    this.#init                   = options.init;
+    this.#init                   = { ...options.init, ...{
+      'graphStateTransferFormats': [...normalizeGraphStateTransferFormats(graphStateTransferFormats)],
+    } };
     this.#shutdownGraceMs        = shutdownGraceMs;
     this.#graphStateTransferStore = options.graphStateTransferStore ?? null;
     this.#graphStateTransferMode = options.graphStateTransferMode ?? 'inline-nquads';
@@ -253,7 +258,7 @@ export abstract class DagContainerBase<TWorker = unknown>
     return this.#withChannel(
       task.context.signal,
       async (_channel, dispatch) => {
-        const request = await this.#requestWithGraphState(task);
+        const request = await this.#requestWithGraphState(task, dispatch.graphStateTransferFormats);
         DagContainerBase.requireGraphCapability(dispatch, request);
         const outcome = await dispatch.request(request, task.context.signal, relay);
         await this.#restoreGraphState(task.state, outcome.graphState);
@@ -292,7 +297,7 @@ export abstract class DagContainerBase<TWorker = unknown>
       async (_channel, dispatch) => {
         const baseRequest = task.toRequest();
         const batchItems = await Promise.all(batch.items().map(async (item: ItemType<NodeStateInterface>) => {
-          const graphState = await this.#graphStateOf(item.state, baseRequest);
+          const graphState = await this.#graphStateOf(item.state, baseRequest, dispatch.graphStateTransferFormats);
           return {
             'id': item.id,
             'graphState': graphState,
@@ -346,26 +351,31 @@ export abstract class DagContainerBase<TWorker = unknown>
     }
   }
 
-  async #requestWithGraphState(task: DagTaskInterface): Promise<ExecutionRequestType> {
+  async #requestWithGraphState(task: DagTaskInterface, formats: readonly GraphStateTransferFormatType[]): Promise<ExecutionRequestType> {
     const request = task.toRequest();
-    const graphState = await this.#graphStateOf(task.state, request);
+    const graphState = await this.#graphStateOf(task.state, request, formats);
     if (graphState === undefined) return request;
     const item = request.items[0];
     if (item === undefined) throw new Error('DagContainerBase: request has no item');
     return { ...request, 'items': [{ ...item, 'graphState': graphState }] };
   }
 
-  async #graphStateOf(state: NodeStateInterface, request: ExecutionRequestType): Promise<GraphStateTransferType> {
+  async #graphStateOf(
+    state: NodeStateInterface,
+    request: ExecutionRequestType,
+    graphStateTransferFormats: readonly GraphStateTransferFormatType[],
+  ): Promise<GraphStateTransferType> {
     if (!DagContainerBase.isGraphSnapshot(state)) throw new Error('Every node state must expose the graph-state port');
     const quads: QuadType[] = [];
     for await (const quad of state.snapshotGraph(state.runIri)) quads.push(quad);
-    const jsonLd = GraphStateJsonLdCodec.encode(quads);
+    const jsonLd = supportsJsonLd(graphStateTransferFormats) ? state.snapshotJsonLd(state.runIri) : undefined;
+    const graphStream = GraphStateTransferCodec.asyncQuads(quads);
     const placementIri = request.placementPath.at(-1);
     if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
     if (this.#graphStateTransferMode === 'shared-endpoint') {
       if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
       const lease = await this.#graphStateTransferStore.acquireLease([GraphStateTerms.runGraphIri(state.runIri)], 60_000);
-      await this.#graphStateTransferStore.writeShared(lease, state.snapshotGraph(state.runIri));
+      await this.#graphStateTransferStore.writeShared(lease, graphStream);
       return {
         "mode": 'shared-endpoint',
         "runIri": state.runIri,
@@ -380,16 +390,22 @@ export abstract class DagContainerBase<TWorker = unknown>
           'createdAt': new Date().toISOString(),
           'byteSize': 0,
           'quadCount': 0,
+          ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
         },
-        jsonLd,
       };
     }
-    const identity = { 'dagIri': request.dagName, 'placementPath': request.placementPath, 'placementIri': placementIri, 'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri), jsonLd };
+    const identity = {
+      'dagIri': request.dagName,
+      'placementPath': request.placementPath,
+      'placementIri': placementIri,
+      'stateGraphIri': GraphStateTerms.runGraphIri(state.runIri),
+      ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }),
+    };
     if (this.#graphStateTransferMode === 'graph-ref') {
       if (this.#graphStateTransferStore === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
-      return { ...(await GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+      return GraphStateTransferCodec.referenceStream(this.#graphStateTransferStore, state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
     }
-    return { ...(await GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], state.snapshotGraph(state.runIri), identity)), jsonLd };
+    return GraphStateTransferCodec.inlineStream(state.runIri, [GraphStateTerms.runGraphIri(state.runIri)], graphStream, identity);
   }
 
   private static isGraphSnapshot(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {

@@ -77,13 +77,13 @@ The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, t
 
 The browser runner constructs registry-backed worker containers and binds them by role. `process-stream` uses `cpu`; the same page also binds `io` for the summary embedded DAG.
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-containers
 
 #### Worker registry module
 
 Web workers load a separate module — the main thread's in-memory registry is not accessible across the worker boundary. The registry module exports a `RegistryModuleInterface` default that reconstructs the bundle and services inside the worker from an opaque `servicesConfig` JSON object:
 
-<<< @/../docs/.vitepress/theme/components/cartographerWorkerRegistry.ts#cartographer-worker-registry
+<<< @/../examples/the-cartographer/app/cartographerWorkerRegistry.ts#cartographer-worker-registry
 
 Vite chunks the worker entry for the docs site; the runner supplies the module URL to `WebWorkerContainer`.
 

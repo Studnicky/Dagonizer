@@ -6,6 +6,7 @@
  *   lookup-author      → `lookup-author-web-search` (chronological author survey)
  *   find-reviews       → `find-reviews`             (ratings tool branch)
  *   describe-book      → `describe-web-search`      (one-hit description branch)
+ *   book-detail        → `resolve-book-detail`      (prior-candidate detail branch, no fresh search)
  *   recommend-similar  → `recommend-similar`        (prior-shortlist seeding branch)
  *   recommend          → `recommend-top-rated`      (rating-ranked branch for vague "good book" asks)
  *   search | describe  → `extract-query`            (general on-topic pipeline)
@@ -28,6 +29,7 @@ type IntentOutput =
   | 'lookup-author'
   | 'find-reviews'
   | 'describe-book'
+  | 'book-detail'
   | 'recommend-similar'
   | 'recall-memories'
   | 'on-topic'
@@ -50,12 +52,13 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
     super();
     this.services = services;
   }
-  readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage'] as const;
-  override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
+  readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'book-detail', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'book-detail' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
     return {
       'lookup-author':       { 'type': 'object' },
       'find-reviews':        { 'type': 'object' },
       'describe-book':       { 'type': 'object' },
+      'book-detail':         { 'type': 'object' },
       'recommend-similar':   { 'type': 'object' },
       'recall-memories':     { 'type': 'object' },
       'on-topic':            { 'type': 'object' },
@@ -112,6 +115,7 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
           'lookup-author':     'lookup-author',
           'find-reviews':      'find-reviews',
           'describe-book':     'describe-book',
+          'book-detail':       'book-detail',
           'recommend-similar': 'recommend-similar',
           'recall-memories':   'recall-memories',
           'search':            'on-topic',

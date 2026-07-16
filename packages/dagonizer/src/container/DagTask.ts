@@ -14,7 +14,6 @@ import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import { DagGraphTerms } from '../graph/DagGraphTerms.js';
-import { GraphStateJsonLdCodec } from '../graph/GraphStateJsonLdCodec.js';
 import { GraphStateTerms } from '../graph/GraphStateTerms.js';
 import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -77,7 +76,6 @@ export class DagTask
         'placementPath': this.placementPath,
         'placementIri': placementIri,
         'stateGraphIri': graphIri,
-        'jsonLd': GraphStateJsonLdCodec.encode(quads),
       },
     );
   }

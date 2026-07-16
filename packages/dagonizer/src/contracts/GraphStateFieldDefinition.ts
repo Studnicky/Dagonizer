@@ -2,7 +2,7 @@
 export type GraphStateFieldDefinitionType = {
   readonly key: string;
   readonly predicate: string;
-  readonly kind: 'literal' | 'object' | 'array' | 'opaque';
+  readonly kind: 'literal' | 'object' | 'array' | 'opaque' | 'map';
   readonly cardinality: 'one' | 'many';
   readonly read: 'direct' | 'opaque';
   readonly write: 'replace' | 'append';

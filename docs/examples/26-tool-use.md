@@ -62,7 +62,7 @@ In practice this keeps the risky part small. The model proposes a structured cal
 
 The browser registry snippet shows tool DAG registration. The scatter DAG snippet shows runtime `DagReference` dispatch over tool worksets.
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-tool-registry
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-tool-registry
 
 <<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 

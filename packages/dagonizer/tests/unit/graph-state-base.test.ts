@@ -38,6 +38,38 @@ class DefinedGraphState extends NodeStateBase {
   }
 }
 
+class MapFieldGraphState extends NodeStateBase {
+  progress = new Map<string, { 'watermark': number; 'active': boolean }>();
+
+  protected override graphStateFields() {
+    return [{
+      'key': 'progress',
+      'predicate': 'urn:state:progress',
+      'kind': 'map' as const,
+      'cardinality': 'one' as const,
+      'read': 'direct' as const,
+      'write': 'replace' as const,
+    }];
+  }
+}
+
+class DottedMapState extends NodeStateBase {
+  parent = {
+    'nested': new Map<string, { 'value': number }>(),
+  };
+
+  protected override graphStateFields() {
+    return [{
+      'key': 'parent.nested',
+      'predicate': 'urn:state:parent-nested',
+      'kind': 'map' as const,
+      'cardinality': 'one' as const,
+      'read': 'direct' as const,
+      'write': 'replace' as const,
+    }];
+  }
+}
+
 void describe('NodeStateBase graph persistence', () => {
   void it('projects schema-defined fields as direct typed graph facts', async () => {
     const dataset = new InMemoryGraphDataset();
@@ -54,6 +86,30 @@ void describe('NodeStateBase graph persistence', () => {
       assert.equal(new GraphStateQueryService(dataset, state.runIri).bindingsFor('urn:state:watermark').length, 1);
     }
     assert.equal(dataset.count({ 'subject': run, 'predicate': DagGraphTerms.namedNode(GraphStateTerms.stateFieldIri('domain.progress')), graph }), 0);
+  });
+
+  void it('restores map-typed schema fields as Map values on runtime', async () => {
+    const source = new MapFieldGraphState();
+    source.progress.set('batch-1', { 'watermark': 2, 'active': true });
+    const document = await source.snapshotJsonLd();
+
+    const target = new MapFieldGraphState();
+    await target.restoreJsonLd(source.runIri, document);
+
+    assert.ok(target.progress instanceof Map);
+    assert.deepEqual(target.progress.get('batch-1'), { 'watermark': 2, 'active': true });
+  });
+
+  void it('restores dotted map-typed schema fields as nested Map values on runtime', async () => {
+    const source = new DottedMapState();
+    source.parent.nested.set('nested-key', { 'value': 7 });
+
+    const document = await source.snapshotJsonLd();
+    const target = new DottedMapState();
+    await target.restoreJsonLd(source.runIri, document);
+
+    assert.ok(target.parent.nested instanceof Map);
+    assert.deepEqual(target.parent.nested.get('nested-key'), { 'value': 7 });
   });
 
   void it('stores node communication facts through the shared RDF dataset', async () => {

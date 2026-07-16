@@ -103,7 +103,7 @@ The runnable agent example keeps the loop explicit through `DAGBuilder`. The Arc
 
 <<< @/../examples/the-archivist/dag.ts
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-services
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-services
 
 ## Details for Nerds
 

@@ -567,6 +567,20 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
             });
             return;
         }
+        if (definition?.kind === 'map') {
+            for (const [key, item] of this.#toObjectEntries(value)) {
+                const member = DagGraphTerms.namedNode(`${valueNode.value}/property/${encodeURIComponent(key)}`);
+                const memberPredicate = DagGraphTerms.namedNode(definition?.nested?.[key]?.predicate ?? GraphStateTerms.nestedFieldIri(key));
+                this.#dataset.add([
+                    { "subject": valueNode, "predicate": DagGraphTerms.namedNode(GRAPH_STATE_MEMBER), "object": member, graph },
+                    { "subject": valueNode, "predicate": memberPredicate, "object": member, graph },
+                    { "subject": cell, "predicate": memberPredicate, "object": member, graph },
+                    { "subject": member, "predicate": DagGraphTerms.namedNode(GRAPH_KEY), "object": DagGraphTerms.literal(key), graph },
+                ]);
+                this.#projectValue(member, item);
+            }
+            return;
+        }
         for (const [key, item] of Object.entries(value)) {
             const member = DagGraphTerms.namedNode(`${valueNode.value}/property/${encodeURIComponent(key)}`);
             this.#dataset.add([
@@ -582,6 +596,12 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         const graph = this.#graph();
         if (value === null) {
             this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StateNull), graph }]);
+            return;
+        }
+        if (definition.kind === 'map') {
+            const valueNode = DagGraphTerms.namedNode(`${this.#runIri}/field/${encodeURIComponent(field.value)}`);
+            this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": valueNode, graph }]);
+            this.#projectValue(valueNode, value, definition);
             return;
         }
         if (typeof value !== 'object' || Array.isArray(value)) {
@@ -696,19 +716,107 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #syncRuntimeFields(): void {
         for (const key of Object.keys(this)) {
             if (key === 'getter') continue;
-            this.#write(`domain.${key}`, JsonValue.from(this.graphStateValue(key, Reflect.get(this, key))));
+            this.#write(
+              `domain.${key}`,
+              JsonValue.from(this.#jsonStateValue(this.graphStateValue(key, Reflect.get(this, key)), this.#fieldDefinition(`domain.${key}`))),
+            );
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.')) continue;
+            const value = this.#readField(field.key);
+            if (value === undefined) continue;
+            this.#write(
+              `domain.${field.key}`,
+              JsonValue.from(this.#jsonStateValue(value, field)),
+            );
         }
     }
 
     /** Normalize a runtime field into the JSON-shaped value stored in the graph. */
     protected graphStateValue(_key: string, value: unknown): unknown { return value; }
 
+    #readField(path: string): unknown {
+        let cursor: unknown = this;
+        for (const segment of path.split('.')) {
+            if (cursor === null || typeof cursor !== 'object') return undefined;
+            if (!Object.hasOwn(cursor, segment) && !(segment in cursor)) return undefined;
+            cursor = (cursor as Record<string, unknown>)[segment];
+        }
+        return cursor;
+    }
+
+    #toObjectEntries(value: unknown): readonly [string, JsonValueType][] {
+        if (value instanceof Map) return [...value].map(([key, item]) => [String(key), item]) as [string, JsonValueType][];
+        if (value === null || Array.isArray(value) || typeof value !== 'object') return [];
+        return Object.entries(value) as [string, JsonValueType][];
+    }
+
+    #jsonStateValue(value: unknown, definition?: GraphStateFieldDefinitionType): unknown {
+        if (value === null || value === undefined) return value;
+        if (value instanceof Map) {
+            const entries: Record<string, JsonValueType> = {};
+            for (const [key, item] of value.entries()) {
+                entries[String(key)] = this.#jsonStateValue(item, definition) as JsonValueType;
+            }
+            return entries;
+        }
+        if (Array.isArray(value)) return value.map((item) => this.#jsonStateValue(item, definition));
+        if (typeof value === 'object') {
+            const entries = value as Record<string, unknown>;
+            return Object.fromEntries(
+                Object.entries(entries).map(([key, item]) => [key, this.#jsonStateValue(item)]),
+            );
+        }
+        return value;
+    }
+
     #restoreRuntimeFields(): void {
+        const queryService = new GraphStateQueryService(this.#dataset, this.#runIri);
         for (const [key, value] of this.#values()) {
             if (!key.startsWith('domain.')) continue;
             const property = key.slice('domain.'.length);
-            if (property.length > 0) Reflect.set(this, property, value);
+            const definition = this.#fieldDefinition(key);
+            if (property.length === 0) continue;
+            const nextValue = definition?.kind === 'map' ? this.#mapFromStateValue(value) : value;
+        if (nextValue === undefined) continue;
+        this.#assignFieldValue(property, nextValue);
+      }
+      for (const field of this.graphStateFields()) {
+        const value = queryService.valueForField(field);
+        if (value === undefined) continue;
+        const nextValue = field.kind === 'map' ? this.#mapFromStateValue(value) : value;
+        this.#assignFieldValue(field.key, nextValue);
         }
+  }
+
+    #mapFromStateValue(value: unknown): Map<string, JsonValueType> {
+        if (value === null || value === undefined || Array.isArray(value) || typeof value !== 'object') return new Map<string, JsonValueType>();
+        const result = new Map<string, JsonValueType>();
+        for (const [key, item] of Object.entries(value)) result.set(key, item);
+        return result;
+    }
+
+    #assignFieldValue(property: string, value: unknown): void {
+        if (!property.includes('.')) {
+            Reflect.set(this, property, value);
+            return;
+        }
+        const segments = property.split('.');
+        let cursor: Record<string, unknown> = this as Record<string, unknown>;
+        for (let i = 0; i < segments.length - 1; i++) {
+            const segment = segments[i];
+            if (segment === undefined) continue;
+            const next = cursor[segment];
+            if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+                const created: Record<string, unknown> = {};
+                cursor[segment] = created;
+                cursor = created;
+            } else {
+                cursor = next as Record<string, unknown>;
+            }
+        }
+        const leaf = segments.at(-1);
+        if (leaf !== undefined) cursor[leaf] = value;
     }
 
 }

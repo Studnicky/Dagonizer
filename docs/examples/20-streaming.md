@@ -57,7 +57,7 @@ It pairs naturally with cancellation: a UI can show progress, keep a cancel butt
 
 The runner snippet shows the `for await` loop that feeds the Cartographer graph UI. The DAG snippet is included to make the point explicit: streaming execution changes how the caller observes a run, not how the graph is authored.
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-streaming-execution
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-streaming-execution
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
 

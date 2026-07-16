@@ -13,7 +13,9 @@ const graphStore = await IndexedDbGraphDatasetProvider.open();
 const reopened = await graphStore.reopen(runIri);
 ```
 
-Children are volatile and isolated by default. `await reopen(runIri)`
+Children are volatile and isolated by default. Pass
+`{ durableChildren: true }` to `open()` to persist child placement graphs.
+`await reopen(runIri)`
 reconstructs a run's graph from durable storage (compacted snapshot object
 store plus trailing per-delta log object store) and can be passed to
 `resumeWithStateFactory`.

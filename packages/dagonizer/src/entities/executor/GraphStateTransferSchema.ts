@@ -56,25 +56,25 @@ export const GraphStateTransferSchema = {
   'oneOf': [
     {
       'type': 'object',
-      'required': ['mode', 'format', 'runIri', 'graphIris', 'nquads', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount', 'jsonLd'],
+      'required': ['mode', 'format', 'runIri', 'graphIris', 'nquads', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
       'properties': InlineProperties,
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['mode', 'runIri', 'graphSnapshotRef', 'format', 'graphIris', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount', 'jsonLd'],
+      'required': ['mode', 'runIri', 'graphSnapshotRef', 'format', 'graphIris', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
       'properties': ReferenceProperties,
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['mode', 'runIri', 'endpoint', 'graphIris', 'lease', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount', 'jsonLd'],
+      'required': ['mode', 'runIri', 'endpoint', 'graphIris', 'lease', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
       'properties': SharedProperties,
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['mode', 'runIri', 'baseSnapshotRef', 'graphIris', 'additions', 'deletions', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount', 'jsonLd'],
+      'required': ['mode', 'runIri', 'baseSnapshotRef', 'graphIris', 'additions', 'deletions', 'hash', 'dagIri', 'placementPath', 'placementIri', 'stateGraphIri', 'createdAt', 'byteSize', 'quadCount'],
       'properties': DeltaProperties,
       'additionalProperties': false,
     },

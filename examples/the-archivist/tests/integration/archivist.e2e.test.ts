@@ -277,7 +277,7 @@ describe('Archivist DAG — on-topic query with empty scouts', () => {
   it('classifies intent as an on-topic variant', () => {
     const onTopicIntents = new Set([
       'on-topic', 'search', 'describe', 'recommend',
-      'lookup-author', 'find-reviews', 'describe-book', 'recommend-similar',
+      'lookup-author', 'find-reviews', 'describe-book', 'book-detail', 'recommend-similar',
     ]);
     assert.ok(
       onTopicIntents.has(state.intent),

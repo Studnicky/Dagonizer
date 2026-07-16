@@ -3,26 +3,40 @@ import { N3GraphDataset, PersistentGraphDataset } from '@studnicky/dagonizer';
 
 import { OpfsGraphJournalStore } from './OpfsGraphJournalStore.js';
 
+export type OpfsGraphDatasetProviderOptionsType = {
+  readonly durableChildren?: boolean;
+};
+
 /** OPFS graph provider with async reopening and write-behind durability. */
 export class OpfsGraphDatasetProvider implements GraphDatasetProviderInterface {
   readonly #journal: OpfsGraphJournalStore;
   readonly #datasets = new Map<string, PersistentGraphDataset>();
+  readonly #durableChildren: boolean;
 
-  constructor(journal: OpfsGraphJournalStore) { this.#journal = journal; }
+  constructor(journal: OpfsGraphJournalStore, options: { readonly durableChildren?: boolean } = {}) {
+    this.#journal = journal;
+    this.#durableChildren = options.durableChildren ?? false;
+  }
 
-  static async rooted(dirName: string): Promise<OpfsGraphDatasetProvider> {
+  static async rooted(dirName: string, options: OpfsGraphDatasetProviderOptionsType = {}): Promise<OpfsGraphDatasetProvider> {
     const journal = await OpfsGraphJournalStore.rooted(dirName);
     await journal.connect();
-    return new OpfsGraphDatasetProvider(journal);
+    return new OpfsGraphDatasetProvider(journal, options);
   }
 
   root(runIri: string): GraphDatasetInterface {
+    const existing = this.#datasets.get(runIri);
+    if (existing !== undefined) return existing;
     const dataset = new PersistentGraphDataset(runIri, this.#journal);
     this.#datasets.set(runIri, dataset);
     return dataset;
   }
 
-  child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface { return new N3GraphDataset(); }
+  child(_parent: GraphScopeType, child: GraphScopeType): GraphDatasetInterface {
+    return this.#durableChildren
+      ? new PersistentGraphDataset(child.runIri, this.#journal)
+      : new N3GraphDataset();
+  }
 
   async reopen(runIri: string): Promise<GraphDatasetInterface | undefined> {
     const existing = this.#datasets.get(runIri);

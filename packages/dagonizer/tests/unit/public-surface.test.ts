@@ -40,12 +40,14 @@ void describe('public root surface', () => {
   void it('exports gather checkpoint and progress schemas', () => {
     const progress: RootGatherProgressType = { 'entries': {} };
     const sameProgress: TypeBarrelGatherProgressType = progress;
+    const graphState = emptyGraphStateTransfer().jsonLd;
+    if (graphState === undefined) throw new Error('emptyGraphStateTransfer should include jsonLd');
     const record: RootGatherRecordProgressType = {
       'source': 'left',
       'index': null,
       'output': 'success',
       'terminalOutcome': null,
-      'graphState': emptyGraphStateTransfer().jsonLd,
+      'graphState': graphState,
     };
     const sameRecord: TypeBarrelGatherRecordProgressType = record;
 

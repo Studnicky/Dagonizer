@@ -10,6 +10,7 @@ import './base.css'
 
 import TopBar from './components/TopBar.vue'
 import HomeHero from './components/HomeHero.vue'
+import ExperimentalHomeHero from './components/ExperimentalHomeHero.vue'
 import DocFooter from './components/DocFooter.vue'
 
 // ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
@@ -50,6 +51,7 @@ export default {
     app.component('DispatcherRunner', DispatcherRunner)
     app.component('DagGraph', DagGraph)
     app.component('DagJsonMermaid', DagJsonMermaid)
+    app.component('ExperimentalHomeHero', ExperimentalHomeHero)
     app.use(TwoslashFloatingVue)
     // Mermaid diagrams get the same D-pad + fullscreen explorer as the graph
     // canvases, straight from the package. Client-only; install() wires a

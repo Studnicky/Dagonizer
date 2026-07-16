@@ -338,6 +338,23 @@ const validInstrumentation: BridgeMessageType = {
   'placementPath': ['parent'],
 };
 
+const validInstrumentationBatch: BridgeMessageType = {
+  'variant': 'instrumentationBatch',
+  'correlationId': 'req-1',
+  'items': [
+    {
+      'correlationId': 'req-1',
+      'hook': 'nodeStart',
+      'phase': '',
+      'dagName': 'my-dag',
+      'nodeName': 'step1',
+      'output': null,
+      'message': '',
+      'placementPath': ['parent'],
+    },
+  ],
+};
+
 const validError: BridgeMessageType = {
   'variant': 'error',
   'correlationId': null,
@@ -385,6 +402,10 @@ describe('BridgeMessageType schema — valid branches', () => {
 
   it('validates instrumentation branch', () => {
     assert.ok(Validator.bridgeMessage.is(validInstrumentation));
+  });
+
+  it('validates instrumentation batch branch', () => {
+    assert.ok(Validator.bridgeMessage.is(validInstrumentationBatch));
   });
 
   it('validates error branch with null correlationId', () => {

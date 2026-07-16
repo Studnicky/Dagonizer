@@ -26,6 +26,7 @@ import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 
 import { DagOutcome } from './DagOutcome.js';
 import type { BatchRunResultType } from './DagOutcome.js';
@@ -83,6 +84,7 @@ export class ChannelDispatch {
   #initWaiter: InitWaiter | null;
   /** Capabilities declared by the initialized host. */
   #capabilities: readonly string[];
+  #graphStateTransferFormats: readonly GraphStateTransferFormatType[];
   // Stable bound handler — allocated once at construction so the same
   // function reference is always registered with the channel. An inline
   // closure would create a fresh function on every construction, preventing
@@ -94,6 +96,7 @@ export class ChannelDispatch {
     this.#pending = new Map<string, PendingEntry | BatchPendingEntry>();
     this.#initWaiter = null;
     this.#capabilities = [];
+    this.#graphStateTransferFormats = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
     this.#onMessage = (msg: BridgeMessageType): void => { this.#route(msg); };
 
     // EXACTLY ONE onMessage registration for the channel's lifetime.
@@ -110,8 +113,16 @@ export class ChannelDispatch {
     return this.#capabilities;
   }
 
+  get graphStateTransferFormats(): readonly GraphStateTransferFormatType[] {
+    return this.#graphStateTransferFormats;
+  }
+
   supports(capability: string): boolean {
     return this.#capabilities.includes(capability);
+  }
+
+  supportsGraphStateTransferFormat(format: GraphStateTransferFormatType): boolean {
+    return this.#graphStateTransferFormats.includes(format);
   }
 
   /**
@@ -130,6 +141,7 @@ export class ChannelDispatch {
         'registryModule': message['registryModule'],
         'registryVersion': message['registryVersion'],
         'servicesConfig': message['servicesConfig'],
+        ...(message['graphStateTransferFormats'] === undefined ? {} : { 'graphStateTransferFormats': message['graphStateTransferFormats'] }),
       });
     });
   }
@@ -333,6 +345,7 @@ export class ChannelDispatch {
           ));
         } else {
           this.#capabilities = [...m.capabilities];
+          this.#graphStateTransferFormats = m.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
           waiter.resolve();
         }
       },
@@ -367,39 +380,15 @@ export class ChannelDispatch {
 
       'instrumentation': (m) => {
         const entry = this.#pending.get(m.correlationId);
+        if (entry !== undefined && entry.relay !== null) this.#routeInstrumentation(m, entry);
+      },
+
+      'instrumentationBatch': (m) => {
+        const entry = this.#pending.get(m.correlationId);
         if (entry === undefined || entry.relay === null) return;
-        const { relay } = entry;
-        // Ajv-validated boundary: placementPath is an array of strings by the
-        // BridgeMessage schema; a `string[]` widens to the `readonly string[]`
-        // the ObserverRelayInterface expects with no cast.
-        const path: readonly string[] = m.placementPath;
-        const { signal } = entry;
-        // Dispatch map over hook type: each hook handler forwards the event to the relay.
-        // InstrMsg is a single flat shape (not a union on hook), so the map is
-        // Record<hook, (hm: InstrMsg) => void>. The call site passes m directly.
-        type InstrMsg = typeof m;
-        const hookDispatch: Partial<Record<InstrMsg['hook'], (hm: InstrMsg) => void>> = {
-          'nodeStart': (hm) => {
-            relay.onNodeStart(hm.nodeName, path, signal);
-          },
-          'nodeEnd': (hm) => {
-            relay.onNodeEnd(hm.nodeName, hm.output, path, signal);
-          },
-          'error': (hm) => {
-            relay.onError(hm.nodeName, new Error(hm.message), path, signal);
-          },
-          'phaseEnter': (hm) => {
-            if (hm.phase === 'pre' || hm.phase === 'post') {
-              relay.onPhaseEnter(hm.dagName, hm.phase, hm.nodeName, path, signal);
-            }
-          },
-          'phaseExit': (hm) => {
-            if (hm.phase === 'pre' || hm.phase === 'post') {
-              relay.onPhaseExit(hm.dagName, hm.phase, hm.nodeName, path, signal);
-            }
-          },
-        };
-        hookDispatch[m.hook]?.(m);
+        for (const item of m.items) {
+          this.#routeInstrumentation(item, entry);
+        }
       },
 
       'error': (m) => {
@@ -432,15 +421,49 @@ export class ChannelDispatch {
     // shutdown/intermediate) are observability-only on this side and fall through
     // as no-ops, preserving the prior optional-chaining absence semantics.
     switch (msg.variant) {
-      case 'ready':           variantDispatch.ready?.(msg);           break;
-      case 'result':          variantDispatch.result?.(msg);          break;
-      case 'instrumentation': variantDispatch.instrumentation?.(msg); break;
-      case 'error':           variantDispatch.error?.(msg);           break;
+      case 'ready':             variantDispatch.ready?.(msg);             break;
+      case 'result':            variantDispatch.result?.(msg);            break;
+      case 'instrumentation':   variantDispatch.instrumentation?.(msg);   break;
+      case 'instrumentationBatch': variantDispatch.instrumentationBatch?.(msg); break;
+      case 'error':             variantDispatch.error?.(msg);             break;
       case 'init':
       case 'execute':
       case 'abort':
       case 'shutdown':
       case 'intermediate':    break;
     }
+  }
+
+  #routeInstrumentation(
+    item: Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>,
+    entry: PendingEntry | BatchPendingEntry,
+  ): void {
+    const { relay } = entry;
+    const { signal } = entry;
+    if (relay === null) return;
+    const path: readonly string[] = item.placementPath;
+    type InstrMsg = typeof item;
+    const hookDispatch: Partial<Record<InstrMsg['hook'], (hm: InstrMsg) => void>> = {
+      'nodeStart': (hm) => {
+        relay.onNodeStart(hm.nodeName, path, signal);
+      },
+      'nodeEnd': (hm) => {
+        relay.onNodeEnd(hm.nodeName, hm.output, path, signal);
+      },
+      'error': (hm) => {
+        relay.onError(hm.nodeName, new Error(hm.message), path, signal);
+      },
+      'phaseEnter': (hm) => {
+        if (hm.phase === 'pre' || hm.phase === 'post') {
+          relay.onPhaseEnter(hm.dagName, hm.phase, hm.nodeName, path, signal);
+        }
+      },
+      'phaseExit': (hm) => {
+        if (hm.phase === 'pre' || hm.phase === 'post') {
+          relay.onPhaseExit(hm.dagName, hm.phase, hm.nodeName, path, signal);
+        }
+      },
+    };
+    hookDispatch[item.hook]?.(item);
   }
 }

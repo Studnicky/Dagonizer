@@ -47,6 +47,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { NodeError } from '../../src/entities/node/NodeError.js';
 import { DAGError } from '../../src/errors/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { GraphStateTransferCodec } from '../../src/graph/GraphStateTransferCodec.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
@@ -452,7 +453,7 @@ void describe('Container seam — W1', () => {
         const firstItem = request.items[0];
         if (firstItem === undefined) throw new Error('No items in request');
         const childState = new CounterState();
-        await childState.restoreJsonLd(firstItem.graphState.runIri, firstItem.graphState.jsonLd);
+        await GraphStateTransferCodec.restore(childState, firstItem.graphState);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();

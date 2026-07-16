@@ -23,4 +23,21 @@ void describe('FileGraphDatasetProvider', () => {
       rmSync(directory, { 'recursive': true, 'force': true });
     }
   });
+
+  void it('keeps root identity stable and leaves children volatile by default', () => {
+    const directory = mkdtempSync(`${tmpdir()}/dagonizer-file-provider-`);
+    try {
+      const provider = new FileGraphDatasetProvider(directory);
+      const root = provider.root('urn:dagonizer:run:stable');
+      assert.equal(provider.root('urn:dagonizer:run:stable'), root);
+      const child = provider.child(
+        { 'runIri': 'urn:dagonizer:run:stable', 'dagIri': 'urn:dagonizer:dag', 'placementIri': 'urn:dagonizer:placement' },
+        { 'runIri': 'urn:dagonizer:run:stable/child', 'dagIri': 'urn:dagonizer:dag', 'placementIri': 'urn:dagonizer:child' },
+      );
+      assert.equal(child instanceof FileGraphDataset, false);
+      assert.equal(child.count({}), 0);
+    } finally {
+      rmSync(directory, { 'recursive': true, 'force': true });
+    }
+  });
 });

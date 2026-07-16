@@ -62,9 +62,9 @@ They also give the application one place to enforce provider policy: request tim
 
 The browser snippets show provider selection and service injection. The CLI snippet shows a preference-ordered cascade across multiple providers.
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-llm-client
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-llm-client
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-services
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-services
 
 <<< @/../examples/the-archivist/runArchivist.ts#adapter-cascade
 

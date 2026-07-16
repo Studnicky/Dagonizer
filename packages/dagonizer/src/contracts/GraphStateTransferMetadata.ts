@@ -12,6 +12,6 @@ export type GraphStateTransferMetadataType = {
   readonly createdAt: string;
   readonly byteSize: number;
   readonly quadCount: number;
-  /** Node.js JSON-LD view of the same graph payload. */
-  readonly jsonLd: GraphStateJsonLdDocumentType;
+  /** Optional Node.js JSON-LD view of the same graph payload. */
+  readonly jsonLd?: GraphStateJsonLdDocumentType;
 };

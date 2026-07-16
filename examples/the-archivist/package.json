@@ -35,10 +35,12 @@
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
     "@studnicky/logger": "^5.0.0",
-    "@studnicky/signal": "^5.0.0"
+    "@studnicky/signal": "^5.0.0",
+    "vue": "^3.5.39"
   },
   "devDependencies": {
     "@rdfjs/types": "^2.0.1",
+    "@vitejs/plugin-vue": "^5.2.4",
     "fake-indexeddb": "^6.2.5",
     "n3": "^2.1.1",
     "vite": "^8.1.3"

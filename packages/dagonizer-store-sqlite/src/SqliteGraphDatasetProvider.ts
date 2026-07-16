@@ -7,16 +7,26 @@ import { SqliteGraphJournalStore } from './SqliteGraphJournalStore.js';
 export class SqliteGraphDatasetProvider implements GraphDatasetProviderInterface {
   readonly #journal: SqliteGraphJournalStore;
   readonly #datasets = new Map<string, PersistentGraphDataset>();
+  readonly #durableChildren: boolean;
 
-  constructor(path: string) { this.#journal = new SqliteGraphJournalStore(path); }
+  constructor(path: string, options: { readonly durableChildren?: boolean } = {}) {
+    this.#journal = new SqliteGraphJournalStore(path);
+    this.#durableChildren = options.durableChildren ?? false;
+  }
 
   root(runIri: string): GraphDatasetInterface {
+    const existing = this.#datasets.get(runIri);
+    if (existing !== undefined) return existing;
     const dataset = new PersistentGraphDataset(runIri, this.#journal);
     this.#datasets.set(runIri, dataset);
     return dataset;
   }
 
-  child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface { return new N3GraphDataset(); }
+  child(_parent: GraphScopeType, child: GraphScopeType): GraphDatasetInterface {
+    return this.#durableChildren
+      ? new PersistentGraphDataset(child.runIri, this.#journal)
+      : new N3GraphDataset();
+  }
 
   async reopen(runIri: string): Promise<GraphDatasetInterface | undefined> {
     const existing = this.#datasets.get(runIri);

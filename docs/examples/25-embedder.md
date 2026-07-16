@@ -64,7 +64,7 @@ The provisioner snippet builds the embedder cascade. The browser services snippe
 
 <<< @/../examples/the-archivist/providers/EmbedderProvisioner.ts
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-services
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-services
 
 ## Details for Nerds
 

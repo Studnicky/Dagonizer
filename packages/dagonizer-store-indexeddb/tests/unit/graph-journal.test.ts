@@ -15,7 +15,36 @@ async function providerOnFactory(factory: IdbFactoryLikeInterface): Promise<Inde
   return new IndexedDbGraphDatasetProvider(journal);
 }
 
+async function durableChildProviderOnFactory(factory: IdbFactoryLikeInterface): Promise<IndexedDbGraphDatasetProvider> {
+  const journal = new IndexedDbGraphJournalStore(factory);
+  await journal.connect();
+  return new IndexedDbGraphDatasetProvider(journal, { 'durableChildren': true });
+}
+
 void describe('IndexedDbGraphDatasetProvider: RDF 1.2 durability', () => {
+  void it('keeps root identity stable and children volatile by default', async () => {
+    const provider = await providerOnFactory(new IDBFactory());
+    const root = provider.root('urn:test:stable-run');
+    assert.equal(provider.root('urn:test:stable-run'), root);
+    const child = provider.child(
+      { 'runIri': 'urn:test:stable-run', 'dagIri': 'urn:test:dag', 'placementIri': 'urn:test:placement' },
+      { 'runIri': 'urn:test:stable-run/child', 'dagIri': 'urn:test:dag', 'placementIri': 'urn:test:child' },
+    );
+    assert.equal(child instanceof PersistentGraphDataset, false);
+    assert.equal(child.count({}), 0);
+    await provider.disconnect();
+  });
+
+  void it('allows durable children as an explicit provider policy', async () => {
+    const provider = await durableChildProviderOnFactory(new IDBFactory());
+    const child = provider.child(
+      { 'runIri': 'urn:test:parent', 'dagIri': 'urn:test:dag', 'placementIri': 'urn:test:placement' },
+      { 'runIri': 'urn:test:child', 'dagIri': 'urn:test:dag', 'placementIri': 'urn:test:child-placement' },
+    );
+    assert.equal(child instanceof PersistentGraphDataset, true);
+    await provider.disconnect();
+  });
+
   void it('reopens a graph containing a triple term', async () => {
     const factory = new IDBFactory();
     const quoted = DagGraphTerms.quadTerm({

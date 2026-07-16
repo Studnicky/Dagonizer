@@ -71,15 +71,15 @@ The shared store is part of the `ArchivistServices` record injected into node co
 
 #### Checkpoint capture with stores
 
-The browser session captures the same memory store when a run parks for HITL:
+The browser runner captures the same memory store when the visitor saves a checkpoint:
 
-<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-capture
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-capture
 
 #### Checkpoint restore with stores
 
-On resume, the browser restores the memory store before calling back into the dispatcher:
+On resume, the browser runner restores the memory store before calling back into the dispatcher:
 
-<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-restore
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-restore
 
 ## Details for Nerds
 

@@ -42,86 +42,66 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
 }
 
 void describe('WorkerObserver — all-five-hook routing (G6)', () => {
-  void it('forwards every overridden hook as instrumentation BridgeMessageType with correct fields, suppresses onFlowStart, and prepends basePath', () => {
+  void it('forwards every overridden hook as an instrumentationBatch with correct items, suppresses onFlowStart, and prepends basePath', async () => {
     const ch = new CollectingChannel();
     const exposed = new ExposedObserver(ch, CORR, BASE, {});
 
     // nodeStart: one message, all fields populated, basePath composed with the
     // per-call inner path.
     exposed.callNodeStart('my-node', state, ['child']);
-    assert.strictEqual(ch.sent.length, 1);
-    const startMsg = ch.sent[0];
-    assert.ok(startMsg !== undefined);
-    assert.strictEqual(startMsg.variant, 'instrumentation');
-    if (startMsg.variant === 'instrumentation') {
-      assert.strictEqual(startMsg.hook, 'nodeStart');
-      assert.strictEqual(startMsg.correlationId, CORR);
-      assert.strictEqual(startMsg.nodeName, 'my-node');
-      assert.strictEqual(startMsg.phase, '');
-      assert.strictEqual(startMsg.output, null);
-      assert.deepStrictEqual(startMsg.placementPath, ['parent-embed', 'child']);
-    }
 
     // nodeEnd: carries the output token and the composed path.
     ch.sent.length = 0;
     exposed.callNodeEnd('my-node', 'success', state, ['child']);
-    assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
-    if (ch.sent[0]?.variant === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'nodeEnd');
-      assert.strictEqual(ch.sent[0].output, 'success');
-      assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'child']);
-    }
-
-    // phaseEnter: phase token surfaces and the placement name becomes nodeName.
-    ch.sent.length = 0;
     exposed.callPhaseEnter('dag', 'pre', 'placement', state, []);
-    assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
-    if (ch.sent[0]?.variant === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'phaseEnter');
-      assert.strictEqual(ch.sent[0].phase, 'pre');
-      assert.strictEqual(ch.sent[0].nodeName, 'placement');
-    }
 
     // phaseExit: post phase token surfaces.
-    ch.sent.length = 0;
     exposed.callPhaseExit('dag', 'post', 'placement', state, []);
-    assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
-    if (ch.sent[0]?.variant === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'phaseExit');
-      assert.strictEqual(ch.sent[0].phase, 'post');
-    }
 
-    // error: error message forwarded and path composed with the inner path.
-    ch.sent.length = 0;
     exposed.callError('node', new Error('test error'), state, ['inner']);
+    await Promise.resolve();
+
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
-    if (ch.sent[0]?.variant === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'error');
-      assert.strictEqual(ch.sent[0].message, 'test error');
-      assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'inner']);
+    const batchMsg = ch.sent[0];
+    assert.ok(batchMsg !== undefined);
+    assert.strictEqual(batchMsg.variant, 'instrumentationBatch');
+    assert.equal(batchMsg.items.length, 5);
+    if (batchMsg.variant === 'instrumentationBatch') {
+      const hooks = batchMsg.items.map((item) => item.hook);
+      assert.deepStrictEqual(hooks, ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error']);
+      assert.strictEqual(batchMsg.items[0]?.nodeName, 'my-node');
+      assert.deepStrictEqual(batchMsg.items[0]?.placementPath, ['parent-embed', 'child']);
+      assert.strictEqual(batchMsg.items[1]?.hook, 'nodeEnd');
+      assert.strictEqual(batchMsg.items[1]?.output, 'success');
+      assert.deepStrictEqual(batchMsg.items[1]?.placementPath, ['parent-embed', 'child']);
+      assert.strictEqual(batchMsg.items[2]?.hook, 'phaseEnter');
+      assert.strictEqual(batchMsg.items[2]?.phase, 'pre');
+      assert.strictEqual(batchMsg.items[2]?.nodeName, 'placement');
+      assert.strictEqual(batchMsg.items[3]?.hook, 'phaseExit');
+      assert.strictEqual(batchMsg.items[3]?.phase, 'post');
+      assert.strictEqual(batchMsg.items[4]?.hook, 'error');
+      assert.deepStrictEqual(batchMsg.items[4]?.placementPath, ['parent-embed', 'inner']);
     }
 
-    // flowStart is suppressed — WorkerObserver does not override it; base Dagonizer's
-    // protected onFlowStart is a no-op, so no instrumentation BridgeMessageType is sent.
+    // flowStart is suppressed — WorkerObserver does not override it, so no
+    // instrumentation message is sent.
     ch.sent.length = 0;
     exposed.callFlowStart('dag', state);
+    await Promise.resolve();
     assert.strictEqual(ch.sent.length, 0, 'onFlowStart must not send any message');
   });
 
-  void it('prepends a multi-element basePath to the per-call placement path', () => {
+  void it('prepends a multi-element basePath to the per-call placement path', async () => {
     const ch = new CollectingChannel();
     const exposed = new ExposedObserver(ch, CORR, ['a', 'b'], {});
     exposed.callNodeStart('n', state, ['c']);
+    await Promise.resolve();
 
     const msg = ch.sent[0];
     assert.ok(msg !== undefined);
-    assert.strictEqual(msg.variant, 'instrumentation');
-    if (msg.variant === 'instrumentation') {
-      assert.deepStrictEqual(msg.placementPath, ['a', 'b', 'c']);
+    assert.strictEqual(msg.variant, 'instrumentationBatch');
+    if (msg.variant === 'instrumentationBatch') {
+      assert.deepStrictEqual(msg.items[0]?.placementPath, ['a', 'b', 'c']);
     }
   });
 });

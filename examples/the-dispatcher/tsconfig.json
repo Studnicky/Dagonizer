@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module":           "esnext",
+    "moduleResolution": "bundler",
+    "noEmit":           true,
+    "target":           "es2022",
+    "allowImportingTsExtensions": true,
+    "types":            ["vite/client", "node"],
+    "lib":              ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "vue-shims.d.ts",
+    "main.ts",
+    "vite.config.ts",
+    "DispatcherState.ts",
+    "dag.ts",
+    "services.ts",
+    "language/**/*.ts",
+    "nodes/**/*.ts",
+    "providers/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}

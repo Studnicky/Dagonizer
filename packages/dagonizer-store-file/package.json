@@ -6,7 +6,7 @@
   "type": "module",
   "sideEffects": false,
   "engines": { "node": ">=24" },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "README.md", "CHANGELOG.md"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
