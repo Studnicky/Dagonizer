@@ -13,11 +13,13 @@
  * `correlationId` — dispatcher-monotonic correlation id; no randomness.
  * `timeout`       — per-task execution budget; `Timeout.none()` = no limit.
  * `state`         — live seeded child clone.
+ * `inputState`    — exact child-state surface snapshotted onto the wire for
+ *                   this task; governs `toRequest()` and batch requests alike.
  * `context`       — composed NodeContext including the abort signal.
  */
 
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -33,6 +35,8 @@ export interface DagTaskInterface {
   timeout: Timeout;
   /** Live seeded child clone. In-process containers execute against this directly. */
   state: NodeStateInterface;
+  /** Exact child-state surface snapshotted onto the wire for this task's items, via `NodeStateInterface.snapshotTransientStateSelection`. */
+  inputState: TransientNodeStateSelectionType;
   /** Exact terminal child-state surface the caller wants back from the host. */
   responseState: TransientNodeStateResponseStateType;
   /** Composed `NodeContext` carrying the abort signal for this task. */

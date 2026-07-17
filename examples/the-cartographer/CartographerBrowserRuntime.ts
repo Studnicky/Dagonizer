@@ -11,6 +11,7 @@ const CARTOGRAPHER_DAG_IRI = CARTOGRAPHER_IRIS.dag.cartographer;
 const CARTOGRAPHER_DAG_WRITE_POINTS = ['NodeEdges', 'WatermarkCommit'] as const;
 const CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS = [] as const;
 const DEFAULT_RESERVOIR_CAPACITY = 1000;
+const DEFAULT_WORKER_CONCURRENCY = 4;
 
 type PlacementBindingsType = Record<string, { readonly resultField: 'sourceFeed' }>;
 
@@ -19,6 +20,7 @@ export class CartographerBrowserRuntime {
 
   static build(
     capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+    concurrency: number = DEFAULT_WORKER_CONCURRENCY,
   ): DAGType {
     return CartographerBrowserRuntime.#appendSourceIntakeGather(
       CartographerBrowserRuntime.#appendProducerStreamFeedEntrypoints(
@@ -42,7 +44,7 @@ export class CartographerBrowserRuntime {
           'itemKey':     'source-payload',
           'container':   'cpu',
           'writePoints': CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS,
-          'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
+          'execution': { 'mode': 'reservoir', 'concurrency': concurrency, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
         },
       )
       .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'), {
@@ -66,6 +68,7 @@ export class CartographerBrowserRuntime {
 
   static bundle(
     capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+    concurrency: number = DEFAULT_WORKER_CONCURRENCY,
   ): DispatcherBundleType<CartographerState> {
     return {
       'nodes': [...streamProducerFeedBundle.nodes],
@@ -73,7 +76,7 @@ export class CartographerBrowserRuntime {
         ...streamProducerFeedBundle.dags,
         CartographerBrowserRuntime.#buildWorkerOwnedDagStub(CARTOGRAPHER_IRIS.dag.streamEvent),
         CartographerBrowserRuntime.#buildWorkerOwnedDagStub(CARTOGRAPHER_IRIS.dag.insightsSummary),
-        CartographerBrowserRuntime.build(capacity),
+        CartographerBrowserRuntime.build(capacity, concurrency),
       ],
     };
   }

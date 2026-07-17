@@ -15,6 +15,7 @@
 
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
+import { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import { LlmModelSchema } from '../entities/adapter/LlmModel.js';
 import type { OpenAiModelsResponseType } from '../entities/adapter/OpenAiModelsResponse.js';
@@ -291,4 +292,7 @@ export class Validator {
   // Gather progress checkpoint wire shapes
   static readonly gatherRecordProgress: EntityValidatorInterface<GatherRecordProgressType> = Validator.compileNamed('GatherRecordProgress', GatherRecordProgressSchema);
   static readonly gatherProgress:       EntityValidatorInterface<GatherProgressType>       = Validator.compileNamed('GatherProgress',       GatherProgressSchema);
+
+  // Durable fold journal wire shape
+  static readonly foldJournalCommit: EntityValidatorInterface<FoldJournalStoreInterface.CommitType> = Validator.compileNamed('FoldJournalCommit', FoldJournalStoreInterface.CommitSchema);
 }

@@ -104,16 +104,38 @@ export class TransientResultSelection {
     scatter: ScatterNodeType,
     nodeIndex: ReadonlyMap<string, DAGNodeType>,
   ): TransientNodeStateResponseStateType {
-    const outputSelections: Record<string, TransientNodeStateSelectionType> = {};
-    for (const [output, targetIri] of Object.entries(scatter.outputs)) {
-      if (targetIri === null) continue;
-      const node = nodeIndex.get(targetIri);
-      if (node === undefined || !Placement.isGather(node)) continue;
-      outputSelections[output] = TransientResultSelection.forGatherTarget(node, scatter['@id']);
-    }
     return {
       'defaultSelection': EMPTY_RESPONSE_SELECTION,
-      outputSelections,
+      'outputSelections': {
+        'success': TransientResultSelection.#forScatterRoutes(
+          scatter,
+          nodeIndex,
+          ['all-success', 'partial'],
+        ),
+        'error': TransientResultSelection.#forScatterRoutes(
+          scatter,
+          nodeIndex,
+          ['all-error', 'partial'],
+        ),
+      },
     };
+  }
+
+  static #forScatterRoutes(
+    scatter: ScatterNodeType,
+    nodeIndex: ReadonlyMap<string, DAGNodeType>,
+    outputs: readonly string[],
+  ): TransientNodeStateSelectionType {
+    const selections: TransientNodeStateSelectionType[] = [];
+    for (const output of outputs) {
+      const targetIri = scatter.outputs[output];
+      if (targetIri === null || targetIri === undefined) continue;
+      const node = nodeIndex.get(targetIri);
+      if (node === undefined || !Placement.isGather(node)) continue;
+      selections.push(TransientResultSelection.forGatherTarget(node, scatter['@id']));
+    }
+    return selections.length === 0
+      ? EMPTY_RESPONSE_SELECTION
+      : TransientResultSelection.merge(...selections);
   }
 }

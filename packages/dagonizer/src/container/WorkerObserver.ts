@@ -2,15 +2,13 @@
  * WorkerObserver: Dagonizer subclass used inside DagHost to relay hook events
  * back to the parent dispatcher as `instrumentation` BridgeMessages.
  *
- * One instance is constructed per-execute with the correlationId and basePath
- * from the ExecutionRequest. Override of every protected hook forwards the
+ * One instance is constructed per request with an immutable correlationId and
+ * basePath. Override of every protected hook forwards the
  * event over the channel; the parent's ChannelDispatch routes the message to
  * the ObserverRelayInterface bound to the parent Dagonizer's hooks.
  *
  * flowStart / flowEnd are intentionally not forwarded — the parent dispatcher
- * owns flow-level hooks. The per-execute construction pattern is correct: a
- * single WorkerObserver per host lifetime would require mutable correlationId
- * (unsafe for concurrent executions).
+ * owns flow-level hooks.
  *
  * V8 shape stability: all properties initialised in constructor in declaration order.
  */
@@ -38,6 +36,11 @@ const EMIT_DEFAULTS: EmitDefaultsType = {
   'message': '',
 };
 type InstrumentationEvent = Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>;
+
+type WorkerObserverRequestType = {
+  readonly correlationId: string;
+  readonly basePath: readonly string[];
+};
 
 /** Trailing config object for `WorkerObserver`'s constructor. */
 type WorkerObserverOptionsType = {
@@ -77,15 +80,14 @@ export class WorkerObserver<
 
   constructor(
     channel: MessageChannelInterface,
-    correlationId: string,
-    basePath: readonly string[],
+    request: WorkerObserverRequestType,
     dagonizerOptions: ConstructorParameters<typeof Dagonizer>[0],
     options: WorkerObserverOptionsType = {},
   ) {
     super(dagonizerOptions);
     this.#channel = channel;
-    this.#correlationId = correlationId;
-    this.#basePath = basePath;
+    this.#correlationId = request.correlationId;
+    this.#basePath = request.basePath;
     this.#instrumentationQueue = [];
     this.#instrumentationFlushScheduled = false;
     this.#coalesceInstrumentation = { ...WORKER_OBSERVER_DEFAULTS, ...options }.coalesceInstrumentation;

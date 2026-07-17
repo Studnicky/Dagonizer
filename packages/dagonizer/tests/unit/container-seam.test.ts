@@ -446,9 +446,11 @@ void describe('Container seam — W1', () => {
 
   // (b) Bound container: test double that runs child in-process and returns via contract
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
+    let receivedInputState: DagTaskInterface['inputState'] | null = null;
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface = {
       async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        receivedInputState = task.inputState;
         // Simulate an isolating boundary: snapshot the item's live state graph,
         // encode + restore through the combined transfer, then restore a fresh
         // child clone from the decoded subgraph.
@@ -506,6 +508,11 @@ void describe('Container seam — W1', () => {
     // terminal snapshot back to the clone, then output mapping copied value
     // back to parent state.
     assert.equal(result.state.value, 10);
+    assert.deepEqual(receivedInputState, {
+      'mode': 'selection',
+      'domainPaths': ['value'],
+      'metadataKeys': [],
+    });
     assert.equal(result.state === state, true, 'result.state === initialState');
     // Intermediates from the child were re-yielded through the parent
     assert.ok(result.executedNodes.includes('embed'));

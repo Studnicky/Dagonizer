@@ -4,6 +4,7 @@ import type { ExecutionResponseItemType } from '../../src/entities/executor/Exec
 import type {
   TransientNodeStateBatchType,
   TransientNodeStateResponseStateType,
+  TransientNodeStateSelectionType,
   TransientNodeStateType,
 } from '../../src/entities/executor/TransientNodeState.js';
 import type { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
@@ -43,6 +44,12 @@ export const FULL_RESPONSE_STATE: TransientNodeStateResponseStateType = {
     'metadataKeys': [],
   },
   'outputSelections': {},
+};
+
+export const FULL_INPUT_STATE: TransientNodeStateSelectionType = {
+  'mode': 'full',
+  'domainPaths': [],
+  'metadataKeys': [],
 };
 
 /** Empty combined transient-state batch payload for the given run IRIs. */

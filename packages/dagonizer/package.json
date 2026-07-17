@@ -231,7 +231,7 @@
     "build:src": "tsc -p tsconfig.json && cp src/viz/CodeSample.css dist/viz/CodeSample.css && cp src/viz/Dpad.css dist/viz/Dpad.css && cp src/viz/ModalShell.css dist/viz/ModalShell.css && cp src/viz/ViewerActions.css dist/viz/ViewerActions.css && cp src/viz/ViewerOverlay.css dist/viz/ViewerOverlay.css && cp src/viz/explorer.css dist/viz/explorer.css",
     "build:testing": "tsc -p tsconfig.testing.json",
     "build": "npm run build:src && npm run build:testing",
-    "pretest": "rm -rf dist-test dist-testing && tsc -p tsconfig.json && cp src/viz/CodeSample.css dist/viz/CodeSample.css && cp src/viz/Dpad.css dist/viz/Dpad.css && cp src/viz/ModalShell.css dist/viz/ModalShell.css && cp src/viz/ViewerActions.css dist/viz/ViewerActions.css && cp src/viz/ViewerOverlay.css dist/viz/ViewerOverlay.css && cp src/viz/explorer.css dist/viz/explorer.css && tsc -p tsconfig.testing.json && tsc -p tsconfig.test.json",
+    "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",
     "test": "node --test 'dist-test/tests/**/*.test.js'",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",

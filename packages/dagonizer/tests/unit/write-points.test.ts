@@ -3,12 +3,15 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
 import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
+import type { WritePointType } from '../../src/contracts/WritePoint.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { MemoryFoldJournalStore } from '../_support/MemoryFoldJournalStore.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -44,6 +47,57 @@ class BatchWritePointState extends NodeStateBase {
     copy.value = this.value;
     return copy;
   }
+}
+
+class ScatterWritePointState extends NodeStateBase {
+  items: Array<{ group: string }>;
+
+  constructor() {
+    super();
+    this.items = [{ 'group': 'same' }, { 'group': 'same' }];
+  }
+
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
+    copy.items = this.items.map((item) => ({ ...item }));
+    return copy;
+  }
+}
+
+async function countScatterProgressWrites(writePoints: readonly WritePointType[]): Promise<number> {
+  const dispatcher = new Dagonizer<ScatterWritePointState>();
+  const bodyNode = TestNode.make<ScatterWritePointState>(BODY_NODE_IRI, ['success']);
+  dispatcher.registerNode(bodyNode);
+  dispatcher.registerDAG(new DAGBuilder(DAG_IRI, '1.0', {
+    'writePoints': ['NodeEdges', 'WatermarkCommit'],
+  })
+    .scatter(SCATTER_PLACEMENT_IRI, 'items', bodyNode, {
+      'all-success': END_PLACEMENT_IRI,
+      'partial': END_PLACEMENT_IRI,
+      'all-error': END_PLACEMENT_IRI,
+      'empty': END_PLACEMENT_IRI,
+    }, {
+      writePoints,
+      'execution': {
+        'mode': 'reservoir',
+        'concurrency': 1,
+        'reservoir': { 'keyField': 'group', 'capacity': 2 },
+      },
+    })
+    .terminal(END_PLACEMENT_IRI)
+    .build());
+
+  const state = new ScatterWritePointState();
+  const setMetadata = state.setMetadata.bind(state);
+  let writes = 0;
+  state.setMetadata = (key: string, value: unknown): void => {
+    setMetadata(key, value);
+    if (key === SCATTER_PROGRESS_KEY) writes++;
+  };
+
+  const result = await dispatcher.execute(DAG_IRI, state);
+  assert.equal(result.terminalOutcome, 'completed');
+  return writes;
 }
 
 void describe('write-point policy', () => {
@@ -103,6 +157,11 @@ void describe('write-point policy', () => {
     assert.deepEqual(dispatcher.getPlacementWritePoints(SCATTER_PLACEMENT_IRI), []);
   });
 
+  void it('writes scatter checkpoints only when WatermarkCommit is negotiated', async () => {
+    assert.equal(await countScatterProgressWrites([]), 0);
+    assert.equal(await countScatterProgressWrites(['WatermarkCommit']), 1);
+  });
+
   void it('rejects FoldDeltaJournal without WatermarkCommit at the DAG level', () => {
     const dispatcher = new Dagonizer();
     const startNode = TestNode.make('urn:noocodec:node:write-points:invalid-dag', ['success']);
@@ -152,6 +211,193 @@ void describe('write-point policy', () => {
     assert.throws(
       () => dispatcher.registerDAG(dag),
       /writePoints cannot include 'FoldDeltaJournal' without 'WatermarkCommit'/u,
+    );
+  });
+
+  void it('rejects FoldDeltaJournal on a scatter when no fold journal store is configured', () => {
+    const dispatcher = new Dagonizer();
+    const bodyNode = TestNode.make('urn:noocodec:node:write-points:no-store-body', ['success']);
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(new DAGBuilder('urn:noocodec:dag:write-points:no-store-body', '1.0')
+      .node('urn:noocodec:dag:write-points:no-store-body/node/body', bodyNode, {
+        'success': 'urn:noocodec:dag:write-points:no-store-body/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:no-store-body/node/end')
+      .build());
+
+    const dag = new DAGBuilder('urn:noocodec:dag:write-points:no-store', '1.0', {
+      'writePoints': ['NodeEdges', 'WatermarkCommit', 'FoldDeltaJournal'],
+    })
+      .scatter('urn:noocodec:dag:write-points:no-store/node/scatter', 'items', {
+        'dag': 'urn:noocodec:dag:write-points:no-store-body',
+      }, {
+        'all-success': 'urn:noocodec:dag:write-points:no-store/node/join',
+        'partial': 'urn:noocodec:dag:write-points:no-store/node/join',
+        'all-error': 'urn:noocodec:dag:write-points:no-store/node/join',
+        'empty': 'urn:noocodec:dag:write-points:no-store/node/end',
+      })
+      .gather('urn:noocodec:dag:write-points:no-store/node/join', {
+        ['urn:noocodec:dag:write-points:no-store/node/scatter']: {},
+      }, { 'strategy': 'append', 'target': 'processed' }, {
+        'success': 'urn:noocodec:dag:write-points:no-store/node/end',
+        'error': 'urn:noocodec:dag:write-points:no-store/node/end',
+        'empty': 'urn:noocodec:dag:write-points:no-store/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:no-store/node/end')
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /no fold journal store is configured/u,
+    );
+  });
+
+  void it('rejects FoldDeltaJournal when the routed gather strategy cannot be replayed from contribution deltas', () => {
+    const dispatcher = new Dagonizer({ 'foldJournalStore': new MemoryFoldJournalStore() });
+    const bodyNode = TestNode.make('urn:noocodec:node:write-points:unsupported-gather-body', ['success']);
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(new DAGBuilder('urn:noocodec:dag:write-points:unsupported-gather-body', '1.0')
+      .node('urn:noocodec:dag:write-points:unsupported-gather-body/node/body', bodyNode, {
+        'success': 'urn:noocodec:dag:write-points:unsupported-gather-body/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:unsupported-gather-body/node/end')
+      .build());
+
+    const dag = new DAGBuilder('urn:noocodec:dag:write-points:unsupported-gather', '1.0', {
+      'writePoints': ['NodeEdges', 'WatermarkCommit', 'FoldDeltaJournal'],
+    })
+      .scatter('urn:noocodec:dag:write-points:unsupported-gather/node/scatter', 'items', {
+        'dag': 'urn:noocodec:dag:write-points:unsupported-gather-body',
+      }, {
+        'all-success': 'urn:noocodec:dag:write-points:unsupported-gather/node/join',
+        'partial': 'urn:noocodec:dag:write-points:unsupported-gather/node/join',
+        'all-error': 'urn:noocodec:dag:write-points:unsupported-gather/node/join',
+        'empty': 'urn:noocodec:dag:write-points:unsupported-gather/node/end',
+      })
+      .gather('urn:noocodec:dag:write-points:unsupported-gather/node/join', {
+        ['urn:noocodec:dag:write-points:unsupported-gather/node/scatter']: {},
+      }, { 'strategy': 'discard' }, {
+        'success': 'urn:noocodec:dag:write-points:unsupported-gather/node/end',
+        'error': 'urn:noocodec:dag:write-points:unsupported-gather/node/end',
+        'empty': 'urn:noocodec:dag:write-points:unsupported-gather/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:unsupported-gather/node/end')
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /cannot be replayed from contribution deltas/u,
+    );
+  });
+
+  void it('accepts FoldDeltaJournal on a scatter routed to a replayable gather strategy with a configured store', () => {
+    const dispatcher = new Dagonizer({ 'foldJournalStore': new MemoryFoldJournalStore() });
+    const bodyNode = TestNode.make('urn:noocodec:node:write-points:replayable-gather-body', ['success']);
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(new DAGBuilder('urn:noocodec:dag:write-points:replayable-gather-body', '1.0')
+      .node('urn:noocodec:dag:write-points:replayable-gather-body/node/body', bodyNode, {
+        'success': 'urn:noocodec:dag:write-points:replayable-gather-body/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:replayable-gather-body/node/end')
+      .build());
+
+    const dag = new DAGBuilder('urn:noocodec:dag:write-points:replayable-gather', '1.0', {
+      'writePoints': ['NodeEdges', 'WatermarkCommit', 'FoldDeltaJournal'],
+    })
+      .scatter('urn:noocodec:dag:write-points:replayable-gather/node/scatter', 'items', {
+        'dag': 'urn:noocodec:dag:write-points:replayable-gather-body',
+      }, {
+        'all-success': 'urn:noocodec:dag:write-points:replayable-gather/node/join',
+        'partial': 'urn:noocodec:dag:write-points:replayable-gather/node/join',
+        'all-error': 'urn:noocodec:dag:write-points:replayable-gather/node/join',
+        'empty': 'urn:noocodec:dag:write-points:replayable-gather/node/end',
+      })
+      .gather('urn:noocodec:dag:write-points:replayable-gather/node/join', {
+        ['urn:noocodec:dag:write-points:replayable-gather/node/scatter']: {},
+      }, { 'strategy': 'append', 'target': 'processed' }, {
+        'success': 'urn:noocodec:dag:write-points:replayable-gather/node/end',
+        'error': 'urn:noocodec:dag:write-points:replayable-gather/node/end',
+        'empty': 'urn:noocodec:dag:write-points:replayable-gather/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:replayable-gather/node/end')
+      .build();
+
+    assert.doesNotThrow(() => dispatcher.registerDAG(dag));
+  });
+
+  void it('rejects FoldDeltaJournal when a non-empty outcome routes directly to a TerminalNode', () => {
+    const dispatcher = new Dagonizer({ 'foldJournalStore': new MemoryFoldJournalStore() });
+    const bodyNode = TestNode.make('urn:noocodec:node:write-points:terminal-outcome-body', ['success']);
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(new DAGBuilder('urn:noocodec:dag:write-points:terminal-outcome-body', '1.0')
+      .node('urn:noocodec:dag:write-points:terminal-outcome-body/node/body', bodyNode, {
+        'success': 'urn:noocodec:dag:write-points:terminal-outcome-body/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:terminal-outcome-body/node/end')
+      .build());
+
+    const dag = new DAGBuilder('urn:noocodec:dag:write-points:terminal-outcome', '1.0', {
+      'writePoints': ['NodeEdges', 'WatermarkCommit', 'FoldDeltaJournal'],
+    })
+      .scatter('urn:noocodec:dag:write-points:terminal-outcome/node/scatter', 'items', {
+        'dag': 'urn:noocodec:dag:write-points:terminal-outcome-body',
+      }, {
+        'all-success': 'urn:noocodec:dag:write-points:terminal-outcome/node/end',
+        'partial': 'urn:noocodec:dag:write-points:terminal-outcome/node/end',
+        'all-error': 'urn:noocodec:dag:write-points:terminal-outcome/node/end',
+        'empty': 'urn:noocodec:dag:write-points:terminal-outcome/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:terminal-outcome/node/end')
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /must resolve to a single first-class GatherNode/u,
+    );
+  });
+
+  void it('rejects FoldDeltaJournal when non-empty outcomes route to two different GatherNodes', () => {
+    const dispatcher = new Dagonizer({ 'foldJournalStore': new MemoryFoldJournalStore() });
+    const bodyNode = TestNode.make('urn:noocodec:node:write-points:multi-gather-body', ['success']);
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(new DAGBuilder('urn:noocodec:dag:write-points:multi-gather-body', '1.0')
+      .node('urn:noocodec:dag:write-points:multi-gather-body/node/body', bodyNode, {
+        'success': 'urn:noocodec:dag:write-points:multi-gather-body/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:multi-gather-body/node/end')
+      .build());
+
+    const dag = new DAGBuilder('urn:noocodec:dag:write-points:multi-gather', '1.0', {
+      'writePoints': ['NodeEdges', 'WatermarkCommit', 'FoldDeltaJournal'],
+    })
+      .scatter('urn:noocodec:dag:write-points:multi-gather/node/scatter', 'items', {
+        'dag': 'urn:noocodec:dag:write-points:multi-gather-body',
+      }, {
+        'all-success': 'urn:noocodec:dag:write-points:multi-gather/node/join-a',
+        'partial': 'urn:noocodec:dag:write-points:multi-gather/node/join-b',
+        'all-error': 'urn:noocodec:dag:write-points:multi-gather/node/join-a',
+        'empty': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+      })
+      .gather('urn:noocodec:dag:write-points:multi-gather/node/join-a', {
+        ['urn:noocodec:dag:write-points:multi-gather/node/scatter']: {},
+      }, { 'strategy': 'append', 'target': 'processed' }, {
+        'success': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+        'error': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+        'empty': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+      })
+      .gather('urn:noocodec:dag:write-points:multi-gather/node/join-b', {
+        ['urn:noocodec:dag:write-points:multi-gather/node/scatter']: {},
+      }, { 'strategy': 'append', 'target': 'processed' }, {
+        'success': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+        'error': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+        'empty': 'urn:noocodec:dag:write-points:multi-gather/node/end',
+      })
+      .terminal('urn:noocodec:dag:write-points:multi-gather/node/end')
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /routes to multiple GatherNodes/u,
     );
   });
 

@@ -6,6 +6,7 @@ import { WorkSetCheckpoint } from '../checkpoint/WorkSetCheckpoint.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
+import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
@@ -29,6 +30,7 @@ import { NO_RETRY } from '../entities/dag/SingleNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
+import type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
@@ -88,6 +90,7 @@ export interface NodeSchedulerSourceInterface {
   readonly accessor: StateAccessorInterface;
   /** Runtime topology graph sink for selected embedded-DAG bindings. */
   readonly executionTopologyStore: GraphDatasetInterface;
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   /** Resolved write points for a registered placement IRI. */
@@ -314,19 +317,56 @@ export class NodeScheduler {
       // every in-flight item's state is restored exactly. If absent, fall through
       // to the size-1 seed below (the cursor model — byte-identical to before).
       if (fromStage !== null && !runOptions.embedded) {
+        const resetGatherTargets = new Set<string>();
+        const applyContribution = (gatherKey: string, record: GatherRecordProgressType): void => {
+          const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
+          if (gatherTarget === undefined || record.contribution === undefined) return;
+          if (!resetGatherTargets.has(gatherTarget['@id'])) {
+            this.#resetGatherAccumulator(gatherTarget, state);
+            resetGatherTargets.add(gatherTarget['@id']);
+          }
+          this.#applyGatherContribution(gatherTarget, state, record.contribution);
+        };
+
+        const foldJournalStore = this.#source.foldJournalStore;
+        if (foldJournalStore !== null) {
+          const entries: GatherProgressType['entries'] = {};
+          const seen = new Set<string>();
+          const latestProgress = new Map<string, FoldJournalStoreInterface.CommitType['progress']>();
+          for await (const commit of foldJournalStore.read(state.runIri)) {
+            if (commit.completed) {
+              latestProgress.delete(commit.scatterIri);
+            } else {
+              latestProgress.set(commit.scatterIri, commit.progress);
+            }
+            for (const entry of commit.entries) {
+              const recordKey = JSON.stringify([entry.gatherKey, entry.record.source, entry.record.index]);
+              if (seen.has(recordKey)) continue;
+              seen.add(recordKey);
+              const records = entries[entry.gatherKey] ?? [];
+              records.push(entry.record);
+              entries[entry.gatherKey] = records;
+            }
+          }
+          for (const [scatterIri, progress] of latestProgress) {
+            ScatterCheckpoint.writeBounded(
+              state,
+              scatterIri,
+              progress.inbox,
+              progress.watermark,
+              progress.aheadAcked,
+              progress.outcomeTally,
+            );
+          }
+          if (Object.keys(entries).length > 0) {
+            await gatherBuffers.restore({ entries }, state, { applyContribution });
+          }
+        }
+
         const gatherBlob = GatherCheckpoint.read(state);
         if (gatherBlob !== undefined) {
-          const resetGatherTargets = new Set<string>();
           await gatherBuffers.restore(gatherBlob, state, {
-            'applyContribution': (gatherKey, record) => {
-              const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
-              if (gatherTarget === undefined) return;
-              if (!resetGatherTargets.has(gatherTarget['@id'])) {
-                this.#resetGatherAccumulator(gatherTarget, state);
-                resetGatherTargets.add(gatherTarget['@id']);
-              }
-              this.#applyGatherContribution(gatherTarget, state, record.contribution);
-            },
+            applyContribution,
           });
           GatherCheckpoint.clear(state);
         }
@@ -1638,7 +1678,19 @@ export class NodeScheduler {
   }
 
   #gatherJournalRecord(gatherTarget: GatherNodeType, record: GatherRecordType) {
+    if (record.index === null) {
+      throw new DAGError(
+        `Gather '${gatherTarget.name}' received a fold contribution without a scatter index`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
     const contribution = this.#gatherContribution(gatherTarget, record);
+    if (contribution === undefined) {
+      throw new DAGError(
+        `Gather '${gatherTarget.name}' does not provide a replayable fold contribution`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
     return {
       'source': record.source,
       'index': record.index,
@@ -1646,8 +1698,20 @@ export class NodeScheduler {
       'output': record.output,
       'terminalOutcome': record.terminalOutcome,
       ...(record.result === undefined ? {} : { 'result': record.result }),
-      ...(contribution === undefined ? {} : { contribution }),
+      contribution,
     };
+  }
+
+  #projectStreamedGatherRecords(
+    target: GatherNodeType,
+    source: string,
+    records: readonly GatherRecordType[],
+  ): GatherRecordType[] {
+    return records.map((record) => ({
+      ...record,
+      source,
+      'result': this.#projectGatherResult(target, source, record.cloneState),
+    }));
   }
 
   #shouldJournalFoldDeltas(placementIri: string): boolean {
@@ -1750,29 +1814,33 @@ export class NodeScheduler {
       : (storedProgress?.ackedResults.length ?? 0) > 0;
 
     let binding: StreamedGatherBindingType;
-    const sink: GatherRecordSinkType = async (records) => {
-      const projectedRecords: GatherRecordType[] = records.map((record) => ({
-        ...record,
-        source,
-        'result': this.#projectGatherResult(target, source, record.cloneState),
-      }));
-      if (projectedRecords.length === 0) return;
-      if (!binding.initialized) {
-        this.#gather.initialGather(target, gatherState);
-        binding.initialized = true;
-      }
-      await this.#gather.reduceGather(target, projectedRecords, gatherState);
-      routeRecords.push(...projectedRecords);
-      if (retainRecord) {
-        retainedRecords.push(...projectedRecords);
-      }
-      if (journalFoldDeltas) {
-        GatherCheckpoint.append(
-          gatherState,
-          key,
-          projectedRecords.map((record) => this.#gatherJournalRecord(target, record)),
-        );
-      }
+    const sink: GatherRecordSinkType = {
+      'journalsFoldDeltas': journalFoldDeltas,
+      'prepare': async (records) => {
+        if (!journalFoldDeltas) return [];
+        return this.#projectStreamedGatherRecords(target, source, records)
+          .map((record) => ({
+            'gatherKey': key,
+            'record': this.#gatherJournalRecord(target, record),
+          }));
+      },
+      'commit': async (records) => {
+        const projectedRecords = this.#projectStreamedGatherRecords(target, source, records);
+        if (projectedRecords.length === 0) return;
+        if (!binding.initialized) {
+          this.#gather.initialGather(target, gatherState);
+          binding.initialized = true;
+        }
+        await this.#gather.reduceGather(target, projectedRecords, gatherState);
+        for (const record of projectedRecords) {
+          routeRecords.push({
+            'source': record.source,
+            'output': record.output,
+            'terminalOutcome': record.terminalOutcome,
+          });
+        }
+        if (retainRecord) retainedRecords.push(...projectedRecords);
+      },
     };
 
     binding = {

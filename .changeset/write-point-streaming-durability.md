@@ -1,5 +1,8 @@
 ---
 "@studnicky/dagonizer": major
+"@studnicky/dagonizer-store-indexeddb": minor
+"@studnicky/dagonizer-store-opfs": minor
+"@studnicky/dagonizer-store-sqlite": minor
 ---
 
 De-RDF the transient scatter-clone transfer path and add a configurable
@@ -22,6 +25,11 @@ write-point policy for post-completion durability/query projection.
 - `DagOutcome.transportError` now takes `(id, correlationId, options?)`
   instead of `(correlationId, options?)` — a transport-error outcome is keyed
   to the failing item id, not only the request correlation id.
+- `DagTaskInterface` requires `inputState: TransientNodeStateSelectionType`,
+  and the `DagTask` constructor accepts it immediately before `responseState`.
+  Container requests snapshot every batch item through this selection.
+  Embedded placements select the child-side keys in `stateMapping.input`;
+  scatter DAG bodies add the configured item metadata key and `itemIndex`.
 - `InitMessageShapeType` (and the container/worker init handshake) requires
   `graphStateTransferFormats`. `DagContainerBase` resolves it from
   `options.graphStateTransferFormats` or `DEFAULT_GRAPH_STATE_TRANSFER_FORMATS`
@@ -44,12 +52,14 @@ write-point policy for post-completion durability/query projection.
   the scatter watermark/cursor, and an in-memory queryable
   snapshot. Combinations compose (e.g. `[InMemorySnapshot, WatermarkCommit]`
   is fully supported, not a special case).
-- Gather progress records can carry compact fold contributions for replay.
-  `GatherCheckpoint.append` accumulates those records in transient metadata,
-  and checkpoint persistence still writes the full checkpoint JSON.
-- Contribution replay and dedup-by-index provide groundwork for resume without
-  double-counting a re-run item. Bounded append-only durable journaling and an
-  atomic durable-before-watermark batch commit remain open.
+- `FoldJournalStoreInterface` defines the append-only commit contract for one
+  atomic batch of fold contributions and bounded scatter progress. The host
+  appends each commit before publishing its fold or watermark, deduplicates
+  replay by gather/source/index, and records scatter completion before clearing
+  live progress.
+- SQLite, IndexedDB, and OPFS packages provide durable fold-journal stores with
+  idempotent commit IDs, append ordering, restart recovery, and canonical
+  commit validation at their storage boundaries.
 
 This is the redesign recorded in
 `plans/streaming-durability-and-state-redesign.md` (§4–§7): transient

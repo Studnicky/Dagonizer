@@ -19,3 +19,5 @@ export { IndexedDbGraphDatasetProvider } from './IndexedDbGraphDatasetProvider.j
 export type { IndexedDbGraphDatasetProviderOptionsType } from './IndexedDbGraphDatasetProvider.js';
 export { IndexedDbGraphJournalStore } from './IndexedDbGraphJournalStore.js';
 export type { IndexedDbGraphJournalStoreOptionsType } from './IndexedDbGraphJournalStore.js';
+export { IndexedDbFoldJournalStore } from './IndexedDbFoldJournalStore.js';
+export type { IndexedDbFoldJournalStoreOptionsType } from './IndexedDbFoldJournalStore.js';

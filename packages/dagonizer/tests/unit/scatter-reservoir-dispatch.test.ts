@@ -62,6 +62,7 @@ import type { ItemType } from '../../src/entities/batch/Item.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
@@ -831,6 +832,7 @@ const reservoirDContainerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': ROUTE_BODY_D_DAG_IRI },
       'source': 'items',
       'itemKey': 'currentItem',
+      'stateMapping': { 'input': { 'counter': 'counter' } },
       'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
       'container': CONTAINER_ROLE,
       'outputs': {
@@ -946,13 +948,17 @@ const suiteDRegistry: RegistryModuleInterface = {
 class ExecuteCountingChannel implements MessageChannelInterface {
   readonly #inner: MessageChannelInterface;
   executeCount: number = 0;
+  readonly requests: ExecutionRequestType[] = [];
 
   constructor(inner: MessageChannelInterface) {
     this.#inner = inner;
   }
 
   send(msg: BridgeMessageType): void {
-    if (msg.variant === 'execute') this.executeCount += 1;
+    if (msg.variant === 'execute') {
+      this.executeCount += 1;
+      this.requests.push(msg.request);
+    }
     this.#inner.send(msg);
   }
 
@@ -1088,6 +1094,14 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
       2,
       `execute messages must equal the number of batches (2), not items (8); got ${countingParent.executeCount}`,
     );
+    assert.strictEqual(countingParent.requests.length, 2);
+    for (const request of countingParent.requests) {
+      assert.strictEqual(request.graphState.states.length, 4);
+      for (const itemState of request.graphState.states) {
+        assert.deepStrictEqual(Object.keys(itemState.state.domain), ['counter']);
+        assert.deepStrictEqual(Object.keys(itemState.state.metadata).sort(), ['currentItem', 'itemIndex']);
+      }
+    }
 
     await dispatcher.destroy();
 

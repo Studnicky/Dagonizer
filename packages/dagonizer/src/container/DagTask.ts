@@ -11,7 +11,7 @@
 
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -26,6 +26,7 @@ export class DagTask
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
+  readonly inputState: TransientNodeStateSelectionType;
   readonly responseState: TransientNodeStateResponseStateType;
   readonly context: NodeContextType;
 
@@ -35,6 +36,7 @@ export class DagTask
     correlationId: string,
     timeout: Timeout,
     state: NodeStateInterface,
+    inputState: TransientNodeStateSelectionType,
     responseState: TransientNodeStateResponseStateType,
     context: NodeContextType,
   ) {
@@ -43,6 +45,7 @@ export class DagTask
     this.correlationId = correlationId;
     this.timeout = timeout;
     this.state = state;
+    this.inputState = inputState;
     this.responseState = responseState;
     this.context = context;
   }
@@ -53,15 +56,15 @@ export class DagTask
    * Produces a single-item request (a batch of one); multi-item batch requests
    * are built by `DagContainerBase.runDag` directly.
    *
-   * The `graphState` here is a single-item transient-state placeholder. The
-   * real batch payload is rebuilt by `DagContainerBase` from the live item
-   * states before dispatch.
+   * The `graphState` here is a single-item transient-state placeholder,
+   * snapshotted through `this.inputState`. The real batch payload is rebuilt
+   * by `DagContainerBase` from the live item states before dispatch.
    */
   toRequest(): ExecutionRequestType {
     return {
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],
-      'graphState':    { 'states': [{ 'id': this.correlationId, 'state': this.state.snapshotTransientState() }] },
+      'graphState':    { 'states': [{ 'id': this.correlationId, 'state': this.state.snapshotTransientStateSelection(this.inputState) }] },
       'items':         [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
       'timeoutMs':     this.timeout.toWire(),
       'correlationId': this.correlationId,

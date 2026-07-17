@@ -24,14 +24,21 @@ import { resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { DagHost } from '../../src/container/DagHost.js';
 import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { GraphStateTransferFormatType } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
+import type { RegistryBundleInterface } from '../../src/contracts/RegistryBundleInterface.js';
+import type { RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 import { FULL_RESPONSE_STATE, inlineTransferEntries } from '../_support/GraphStateSupport.js';
+import { TestBatchNode } from '../_support/TestBatchNode.js';
 
 // ---------------------------------------------------------------------------
 // Registry module URL for DagHost dynamic import.
@@ -52,6 +59,7 @@ const REGISTRY_VERSION = '1.0.0';
 const BODY_LAW1_DAG = 'urn:conformance:dag:conformance-body-law1';
 const BODY_LAW2_DAG = 'urn:conformance:dag:conformance-body-law2';
 const BODY_LAW5_DAG = 'urn:conformance:dag:conformance-body-law5';
+const COUNTING_DAG = 'urn:noocodec:dag:host-dispatcher-counting';
 
 // A module URL that exists but is not a registry module (no instantiate export).
 const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
@@ -64,9 +72,9 @@ class TestHostPair {
   private static readonly parentSides: MessageChannelInterface[] = [];
 
   private constructor() {}
-  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
+  static create(registry?: RegistryModuleInterface): { host: DagHost; parentSide: MessageChannelInterface } {
     const [parentSide, hostSide] = LoopbackChannel.pair();
-    const host = new DagHost(hostSide);
+    const host = new DagHost(hostSide, registry === undefined ? {} : { registry });
     host.start();
     TestHostPair.parentSides.push(parentSide);
     return { host, parentSide };
@@ -78,6 +86,49 @@ class TestHostPair {
       try { parentSide.send({ 'variant': 'shutdown' }); } catch { /* already closed */ }
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+class BundleAccessCountingRegistry implements RegistryModuleInterface {
+  bundleAccessCount = 0;
+  readonly batchSizes: number[] = [];
+
+  instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
+    const nodeIri = 'urn:noocodec:node:host-dispatcher-counting';
+    const placementIri = `${COUNTING_DAG}/node/count`;
+    const terminalIri = `${COUNTING_DAG}/node/end`;
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': COUNTING_DAG,
+      '@type': 'DAG',
+      'name': 'host-dispatcher-counting',
+      'version': '1',
+      'entrypoints': { 'main': placementIri },
+      'nodes': [
+        {
+          '@id': placementIri,
+          '@type': 'SingleNode',
+          'name': 'count',
+          'node': nodeIri,
+          'outputs': { 'done': terminalIri },
+        },
+        { '@id': terminalIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const node = TestBatchNode.of<NodeStateBase, 'done'>(nodeIri, ['done'], (batch) => {
+      this.batchSizes.push(batch.size);
+      return new Map([['done', batch]]);
+    });
+    const bundle = { 'nodes': [node], 'dags': [dag] };
+    const registry = this;
+    return Promise.resolve({
+      get 'bundle'() {
+        registry.bundleAccessCount += 1;
+        return bundle;
+      },
+      'registryVersion': REGISTRY_VERSION,
+      'restoreState': CheckpointRestoreAdapter.wrap(() => new NodeStateBase()),
+    });
   }
 }
 
@@ -190,6 +241,80 @@ void describe('DagHost — init handshake', () => {
 // ---------------------------------------------------------------------------
 
 void describe('DagHost — execute returns result', () => {
+  void it('reads the dispatcher bundle once and isolates sequential requests', async () => {
+    const registry = new BundleAccessCountingRegistry();
+    const { parentSide } = TestHostPair.create(registry);
+
+    const ready = await DagHostFixture.sendInit(parentSide);
+    assert.strictEqual(ready.variant, 'ready');
+
+    const execute = async (correlationId: string, placementPath: readonly string[]): Promise<BridgeMessageType> => {
+      const resultPromise = new Promise<BridgeMessageType>((resolve) => {
+        parentSide.onMessage((message) => {
+          if (message.variant === 'result' && message.response.correlationId === correlationId) resolve(message);
+        });
+      });
+      const state = new NodeStateBase();
+      parentSide.send({
+        'variant': 'execute',
+        'request': {
+          'dagName': COUNTING_DAG,
+          'placementPath': [...placementPath],
+          'graphState': inlineTransferEntries([{ 'id': correlationId, state }]),
+          'items': [{ 'id': correlationId, 'runIri': state.runIri }],
+          'timeoutMs': 5000,
+          correlationId,
+          'responseState': FULL_RESPONSE_STATE,
+        },
+      });
+      return resultPromise;
+    };
+
+    const first = await execute('req-dispatcher-first', ['first-parent']);
+    const second = await execute('req-dispatcher-second', ['second-parent']);
+
+    assert.strictEqual(first.variant, 'result');
+    assert.strictEqual(second.variant, 'result');
+    if (first.variant === 'result') assert.strictEqual(first.response.correlationId, 'req-dispatcher-first');
+    if (second.variant === 'result') assert.strictEqual(second.response.correlationId, 'req-dispatcher-second');
+    assert.strictEqual(registry.bundleAccessCount, 1, 'bundle access belongs to init, not execute');
+  });
+
+  void it('executes a multi-item request as one node batch', async () => {
+    const registry = new BundleAccessCountingRegistry();
+    const { parentSide } = TestHostPair.create(registry);
+    const ready = await DagHostFixture.sendInit(parentSide);
+    assert.strictEqual(ready.variant, 'ready');
+
+    const correlationId = 'req-dispatcher-batch';
+    const entries = Array.from({ 'length': 5 }, (_unused, index) => ({
+      'id': `batch-item-${String(index)}`,
+      'state': new NodeStateBase(),
+    }));
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
+      parentSide.onMessage((message) => {
+        if (message.variant === 'result' && message.response.correlationId === correlationId) resolve(message);
+      });
+    });
+    parentSide.send({
+      'variant': 'execute',
+      'request': {
+        'dagName': COUNTING_DAG,
+        'placementPath': ['batch-parent'],
+        'graphState': inlineTransferEntries(entries),
+        'items': entries.map((entry) => ({ 'id': entry.id, 'runIri': entry.state.runIri })),
+        'timeoutMs': 5000,
+        correlationId,
+        'responseState': FULL_RESPONSE_STATE,
+      },
+    });
+
+    const result = await resultPromise;
+    assert.strictEqual(result.variant, 'result');
+    if (result.variant === 'result') assert.strictEqual(result.response.items.length, 5);
+    assert.deepEqual(registry.batchSizes, [5]);
+  });
+
   void it('runs a dag and returns result with items[0].terminalOutcome + items[0].graphState + intermediates', async () => {
     const { parentSide } = TestHostPair.create();
 

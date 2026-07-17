@@ -8,47 +8,41 @@ touching the engine.
 
 ## 0. Status / where things stand
 
-**Committed** (branch `feature/graph-state-transfer-contract`):
-- `614c1701` — batch-native graph-state transfer contract (plural `GraphStateTransfer`,
-  combined-per-batch, `runDag`/`runDagBatch` collapsed, single-run codec variants removed).
-- `df8606ed` — graph-store + state-layer O(N²) elimination (details in §2).
-- `b2281707` — framework `accessor.append` (§2, items 8–9) + this plan document.
+Checkpoint `934d2c75` contains the dispatcher contract, explicit transient-state
+selections, and initial durability work. **Phases A0, A1, B, C, and D are implemented and
+verified.**
 
-**Uncommitted** (green — typecheck 0, lint clean, `packages/dagonizer` 1380 tests,
-`examples/the-cartographer` 373 tests, `packages/dagonizer-executor-node` 64 tests,
-`packages/dagonizer-executor-web` typecheck/lint clean, all 223 docs Twoslash blocks
-type-check, docs site builds 112 pages): **Phases A0, A1, and C below are implemented
-and verified. Phase B remains open.** The write-point primitive, the de-RDF'd plain-JSON
-transient transfer path, and the canonical/streaming gather unification
-(`CanonicalFeedGather` retired in favor of `SourceIntakeGather`) are in the tree with
-passing tests. Phase B has contribution-shape, replay, and dedup-by-index groundwork,
-including resume/replay coverage in `scatter-resume.test.ts`. `GatherCheckpoint.append`
-stores growing contribution arrays in transient metadata, checkpoint persistence writes
-the full checkpoint JSON, and no atomic durable-before-watermark batch commit exists. A
-changeset (`.changeset/write-point-streaming-durability.md`) documents the breaking surface:
-`restoreJsonLd` → `restoreTransientState`, `CheckpointDataType.graph` →
-`CheckpointDataType.state.transient`, `DagOutcome.transportError(id, correlationId,
-options?)`, `InitMessageShapeType.graphStateTransferFormats` required, `DAGType`/
-`ScatterNode` `writePoints`. Commit this work as a checkpoint before continuing Phase B
-or starting Phase D.
+Phase B uses `FoldJournalStoreInterface` as the single append-only contract. Every item
+ack or reservoir batch prepares compact gather contributions, atomically appends those
+contributions with bounded scatter progress, then publishes the live fold and watermark.
+Replay validates the canonical commit shape, deduplicates by gather/source/index, restores
+only active scatter progress, and rebuilds fold accumulators. A required completion record
+prevents downstream resume from resurrecting finished scatter state. SQLite, IndexedDB,
+and OPFS providers implement idempotent ordered logs with restart and malformed-record
+coverage. Registration rejects configurations that cannot produce one replayable gather
+stream or omit a journal store.
 
-**Phase D (browser 1M, §8/§9) is still open** — it requires a live DevTools Performance
-capture of the browser main thread on a large run, which was not attempted in this pass
-(session risk: a 1M run is known to hard-freeze the tab for minutes, per §9 and the
-`dagonizer-cartographer-browser-mainthread-freeze` note). A smaller-scale sanity check (not
-a substitute for the real capture) is recorded in §9.
+Validation builds the core public `dist` once at the root `pretest` boundary. The core
+package's own `pretest` rebuilds only `dist-test`, so recursive dependent-package tests do
+not race a concurrent deletion or rewrite of the public artifacts they resolve.
 
-**Verification method used this session (keep using it):**
+**Phase D (browser 1M, §8/§9) is verified.** The production browser harness completes
+1,000,000 events with eight workers, 100-item reservoir batches, 116.3 MB terminal heap,
+and zero CDP probe timeouts. Chrome V8 CPU profiles identify each hotspot before its
+implementation change.
+
+**Verification method:**
 ```
-# CPU hot frames (scale-invariant; small counts are fine):
-node --cpu-prof --cpu-prof-dir=/tmp/p --import tsx \
-  examples/the-cartographer/runCartographer.ts --stream --stream-count 400 --recorded
-# then aggregate self-time by function from the .cpuprofile.
-# Heap: --heap-prof (note: at small N it's dominated by tsx/ESM startup, not runtime).
+pnpm --filter @studnicky/the-cartographer-example browser:telemetry -- \
+  --total-events 10000 --pool-size 8 --batch-capacity 100 \
+  --trace --trace-path /tmp/cartographer-browser-trace.json
+
+pnpm --filter @studnicky/the-cartographer-example browser:telemetry -- \
+  --total-events 1000000 --pool-size 8 --batch-capacity 100 --timeout-ms 600000
 ```
-IMPORTANT: the in-process `--stream` CLI runs the sub-DAG on the main thread; the
-**browser** runs it in workers, so in-process ≠ browser main thread. The browser 1M
-freeze was never profiled with DevTools — still open (see §8).
+The harness records Chrome main-thread and worker CPU profiles with
+`disabled-by-default-v8.cpu_profiler.hires`; browser metrics report task, script, layout,
+heap, DOM-node, and probe-stall data.
 
 ---
 
@@ -324,7 +318,7 @@ the project's latest-only conventions — never a dual-path compatibility mode.
 
 ## 8. Implementation phases (§7 pinned — ready to dispatch)
 
-Phases A0, A1, and C are implemented and verified (see §0). Phases B and D are open.
+Phases A0, A1, B, C, and D are implemented and verified (see §0).
 
 Phase A0 — **Implemented: write-point primitive.** `WritePoint` enum (§7.1) + the cascading
   config
@@ -348,21 +342,23 @@ Phase A1 — **Implemented: de-RDF the transient transfer path.** Confirmed call
   Re-profile with the new default (`[NodeEdges, WatermarkCommit]`) — expect the ~75%
   graph-store cost to collapse; re-profile again with `FullItemProjection` enabled to confirm
   it reproduces today's cost/fidelity as the explicit opt-in.
-Phase B — **Open: incremental fold durability.** Contribution-shape, replay, and
-  dedup-by-index groundwork is present, but `GatherCheckpoint.append` stores growing
-  contribution arrays in transient metadata and checkpoint persistence writes the full
-  checkpoint JSON. Replace full-state snapshot of gather accumulators
-  with append-delta records `(index, output, contribution)` to the journal at ack boundaries
-  (R1/R2), gated on `FoldDeltaJournal`/`WatermarkCommit` being in the resolved set. Bounded
-  folds stay small (R4); verify resume replays correctly and dedups by index (R3) — including
-  the case where a re-run item's node has non-idempotent side effects, which the framework
-  does not attempt to prevent (D2).
+Phase B — **Implemented: incremental fold durability.** `FoldJournalStoreInterface`
+  carries append-delta records `(index, output, contribution)`, bounded scatter progress,
+  and an explicit completion record. Item and reservoir acknowledgements append atomically
+  before publishing live folds or watermarks. Resume replays contributions once by
+  gather/source/index and restores progress only for incomplete scatters. SQLite, IndexedDB,
+  and OPFS stores provide ordered, idempotent persistence and canonical boundary validation.
 Phase C — **Implemented: unify canonical + streaming** per D3 — retire `CanonicalFeedGather`'s
   materialise-into-array fan-in in favour of the streaming pattern; bounded-fold contract
   applies uniformly across both topologies once unified.
-Phase D — **Open: browser 1M** (§9): with the transient path de-RDF'd, re-drive the
-  browser demo and profile the MAIN THREAD via DevTools (the engine wins so far speed the
-  worker/in-process path but were never proven to unfreeze the tab).
+Phase D — **Implemented: browser 1M.** Chrome profiles drive four changes:
+  engine progress metadata is excluded before child-state reconstruction; scatter graph
+  checkpoints execute only when the resolved placement contract contains
+  `WatermarkCommit`; Cartographer gather state commits once per reservoir batch; and
+  `DagHost` executes each multi-item transport payload as one scheduler `Batch`. Browser
+  rendering flushes at a fixed 10 Hz cadence.
+  The production browser completes 1,000,000 events in 241.65 seconds with 116.3 MB heap,
+  zero probe timeouts, 200 retained records, 8 insight buckets, and 100 retained journeys.
 
 Every phase: `npm run typecheck`, `npm run lint --max-warnings 0`, full `npm test`
 (compiled tree — pretest rebuilds dist; do NOT `tsx --test` on source, it path-resolves the
@@ -371,18 +367,18 @@ test (the demo loads `dist`, not src).
 
 ---
 
-## 9. Still open / unverified
+## 9. Verified operating envelope
 
-- **Browser 1M freeze**: NOT profiled on the actual browser main thread. All engine wins were
-  measured in-process (sub-DAG on main thread) or via Node proxies. The browser runs the
-  sub-DAG in workers, so its main-thread freeze is a separate, still-unpinned cost (candidates:
-  the transient-clone graph-state transfer serialization on the dispatcher thread, the
-  observability relay, Vue/Cytoscape rendering). Get a DevTools Performance capture of a
-  *completing* small run before claiming the freeze is fixed.
+- **Browser 1M:** eight workers with 100-item reservoir batches complete without CDP probe
+  stalls. This bounds live worker state to approximately 800 items while preserving batch
+  transport and batch-native node execution.
+- **Pressure boundary:** eight workers with 250-item batches and sixteen workers with
+  100-item batches exceed the stable browser envelope on the profiled machine. Both produce
+  CDP probe stalls and hit the 180-second 100k timeout. Batch capacity and worker count must
+  be calibrated together as total in-flight state, not independently.
 - **`InsightsFoldGather`** `offsets`/`timezones`/`jurisdictions` use `array + .includes()`
-  dedup (should be `Set`) — left as-is: K (distinct values) is bounded to dozens so it's
+  dedup. K (distinct values) is bounded to dozens, so this remains
   O(bounded) not O(N²), and converting risks the accumulator's checkpoint serialization.
-  Revisit if the accumulator representation changes in Phase B.
 
 ---
 

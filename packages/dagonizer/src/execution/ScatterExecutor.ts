@@ -5,6 +5,7 @@ import { OutcomeReducers } from '../core/OutcomeReducers.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
@@ -60,6 +61,12 @@ export class ScatterExecutor {
     // comment). `concurrency` gates item dispatch in 'item' mode and batch
     // dispatch in 'reservoir' mode; `throttle` is only meaningful in 'item' mode.
     const executionPolicy = ScatterNodeDefaults.executionPolicy(scatter);
+    const writePoints = this.#scatterSource.resolvedPlacementWritePoints(scatter['@id']);
+    if (writePoints === undefined) {
+      throw new DAGError(`ScatterNode '${scatter.name}' has no registered write-point contract`, {
+        'code': 'CONFIGURATION_ERROR',
+      });
+    }
 
     const raw = this.#scatterSource.accessor.get(state, scatter.source);
 
@@ -84,7 +91,9 @@ export class ScatterExecutor {
     // so corrupt or migrated checkpoints throw a DAGError (code
     // VALIDATION_ERROR) here rather than causing silent type mismatches
     // deep in the scatter loop.
-    const storedProgress = ScatterCheckpoint.read(state, scatter['@id']);
+    const storedProgress = writePoints.has('WatermarkCommit')
+      ? ScatterCheckpoint.read(state, scatter['@id'])
+      : undefined;
 
     // Materialise the scatter run accumulators from the stored checkpoint. The
     // inbox seeds from the checkpoint; the mode-specific accumulators, seen-index
@@ -167,6 +176,7 @@ export class ScatterExecutor {
       outcomeTally,
       gatherRecordSink,
       'responseState': TransientResultSelection.scatterResponseState(scatter, scatterAdapter.nodeIndex),
+      writePoints,
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
@@ -204,8 +214,11 @@ export class ScatterExecutor {
       await pool.drain();
     }
 
-    // ── 7. Clear checkpoint after clean completion ───────────────────────────
-    ScatterCheckpoint.clear(state, scatter['@id']);
+    // ── 7. Commit completion, then clear checkpoint after clean completion ──
+    await driver.complete();
+    if (writePoints.has('WatermarkCommit')) {
+      ScatterCheckpoint.clear(state, scatter['@id']);
+    }
 
     // ── 8. Reduce to route ───────────────────────────────────────────────────
     const outcomeRecords: OutcomeRecordType[] = [];

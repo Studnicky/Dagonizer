@@ -15,12 +15,9 @@
  * used unchanged. For multi-item batch requests (N>1), `executeBatch()` runs
  * all items through the same DAG in one round-trip.
  *
- * WorkerObserver is constructed per-execute, bound to the channel and
- * correlationId. Its protected hook overrides post `instrumentation`
- * BridgeMessages back to the parent. This is the correct wiring: a single
- * WorkerObserver per host lifetime would require a mutable correlationId
- * (unsafe for concurrent executions); per-execute construction is cheap and
- * gives exact per-correlationId routing without synchronisation.
+ * Init captures the registry bundle once. Each execute request constructs an
+ * isolated WorkerObserver with immutable correlation and placement-path state,
+ * then registers the captured bundle on that request-scoped dispatcher.
  *
  * `registry` in `DagHostOptionsType` statically injects the isolate registry: when
  * set, init uses it directly instead of importing `registryModule` by URL.
@@ -28,10 +25,12 @@
  * All properties are initialised in constructor for V8 hidden-class stability.
  */
 
+import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
+import { Batch } from '../entities/batch/Batch.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponseType, ExecutionResponseItemType } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
@@ -78,6 +77,7 @@ export class DagHost {
   #instrumentationPlacementPathDepth: number | undefined;
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
+  #dispatcherBundle: DispatcherBundleType<NodeStateInterface> | null;
 
   constructor(channel: MessageChannelInterface, options: DagHostOptionsType = {}) {
     this.#channel = channel;
@@ -88,6 +88,7 @@ export class DagHost {
     this.#instrumentationPlacementPathDepth = undefined;
     this.#capabilities = [];
     this.#bundle = null;
+    this.#dispatcherBundle = null;
   }
 
   /** Subscribe to inbound messages. Must be called once after construction. */
@@ -256,14 +257,16 @@ export class DagHost {
         return;
       }
 
+      const dispatcherBundle = bundle.bundle;
       this.#bundle = bundle;
+      this.#dispatcherBundle = dispatcherBundle;
 
-        this.#channel.send({
-          'variant': 'ready',
-          'registryVersion': bundle.registryVersion,
-          'capabilities': [...this.#capabilities],
-          'graphStateTransferFormats': [...this.#graphStateTransferFormats],
-        });
+      this.#channel.send({
+        'variant': 'ready',
+        'registryVersion': bundle.registryVersion,
+        'capabilities': [...this.#capabilities],
+        'graphStateTransferFormats': [...this.#graphStateTransferFormats],
+      });
     } catch (error) {
       const message = DAGError.messageOf(error);
       this.#channel.send({
@@ -298,9 +301,23 @@ export class DagHost {
     const controller = new AbortController();
     this.#inflight.set(correlationId, controller);
     const bundle = this.#bundle;
+    const dispatcherBundle = this.#dispatcherBundle;
+    if (dispatcherBundle === null) throw new DAGError('DagHost dispatcher bundle is not initialized', { 'code': 'EXECUTION_ERROR' });
+    const dispatcher = new WorkerObserver<NodeStateInterface>(
+      this.#channel,
+      { correlationId, 'basePath': request.placementPath },
+      {},
+      {
+        'coalesceInstrumentation': this.#coalesceInstrumentation,
+        ...(this.#instrumentationPlacementPathDepth === undefined
+          ? {}
+          : { 'instrumentationPlacementPathDepth': this.#instrumentationPlacementPathDepth }),
+      },
+    );
+    dispatcher.registerBundle(dispatcherBundle);
 
     try {
-      await this.#executeDAG(correlationId, request, controller, bundle);
+      await this.#executeDAG(correlationId, request, controller, bundle, dispatcher);
     } finally {
       this.#inflight.delete(correlationId);
     }
@@ -311,6 +328,7 @@ export class DagHost {
     request: ExecutionRequestType,
     controller: AbortController,
     bundle: RegistryBundleInterface,
+    dagonizer: WorkerObserver<NodeStateInterface>,
   ): Promise<void> {
     const requestItems = request.items;
     const stateById = new Map(request.graphState.states.map((entry) => [entry.id, entry.state]));
@@ -339,38 +357,18 @@ export class DagHost {
       }, { 'once': true });
     }
 
-    // WorkerObserver is constructed per-execute to route hook events with the
-    // correct correlationId. The request.placementPath is used as the basePath
-    // so that forwarded placementPaths are the full composite path (parent path
-    // + inner body path), making them non-empty on the parent side.
-    // A node's dependencies are constructed with the node inside the isolate's
-    // registry module (from the init message's `servicesConfig`); the dispatcher
-    // carries no services option, so the worker dispatcher needs no options here.
-    const dagonizer = new WorkerObserver<NodeStateInterface>(
-      this.#channel,
-      correlationId,
-      request.placementPath,
-      {},
-      {
-        'coalesceInstrumentation': this.#coalesceInstrumentation,
-        ...(this.#instrumentationPlacementPathDepth === undefined
-          ? {}
-          : { 'instrumentationPlacementPathDepth': this.#instrumentationPlacementPathDepth }),
-      },
-    );
-    dagonizer.registerBundle(bundle.bundle);
-
     try {
       // Single-item (batch of one) buffers intermediates for the parent's
       // embedded-body stream; the multi-item batch path sends live only (relay
       // delivers per-node observability), so buffering N×M results is pure
       // retention with no consumer — `intermediates` stays empty for batches.
-      const bufferIntermediates = restoredItems.length === 1;
       const intermediates: ExecutorIntermediateType[] = [];
       const terminalByItemId = new Map<string, string>();
       const errors: ReturnType<typeof NodeError.create>[] = [];
 
-      for (const item of restoredItems) {
+      if (restoredItems.length === 1) {
+        const item = restoredItems[0];
+        if (item === undefined) throw new DAGError('DagHost received an empty restored batch', { 'code': 'VALIDATION_ERROR' });
         const execution = dagonizer.execute(request.dagName, item.state, {
           'signal': controller.signal,
           'runIri': item.runIri,
@@ -386,9 +384,7 @@ export class DagHost {
             break;
           }
           const nodeResult = next.value;
-          if (bufferIntermediates) {
-            intermediates.push({ 'output': nodeResult.output, 'skipped': nodeResult.skipped, 'nodeName': nodeResult.nodeName });
-          }
+          intermediates.push({ 'output': nodeResult.output, 'skipped': nodeResult.skipped, 'nodeName': nodeResult.nodeName });
         }
 
         const lifecycle = item.state.lifecycle;
@@ -397,10 +393,7 @@ export class DagHost {
           : lifecycle.variant === 'completed' ? 'completed' : 'failed');
 
         errors.push(...item.state.errors);
-        // Single-item path preserves the synthetic DAG_EXECUTION_FAILED error the
-        // parent's embedded-body stream expects when the sole DAG neither routed
-        // a terminal output nor reached a completed lifecycle.
-        if (bufferIntermediates && terminalOutcome === null && lifecycle.variant !== 'completed') {
+        if (terminalOutcome === null && lifecycle.variant !== 'completed') {
           errors.push(NodeError.create(
             'DAG_EXECUTION_FAILED',
             `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.variant})`,
@@ -408,6 +401,28 @@ export class DagHost {
             false,
             new Date().toISOString(),
           ));
+        }
+      } else {
+        const batch = Batch.from(restoredItems.map((item) => ({ 'id': item.id, 'state': item.state })));
+        const batchTerminalByItemId = new Map<string, 'completed' | 'failed'>();
+        const execution = dagonizer.executeBatch(
+          request.dagName,
+          batch,
+          batchTerminalByItemId,
+          { 'signal': controller.signal },
+        );
+        const generator = execution[Symbol.asyncIterator]();
+        while (!(await generator.next()).done) {
+          // Multi-item observability is delivered by instrumentation events.
+        }
+        for (const [itemId, terminalOutcome] of batchTerminalByItemId) {
+          terminalByItemId.set(itemId, terminalOutcome);
+        }
+        for (const item of restoredItems) {
+          errors.push(...item.state.errors);
+          if (!terminalByItemId.has(item.id)) {
+            terminalByItemId.set(item.id, item.state.lifecycle.variant === 'completed' ? 'completed' : 'failed');
+          }
         }
       }
 

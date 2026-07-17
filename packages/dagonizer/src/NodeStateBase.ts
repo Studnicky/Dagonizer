@@ -5,6 +5,7 @@ import type { GraphStateFieldDefinitionType } from './contracts/GraphStateFieldD
 import type { GraphStateLifecycleInterface } from './contracts/GraphStateLifecycleInterface.js';
 import type { GraphStateSnapshotInterface } from './contracts/GraphStateSnapshotInterface.js';
 import type { QuadType } from './contracts/TripleStoreInterface.js';
+import { ProgressKeys } from './entities/constants/ProgressKey.js';
 import type { TransientNodeStateSelectionType, TransientNodeStateType } from './entities/executor/TransientNodeState.js';
 import type { JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
@@ -31,6 +32,9 @@ const GRAPH_STATE_MEMBER = GraphStateTerms.DAGONIZER.StateMember;
 const GRAPH_STATE_INDEX = GraphStateTerms.DAGONIZER.StateIndex;
 const GRAPH_WARNING_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}warning/`;
 const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
+const CHILD_EXCLUDED_STATE_KEYS: ReadonlySet<string> = new Set(
+    Object.values(ProgressKeys).map((key) => `metadata.${key}`),
+);
 
 /**
  * Shared state flowing through all nodes in a flow.
@@ -429,7 +433,7 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         cloned.#scope = childScope;
         cloned.#runIri = childScope.runIri;
         cloned.#ensureRunFact();
-        for (const [key, value] of this.#values()) {
+        for (const [key, value] of this.#values(CHILD_EXCLUDED_STATE_KEYS)) {
             if (key.startsWith('metadata.'))
                 cloned.#write(key, value);
         }
@@ -552,8 +556,8 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #graph() {
         return DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(this.#runIri));
     }
-    #values() {
-        return new GraphStateQueryService(this.#dataset, this.#runIri).entries();
+    #values(excludedKeys?: ReadonlySet<string>) {
+        return new GraphStateQueryService(this.#dataset, this.#runIri).entries(excludedKeys);
     }
     #write(key: string, value: JsonValueType) {
         this.#dataset.transact(() => {

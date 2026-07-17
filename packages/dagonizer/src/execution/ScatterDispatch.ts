@@ -1,3 +1,5 @@
+import { Semaphore } from '@studnicky/concurrency/semaphore';
+
 import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
 import { DagContainerBase } from '../container/DagContainerBase.js';
 import type { RunResultType } from '../container/DagOutcome.js';
@@ -6,6 +8,7 @@ import { TransportErrorCode } from '../container/TransportErrorCode.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
+import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
@@ -15,16 +18,16 @@ import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../contracts/ReservoirDriver.js';
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
-import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
-import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
@@ -45,7 +48,11 @@ export type RunNodeResultType = {
   'gatherRecords'?: readonly GatherRecordType[];
 };
 
-export type GatherRecordSinkType = (records: readonly GatherRecordType[]) => Promise<void>;
+export type GatherRecordSinkType = {
+  readonly journalsFoldDeltas: boolean;
+  prepare(records: readonly GatherRecordType[]): Promise<readonly FoldJournalStoreInterface.EntryType[]>;
+  commit(records: readonly GatherRecordType[]): Promise<void>;
+};
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
 export type RunOptionsType = { embedded: boolean };
@@ -84,6 +91,7 @@ export interface ScatterDispatchAdapterInterface {
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -121,6 +129,7 @@ export interface ScatterDispatchSourceInterface {
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -138,6 +147,7 @@ export interface ScatterDispatchSourceInterface {
     batch?: RunNodesBatchType,
   ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<NodeStateInterface>, void>;
   resolveContainer(role: string | undefined): DagContainerInterface | null;
+  resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined;
   nextCorrelationId(dagName: string): string;
   relayFor(state: NodeStateInterface): ObserverRelayInterface;
 }
@@ -163,6 +173,7 @@ export class ScatterDispatchAdapter
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   readonly #source: ScatterDispatchSourceInterface;
 
@@ -174,6 +185,7 @@ export class ScatterDispatchAdapter
     this.accessor = source.accessor;
     this.stateFactories = source.stateFactories;
     this.executionTopologyStore = source.executionTopologyStore;
+    this.foldJournalStore = source.foldJournalStore;
     this.outputSchemaValidator = source.outputSchemaValidator;
     this.#source = source;
   }
@@ -224,7 +236,7 @@ export class ScatterDispatchAdapter
  * Context bundle for a single `executeScatter` invocation.
  *
  * Captures the scatter placement config plus the mutable accumulators that
- * `ScatterPoolDriver.ackItem` writes to. All fields are initialised before the
+ * `ScatterPoolDriver` acknowledgment methods write to. All fields are initialised before the
  * driver is constructed; the driver never creates its own accumulators.
  *
  * `state` and `intermediateResults` are typed `NodeStateInterface` (not the
@@ -246,6 +258,7 @@ export type ScatterRunContextType = {
   readonly outcomeTally: Map<string, number>;
   readonly gatherRecordSink: GatherRecordSinkType | null;
   readonly responseState: TransientNodeStateResponseStateType;
+  readonly writePoints: ReadonlySet<WritePointType>;
 }
 
 /**
@@ -263,6 +276,8 @@ export class ScatterPoolDriver
   readonly #bodyExecutor: BodyExecutor;
   readonly #dagContextValue: Record<string, unknown>;
   readonly #bodyCandidateIris: ReadonlySet<string> | null;
+  readonly #inputState: TransientNodeStateSelectionType;
+  readonly #ackSemaphore: Semaphore;
 
   constructor(
     adapter: ScatterDispatchAdapterInterface,
@@ -276,6 +291,12 @@ export class ScatterPoolDriver
     this.#bodyCandidateIris = 'dag' in ctx.scatter.body
       ? DagReferenceResolver.candidateIris(ctx.scatter.body.dag, this.#dagContextValue)
       : null;
+    this.#inputState = {
+      'mode': 'selection',
+      'domainPaths': Object.keys(ScatterNodeDefaults.inputMapping(ctx.scatter)),
+      'metadataKeys': [ctx.itemKey, 'itemIndex'],
+    };
+    this.#ackSemaphore = Semaphore.create({ 'permits': 1 });
   }
 
   /**
@@ -319,6 +340,7 @@ export class ScatterPoolDriver
   }
 
   persistCheckpoint(): void {
+    if (!this.#ctx.writePoints.has('WatermarkCommit')) return;
     const { scatter, state, inbox, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
     ScatterCheckpoint.writeBounded(
       state,
@@ -346,14 +368,6 @@ export class ScatterPoolDriver
           'workItemIri': `${scatter['@id']}/item/${String(itemIndex)}`,
         },
       );
-      // Strip engine-internal metadata keys from the clone. The parent state's
-      // scatter-progress and work-set-progress metadata are engine bookkeeping for
-      // the PARENT scatter/workset loop — the child body DAG must not inherit them.
-      // Without this, each clone carries the full parent inbox (O(N) payload), and
-      // serializing the clone for the container transport sends that inbox N times,
-      // producing O(N²) heap growth across concurrent batches.
-      cloneState.deleteMetadata(SCATTER_PROGRESS_KEY);
-      cloneState.deleteMetadata(WORKSET_PROGRESS_KEY);
       // item must be JSON-serialisable: scatter sources are checkpointed to
       // metadata (SCATTER_PROGRESS_KEY) and require JSON-safe values at snapshot
       // time. The engine contract requires callers to provide JSON-safe scatter
@@ -410,8 +424,6 @@ export class ScatterPoolDriver
           'placementIri': scatter['@id'],
           'workItemIri': `${scatter['@id']}/item/${String(itemIndex)}`,
         });
-        errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
-        errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
         errorClone.setMetadata(itemKey, item);
         errorClone.setMetadata('itemIndex', itemIndex);
         return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone, 'selectedDagIri': null };
@@ -422,9 +434,10 @@ export class ScatterPoolDriver
       // Build the child clone using the body dag's registered factory (spawnChild
       // returns NodeStateInterface; isolation factory may produce a different class).
       const factory = this.#adapter.stateFactories.get(bodyDagName) ?? ChildStateFactory.cloneParent;
+      const bodyInputMapping = ScatterNodeDefaults.inputMapping(scatter);
       const cloneState = this.#adapter.stateMapper.spawnChild(
         state,
-        ScatterNodeDefaults.inputMapping(scatter),
+        bodyInputMapping,
         {
           'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
           'dagIri': bodyDagName,
@@ -433,9 +446,6 @@ export class ScatterPoolDriver
         },
         factory,
       );
-      // Strip engine-internal metadata keys from the clone (see node-body path above).
-      cloneState.deleteMetadata(SCATTER_PROGRESS_KEY);
-      cloneState.deleteMetadata(WORKSET_PROGRESS_KEY);
       // item must be JSON-serialisable (see node-body path above).
       cloneState.setMetadata(itemKey, item);
       cloneState.setMetadata('itemIndex', itemIndex);
@@ -451,6 +461,7 @@ export class ScatterPoolDriver
         scatter.name,
         cloneState,
         state,
+        this.#inputState,
         this.#ctx.responseState,
         scatter.container,
         signal,
@@ -498,27 +509,88 @@ export class ScatterPoolDriver
     };
   }
 
-  async ackItem(res: ScatterItemResultType): Promise<void> {
-    const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
-    const { 'index': itemIndex, 'output': output } = res;
-
-    // Remove from inbox.
-    const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
-    if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
-
-    const freshRecord = this.#freshRecord(res);
-    if (gatherRecordSink === null) {
-      allFreshRecords.push(freshRecord);
-    } else {
-      await gatherRecordSink([freshRecord]);
+  async #commitFoldJournal(
+    results: readonly ScatterItemResultType[],
+    progress: FoldJournalStoreInterface.CommitType['progress'],
+    entries: readonly FoldJournalStoreInterface.EntryType[],
+    completed = false,
+  ): Promise<void> {
+    if (entries.length === 0 && !completed) return;
+    const store = this.#adapter.foldJournalStore;
+    if (store === null) {
+      throw new DAGError('FoldDeltaJournal requires DagonizerOptionsType.foldJournalStore', {
+        'code': 'CONFIGURATION_ERROR',
+      });
     }
+    const indices = results.map((result) => result.index).sort((left, right) => left - right);
+    await store.append(this.#ctx.state.runIri, {
+      'commitId': completed
+        ? `${this.#ctx.scatter['@id']}:complete`
+        : `${this.#ctx.scatter['@id']}:${indices.join(',')}`,
+      'scatterIri': this.#ctx.scatter['@id'],
+      completed,
+      progress,
+      entries,
+    });
+  }
 
-    ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
-    ScatterCheckpoint.writeBounded(
-      state, scatter['@id'], [...inbox], watermarkRef.value,
-      [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-      Object.fromEntries(outcomeTally),
-    );
+  async complete(): Promise<void> {
+    await this.#ackSemaphore.withPermit(async () => {
+      const { scatter, inbox, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
+      if (gatherRecordSink?.journalsFoldDeltas !== true) return;
+      await this.#commitFoldJournal([], {
+        'mode': 'bounded',
+        'placementName': scatter['@id'],
+        'inbox': [...inbox],
+        'watermark': watermarkRef.value,
+        'aheadAcked': [...aheadAcked.entries()].map(([index, output]) => ({ index, output })),
+        'outcomeTally': Object.fromEntries(outcomeTally),
+      }, [], true);
+    });
+  }
+
+  async ackItem(res: ScatterItemResultType): Promise<void> {
+    await this.#ackSemaphore.withPermit(async () => {
+      const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
+      const { 'index': itemIndex, 'output': output } = res;
+      const nextInbox = inbox.filter((entry) => entry.index !== itemIndex);
+      const nextWatermark = { 'value': watermarkRef.value };
+      const nextAheadAcked = new Map(aheadAcked);
+      const nextOutcomeTally = new Map(outcomeTally);
+
+      const freshRecord = this.#freshRecord(res);
+      let journalEntries: readonly FoldJournalStoreInterface.EntryType[] = [];
+      if (gatherRecordSink === null) {
+        allFreshRecords.push(freshRecord);
+      } else {
+        journalEntries = await gatherRecordSink.prepare([freshRecord]);
+      }
+
+      ScatterCheckpoint.advanceWatermark(nextWatermark, nextAheadAcked, nextOutcomeTally, itemIndex, output);
+      const progress: FoldJournalStoreInterface.CommitType['progress'] = {
+        'mode': 'bounded',
+        'placementName': scatter['@id'],
+        'inbox': nextInbox,
+        'watermark': nextWatermark.value,
+        'aheadAcked': [...nextAheadAcked.entries()].map(([index, ackOutput]) => ({ 'index': index, 'output': ackOutput })),
+        'outcomeTally': Object.fromEntries(nextOutcomeTally),
+      };
+      await this.#commitFoldJournal([res], progress, journalEntries);
+      if (gatherRecordSink !== null) await gatherRecordSink.commit([freshRecord]);
+
+      inbox.splice(0, inbox.length, ...nextInbox);
+      watermarkRef.value = nextWatermark.value;
+      aheadAcked.clear();
+      for (const [index, ackOutput] of nextAheadAcked) aheadAcked.set(index, ackOutput);
+      outcomeTally.clear();
+      for (const [key, count] of nextOutcomeTally) outcomeTally.set(key, count);
+      if (this.#ctx.writePoints.has('WatermarkCommit')) {
+        ScatterCheckpoint.writeBounded(
+          state, scatter['@id'], progress.inbox, progress.watermark,
+          progress.aheadAcked, progress.outcomeTally,
+        );
+      }
+    });
   }
 
   /**
@@ -561,10 +633,6 @@ export class ScatterPoolDriver
           'placementIri': scatter['@id'],
           'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
         });
-        // Strip engine-internal metadata keys — the child body must not inherit
-        // the parent scatter/workset progress (O(N) payload, see executeItem).
-        clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-        clone.deleteMetadata(WORKSET_PROGRESS_KEY);
         clone.setMetadata(itemKey, buffered.item);
         clone.setMetadata('itemIndex', buffered.index);
         clones.push(clone);
@@ -641,8 +709,6 @@ export class ScatterPoolDriver
           'placementIri': scatter['@id'],
           'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
         });
-        clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-        clone.deleteMetadata(WORKSET_PROGRESS_KEY);
         clone.setMetadata(itemKey, buffered.item);
         clone.setMetadata('itemIndex', buffered.index);
         for (const err of clone.errors) state.collectError(err);
@@ -667,8 +733,6 @@ export class ScatterPoolDriver
         'placementIri': scatter['@id'],
         'workItemIri': `${scatter['@id']}/item/${String(buffered.index)}`,
       }, factory);
-      clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-      clone.deleteMetadata(WORKSET_PROGRESS_KEY);
       clone.setMetadata(itemKey, buffered.item);
       clone.setMetadata('itemIndex', buffered.index);
 
@@ -737,6 +801,7 @@ export class ScatterPoolDriver
           correlationId,
           Timeout.none(),
           repCloneForTask,
+          this.#inputState,
           this.#ctx.responseState,
           context,
         );
@@ -755,6 +820,7 @@ export class ScatterPoolDriver
             itemCorrelationId,
             Timeout.none(),
             clone,
+            this.#inputState,
             this.#ctx.responseState,
             itemContext,
           );
@@ -829,46 +895,59 @@ export class ScatterPoolDriver
    * gather records, advance scatter progress, and write the checkpoint once.
    */
   async ackBatch(batchResult: ScatterItemBatchResultType): Promise<void> {
-    const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
-    const freshRecords: GatherRecordType[] = [];
+    await this.#ackSemaphore.withPermit(async () => {
+      const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
+      const freshRecords: GatherRecordType[] = [];
+      const nextWatermark = { 'value': watermarkRef.value };
+      const nextAheadAcked = new Map(aheadAcked);
+      const nextOutcomeTally = new Map(outcomeTally);
 
     // Collect all item indexes to remove up-front so the inbox scan is O(inbox)
     // total rather than O(inbox × batch) from per-item findIndex+splice.
-    const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
+      const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
 
-    for (const res of batchResult.results) {
-      const { 'index': itemIndex, 'output': output } = res;
+      for (const res of batchResult.results) {
+        const { 'index': itemIndex, 'output': output } = res;
 
-      const freshRecord = this.#freshRecord(res);
-      if (gatherRecordSink === null) {
-        allFreshRecords.push(freshRecord);
-      } else {
-        freshRecords.push(freshRecord);
+        const freshRecord = this.#freshRecord(res);
+        if (gatherRecordSink === null) {
+          allFreshRecords.push(freshRecord);
+        } else {
+          freshRecords.push(freshRecord);
+        }
+        ScatterCheckpoint.advanceWatermark(nextWatermark, nextAheadAcked, nextOutcomeTally, itemIndex, output);
       }
-      ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
-    }
 
-    if (gatherRecordSink !== null && freshRecords.length > 0) {
-      await gatherRecordSink(freshRecords);
-    }
-
-    // Bulk-remove all batch items from inbox in a single O(inbox) pass.
-    // Per-item findIndex+splice would be O(inbox × batch); this is O(inbox) total.
-    let writeIdx = 0;
-    for (let readIdx = 0; readIdx < inbox.length; readIdx++) {
-      const entry = inbox[readIdx];
-      if (entry === undefined) throw new DAGError(`ScatterDispatch: invariant — inbox[${readIdx}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-      if (!toRemove.has(entry.index)) {
-        inbox[writeIdx++] = entry;
+      let journalEntries: readonly FoldJournalStoreInterface.EntryType[] = [];
+      if (gatherRecordSink !== null && freshRecords.length > 0) {
+        journalEntries = await gatherRecordSink.prepare(freshRecords);
       }
-    }
-    inbox.length = writeIdx;
 
-    // Single checkpoint write for the entire batch.
-    ScatterCheckpoint.writeBounded(
-      state, scatter['@id'], [...inbox], watermarkRef.value,
-      [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-      Object.fromEntries(outcomeTally),
-    );
+      const nextInbox = inbox.filter((entry) => !toRemove.has(entry.index));
+      const progress: FoldJournalStoreInterface.CommitType['progress'] = {
+        'mode': 'bounded',
+        'placementName': scatter['@id'],
+        'inbox': nextInbox,
+        'watermark': nextWatermark.value,
+        'aheadAcked': [...nextAheadAcked.entries()].map(([index, output]) => ({ index, output })),
+        'outcomeTally': Object.fromEntries(nextOutcomeTally),
+      };
+      await this.#commitFoldJournal(batchResult.results, progress, journalEntries);
+      if (gatherRecordSink !== null) await gatherRecordSink.commit(freshRecords);
+
+      inbox.splice(0, inbox.length, ...nextInbox);
+      watermarkRef.value = nextWatermark.value;
+      aheadAcked.clear();
+      for (const [index, output] of nextAheadAcked) aheadAcked.set(index, output);
+      outcomeTally.clear();
+      for (const [key, count] of nextOutcomeTally) outcomeTally.set(key, count);
+
+      if (this.#ctx.writePoints.has('WatermarkCommit')) {
+        ScatterCheckpoint.writeBounded(
+          state, scatter['@id'], progress.inbox, progress.watermark,
+          progress.aheadAcked, progress.outcomeTally,
+        );
+      }
+    });
   }
 }

@@ -182,8 +182,6 @@ function startChrome(chromePath, userDataDir, targetUrl, debugPort) {
       '--disable-extensions',
       '--disable-sync',
       '--metrics-recording-only',
-      '--enable-logging=stderr',
-      '--v=1',
       '--disable-features=Translate,MediaRouter,OptimizationHints',
       targetUrl,
     ],
@@ -199,7 +197,6 @@ function startChrome(chromePath, userDataDir, targetUrl, debugPort) {
   });
   child.stderr.on('data', (chunk) => {
     appendChildLog(logs, 'stderr', chunk);
-    process.stderr.write(chunk);
   });
   return { child, logs };
 }
@@ -209,6 +206,7 @@ class CdpClient {
   #id = 0;
   #pending = new Map();
   #eventWaiters = new Map();
+  #eventListeners = new Map();
 
   constructor(ws) {
     this.#ws = ws;
@@ -218,20 +216,30 @@ class CdpClient {
         const pending = this.#pending.get(message.id);
         if (pending === undefined) return;
         this.#pending.delete(message.id);
+        clearTimeout(pending.timeout);
         if ('error' in message) pending.reject(new Error(message.error.message));
         else pending.resolve(message.result);
         return;
       }
+      const params = message.params ?? {};
+      const listeners = this.#eventListeners.get(message.method);
+      if (listeners !== undefined) {
+        for (const listener of listeners) listener(params);
+      }
       const waiters = this.#eventWaiters.get(message.method);
       if (waiters === undefined || waiters.length === 0) return;
-      for (const waiter of waiters.splice(0)) waiter(message.params ?? {});
+      for (const waiter of waiters.splice(0)) waiter(params);
     });
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 30000) {
     const id = ++this.#id;
     return new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error(`CDP ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.#pending.set(id, { resolve, reject, timeout });
       this.#ws.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -244,7 +252,24 @@ class CdpClient {
     });
   }
 
+  on(method, listener) {
+    const listeners = this.#eventListeners.get(method) ?? new Set();
+    listeners.add(listener);
+    this.#eventListeners.set(method, listeners);
+  }
+
+  off(method, listener) {
+    const listeners = this.#eventListeners.get(method);
+    if (listeners === undefined) return;
+    listeners.delete(listener);
+    if (listeners.size === 0) this.#eventListeners.delete(method);
+  }
+
   close() {
+    for (const pending of this.#pending.values()) clearTimeout(pending.timeout);
+    this.#pending.clear();
+    this.#eventWaiters.clear();
+    this.#eventListeners.clear();
     this.#ws.close();
   }
 }
@@ -310,31 +335,31 @@ async function collectTrace(client, enabled, tracePath) {
   const onData = (params) => {
     for (const value of params.value ?? []) events.push(value);
   };
-  const onDataPromise = new Promise((resolve) => {
-    const loop = async () => {
-      while (true) {
-        const params = await client.once('Tracing.dataCollected');
-        onData(params);
-        resolve(undefined);
-      }
-    };
-    void loop();
-  });
-  void onDataPromise;
+  client.on('Tracing.dataCollected', onData);
 
   await client.send('Tracing.start', {
     transferMode: 'ReportEvents',
     categories: TRACE_CATEGORIES.join(','),
   });
 
+  let stopPromise = null;
   return {
-    async stop() {
-      const completePromise = client.once('Tracing.tracingComplete');
-      await client.send('Tracing.end');
-      await completePromise;
-      await mkdir(join(process.cwd(), '.orchestration', 'perf'), { recursive: true });
-      await writeFile(tracePath, `${JSON.stringify({ traceEvents: events })}\n`, 'utf8');
-      return tracePath;
+    stop() {
+      if (stopPromise === null) {
+        stopPromise = (async () => {
+          try {
+            const completePromise = client.once('Tracing.tracingComplete');
+            await client.send('Tracing.end');
+            await completePromise;
+            await mkdir(join(process.cwd(), '.orchestration', 'perf'), { recursive: true });
+            await writeFile(tracePath, `${JSON.stringify({ traceEvents: events })}\n`, 'utf8');
+            return tracePath;
+          } finally {
+            client.off('Tracing.dataCollected', onData);
+          }
+        })();
+      }
+      return stopPromise;
     },
   };
 }
@@ -364,19 +389,27 @@ async function stopChild(child) {
 
 async function waitForCompletion(client, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  let probeTimeoutCount = 0;
   while (Date.now() < deadline) {
-    const telemetry = await client.send('Runtime.evaluate', {
-      expression: `window.${TELEMETRY_KEY} ?? null`,
-      returnByValue: true,
-    });
+    let telemetry;
+    try {
+      telemetry = await client.send('Runtime.evaluate', {
+        expression: `window.${TELEMETRY_KEY} ?? null`,
+        returnByValue: true,
+      }, 5000);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith('CDP Runtime.evaluate timed out')) throw error;
+      probeTimeoutCount++;
+      continue;
+    }
     const value = telemetry.result?.value ?? null;
     if (value !== null && (value.status === 'completed' || value.status === 'failed')) {
       const metrics = await client.send('Performance.getMetrics');
-      return { telemetry: value, metrics: metrics.metrics ?? [] };
+      return { telemetry: value, metrics: metrics.metrics ?? [], probeTimeoutCount };
     }
     await sleep(500);
   }
-  throw new Error(`Timed out waiting for browser telemetry after ${timeoutMs}ms`);
+  throw new Error(`Timed out waiting for browser telemetry after ${timeoutMs}ms (${probeTimeoutCount} CDP probe timeouts)`);
 }
 
 function metricMap(metrics) {
@@ -401,6 +434,7 @@ async function main() {
   const targetUrl = `http://${PREVIEW_HOST}:${previewPort}/?${query.toString()}`;
   let chrome = null;
   let client = null;
+  let trace = null;
 
   try {
     await waitForHttp(`http://${PREVIEW_HOST}:${previewPort}/`, 30000);
@@ -410,8 +444,8 @@ async function main() {
     await client.send('Runtime.enable');
     await client.send('Performance.enable');
 
-    const trace = await collectTrace(client, args.trace, args.tracePath);
-    const { telemetry, metrics } = await waitForCompletion(client, args.timeoutMs);
+    trace = await collectTrace(client, args.trace, args.tracePath);
+    const { telemetry, metrics, probeTimeoutCount } = await waitForCompletion(client, args.timeoutMs);
     const traceFile = await trace.stop();
     const browserMetrics = metricMap(metrics);
 
@@ -426,6 +460,7 @@ async function main() {
         JSHeapUsedSize: browserMetrics.JSHeapUsedSize ?? null,
         Nodes: browserMetrics.Nodes ?? null,
       },
+      probeTimeoutCount,
       traceFile,
     };
 
@@ -435,6 +470,7 @@ async function main() {
       throw new Error(`Cartographer browser run failed: ${telemetry.errorMessage ?? 'unknown error'}`);
     }
   } finally {
+    if (trace !== null) await trace.stop().catch(() => null);
     client?.close();
     await stopChild(preview.child);
     if (chrome !== null) await stopChild(chrome.child);

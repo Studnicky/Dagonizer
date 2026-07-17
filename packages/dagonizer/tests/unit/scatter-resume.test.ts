@@ -10,6 +10,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { stateSnapshot } from '../_support/GraphStateSupport.js';
+import { MemoryFoldJournalStore } from '../_support/MemoryFoldJournalStore.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -246,7 +247,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   });
 
   void it('FoldDeltaJournal rebuilds the accumulator on same-state resume without preseeded parent data', async () => {
-    const dispatcher = new Dagonizer<ScatterState>();
+    const journal = new MemoryFoldJournalStore();
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
     let calls = 0;
     dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal', ['success'], () => {
       calls++;
@@ -290,13 +292,20 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     assert.equal(partial.cursor, placementIri('urn:noocodec:dag:scatter-fold-journal', 'fan'));
     assert.deepEqual(partial.state.processed, [11, 22], 'live state folds acked items before interruption');
-    const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
-    assert.ok(rawProgress !== undefined, 'fold-delta journal should be present after interruption');
-    const progress = Validator.gatherProgress.validate(rawProgress);
-    const buffered = Object.values(progress.entries).flat();
+    const commits = [];
+    for await (const commit of journal.read(partial.state.runIri)) commits.push(commit);
+    const buffered = commits.flatMap((commit) => commit.entries.map((entry) => entry.record));
+    assert.equal(commits.length, 2, 'each item acknowledgement should append one atomic commit');
     assert.equal(buffered.length, 2);
     assert.deepEqual(buffered.map((record) => record.contribution), [{ 'value': 11 }, { 'value': 22 }]);
     assert.ok(buffered.every((record) => !('graphState' in record)), 'journal records must not retain clone graph state');
+    assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined, 'fold deltas must not be copied into state metadata');
+    const latestCommit = commits.at(-1);
+    assert.ok(latestCommit !== undefined);
+    await journal.append(partial.state.runIri, {
+      ...latestCommit,
+      'commitId': `${latestCommit.commitId}:duplicate-delivery`,
+    });
 
     const result = await dispatcher.resume('urn:noocodec:dag:scatter-fold-journal', partial.state, partial.cursor);
 
@@ -307,7 +316,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   });
 
   void it('FoldDeltaJournal journals one acked reservoir batch and replays it exactly once on resume', async () => {
-    const dispatcher = new Dagonizer<ScatterState>();
+    const journal = new MemoryFoldJournalStore();
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
     let batchCalls = 0;
     dispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
       'urn:noocodec:node:worker-fold-journal-reservoir',
@@ -400,13 +410,14 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       assert.deepEqual(fanProgress.outcomeTally, { 'success': 2 });
     }
 
-    const rawGatherProgress = interrupted.state.getMetadata(GATHER_PROGRESS_KEY);
-    assert.ok(rawGatherProgress !== undefined, 'gather journal should survive interruption');
-    const gatherProgress = Validator.gatherProgress.validate(rawGatherProgress);
-    const buffered = Object.values(gatherProgress.entries).flat();
+    const commits = [];
+    for await (const commit of journal.read(interrupted.state.runIri)) commits.push(commit);
+    const buffered = commits.flatMap((commit) => commit.entries.map((entry) => entry.record));
+    assert.equal(commits.length, 1, 'one reservoir acknowledgement should append one atomic commit');
     assert.equal(buffered.length, 2, 'exactly one reservoir batch worth of contributions should be journaled');
     assert.deepEqual(buffered.map((record) => record.contribution), [{ 'value': 11 }, { 'value': 22 }]);
     assert.ok(buffered.every((record) => !('graphState' in record)), 'reservoir fold journal must not persist clone graph state');
+    assert.equal(interrupted.state.getMetadata(GATHER_PROGRESS_KEY), undefined, 'reservoir fold deltas must not be copied into state metadata');
 
     Object.defineProperty(interrupted.state, 'setMetadata', {
       'configurable': true,
@@ -415,7 +426,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     });
     interrupted.state.processed = [];
 
-    const resumeDispatcher = new Dagonizer<ScatterState>();
+    const resumeDispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
     resumeDispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
       'urn:noocodec:node:worker-fold-journal-reservoir',
       ['success'],
@@ -430,6 +441,147 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(resumed.state.processed.length, 5, 'reservoir fold journal replay must not double-count the acked batch');
     assert.equal(resumed.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
     assert.equal(resumed.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
+  });
+
+  void it('does not publish a fold or watermark when the atomic journal append fails', async () => {
+    const journal = new MemoryFoldJournalStore();
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal-failure', ['success'], () => 'success'));
+
+    const dagIri = 'urn:noocodec:dag:scatter-fold-journal-failure';
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': 'scatter-fold-journal-failure',
+      'version': '1',
+      'entrypoints': { 'main': fanIri },
+      'nodes': [
+        {
+          '@id': fanIri,
+          '@type': 'ScatterNode',
+          'name': 'fan',
+          'body': { 'node': 'urn:noocodec:node:worker-fold-journal-failure' },
+          'source': 'items',
+          'itemKey': 'item',
+          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
+        },
+        {
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    dispatcher.registerDAG(dag);
+
+    const state = new ScatterState();
+    state.items = [11, 22];
+    journal.failNextAppend = true;
+
+    const interrupted = await dispatcher.execute(dagIri, state);
+
+    assert.equal(interrupted.cursor, fanIri);
+    assert.equal(journal.appendCount, 1);
+    assert.deepEqual(interrupted.state.processed, [], 'the in-memory fold must wait for durable append success');
+    assert.equal(interrupted.state.getMetadata(SCATTER_PROGRESS_KEY), undefined, 'the watermark must not advance without its fold delta');
+    const commits = [];
+    for await (const commit of journal.read(interrupted.state.runIri)) commits.push(commit);
+    assert.deepEqual(commits, []);
+  });
+
+  void it('serializes concurrent item commits against the latest durable watermark', async () => {
+    const journal = new MemoryFoldJournalStore();
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal-concurrent', ['success'], async (state) => {
+      const item = state.getter.number('item');
+      await new Promise((resolve) => setTimeout(resolve, 50 - item));
+      return 'success';
+    }));
+
+    const dagIri = 'urn:noocodec:dag:scatter-fold-journal-concurrent';
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': 'scatter-fold-journal-concurrent',
+      'version': '1',
+      'entrypoints': { 'main': fanIri },
+      'nodes': [
+        {
+          '@id': fanIri,
+          '@type': 'ScatterNode',
+          'name': 'fan',
+          'body': { 'node': 'urn:noocodec:node:worker-fold-journal-concurrent' },
+          'source': 'items',
+          'itemKey': 'item',
+          'execution': { 'mode': 'item', 'concurrency': 4 },
+          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
+        },
+        {
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    });
+
+    const state = new ScatterState();
+    state.items = [11, 22, 33, 44];
+    const result = await dispatcher.execute(dagIri, state);
+
+    assert.equal(result.cursor, null);
+    assert.deepEqual([...result.state.processed].sort((left, right) => left - right), [11, 22, 33, 44]);
+    const commits = [];
+    for await (const commit of journal.read(result.state.runIri)) commits.push(commit);
+    assert.equal(commits.length, 5);
+    assert.deepEqual(
+      commits.slice(0, -1).map((commit) => Object.values(commit.progress.outcomeTally).reduce((total, count) => total + count, 0)),
+      [1, 2, 3, 4],
+    );
+    assert.ok(commits.slice(0, -1).every((commit) => !commit.completed));
+    assert.equal(commits.at(-1)?.completed, true);
+    assert.deepEqual(commits.at(-1)?.entries, []);
+    assert.equal(commits.at(-1)?.progress.watermark, 4);
+    assert.deepEqual(commits.at(-1)?.progress.aheadAcked, []);
+
+    const downstreamResume = await dispatcher.resume(dagIri, result.state, endIri);
+    assert.equal(downstreamResume.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 
   void it('resumed map gather is complete, source-ordered, and free of duplicates', async () => {

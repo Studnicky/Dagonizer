@@ -23,16 +23,18 @@ import {
   DagOutcome,
 } from '../../src/container/DagOutcome.js';
 import type { RunResultType } from '../../src/container/DagOutcome.js';
+import { DagTask } from '../../src/container/DagTask.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
+import type { TransientNodeStateSelectionType } from '../../src/entities/executor/TransientNodeState.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { FULL_RESPONSE_STATE, inlineTransfer, emptyInlineTransfer, requestItems } from '../_support/GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer, emptyInlineTransfer, requestItems } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TestState
@@ -40,8 +42,7 @@ import { FULL_RESPONSE_STATE, inlineTransfer, emptyInlineTransfer, requestItems 
 
 class TestState extends NodeStateBase {
   value: number = 0;
-
-
+  label: string = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,8 @@ class BatchTestTask {
   static of(
     correlationId: string,
     signal: AbortSignal,
-    state: TestState = new TestState(),
+    state: TestState,
+    inputState: TransientNodeStateSelectionType,
   ): DagTaskInterface {
     return {
       'dagName': 'test-dag',
@@ -69,6 +71,7 @@ class BatchTestTask {
       correlationId,
       'timeout': Timeout.none(),
       state,
+      inputState,
       'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {
@@ -150,7 +153,7 @@ void describe('batch-container-transport: (a) single-item batch produces one res
 
     const ac = new AbortController();
     const state = new TestState();
-    const task = BatchTestTask.of('single-1', ac.signal, state);
+    const task = BatchTestTask.of('single-1', ac.signal, state, FULL_INPUT_STATE);
     const batch = Batch.from([{ 'id': 'single-1', state }]);
     const results: RunResultType[] = await container.runDag(task, batch);
 
@@ -191,7 +194,7 @@ void describe('batch-container-transport: (a) single-item batch produces one res
 
     const ac = new AbortController();
     const state = new TestState();
-    const task = BatchTestTask.of('single-null', ac.signal, state);
+    const task = BatchTestTask.of('single-null', ac.signal, state, FULL_INPUT_STATE);
     const batch = Batch.from([{ 'id': 'single-null', state }]);
     const [outcome] = await container.runDag(task, batch);
     assert.ok(outcome !== undefined);
@@ -252,7 +255,7 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
     ]);
 
     // Use the first item's task for task identity (correlationId / abort signal).
-    const task = BatchTestTask.of('batch-1', ac.signal, stateA);
+    const task = BatchTestTask.of('batch-1', ac.signal, stateA, FULL_INPUT_STATE);
 
     const results: RunResultType[] = await container.runDag(task, batch);
 
@@ -306,7 +309,7 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
       { 'id': 'x1', 'state': stateX1 },
       { 'id': 'x2', 'state': stateX2 },
     ]);
-    const task = BatchTestTask.of('batch-single-msg', ac.signal, stateX1);
+    const task = BatchTestTask.of('batch-single-msg', ac.signal, stateX1, FULL_INPUT_STATE);
     await container.runDag(task, batch);
 
     // Exactly one execute message sent (the batch round-trip).
@@ -316,6 +319,191 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
     assert.strictEqual(req.request.items.length, 2);
     assert.strictEqual(req.request.items[0]?.id, 'x1');
     assert.strictEqual(req.request.items[1]?.id, 'x2');
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// (f) inputState selection controls request payload width
+// ---------------------------------------------------------------------------
+
+void describe('batch-container-transport: (f) inputState selection controls payload width', () => {
+
+  void it('DagTask.toRequest snapshots the single live state through inputState', () => {
+    const ac = new AbortController();
+    const state = new TestState();
+    state.value = 7;
+    state.label = 'drop';
+    state.setMetadata('tag', 'keep');
+    state.setMetadata('other', 'drop');
+    const selection: TransientNodeStateSelectionType = {
+      'mode': 'selection',
+      'domainPaths': ['value'],
+      'metadataKeys': ['tag'],
+    };
+    const task = new DagTask(
+      'test-dag',
+      ['urn:dagonizer:placement:test'],
+      'direct-selection',
+      Timeout.none(),
+      state,
+      selection,
+      FULL_RESPONSE_STATE,
+      NodeContext.create('test-dag', 'test-node', ac.signal),
+    );
+
+    const wireState = task.toRequest().graphState.states[0]?.state;
+    assert.ok(wireState !== undefined);
+    assert.deepStrictEqual(wireState.domain, { 'value': 7 });
+    assert.deepStrictEqual(wireState.metadata, { 'tag': 'keep' });
+  });
+
+  void it('single-item batch: selection mode includes only the selected domain paths and metadata keys', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const container = new SingleChannelContainer(parentSide);
+
+    const receivedRequests: BridgeMessageType[] = [];
+    hostSide.onMessage((msg) => {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
+      } else if (msg.variant === 'execute') {
+        receivedRequests.push(msg);
+        const { correlationId, items } = msg.request;
+        hostSide.send({
+          'variant': 'result',
+          'response': {
+            correlationId,
+            'graphState': emptyInlineTransfer(items.map((item) => item.id)),
+            'items': items.map((item) => ({ 'id': item.id, 'runIri': item.runIri, 'terminalOutcome': 'completed' })),
+            'errors': [],
+            'intermediates': [],
+          },
+        });
+      }
+    });
+
+    const ac = new AbortController();
+    const state = new TestState();
+    state.value = 42;
+    state.label = 'secret-label';
+    state.setMetadata('tag', 'keep');
+    state.setMetadata('other', 'drop');
+
+    const selection: TransientNodeStateSelectionType = { 'mode': 'selection', 'domainPaths': ['value'], 'metadataKeys': ['tag'] };
+    const task = BatchTestTask.of('selection-1', ac.signal, state, selection);
+    const batch = Batch.from([{ 'id': 'selection-1', state }]);
+    await container.runDag(task, batch);
+
+    assert.strictEqual(receivedRequests.length, 1);
+    const req = receivedRequests[0];
+    assert.ok(req !== undefined && req.variant === 'execute');
+    const wireState = req.request.graphState.states[0]?.state;
+    assert.ok(wireState !== undefined);
+    assert.deepStrictEqual(wireState.domain, { 'value': 42 });
+    assert.deepStrictEqual(wireState.metadata, { 'tag': 'keep' });
+  });
+
+  void it('single-item batch: full mode includes every domain field and metadata key', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const container = new SingleChannelContainer(parentSide);
+
+    const receivedRequests: BridgeMessageType[] = [];
+    hostSide.onMessage((msg) => {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
+      } else if (msg.variant === 'execute') {
+        receivedRequests.push(msg);
+        const { correlationId, items } = msg.request;
+        hostSide.send({
+          'variant': 'result',
+          'response': {
+            correlationId,
+            'graphState': emptyInlineTransfer(items.map((item) => item.id)),
+            'items': items.map((item) => ({ 'id': item.id, 'runIri': item.runIri, 'terminalOutcome': 'completed' })),
+            'errors': [],
+            'intermediates': [],
+          },
+        });
+      }
+    });
+
+    const ac = new AbortController();
+    const state = new TestState();
+    state.value = 99;
+    state.label = 'visible-label';
+    state.setMetadata('tag', 'keep');
+    state.setMetadata('other', 'also-visible');
+
+    const task = BatchTestTask.of('full-1', ac.signal, state, FULL_INPUT_STATE);
+    const batch = Batch.from([{ 'id': 'full-1', state }]);
+    await container.runDag(task, batch);
+
+    const req = receivedRequests[0];
+    assert.ok(req !== undefined && req.variant === 'execute');
+    const wireState = req.request.graphState.states[0]?.state;
+    assert.ok(wireState !== undefined);
+    assert.deepStrictEqual(wireState.domain, { 'value': 99, 'label': 'visible-label' });
+    assert.deepStrictEqual(wireState.metadata, { 'tag': 'keep', 'other': 'also-visible' });
+  });
+
+  void it('multi-item batch: the shared task.inputState selection narrows every item\'s payload identically', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const container = new SingleChannelContainer(parentSide);
+
+    const receivedRequests: BridgeMessageType[] = [];
+    hostSide.onMessage((msg) => {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
+      } else if (msg.variant === 'execute') {
+        receivedRequests.push(msg);
+        const { correlationId, items } = msg.request;
+        hostSide.send({
+          'variant': 'result',
+          'response': {
+            correlationId,
+            'graphState': emptyInlineTransfer(items.map((item) => item.id)),
+            'items': items.map((item) => ({ 'id': item.id, 'runIri': item.runIri, 'terminalOutcome': 'completed' })),
+            'errors': [],
+            'intermediates': [],
+          },
+        });
+      }
+    });
+
+    const ac = new AbortController();
+    const stateM1 = new TestState();
+    stateM1.value = 1;
+    stateM1.label = 'm1-secret';
+    stateM1.setMetadata('tag', 'm1-tag');
+    stateM1.setMetadata('other', 'm1-drop');
+
+    const stateM2 = new TestState();
+    stateM2.value = 2;
+    stateM2.label = 'm2-secret';
+    stateM2.setMetadata('tag', 'm2-tag');
+    stateM2.setMetadata('other', 'm2-drop');
+
+    const selection: TransientNodeStateSelectionType = { 'mode': 'selection', 'domainPaths': ['value'], 'metadataKeys': ['tag'] };
+    const batch = Batch.from([
+      { 'id': 'm1', 'state': stateM1 },
+      { 'id': 'm2', 'state': stateM2 },
+    ]);
+    const task = BatchTestTask.of('batch-selection', ac.signal, stateM1, selection);
+    await container.runDag(task, batch);
+
+    const req = receivedRequests[0];
+    assert.ok(req !== undefined && req.variant === 'execute');
+    const states = req.request.graphState.states;
+    assert.strictEqual(states.length, 2);
+
+    const wireM1 = states.find((entry) => entry.id === 'm1')?.state;
+    const wireM2 = states.find((entry) => entry.id === 'm2')?.state;
+    assert.ok(wireM1 !== undefined && wireM2 !== undefined);
+
+    assert.deepStrictEqual(wireM1.domain, { 'value': 1 });
+    assert.deepStrictEqual(wireM1.metadata, { 'tag': 'm1-tag' });
+    assert.deepStrictEqual(wireM2.domain, { 'value': 2 });
+    assert.deepStrictEqual(wireM2.metadata, { 'tag': 'm2-tag' });
   });
 
 });
@@ -379,7 +567,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
       { 'id': 'fail-1', 'state': stateFail1 },
       { 'id': 'fail-2', 'state': stateFail2 },
     ]);
-    const task = BatchTestTask.of('batch-fail', ac.signal, stateFail1);
+    const task = BatchTestTask.of('batch-fail', ac.signal, stateFail1, FULL_INPUT_STATE);
     const results = await container.runDag(task, batch);
 
     // Both items must get transport-error results.

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { ProgressKeys } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -247,6 +248,21 @@ void describe('NodeStateBase.clone() subclass identity', () => {
 
     // Errors start empty.
     assert.strictEqual(cloned.errors.length, 0, 'errors must be empty in clone');
+  });
+
+  void it('preserves user metadata without copying engine progress into a child', () => {
+    const state = new DomainState();
+    state.setMetadata('key', 'value');
+    state.setMetadata(ProgressKeys.SCATTER, { 'inbox': Array.from({ 'length': 100 }, (_, index) => index) });
+    state.setMetadata(ProgressKeys.WORK_SET, { 'items': [1, 2, 3] });
+    state.setMetadata(ProgressKeys.GATHER, { 'entries': { 'gather': [] } });
+
+    const cloned = state.clone(TEST_CHILD_SCOPE);
+
+    assert.equal(cloned.getMetadata('key'), 'value');
+    assert.equal(cloned.getMetadata(ProgressKeys.SCATTER), undefined);
+    assert.equal(cloned.getMetadata(ProgressKeys.WORK_SET), undefined);
+    assert.equal(cloned.getMetadata(ProgressKeys.GATHER), undefined);
   });
 
   void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {

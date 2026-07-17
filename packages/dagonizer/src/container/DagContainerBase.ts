@@ -334,8 +334,9 @@ export abstract class DagContainerBase<TWorker = unknown>
   /**
    * Build a wire `ExecutionRequest` for a batch of entries: `task.toRequest()`
    * supplies the identity fields (dagName, placementPath, timeout, correlationId)
-   * and the batch's combined `graphState` + `items` are computed here. A
-   * single `runDag` task is a batch of one through the identical path.
+   * and the batch's combined `graphState` + `items` are computed here, each
+   * entry snapshotted through `task.inputState`. A single `runDag` task is a
+   * batch of one through the identical path.
    */
   async #composeRequest(
     task: DagTaskInterface,
@@ -346,7 +347,7 @@ export abstract class DagContainerBase<TWorker = unknown>
     const items: ExecutionRequestItemType[] = [];
     for (const entry of entries) {
       items.push({ 'id': entry.id, 'runIri': entry.state.runIri });
-      graphStates.push({ 'id': entry.id, 'state': entry.state.snapshotTransientState() });
+      graphStates.push({ 'id': entry.id, 'state': entry.state.snapshotTransientStateSelection(task.inputState) });
     }
     const graphState = { 'states': graphStates };
     return { ...base, 'graphState': graphState, 'items': items };

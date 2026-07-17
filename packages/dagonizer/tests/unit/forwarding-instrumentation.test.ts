@@ -44,7 +44,7 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
 void describe('WorkerObserver — all-five-hook routing (G6)', () => {
   void it('forwards every overridden hook as an instrumentationBatch with correct items, suppresses onFlowStart, and prepends basePath', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, BASE, {});
+    const exposed = new ExposedObserver(ch, { 'correlationId': CORR, 'basePath': BASE }, {});
 
     // nodeStart: one message, all fields populated, basePath composed with the
     // per-call inner path.
@@ -93,7 +93,7 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
 
   void it('prepends a multi-element basePath to the per-call placement path', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, ['a', 'b'], {});
+    const exposed = new ExposedObserver(ch, { 'correlationId': CORR, 'basePath': ['a', 'b'] }, {});
     exposed.callNodeStart('n', state, ['c']);
     await Promise.resolve();
 
@@ -107,7 +107,12 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
 
   void it('drops events deeper than instrumentationPlacementPathDepth before they cross the worker boundary', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, ['parent'], {}, { 'instrumentationPlacementPathDepth': 1 });
+    const exposed = new ExposedObserver(
+      ch,
+      { 'correlationId': CORR, 'basePath': ['parent'] },
+      {},
+      { 'instrumentationPlacementPathDepth': 1 },
+    );
 
     exposed.callNodeStart('kept', state, []);
     exposed.callNodeStart('dropped', state, ['child']);
@@ -122,4 +127,5 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
       assert.deepStrictEqual(msg.items[0]?.placementPath, ['parent']);
     }
   });
+
 });

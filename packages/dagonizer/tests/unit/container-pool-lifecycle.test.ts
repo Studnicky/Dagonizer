@@ -33,7 +33,7 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { FULL_RESPONSE_STATE, inlineTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer } from '../_support/GraphStateSupport.js';
 
 import { Batch, Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
@@ -130,6 +130,7 @@ class MinimalTask implements DagTaskInterface {
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
+  readonly inputState = FULL_INPUT_STATE;
   readonly responseState = FULL_RESPONSE_STATE;
   readonly context: NodeContextType;
 
@@ -337,6 +338,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
+        'inputState': FULL_INPUT_STATE,
         'responseState': FULL_RESPONSE_STATE,
         'context': NodeContext.create(CONFORMANCE_DAG.law1, '', controller.signal),
         toRequest() {

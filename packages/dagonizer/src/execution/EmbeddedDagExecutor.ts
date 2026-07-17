@@ -6,6 +6,7 @@ import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
@@ -141,6 +142,14 @@ export class EmbeddedDagExecutor {
       'selectedDagIri': dagIri,
     });
 
+    // Canonical inputState for the contained transport: the child DAG only
+    // needs the paths this placement's stateMapping.input actually seeded.
+    const inputState: TransientNodeStateSelectionType = {
+      'mode': 'selection',
+      'domainPaths': Object.keys(inputMapping),
+      'metadataKeys': [],
+    };
+
     // Run the sub-DAG body in-process or through a bound container. The
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
     // and the container error/snapshot collection all live in BodyExecutor.
@@ -149,6 +158,7 @@ export class EmbeddedDagExecutor {
       placement.name,
       cloneState,
       state,
+      inputState,
       responseState,
       placement.container,
       signal,

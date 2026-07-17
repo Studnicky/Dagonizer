@@ -31,7 +31,7 @@ import { Batch, Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 import { DagTask } from '@studnicky/dagonizer/container';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
-import type { TransientNodeStateResponseStateType } from '@studnicky/dagonizer/entities';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '@studnicky/dagonizer/entities';
 import { Timeout } from '@studnicky/dagonizer/runtime';
 import {
   ConformanceRegistry,
@@ -458,14 +458,15 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
       'defaultSelection': { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] },
       'outputSelections': {},
     };
+    const inputState: TransientNodeStateSelectionType = { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
 
     const task1 = new DagTask(
       'p0-dag', [], 'corr-1', Timeout.none(),
-      new ConformanceState(), responseState, context,
+      new ConformanceState(), inputState, responseState, context,
     );
     const task2 = new DagTask(
       'p0-dag', [], 'corr-2', Timeout.none(),
-      new ConformanceState(), responseState, context,
+      new ConformanceState(), inputState, responseState, context,
     );
 
     // Launch both runDag calls concurrently. runDag #1 will acquire + hang

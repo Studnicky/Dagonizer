@@ -1,9 +1,12 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
+import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { WritePointType } from '../contracts/WritePoint.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
+import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -14,8 +17,89 @@ import { DAGValidator } from '../validation/DAGValidator.js';
 import { ContextResolver } from './ContextResolver.js';
 import { WritePointPolicy } from './WritePointPolicy.js';
 
+/** Gather strategies replayable from contribution deltas alone (no full clone-snapshot fallback). */
+const REPLAYABLE_GATHER_STRATEGIES: ReadonlySet<string> = new Set(['append', 'collect', 'map', 'partition']);
+
 function isAbsoluteIri(iri: string): boolean {
   return iri.startsWith('urn:') || iri.includes('://');
+}
+
+/**
+ * Registration-time gate for `FoldDeltaJournal`. Every `ScatterNode` whose
+ * resolved write points include `FoldDeltaJournal` must have a configured
+ * fold journal store, and every outcome it routes to a first-class
+ * `GatherNode` (`empty` excluded — an empty scatter contributes no gather
+ * record) must resolve a replayable gather strategy. Throws before any
+ * registry mutation.
+ */
+function validateFoldJournalWritePoints(
+  dag: DAGType,
+  dagWritePoints: ReadonlySet<WritePointType>,
+  source: DagRegistrarSourceInterface,
+): void {
+  const dagContext = ContextResolver.contextOf(dag['@context']);
+  const placements = new Map(
+    dag.nodes.map((placement) => [ContextResolver.expand(placement['@id'], dagContext), placement]),
+  );
+  for (const node of dag.nodes) {
+    if (!Placement.isScatter(node)) continue;
+    const placementWritePoints = WritePointPolicy.resolvePlacement(dag, node, dagWritePoints);
+    if (!placementWritePoints.has('FoldDeltaJournal')) continue;
+
+    if (source.foldJournalStore === null) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' declares writePoints including 'FoldDeltaJournal' but no fold journal store is configured`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    const resolvedGathers = new Map<string, GatherNodeType>();
+
+    for (const [outcome, targetIri] of Object.entries(node.outputs)) {
+      if (outcome === 'empty') continue;
+      const expandedTargetIri = ContextResolver.expand(targetIri, dagContext);
+      const target = placements.get(expandedTargetIri);
+      if (target === undefined || !Placement.isGather(target)) {
+        throw new DAGError(
+          `ScatterNode '${node.name}' in DAG '${dag.name}' outcome '${outcome}' must resolve to a single first-class GatherNode; 'FoldDeltaJournal' requires a replayable gather binding`,
+          { 'code': 'CONFIGURATION_ERROR' },
+        );
+      }
+      resolvedGathers.set(expandedTargetIri, target);
+    }
+
+    if (resolvedGathers.size > 1) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' routes to multiple GatherNodes (${[...resolvedGathers.values()].map((gather) => gather.name).join(', ')}); 'FoldDeltaJournal' requires convergence on exactly one GatherNode`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    const [target] = resolvedGathers.values();
+    if (target === undefined) continue;
+
+    const gatherSources = Object.keys(target.sources);
+    const gatherSource = gatherSources[0];
+    if (gatherSources.length !== 1 || gatherSource === undefined) {
+      throw new DAGError(
+        `GatherNode '${target.name}' in DAG '${dag.name}' must declare exactly one source for 'FoldDeltaJournal'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+    if (ContextResolver.expand(gatherSource, dagContext) !== ContextResolver.expand(node['@id'], dagContext)) {
+      throw new DAGError(
+        `GatherNode '${target.name}' in DAG '${dag.name}' must declare ScatterNode '${node.name}' as its source for 'FoldDeltaJournal'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    if (!REPLAYABLE_GATHER_STRATEGIES.has(target.gather.strategy)) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' routes to GatherNode '${target.name}' with gather strategy '${target.gather.strategy}', which cannot be replayed from contribution deltas; 'FoldDeltaJournal' requires one of ${[...REPLAYABLE_GATHER_STRATEGIES].join(', ')}`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+  }
 }
 
 function validateNodeContract<TNodeState extends NodeStateInterface, TOutput extends string>(
@@ -73,6 +157,8 @@ export interface DagRegistrarSourceInterface {
   readonly placementWritePoints: Map<string, ReadonlySet<WritePointType>>;
   /** Plugin module specifiers keyed by context prefix and namespace IRI. */
   readonly pluginSpecifiers: Map<string, string>;
+  /** Configured durable fold journal store, or `null` when fold journaling is not wired. */
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
 
   /** Resolve a bound container by role, or `null` when the role is unbound (in-process). */
   resolveContainer(role: string | undefined): DagContainerInterface | null;
@@ -142,6 +228,7 @@ export class DagRegistrar {
     this.#validateDAGAgainstRegistry(dag, dagContext, this.#source.nodes, stagedDags);
     DAGValidator.validateReferenceGraph(stagedDags);
     const dagWritePoints = WritePointPolicy.resolveDag(dag);
+    validateFoldJournalWritePoints(dag, dagWritePoints, this.#source);
 
     this.#source.dags.set(dagIri, dag);
     this.#source.stateFactories.set(dagIri, stateFactory);
@@ -324,13 +411,15 @@ class RegistryTransaction {
       throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
     }
 
+    const dagWritePoints = WritePointPolicy.resolveDag(dag);
+    validateFoldJournalWritePoints(dag, dagWritePoints, this.#source);
+
     this.#source.dags.set(dagIri, dag);
     this.#addedDagIris.push(dagIri);
 
     const factory = stateFactories?.[dagIri] ?? ChildStateFactory.cloneParent;
     this.#source.stateFactories.set(dagIri, factory);
     this.#addedStateFactoryIris.push(dagIri);
-    const dagWritePoints = WritePointPolicy.resolveDag(dag);
     this.#source.dagWritePoints.set(dagIri, dagWritePoints);
     this.#addedDagWritePointIris.push(dagIri);
 

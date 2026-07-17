@@ -19,6 +19,7 @@ export type { HandoffChannelInterface } from './HandoffChannelInterface.js';
 // Checkpoint / restore adapters.
 export type { CheckpointRestoreAdapterInterface } from './CheckpointRestoreAdapterInterface.js';
 export type { CheckpointStoreInterface } from './CheckpointStoreInterface.js';
+export type { FoldJournalStoreInterface } from './FoldJournalStoreInterface.js';
 
 // Channels.
 export type { MessageChannelInterface } from './MessageChannelInterface.js';

@@ -24,6 +24,7 @@ import { CartographerBrowserRuntime } from '../CartographerBrowserRuntime.ts';
 import { CartographerState } from '../CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../CartographerState.ts';
 import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
+import { streamProducerFeedBundle } from '../embedded-dags/ProducerFeedDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { FormatMix } from '../services.ts';
@@ -139,7 +140,7 @@ let runtimeDagModulesPromise:
       CartographerWorkersDag: typeof import('../dag.ts').CartographerWorkersDag;
       cartographerWorkerRuntimeBundle: typeof import('../dag.ts').cartographerWorkerRuntimeBundle;
       ingestSourceBundle: typeof import('../embedded-dags/IngestSourceDAG.ts').ingestSourceBundle;
-      streamProducerFeedBundle: typeof import('../embedded-dags/ProducerFeedDAG.ts').streamProducerFeedBundle;
+      streamProducerFeedBundle: typeof streamProducerFeedBundle;
       GeoSourceResolveDAG: typeof import('../embedded-dags/GeoSourceResolveDAG.ts').GeoSourceResolveDAG;
       gdprComplianceBundle: typeof import('../embedded-dags/GdprComplianceDAG.ts').gdprComplianceBundle;
       orderEnrichmentBundle: typeof import('../embedded-dags/OrderEnrichmentDAG.ts').orderEnrichmentBundle;
@@ -161,7 +162,6 @@ function loadRuntimeDagModules() {
     runtimeDagModulesPromise = Promise.all([
       import('../dag.ts'),
       import('../embedded-dags/IngestSourceDAG.ts'),
-      import('../embedded-dags/ProducerFeedDAG.ts'),
       import('../embedded-dags/GeoSourceResolveDAG.ts'),
       import('../embedded-dags/GdprComplianceDAG.ts'),
       import('../embedded-dags/OrderEnrichmentDAG.ts'),
@@ -169,7 +169,6 @@ function loadRuntimeDagModules() {
     ]).then(([
       dagModule,
       ingestModule,
-      producerModule,
       geoModule,
       gdprModule,
       orderModule,
@@ -179,7 +178,7 @@ function loadRuntimeDagModules() {
       CartographerWorkersDag: dagModule.CartographerWorkersDag,
       cartographerWorkerRuntimeBundle: dagModule.cartographerWorkerRuntimeBundle,
       ingestSourceBundle: ingestModule.ingestSourceBundle,
-      streamProducerFeedBundle: producerModule.streamProducerFeedBundle,
+      streamProducerFeedBundle,
       GeoSourceResolveDAG: geoModule.GeoSourceResolveDAG,
       gdprComplianceBundle: gdprModule.gdprComplianceBundle,
       orderEnrichmentBundle: orderModule.orderEnrichmentBundle,
@@ -505,9 +504,9 @@ function publishTelemetry(): void {
 
 // ── Browser observer (class extension) ───────────────────────────────────────
 // CartographerBrowserObserver subclasses ObservedDag<CartographerState> to add
-// Vue-reactive DOM updates on top of the base leveled logging. The buffer/RAF
-// throttling below bounds DOM mutations to at most one per animation frame,
-// essential for 1,000,000-event scatter runs.
+// Vue-reactive DOM updates on top of the base leveled logging. The buffered
+// cadence below decouples DOM mutation frequency from event throughput and the
+// browser's display refresh rate.
 const _cartographerLogger = new ConsoleLogger();
 
 class CartographerBrowserObserver extends ObservedDag<CartographerState> {
@@ -581,13 +580,14 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     signal: AbortSignal,
   ): void {
     super.onFlowEnd(dagName, state, result, signal);
-    // Final synchronous flush — capture the terminal state exactly.
+    if (flushHandle !== 0) window.clearTimeout(flushHandle);
+    flushHandle = 0;
+    flushScheduled = false;
     latestRunState = state;
+    flushLiveState();
     records.value = [...state.sampleRecords];
     insightsMap.value = new Map(state.insights);
     journeysMap.value = new Map(state.journeys);
-    trace.value = traceBuffer.slice(-MAX_TRACE);
-    applyLiveState(state);
     progressPct.value = 100;
     publishTelemetry();
   }
@@ -598,10 +598,11 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
 // every clone — N events × M sub-DAG nodes is millions of observer calls.
 // Mutating a reactive ref on each call is O(n²) and freezes the tab. The
 // observer instead writes plain buffers and schedules a single
-// requestAnimationFrame flush, so the DOM updates at most once per frame
-// regardless of event throughput. Node-id and edge sets are bounded by the
-// static sub-DAG (~dozens), never by event count.
+// timed flush, so the DOM updates at a stable human-visible cadence regardless
+// of event throughput. Node-id and edge sets are bounded by the static sub-DAG
+// (~dozens), never by event count.
 const MAX_TRACE = 60;
+const LIVE_FLUSH_INTERVAL_MS = 100;
 
 let latestRunState: CartographerState | null = null;
 let traceBuffer: TraceEvent[] = [];
@@ -643,6 +644,7 @@ function applyLiveState(state: CartographerState): boolean {
 function flushLiveState(): void {
   const startedAt = performance.now();
   flushScheduled = false;
+  flushHandle = 0;
   const graphMutations =
     frameCompletedNodes.size
     + frameActiveNodes.size
@@ -683,12 +685,12 @@ function flushLiveState(): void {
 function scheduleFlush(): void {
   if (flushScheduled) return;
   flushScheduled = true;
-  flushHandle = requestAnimationFrame(flushLiveState);
+  flushHandle = window.setTimeout(flushLiveState, LIVE_FLUSH_INTERVAL_MS);
 }
 
 /** Reset throttle buffers between runs. */
 function resetLiveBuffers(): void {
-  if (flushHandle !== 0) cancelAnimationFrame(flushHandle);
+  if (flushHandle !== 0) window.clearTimeout(flushHandle);
   flushHandle = 0;
   flushScheduled = false;
   latestRunState = null;
@@ -768,6 +770,7 @@ async function run(): Promise<void> {
 
     dispatcher.registerBundle(CartographerBrowserRuntime.bundle(
       clampedBatchCapacity.value,
+      clampedPoolSize.value,
     ));
 
     const state = new CartographerState();

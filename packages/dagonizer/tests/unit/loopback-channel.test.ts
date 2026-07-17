@@ -37,7 +37,7 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 const INIT_MSG: BridgeMessageType = {
   'variant': 'init',
@@ -228,6 +228,7 @@ class LoopbackTask {
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
+      'inputState': FULL_INPUT_STATE,
       'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {

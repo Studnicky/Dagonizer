@@ -23,7 +23,7 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
-import { FULL_RESPONSE_STATE, inlineTransfer, requestItems } from './GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer, requestItems } from './GraphStateSupport.js';
 
 export class TestTask {
   private constructor() { /* static class */ }
@@ -58,6 +58,7 @@ export class TestTask {
       correlationId,
       'timeout':       Timeout.none(),
       state,
+      'inputState':    FULL_INPUT_STATE,
       'responseState': FULL_RESPONSE_STATE,
       context,
       toRequest(): ExecutionRequestType {

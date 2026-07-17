@@ -4,7 +4,7 @@ import type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import { Batch } from '../entities/batch/Batch.js';
-import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
@@ -95,10 +95,13 @@ export class BodyExecutor {
   /**
    * Run the sub-DAG `bodyDag` over `cloneState` and return a uniform outcome.
    *
-   * `placementName` prefixes buffered intermediate node names; `containerRole`
-   * selects the bound container (or in-process when unresolved); `signal`
-   * threads cancellation; `placementPath` carries nesting context; `parentState`
-   * is the relay binding for container dispatch; `bufferIntermediates` gates the
+   * `placementName` prefixes buffered intermediate node names; `inputState`
+   * is the canonical selection the contained transport snapshots from
+   * `cloneState` (unused on the in-process branch, which executes against
+   * the live clone directly); `containerRole` selects the bound container
+   * (or in-process when unresolved); `signal` threads cancellation;
+   * `placementPath` carries nesting context; `parentState` is the relay
+   * binding for container dispatch; `bufferIntermediates` gates the
    * O(N·M·L) intermediate accumulation.
    */
   async run(
@@ -106,6 +109,7 @@ export class BodyExecutor {
     placementName: string,
     cloneState: NodeStateInterface,
     parentState: NodeStateInterface,
+    inputState: TransientNodeStateSelectionType,
     responseState: TransientNodeStateResponseStateType,
     containerRole: string | undefined,
     signal: AbortSignal,
@@ -118,7 +122,7 @@ export class BodyExecutor {
     if (container === null) {
       return this.#runInProcess(bodyDag, placementName, cloneState, parentState, signal, innerPath, bufferIntermediates);
     }
-    return this.#runContained(bodyDag, placementName, cloneState, parentState, responseState, signal, innerPath, bufferIntermediates, container);
+    return this.#runContained(bodyDag, placementName, cloneState, parentState, inputState, responseState, signal, innerPath, bufferIntermediates, container);
   }
 
   async #runInProcess(
@@ -176,6 +180,7 @@ export class BodyExecutor {
     placementName: string,
     cloneState: NodeStateInterface,
     parentState: NodeStateInterface,
+    inputState: TransientNodeStateSelectionType,
     responseState: TransientNodeStateResponseStateType,
     signal: AbortSignal,
     innerPath: readonly string[],
@@ -190,6 +195,7 @@ export class BodyExecutor {
       correlationId,
       Timeout.none(),
       cloneState,
+      inputState,
       responseState,
       context,
     );

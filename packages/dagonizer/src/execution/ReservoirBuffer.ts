@@ -230,6 +230,7 @@ export class ReservoirBuffer {
     while (this.#poolErrors.length === 0 && this.#signal?.aborted !== true) {
       if (this.#semaphore.available === 0) {
         await this.#waitForCapacity();
+        await ReservoirBuffer.#yieldTurn();
         continue;
       }
       if (this.#freshDone) break;
@@ -300,6 +301,7 @@ export class ReservoirBuffer {
           // Wait for a slot before dispatching.
           while (this.#semaphore.available === 0) {
             await this.#waitForCapacity();
+            await ReservoirBuffer.#yieldTurn();
           }
           const batch = ReservoirBuffer.#drainBuffer(buf);
           this.#activeBuffers.delete(key);
@@ -327,6 +329,10 @@ export class ReservoirBuffer {
       'capacity': this.#reservoir.capacity,
       'overflow': 'grow',
     });
+  }
+
+  static #yieldTurn(): Promise<void> {
+    return new Promise((resolve) => { setTimeout(resolve, 0); });
   }
 
   static #drainBuffer(buffer: CircularBuffer<BufferedItem>, limit = Number.POSITIVE_INFINITY): BufferedItem[] {

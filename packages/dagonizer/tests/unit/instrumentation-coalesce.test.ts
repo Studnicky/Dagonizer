@@ -39,7 +39,7 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
 void describe('WorkerObserver — instrumentation-event coalescing', () => {
   void it('collapses N identical events in one flush window to a single item, preserving first-occurrence order', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, BASE, {});
+    const exposed = new ExposedObserver(ch, { 'correlationId': CORR, 'basePath': BASE }, {});
 
     // 1000 scatter clones passing through the same static node in the same
     // microtask window all report the identical (hook, phase, dagName,
@@ -61,7 +61,7 @@ void describe('WorkerObserver — instrumentation-event coalescing', () => {
 
   void it('preserves distinct outputs as separate items (nodeEnd→success vs nodeEnd→error)', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, BASE, {});
+    const exposed = new ExposedObserver(ch, { 'correlationId': CORR, 'basePath': BASE }, {});
 
     for (let i = 0; i < 500; i += 1) {
       exposed.callNodeEnd('scatter-body-node', 'success', state, ['scatter', 'body']);
@@ -83,7 +83,7 @@ void describe('WorkerObserver — instrumentation-event coalescing', () => {
 
   void it('emits a nodeStart and nodeEnd for the same path as two distinct items (different hooks, not merged)', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, BASE, {});
+    const exposed = new ExposedObserver(ch, { 'correlationId': CORR, 'basePath': BASE }, {});
 
     exposed.callNodeStart('scatter-body-node', state, ['scatter', 'body']);
     exposed.callNodeEnd('scatter-body-node', 'success', state, ['scatter', 'body']);
@@ -100,7 +100,12 @@ void describe('WorkerObserver — instrumentation-event coalescing', () => {
 
   void it('emits every raw event with coalesceInstrumentation: false', async () => {
     const ch = new CollectingChannel();
-    const exposed = new ExposedObserver(ch, CORR, BASE, {}, { 'coalesceInstrumentation': false });
+    const exposed = new ExposedObserver(
+      ch,
+      { 'correlationId': CORR, 'basePath': BASE },
+      {},
+      { 'coalesceInstrumentation': false },
+    );
 
     for (let i = 0; i < 25; i += 1) {
       exposed.callNodeStart('scatter-body-node', state, ['scatter', 'body']);

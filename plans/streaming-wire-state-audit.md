@@ -26,21 +26,25 @@ This audit maps the current shapes and identifies what each layer actually needs
 Contained execution uses one batched request shape:
 
 - `ExecutionRequest.graphState.states[]`
-  - one transient snapshot per item
+  - one selected transient snapshot per item
   - built in [DagContainerBase.ts](/Users/studs/Workspace/Dagonizer/packages/dagonizer/src/container/DagContainerBase.ts:340)
 - `ExecutionRequest.items[]`
   - `{ id, runIri }` only
+- `DagTask.inputState`
+  - required child-input projection contract
+  - applies identically to single-item and batched requests
 - `ExecutionRequest.responseState`
   - return projection contract only
   - built from gather/embedded placement needs
 
-Important current fact:
+Current contract:
 
-- send-side batching still snapshots each item with `state.snapshotTransientState()`
+- embedded input `domainPaths` are the child-side keys from `stateMapping.input`
+- scatter DAG-body input adds the explicit `itemKey` and `itemIndex` metadata keys
+- send-side batching snapshots every item with `snapshotTransientStateSelection(task.inputState)`
 - return-side projection is selective
-- input-side projection is not selective
 
-So the host already knows less is needed on the way back than on the way in, but the request path still sends the full transient snapshot for every item in the batch.
+The task contract is engine-internal. `ExecutionRequest` carries the selected state itself rather than repeating the selection descriptor on the wire.
 
 ### 2.2 Host restore and response
 
@@ -86,7 +90,7 @@ The core issue is broader than container transport. The same state envelope is s
 
 ### 3.1 Child execution
 
-The child needs only the fields required to continue execution from the selected entry point.
+The child receives only the fields declared by the placement input mapping plus framework control state. Scatter DAG bodies also receive the configured work-item metadata.
 
 It does not need:
 
@@ -94,10 +98,7 @@ It does not need:
 - fields owned only by downstream gathers
 - browser-facing aggregates that are not read by the child path
 
-Current violation:
-
-- `snapshotTransientState()` sends all transient fields for every contained item unless a concrete state class manually trims them
-- Cartographer works around this in [CartographerState.ts](/Users/studs/Workspace/Dagonizer/examples/the-cartographer/CartographerState.ts:686), but the framework default is still broad
+The contained dispatcher path enforces this surface through required `DagTask.inputState`. In-process execution still uses the live child clone and therefore remains a separate state-isolation concern.
 
 ### 3.2 Parent gather/fold
 
@@ -150,15 +151,15 @@ That is the right direction, but it is still an app-level optimization over a fr
 
 ## 4. Current waste by boundary
 
-### 4.1 Request boundary: over-broad input snapshot
+### 4.1 Request boundary: selected input snapshot
 
-`DagContainerBase.#composeRequest()` snapshots every item's full transient state with no input selection step.
+`DagContainerBase.#composeRequest()` snapshots every item through the task's required input selection.
 
 Effect:
 
 - batching reduces message count
-- batching does not reduce per-item payload width
-- large item batches still pay for fields the child body never reads
+- input selection reduces per-item payload width
+- a reservoir batch carries one selected transient envelope per item in one execute message
 
 ### 4.2 Response boundary: correct contract, partial coverage
 
@@ -200,16 +201,14 @@ The cartographer override trims what crosses worker boundaries, but the state ty
 
 ## 5. Dispatcher-facing design implications
 
-### 5.1 Separate input selection from response selection
+### 5.1 Input selection and response selection are separate contracts
 
-The framework already has an explicit response contract. It needs an equally explicit input contract for contained execution.
+Contained execution uses two required task contracts:
 
-Required outcome:
+- `inputState` selects the child input surface sent to the host
+- `responseState` selects the terminal child surface returned to the parent
 
-- the dispatcher computes the child input surface from the placement/body entry requirements
-- request batching carries only that selected transient input state per item
-
-Without this, send-side payload width remains “full clone state by default”.
+The dispatcher computes `inputState` from the placement mapping and scatter item metadata. There is no inferred full-state fallback.
 
 ### 5.2 Treat gather selection as the canonical parent-facing contract
 
@@ -254,19 +253,15 @@ Everything else belongs to execution, not live presentation.
 
 ## 6. Concrete follow-up work
 
-### A. Audit send-side child input requirements
+### A. Child input contract
 
-For dispatcher/container paths, identify which fields each contained body actually reads before its first mutation.
+Dispatcher/container paths use the placement contract as the child input requirement:
 
-Primary targets:
+- embedded DAG entry selects child keys from `stateMapping.input`
+- scatter DAG bodies select those child keys plus `itemKey` and `itemIndex`
+- `DagTask.inputState` applies the selection to every item in a container batch
 
-- embedded DAG entry
-- scatter DAG body
-- retained gather replay
-
-Deliverable:
-
-- one framework contract for child input selection
+Retained gather replay remains part of section B because it is parent-facing state retention rather than child-input transport.
 
 ### B. Audit retained gather paths
 
@@ -314,17 +309,16 @@ Then:
 
 The main framework issue is not “browser cannot handle a million points” in isolation.
 
-The issue is:
+The remaining issue is:
 
 - the same state object currently serves execution, gather replay, durability, and presentation concerns
-- response projection is explicit, but input projection is not
-- batching exists, but batched items still carry wider-than-needed state on multiple paths
+- input and response projection are explicit at the container boundary
+- retained replay, durable checkpoint, and browser presentation paths still carry broader state than their consumers require
 
-The dispatcher work should therefore focus on contract boundaries first:
+The remaining state-surface work follows these boundaries:
 
-1. child input surface
-2. child result surface
-3. retained replay surface
-4. browser presentation surface
+1. retained replay surface
+2. durable fold and watermark surface
+3. browser presentation surface
 
-If those are explicit and narrow, the batching strategy starts working with the framework instead of masking waste inside larger envelopes.
+The contained batching strategy carries narrow per-item input and output envelopes. The durability and presentation paths must preserve the same bounded-surface discipline.

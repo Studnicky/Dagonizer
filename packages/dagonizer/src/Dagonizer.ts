@@ -4,6 +4,7 @@ import type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
+import type { FoldJournalStoreInterface } from './contracts/FoldJournalStoreInterface.js';
 import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js';
 import type { GraphDatasetProviderInterface } from './contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
@@ -95,6 +96,7 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'validateOutputs': false,
   'observers': EMPTY_OBSERVERS,
   'graphStore': new InMemoryGraphDatasetProvider(),
+  'foldJournalStore': null,
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
@@ -189,6 +191,8 @@ export type DagonizerOptionsType = {
    * DAG choices across runs.
    */
   executionTopologyStore?: GraphDatasetInterface;
+  /** Durable atomic fold-contribution and scatter-watermark append log. */
+  foldJournalStore?: FoldJournalStoreInterface;
 }
 
 
@@ -473,6 +477,7 @@ implements DagonizerInterface<TState> {
       readonly stateMapper: StateMapper;
       readonly executionTopologyStore: GraphDatasetInterface;
       readonly inMemorySnapshotStore: GraphDatasetInterface;
+      readonly foldJournalStore: FoldJournalStoreInterface | null;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
       readonly registryVersion: string;
       readonly #containers: Readonly<Record<string, DagContainerInterface>>;
@@ -487,6 +492,7 @@ implements DagonizerInterface<TState> {
         this.stateMapper = new StateMapper(resolved.accessor);
         this.executionTopologyStore = options.executionTopologyStore ?? resolved.graphStore.root('urn:dagonizer:topology');
         this.inMemorySnapshotStore = new InMemoryTopologyStore();
+        this.foldJournalStore = resolved.foldJournalStore;
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
@@ -1097,30 +1103,31 @@ implements DagonizerInterface<TState> {
     return this.execute(dagName, state, { ...options, runIri });
   }
 
-  /**
-   * Execute the same DAG over multiple item states, returning one
-   * `Execution<TState>` per item. Each item runs independently so that
-   * abort, lifecycle, and error isolation are per-item. This is the
-   * container-side seam: `DagHost` calls it to run a received batch
-   * without exposing the batch loop as public API.
-   *
-   * Each item produces an independent `Execution`; callers iterate them and
-   * collect outcomes.
-   */
-  protected executeBatch(
+  /** Execute one scheduler work-set over a non-empty batch of item states. */
+  executeBatch(
     dagName: string,
-    batchStates: readonly TState[],
+    batch: Batch<TState>,
+    terminalByItemId: Map<string, 'completed' | 'failed'>,
     options: ExecuteOptionsType = {},
-  ): readonly Execution<TState>[] {
-    // Each item gets its own composed signal and scope — item runs are
-    // isolated, so a shared signal would incorrectly couple their abort and
-    // correlation-context lifetimes.
-    return batchStates.map((state) => {
-      const signal = Dagonizer.rootSignal(options);
-      const runIri = state.runIri;
-      const scope = this.dagExecutionScope(dagName, runIri, signal);
-      return new Execution<TState>(this.runNodes(dagName, state, null, { signal }), scope);
-    });
+  ): Execution<TState> {
+    const representative = batch.row(0).state;
+    for (const item of batch) {
+      item.state.bindGraphDatasetProvider(this.graphDatasetProvider);
+    }
+    const signal = Dagonizer.rootSignal(options);
+    const scope = this.dagExecutionScope(dagName, representative.runIri, signal);
+    return new Execution<TState>(
+      this.runNodes(
+        dagName,
+        representative,
+        null,
+        { signal },
+        { 'embedded': false },
+        [],
+        { 'inputBatch': batch, terminalByItemId },
+      ),
+      scope,
+    );
   }
 
   /**
@@ -1288,6 +1295,7 @@ implements DagonizerInterface<TState> {
     validateOutputs: boolean;
     observers: ReadonlyArray<DispatcherObserverType>;
     graphStore: GraphDatasetProviderInterface;
+    foldJournalStore: FoldJournalStoreInterface | null;
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
@@ -1297,6 +1305,7 @@ implements DagonizerInterface<TState> {
       'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
       'observers':       partial.observers ?? DAGONIZER_OPTION_DEFAULTS.observers,
       'graphStore':      partial.graphStore ?? DAGONIZER_OPTION_DEFAULTS.graphStore,
+      'foldJournalStore': partial.foldJournalStore ?? DAGONIZER_OPTION_DEFAULTS.foldJournalStore,
     };
   }
 

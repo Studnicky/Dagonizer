@@ -13,6 +13,7 @@ const GRAPH_KEY = GraphStateTerms.DAGONIZER.StateKey;
 const GRAPH_STATE_VALUE = GraphStateTerms.DAGONIZER.StateValuePredicate;
 const GRAPH_STATE_MEMBER = GraphStateTerms.DAGONIZER.StateMember;
 const GRAPH_STATE_INDEX = GraphStateTerms.DAGONIZER.StateIndex;
+const EMPTY_EXCLUDED_KEYS: ReadonlySet<string> = new Set();
 
 /** Query facade for semantic execution-state fields and nested RDF values. */
 export class GraphStateQueryService {
@@ -69,15 +70,15 @@ export class GraphStateQueryService {
     return this.bindingsFor(definition.predicate);
   }
 
-  entries(): Map<string, JsonValueType> {
+  entries(excludedKeys: ReadonlySet<string> = EMPTY_EXCLUDED_KEYS): Map<string, JsonValueType> {
     const values = new Map<string, JsonValueType>();
     const run = DagGraphTerms.namedNode(this.#runIri);
     const cells = this.#dataset.match({ "subject": run, "predicate": DagGraphTerms.namedNode(GRAPH_HAS_STATE_CELL), "graph": this.#graph });
     for (const quad of cells) {
       if (quad.object.termType !== 'NamedNode') continue;
       const key = this.#literalFor(quad.object, GRAPH_KEY);
+      if (key === undefined || excludedKeys.has(key)) continue;
       const value = this.#valueFromCell(quad.object);
-      if (key === undefined) continue;
       if (value !== undefined) {
         values.set(key, value);
         continue;

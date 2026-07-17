@@ -123,6 +123,7 @@ const runnerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'item',
+      'stateMapping': { 'input': { 'value': 'value' } },
       'execution': { 'mode': 'item', 'concurrency': 1 },
       'container': CONTAINER_ROLE,
       'outputs': {
@@ -318,9 +319,11 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const testContainer = TestContainer.inProcess();
 
     let runDagCallCount = 0;
+    const inputStates: DagTaskInterface['inputState'][] = [];
     const trackingContainer: DagContainerInterface = {
       async runDag(task, batch, options): Promise<RunResultType[]> {
         runDagCallCount++;
+        inputStates.push(task.inputState);
         return testContainer.runDag(task, batch, options);
       },
     };
@@ -339,6 +342,11 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Container must have been called once per item.
     assert.strictEqual(runDagCallCount, 3, `container.runDag must be called 3 times, got ${runDagCallCount}`);
+    assert.deepStrictEqual(inputStates, Array.from({ 'length': 3 }, () => ({
+      'mode': 'selection',
+      'domainPaths': ['value'],
+      'metadataKeys': ['item', 'itemIndex'],
+    })));
 
     // result.state must be the same reference as the initial state object.
     assert.strictEqual(result.state, state, 'result.state must be the initial state object');
