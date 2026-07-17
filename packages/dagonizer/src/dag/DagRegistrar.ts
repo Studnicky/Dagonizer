@@ -2,6 +2,7 @@ import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.j
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { DAGError } from '../errors/index.js';
@@ -11,6 +12,7 @@ import { DAGShape } from '../validation/DAGShape.js';
 import { DAGValidator } from '../validation/DAGValidator.js';
 
 import { ContextResolver } from './ContextResolver.js';
+import { WritePointPolicy } from './WritePointPolicy.js';
 
 function isAbsoluteIri(iri: string): boolean {
   return iri.startsWith('urn:') || iri.includes('://');
@@ -65,6 +67,10 @@ export interface DagRegistrarSourceInterface {
    * stored when no override is supplied so the engine never branches on presence.
    */
   readonly stateFactories: Map<string, ChildStateFactoryType>;
+  /** Resolved DAG-level write-point policy keyed by expanded DAG IRI. */
+  readonly dagWritePoints: Map<string, ReadonlySet<WritePointType>>;
+  /** Resolved placement-level write-point policy keyed by placement IRI. */
+  readonly placementWritePoints: Map<string, ReadonlySet<WritePointType>>;
   /** Plugin module specifiers keyed by context prefix and namespace IRI. */
   readonly pluginSpecifiers: Map<string, string>;
 
@@ -135,11 +141,14 @@ export class DagRegistrar {
     stagedDags.set(dagIri, dag);
     this.#validateDAGAgainstRegistry(dag, dagContext, this.#source.nodes, stagedDags);
     DAGValidator.validateReferenceGraph(stagedDags);
+    const dagWritePoints = WritePointPolicy.resolveDag(dag);
 
     this.#source.dags.set(dagIri, dag);
     this.#source.stateFactories.set(dagIri, stateFactory);
+    this.#source.dagWritePoints.set(dagIri, dagWritePoints);
     for (const node of dag.nodes) {
       this.#source.nodeIndex.set(node['@id'], node);
+      this.#source.placementWritePoints.set(node['@id'], WritePointPolicy.resolvePlacement(dag, node, dagWritePoints));
     }
   }
 
@@ -258,6 +267,8 @@ class RegistryTransaction {
   readonly #addedNodeIndexKeys: string[] = [];
   readonly #addedPluginSpecifierPrefixes: string[] = [];
   readonly #addedStateFactoryIris: string[] = [];
+  readonly #addedDagWritePointIris: string[] = [];
+  readonly #addedPlacementWritePointKeys: string[] = [];
 
   constructor(source: DagRegistrarSourceInterface) {
     this.#source = source;
@@ -319,16 +330,23 @@ class RegistryTransaction {
     const factory = stateFactories?.[dagIri] ?? ChildStateFactory.cloneParent;
     this.#source.stateFactories.set(dagIri, factory);
     this.#addedStateFactoryIris.push(dagIri);
+    const dagWritePoints = WritePointPolicy.resolveDag(dag);
+    this.#source.dagWritePoints.set(dagIri, dagWritePoints);
+    this.#addedDagWritePointIris.push(dagIri);
 
     for (const node of dag.nodes) {
       const indexKey = node['@id'];
       this.#source.nodeIndex.set(indexKey, node);
       this.#addedNodeIndexKeys.push(indexKey);
+      this.#source.placementWritePoints.set(indexKey, WritePointPolicy.resolvePlacement(dag, node, dagWritePoints));
+      this.#addedPlacementWritePointKeys.push(indexKey);
     }
   }
 
   rollback(): void {
+    for (const key of this.#addedPlacementWritePointKeys.reverse()) this.#source.placementWritePoints.delete(key);
     for (const key of this.#addedNodeIndexKeys.reverse()) this.#source.nodeIndex.delete(key);
+    for (const iri of this.#addedDagWritePointIris.reverse()) this.#source.dagWritePoints.delete(iri);
     for (const iri of this.#addedStateFactoryIris.reverse()) this.#source.stateFactories.delete(iri);
     for (const iri of this.#addedDagIris.reverse()) this.#source.dags.delete(iri);
     for (const iri of this.#addedNodeIris.reverse()) this.#source.nodes.delete(iri);
@@ -342,6 +360,8 @@ class RegistryTransaction {
     this.#addedNodeIndexKeys.length = 0;
     this.#addedPluginSpecifierPrefixes.length = 0;
     this.#addedStateFactoryIris.length = 0;
+    this.#addedDagWritePointIris.length = 0;
+    this.#addedPlacementWritePointKeys.length = 0;
   }
 
   #registerPluginSpecifierKey(key: string, specifier: string, label: string): void {

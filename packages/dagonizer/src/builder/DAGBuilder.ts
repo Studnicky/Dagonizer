@@ -14,6 +14,7 @@
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
 import { PlaceholderNode } from '../core/PlaceholderNode.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
@@ -85,6 +86,8 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
    * Defaults to `{ mode: 'item', concurrency: 1 }` when omitted.
    */
   execution?: ScatterExecutionOptionsType;
+  /** Scatter-level write-point override. Fully replaces the DAG-level set. */
+  writePoints?: readonly WritePointType[];
 }
 
 /**
@@ -125,6 +128,11 @@ export type TypedEmbeddedDAGOptionsType<
    */
   container?: string;
 }
+
+type DAGBuilderOptionsType = {
+  readonly name?: string;
+  readonly writePoints?: readonly WritePointType[];
+};
 
 /** Dynamic DAG reference accepted by the unified builder entrypoints. */
 export type DynamicDAGReferenceInputType<TFrom extends 'state' | 'item' = 'state' | 'item'> = {
@@ -176,13 +184,15 @@ export class DAGBuilder {
   readonly #iri: string;
   readonly #name: string;
   readonly #version: string;
+  readonly #writePoints: readonly WritePointType[] | undefined;
   readonly #nodes: DAGNodeType[] = [];
   readonly #entrypoints = new Map<string, string>();
 
-  constructor(iri: string, version: string, options: { readonly name?: string } = {}) {
+  constructor(iri: string, version: string, options: DAGBuilderOptionsType = {}) {
     this.#iri = DAGBuilder.requireIri(iri, 'DAG');
     this.#name = options.name ?? DAGBuilder.displayName(this.#iri);
     this.#version = version;
+    this.#writePoints = options.writePoints;
   }
 
   private static requireIri(iri: string, context: string): string {
@@ -448,6 +458,7 @@ export class DAGBuilder {
       ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
       // execution: left optional — default is `{ mode: 'item', concurrency: 1 }` at runtime (data-dependent).
       ...(resolved.execution !== undefined ? { 'execution': resolved.execution } : {}),
+      ...(resolved.writePoints !== undefined ? { 'writePoints': [...resolved.writePoints] } : {}),
     };
 
     this.#nodes.push(scatterNode);
@@ -664,6 +675,7 @@ export class DAGBuilder {
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
+      ...(this.#writePoints !== undefined ? { 'writePoints': [...this.#writePoints] } : {}),
       'entrypoints': materialized.entrypoints,
       'nodes': materialized.nodes,
     };

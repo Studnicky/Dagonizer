@@ -1,8 +1,9 @@
-/** Graph-state JSON-LD handoff published after a top-level DAG run. */
+/** Plain transient-state handoff published after a top-level DAG run. */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
+import { TransientNodeStateSchema } from '../executor/TransientNodeState.js';
+import type { TransientNodeStateType } from '../executor/TransientNodeState.js';
 
 export const DAGHandoffSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/DAGHandoff',
@@ -16,15 +17,11 @@ export const DAGHandoffSchema = {
     'registryVersion': { 'type': 'string' },
     'correlationId':   { 'type': 'string', 'minLength': 1 },
     'placementPath':   { 'type': 'array', 'items': { 'type': 'string' } },
-    'graphState': {
-      'type': 'object',
-      'required': ['@context', '@graph'],
-      'additionalProperties': true,
-    },
+    'graphState': TransientNodeStateSchema,
   },
   'additionalProperties': false,
 } as const;
 
 export type DAGHandoffType = Omit<FromSchema<typeof DAGHandoffSchema>, 'graphState'> & {
-  graphState: GraphStateJsonLdDocumentType;
+  graphState: TransientNodeStateType;
 };

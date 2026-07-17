@@ -25,14 +25,13 @@ import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { GraphStateTransferFormatType } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
-import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
-import type { InMemoryGraphStateTransferStore } from '../../src/graph/InMemoryGraphStateTransferStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { inlineTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_RESPONSE_STATE, inlineTransferEntries } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Registry module URL for DagHost dynamic import.
@@ -65,9 +64,9 @@ class TestHostPair {
   private static readonly parentSides: MessageChannelInterface[] = [];
 
   private constructor() {}
-  static create(options: { graphStateTransferStore?: InMemoryGraphStateTransferStore } = {}): { host: DagHost; parentSide: MessageChannelInterface } {
+  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
     const [parentSide, hostSide] = LoopbackChannel.pair();
-    const host = new DagHost(hostSide, options);
+    const host = new DagHost(hostSide);
     host.start();
     TestHostPair.parentSides.push(parentSide);
     return { host, parentSide };
@@ -99,7 +98,8 @@ class DagHostFixture {
     parentSide: MessageChannelInterface,
     registryModule: string = REGISTRY_MODULE_URL,
     registryVersion: string = REGISTRY_VERSION,
-    graphStateTransferFormats?: GraphStateTransferFormatType[],
+    graphStateTransferFormats: readonly GraphStateTransferFormatType[] = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS,
+    instrumentationPlacementPathDepth?: number,
   ): Promise<BridgeMessageType> {
     const reply = DagHostFixture.nextMessage(parentSide);
     parentSide.send({
@@ -107,7 +107,8 @@ class DagHostFixture {
       'registryModule': registryModule,
       'registryVersion': registryVersion,
       'servicesConfig': {},
-      ...(graphStateTransferFormats === undefined ? {} : { 'graphStateTransferFormats': graphStateTransferFormats }),
+      'graphStateTransferFormats': [...graphStateTransferFormats],
+      ...(instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': instrumentationPlacementPathDepth }),
     });
     return reply;
   }
@@ -137,15 +138,12 @@ void describe('DagHost — init handshake', () => {
       parentSide,
       REGISTRY_MODULE_URL,
       REGISTRY_VERSION,
-      ['application/ld+json', 'application/n-quads'],
+      ['application/n-quads'],
     );
 
     assert.strictEqual(reply.variant, 'ready');
     if (reply.variant === 'ready') {
-      assert.deepEqual(
-        reply.graphStateTransferFormats,
-        ['application/n-quads', 'application/ld+json'],
-      );
+      assert.deepEqual(reply.graphStateTransferFormats, ['application/n-quads']);
     }
   });
 
@@ -211,10 +209,11 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW2_DAG,   // mutator: sets value=99
         'placementPath': ['parent'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-exec-1', 'state': initialState }]),
         'items': [{ 'id': 'req-exec-1', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-1',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
@@ -232,10 +231,10 @@ void describe('DagHost — execute returns result', () => {
     }
   });
 
-  void it('returns real JSON-LD when ld+json is requested in negotiation', async () => {
+  void it('returns only N-Quads transfer payloads', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await DagHostFixture.sendInit(parentSide, REGISTRY_MODULE_URL, REGISTRY_VERSION, ['application/ld+json']);
+    const ready = await DagHostFixture.sendInit(parentSide, REGISTRY_MODULE_URL, REGISTRY_VERSION, ['application/n-quads']);
     assert.strictEqual(ready.variant, 'ready');
 
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
@@ -250,10 +249,11 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW2_DAG,
         'placementPath': ['parent'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-exec-jsonld', 'state': initialState }]),
         'items': [{ 'id': 'req-exec-jsonld', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-jsonld',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
@@ -262,13 +262,53 @@ void describe('DagHost — execute returns result', () => {
     if (result.variant === 'result') {
       const item0 = result.response.items[0];
       assert.ok(item0 !== undefined);
-      assert.ok(item0.jsonLd !== undefined, 'response item must include jsonLd when requested');
-      assert.deepEqual(item0.jsonLd['@context'], GraphStateTerms.JSON_LD_CONTEXT);
-      assert.ok(item0.jsonLd['@graph'].length > 0, 'jsonLd graph payload must not be empty');
+      assert.strictEqual(Object.hasOwn(item0, 'jsonLd'), false, 'response item must not include jsonLd in transfer payload');
     }
   });
 
-  void it('forwards intermediate messages for each node in the dag', async () => {
+  void it('drops worker instrumentation deeper than the requested placement-path depth', async () => {
+    const { parentSide } = TestHostPair.create();
+
+    const ready = await DagHostFixture.sendInit(
+      parentSide,
+      REGISTRY_MODULE_URL,
+      REGISTRY_VERSION,
+      ['application/n-quads'],
+      0,
+    );
+    assert.strictEqual(ready.variant, 'ready');
+
+    const instrumentationMessages: BridgeMessageType[] = [];
+    parentSide.onMessage((msg) => {
+      if (msg.variant === 'instrumentationBatch') instrumentationMessages.push(msg);
+    });
+
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
+      parentSide.onMessage((msg) => {
+        if (msg.variant === 'result') resolve(msg);
+      });
+    });
+
+    const initialState = new NodeStateBase();
+    parentSide.send({
+      'variant': 'execute',
+      'request': {
+        'dagName': BODY_LAW2_DAG,
+        'placementPath': ['parent'],
+        'graphState': inlineTransferEntries([{ 'id': 'req-exec-depth', 'state': initialState }]),
+        'items': [{ 'id': 'req-exec-depth', 'runIri': initialState.runIri }],
+        'timeoutMs': 5000,
+        'correlationId': 'req-exec-depth',
+        'responseState': FULL_RESPONSE_STATE,
+      },
+    });
+
+    const result = await resultPromise;
+    assert.strictEqual(result.variant, 'result');
+    assert.equal(instrumentationMessages.length, 0);
+  });
+
+  void it('does not emit live intermediate messages during execution', async () => {
     const { parentSide } = TestHostPair.create();
 
     const ready = await DagHostFixture.sendInit(parentSide);
@@ -288,23 +328,17 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,   // recorder node → done
         'placementPath': ['host'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-exec-2', 'state': initialState }]),
         'items': [{ 'id': 'req-exec-2', 'runIri': initialState.runIri }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-2',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
     await resultPromise;
 
-    // At least one intermediate should have been sent for the recorder node.
-    assert.ok(intermediates.length > 0, 'must have forwarded at least 1 intermediate message');
-    const first = intermediates[0];
-    assert.ok(first !== undefined);
-    if (first.variant === 'intermediate') {
-      assert.strictEqual(first.correlationId, 'req-exec-2');
-      assert.ok(typeof first.nodeName === 'string');
-    }
+    assert.strictEqual(intermediates.length, 0);
   });
 
   void it('returns result with items[0].terminalOutcome failed on execution error', async () => {
@@ -326,10 +360,11 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': 'dag-does-not-exist',
         'placementPath': ['host'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-exec-fail', 'state': initialState }]),
         'items': [{ 'id': 'req-exec-fail', 'runIri': initialState.runIri }],
         'timeoutMs': 1000,
         'correlationId': 'req-exec-fail',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
@@ -368,10 +403,11 @@ void describe('DagHost — abort', () => {
       'request': {
         'dagName': BODY_LAW5_DAG,   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-abort', 'state': initialState }]),
         'items': [{ 'id': 'req-abort', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-abort',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
@@ -430,10 +466,11 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,
         'placementPath': ['host'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-no-init', 'state': initialState }]),
         'items': [{ 'id': 'req-no-init', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-no-init',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
 
@@ -458,10 +495,11 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': BODY_LAW1_DAG,
         'placementPath': ['host'],
-        'graphState': inlineTransfer([initialState]),
+        'graphState': inlineTransferEntries([{ 'id': 'req-pre-init-probe', 'state': initialState }]),
         'items': [{ 'id': 'req-pre-init-probe', 'runIri': initialState.runIri }],
         'timeoutMs': null,
         'correlationId': 'req-pre-init-probe',
+        'responseState': FULL_RESPONSE_STATE,
       },
     });
     const errorReply = await errorPromise;

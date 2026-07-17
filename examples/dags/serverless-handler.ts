@@ -115,7 +115,7 @@ export class ServerlessHandler {
     }
 
     const state = new OrderState();
-    await state.restoreJsonLd(state.runIri, envelope.graphState);
+    await state.restoreTransientState(state.runIri, envelope.graphState);
 
     // 3. Build a per-invocation dispatcher with egress channels bound to terminal
     //    names. The channel publishes the next envelope after the terminal.

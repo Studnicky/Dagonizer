@@ -30,7 +30,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { inlineTransfer, emptyInlineTransfer, graphStateDocument } from '../_support/GraphStateSupport.js';
+import { inlineTransfer, emptyInlineTransfer, stateSnapshot } from '../_support/GraphStateSupport.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
@@ -475,7 +475,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
       };
 
       await dispatcher.execute(useContainer ? RUNNER_DAG_NAME : 'scatter-inprocess', state);
-      const finalSnapshot = JSON.parse(JSON.stringify(graphStateDocument(state)));
+      const finalSnapshot = JSON.parse(JSON.stringify(stateSnapshot(state)));
       return { checkpoints, finalSnapshot };
     };
 

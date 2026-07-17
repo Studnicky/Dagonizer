@@ -25,7 +25,7 @@ import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionRe
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -93,6 +93,7 @@ const validRequest = {
   'items':         [{ 'id': 'child:1', 'runIri': 'urn:dagonizer:run:child-1' }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
+  'responseState': FULL_RESPONSE_STATE,
 };
 
 void describe('ExecutionRequest schema', () => {
@@ -251,6 +252,7 @@ const validInit: BridgeMessageType = {
   'registryModule': '/some/module.js',
   'registryVersion': '1.0.0',
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 const validExecute: BridgeMessageType = {
@@ -262,6 +264,7 @@ const validExecute: BridgeMessageType = {
     'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1' }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
+    'responseState': FULL_RESPONSE_STATE,
   },
 };
 
@@ -274,6 +277,7 @@ const validExecuteNullTimeout: BridgeMessageType = {
     'items': [{ 'id': 'req-2', 'runIri': 'urn:dagonizer:run:req-2' }],
     'timeoutMs': null,
     'correlationId': 'req-2',
+    'responseState': FULL_RESPONSE_STATE,
   },
 };
 
@@ -291,6 +295,7 @@ const validReady: BridgeMessageType = {
   'variant': 'ready',
   'registryVersion': '1.0.0',
   'capabilities': [],
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 const validResult: BridgeMessageType = {
@@ -432,6 +437,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
+        'responseState': FULL_RESPONSE_STATE,
         'nodeName': 'step1',   // must be rejected: no per-node routing
       },
     };
@@ -448,6 +454,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
+        'responseState': FULL_RESPONSE_STATE,
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
@@ -461,6 +468,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'graphState': {},
         'timeoutMs': null,
         'correlationId': 'req-1',
+        'responseState': FULL_RESPONSE_STATE,
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
@@ -474,6 +482,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
         'placementPath': [],
         'graphState': {},
         'timeoutMs': null,
+        'responseState': FULL_RESPONSE_STATE,
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
@@ -487,6 +496,7 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
       'registryModule': '/some/module.js',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
+      'graphStateTransferFormats': ['application/n-quads'],
       'extra': true,
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);

@@ -391,7 +391,7 @@ export class DagConformance {
           };
 
           await dispatcher.execute(CONFORMANCE_DAG.law7, state);
-          const finalSnapshot = await state.snapshotJsonLd();
+          const finalSnapshot = state.snapshotTransientState();
           return { checkpoints, finalSnapshot };
         };
 

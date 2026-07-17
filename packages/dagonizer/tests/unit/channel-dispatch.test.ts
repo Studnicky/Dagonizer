@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ChannelDispatch, type InitMessageShapeType } from '../../src/container/ChannelDispatch.js';
+import type { GraphStateTransferFormatType } from '../../src/contracts/GraphStateTransferFormat.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
@@ -14,6 +15,8 @@ void describe('channel dispatch negotiation', () => {
       'registryModule': 'test-registry',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
+      'graphStateTransferFormats': ['application/n-quads'],
+      'instrumentationPlacementPathDepth': 1,
     };
 
     const ready = dispatch.init(init);
@@ -22,14 +25,13 @@ void describe('channel dispatch negotiation', () => {
       'registryVersion': '1.0.0',
       'capabilities': [],
       'graphStateTransferFormats': [
-        'application/ld+json',
         'application/n-quads',
       ],
     })));
 
     await ready;
 
-    assert.deepEqual(dispatch.graphStateTransferFormats, ['application/ld+json', 'application/n-quads']);
+    assert.deepEqual(dispatch.graphStateTransferFormats, ['application/n-quads']);
   });
 
   void it('forwards raw graph-state formats supplied in init', async () => {
@@ -41,10 +43,14 @@ void describe('channel dispatch negotiation', () => {
       'registryModule': 'test-registry',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
-      'graphStateTransferFormats': ['application/ld+json', 'application/n-quads'],
+      'graphStateTransferFormats': ['application/n-quads'],
+      'instrumentationPlacementPathDepth': 2,
     })) as InitMessageShapeType;
 
-    const message = new Promise<BridgeMessageType & { variant: 'init'; graphStateTransferFormats?: readonly string[] }>((resolve) => {
+    const message = new Promise<BridgeMessageType & {
+      variant: 'init';
+      graphStateTransferFormats: readonly GraphStateTransferFormatType[];
+    }>((resolve) => {
       hostSide.onMessage((msg) => {
         if (msg.variant === 'init') {
           resolve(msg);
@@ -60,10 +66,12 @@ void describe('channel dispatch negotiation', () => {
       'variant': 'ready',
       'registryVersion': init['registryVersion'],
       'capabilities': [],
+      'graphStateTransferFormats': ['application/n-quads'],
     });
 
     await initPromise;
 
-    assert.deepEqual(initMessage.graphStateTransferFormats, ['application/ld+json', 'application/n-quads']);
+    assert.deepEqual(initMessage.graphStateTransferFormats, ['application/n-quads']);
+    assert.equal(initMessage.instrumentationPlacementPathDepth, 2);
   });
 });

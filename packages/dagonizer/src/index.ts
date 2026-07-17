@@ -86,6 +86,8 @@ export type { DagReferenceEdgeType } from './graph/index.js';
 export type { GraphDatasetInterface, GraphDatasetProviderInterface, GraphDeltaRecordType, GraphJournalStoreInterface, GraphScopeType, GraphStateDeltaInterface, GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStateJsonLdNodeType, GraphStateJsonLdValueType, GraphStateLifecycleInterface, GraphStateSnapshotReferenceType, GraphStateSnapshotInterface, GraphStateTransferIdentityType, GraphStateTransferLeaseType, GraphStateTransferMetadataType, GraphStateTransferStoreInterface, GraphStateTransferType } from './contracts/index.js';
 export { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, GRAPH_STATE_TRANSFER_FORMATS } from './contracts/index.js';
 export type { GraphStateTransferFormatType } from './contracts/index.js';
+export { DEFAULT_WRITE_POINTS, WRITE_POINTS, WritePointsSchema } from './contracts/index.js';
+export type { WritePointType } from './contracts/index.js';
 
 // =============================================================================
 // SCHEMA
@@ -146,6 +148,10 @@ export {
   DAGEntrypoints,
   DAGIdentity,
   ExecutorIntermediateSchema,
+  TransientNodeStateSchema,
+  TransientNodeStateBatchSchema,
+  TransientNodeStateResponseStateSchema,
+  TransientNodeStateSelectionSchema,
   ExecutionRequestSchema,
   ExecutionResponseSchema,
   DAGHandoffSchema,
@@ -197,6 +203,10 @@ export type {
   JsonSchemaObjectType,
   JsonSchemaTypeNameType,
   ExecutorIntermediateType,
+  TransientNodeStateType,
+  TransientNodeStateBatchType,
+  TransientNodeStateResponseStateType,
+  TransientNodeStateSelectionType,
   ExecutionRequestType,
   ExecutionResponseType,
   ChatStreamChunkType,

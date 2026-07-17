@@ -107,7 +107,7 @@ declare function construct(options: DagContainerOptionsType): void;
 `DagContainerBase.defaultOptions` provides an ergonomic default for `shutdownGraceMs`:
 
 ```ts twoslash
-import { DagContainerBase } from '@studnicky/dagonizer/container';
+import { DagContainerBase, DEFAULT_GRAPH_STATE_TRANSFER_FORMATS } from '@studnicky/dagonizer/container';
 import type { DagContainerOptionsType, PoolEntryType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
@@ -123,7 +123,12 @@ class MyContainer extends DagContainerBase {
 const container = new MyContainer({
   ...DagContainerBase.defaultOptions,   // provides shutdownGraceMs default
   poolSize: 4,
-  init: { registryModule: './my-registry.js', registryVersion: '1.0.0', servicesConfig: {} },
+  init: {
+    registryModule: './my-registry.js',
+    registryVersion: '1.0.0',
+    servicesConfig: {},
+    graphStateTransferFormats: [...DEFAULT_GRAPH_STATE_TRANSFER_FORMATS],
+  },
 });
 ```
 
@@ -227,8 +232,8 @@ Static factory for `DagOutcomeType` values. Used by containers to build transpor
 import { DagOutcome } from '@studnicky/dagonizer/container';
 import type { DagOutcomeType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-// Build a transport-error outcome (correlationId required; code and message optional):
-const outcome: DagOutcomeType = DagOutcome.transportError('corr-1');
+// Build a transport-error outcome (item id + correlationId required; code and message optional):
+const outcome: DagOutcomeType = DagOutcome.transportError('item-1', 'corr-1');
 ```
 
 `DagOutcomeType` fields:

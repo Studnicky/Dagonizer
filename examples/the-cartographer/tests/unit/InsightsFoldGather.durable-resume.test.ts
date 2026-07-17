@@ -209,9 +209,9 @@ class GatherHarness {
     strategy.reduce(CONFIG, batchA, stateA, accessor);
 
     // Snapshot stateA then restore into a fresh CartographerState instance
-    const snapshot = stateA.snapshotJsonLd();
+    const snapshot = stateA.snapshotTransientState();
     const stateB = new CartographerState();
-    await stateB.restoreJsonLd(stateA.runIri, snapshot);
+    await stateB.restoreTransientState(stateA.runIri, snapshot);
 
     // Second pass on restored state — no initial() call (resume path: accumulators
     // are restored from checkpoint, not reset)
@@ -264,6 +264,7 @@ describe('InsightsFoldGather durable-resume contract', () => {
     await GatherHarness.run(strategy, state, accessor, ITEMS);
 
     const fingerprint = InsightsFingerprint.of(state);
+    assert.equal(state.processedCountExact, 6, 'exact processed count must track every folded item');
     assert.equal(fingerprint.totalShipmentCount, 6, 'all 6 items must be counted');
     assert.equal(fingerprint.journeyCount, 6, 'all 6 distinct journeys must be finalized');
 
@@ -295,6 +296,7 @@ describe('InsightsFoldGather durable-resume contract', () => {
 
     await GatherHarness.run(strategy, state, accessor, items);
 
+    assert.equal(state.processedCountExact, 205);
     assert.equal(state.sampleRecords.length, 200);
     assert.equal(state.sampleRecords[0]?.shipmentId, 'SHP-005');
     assert.equal(state.sampleRecords[199]?.shipmentId, 'SHP-204');
@@ -314,6 +316,7 @@ describe('InsightsFoldGather durable-resume contract', () => {
     const resumedState = await GatherHarness.resume(strategy, accessor, ITEMS.slice(0, 3), ITEMS.slice(3));
     const resumed = InsightsFingerprint.of(resumedState);
 
+    assert.equal(resumedState.processedCountExact, 6, 'exact processed count must survive snapshot → restore → resume');
     assert.equal(resumed.totalShipmentCount, baseline.totalShipmentCount,
       'total shipmentCount must match after resume');
     assert.equal(resumed.journeyCount, baseline.journeyCount,
@@ -349,9 +352,9 @@ describe('InsightsFoldGather durable-resume contract', () => {
     assert.ok(stateA.journeyAccumulators.size > 0, 'journeyAccumulators must be non-empty after first reduce');
 
     // Snapshot and restore
-    const snapshot = stateA.snapshotJsonLd();
+    const snapshot = stateA.snapshotTransientState();
     const stateB = new CartographerState();
-    await stateB.restoreJsonLd(stateA.runIri, snapshot);
+    await stateB.restoreTransientState(stateA.runIri, snapshot);
 
     // Confirm restored state has the accumulated insights
     assert.ok(stateB.insights.size > 0, 'restored insights must be non-empty');

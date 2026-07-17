@@ -27,15 +27,15 @@ The graph shows the feed-in explicitly. There is no seed pre-phase and no hidden
 
 ## How It Works
 
-Each source entrypoint targets a concrete embedded feed DAG. Inside that DAG, `feed-*` opens a producer-local `AsyncIterable<SourcePayload>`, `unpack-normalize` scatters the payloads through `ingest-source`, and `merge-events` emits one canonical event array for that producer.
+Each source entrypoint targets a concrete embedded feed DAG. Inside that DAG, `feed-*` opens a producer-local `AsyncIterable<SourcePayload>` onto `state.sourceFeed` and routes straight to `done` — unpacking and normalization happen downstream in the shared scatter body, not per producer.
 
-The top-level `canonical-feed` gather receives all five producer outputs and writes `state.canonicalEvents`. The shared `process-stream` scatter then enriches that canonical collection through `event-pipeline-typed`.
+The top-level `source-intake` gather receives all five producer streams and merges them into `state['source-payload']`. The shared `process-stream` scatter then decodes and enriches that payload collection through `stream-event`.
 
 ## Diagrams, Examples, and Outputs
 
 ### DAG registration and diagram
 
-The [Cartographer](./the-cartographer) enters through five data-type entrypoints. Each entrypoint targets a producer feed DAG; only after the `canonical-feed` gather completes does `process-stream` consume `state.canonicalEvents`.
+The [Cartographer](./the-cartographer) enters through five data-type entrypoints. Each entrypoint targets a producer feed DAG; only after the `source-intake` gather completes does `process-stream` consume `state['source-payload']`.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer producer feed DAG" aria-label="Cartographer producer feed JSON-LD DAG beside Mermaid generated from it." />
 
@@ -65,9 +65,9 @@ The producer feed DAGs run unpack/normalize before the open gather:
 
 <<< @/../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts#producer-feed-dags
 
-The canonical gather is the visible convergence point before the enrichment scatter:
+The source-intake gather is the visible convergence point before the enrichment scatter:
 
-<<< @/../examples/the-cartographer/core/CanonicalFeedGather.ts#canonical-feed-gather
+<<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 ## Details for Nerds
 

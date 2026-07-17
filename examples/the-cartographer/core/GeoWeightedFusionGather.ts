@@ -26,6 +26,7 @@ import type { GatherExecutionType } from '@studnicky/dagonizer/contracts';
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import type { TransientNodeStateSelectionType } from '@studnicky/dagonizer';
 
 import type { GeoResolution } from '../entities/GeoResolution.ts';
 import { GeoBaseline } from './GeoBaseline.ts';
@@ -67,6 +68,14 @@ class GeoResolutionArray {
 export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
   readonly '@id' = 'urn:noocodec:node:geo-weighted-fusion';
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': ['candidate', 'capturedErrors'],
+      'metadataKeys': [],
+    };
+  }
 
   // ── initial: reset geoCandidates accumulator in parent state ─────────────
 

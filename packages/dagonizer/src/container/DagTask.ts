@@ -11,9 +11,9 @@
 
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export type { DagTaskInterface };
@@ -26,6 +26,7 @@ export class DagTask
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
+  readonly responseState: TransientNodeStateResponseStateType;
   readonly context: NodeContextType;
 
   constructor(
@@ -34,6 +35,7 @@ export class DagTask
     correlationId: string,
     timeout: Timeout,
     state: NodeStateInterface,
+    responseState: TransientNodeStateResponseStateType,
     context: NodeContextType,
   ) {
     this.dagName = dagName;
@@ -41,6 +43,7 @@ export class DagTask
     this.correlationId = correlationId;
     this.timeout = timeout;
     this.state = state;
+    this.responseState = responseState;
     this.context = context;
   }
 
@@ -50,21 +53,19 @@ export class DagTask
    * Produces a single-item request (a batch of one); multi-item batch requests
    * are built by `DagContainerBase.runDag` directly.
    *
-   * The `graphState` here is an empty inline batch placeholder — keeping the
-   * request cheap by avoiding graph-snapshot materialization on this synchronous
-   * seam. The real combined graph payload is reconstructed from the live graph
-   * stream by `DagContainerBase` before dispatch.
+   * The `graphState` here is a single-item transient-state placeholder. The
+   * real batch payload is rebuilt by `DagContainerBase` from the live item
+   * states before dispatch.
    */
   toRequest(): ExecutionRequestType {
-    const placementIri = this.placementPath.at(-1);
-    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
     return {
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],
-      'graphState':    GraphStateTransferCodec.inlineSync([{ 'runIri': this.state.runIri, 'quads': [] }]),
+      'graphState':    { 'states': [{ 'id': this.correlationId, 'state': this.state.snapshotTransientState() }] },
       'items':         [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
       'timeoutMs':     this.timeout.toWire(),
       'correlationId': this.correlationId,
+      'responseState': this.responseState,
     };
   }
 }

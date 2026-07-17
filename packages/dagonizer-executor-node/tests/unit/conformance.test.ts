@@ -94,7 +94,11 @@ class KillAfterOneContainer implements DagContainerInterface {
     this.#killed = false;
   }
 
-  async runDag(task: Parameters<DagContainerInterface['runDag']>[0]): ReturnType<DagContainerInterface['runDag']> {
+  async runDag(
+    task: Parameters<DagContainerInterface['runDag']>[0],
+    batch: Parameters<DagContainerInterface['runDag']>[1],
+    options?: Parameters<DagContainerInterface['runDag']>[2],
+  ): ReturnType<DagContainerInterface['runDag']> {
 
     if (this.#killed) {
       // Worker pool already terminated: throw so executeItem rejects.
@@ -102,7 +106,7 @@ class KillAfterOneContainer implements DagContainerInterface {
     }
 
     // Route the first call through the real container.
-    const outcome = await this.#inner.runDag(task);
+    const outcome = await this.#inner.runDag(task, batch, options);
 
     // After the first call completes (first item acked in spawnWorker.then),
     // destroy the worker pool synchronously so the next call has no workers.

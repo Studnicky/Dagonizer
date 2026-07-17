@@ -15,7 +15,7 @@ import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionRe
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -78,6 +78,7 @@ const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
   'graphState':    emptyInlineTransfer(['child:1']),
+  'responseState': FULL_RESPONSE_STATE,
   'items':         [{ 'id': 'child:1', 'runIri': 'child:1' }],
   'timeoutMs':     null,
   'correlationId': 'child:1',

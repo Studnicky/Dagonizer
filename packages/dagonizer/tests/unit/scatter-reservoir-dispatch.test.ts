@@ -975,6 +975,7 @@ const SUITE_D_INIT: InitMessageShapeType = {
   'registryModule': 'suite-d',
   'registryVersion': SUITE_D_REGISTRY_VERSION,
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class SingleChannelContainer extends DagContainerBase<null> {

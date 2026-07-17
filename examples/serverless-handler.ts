@@ -41,7 +41,7 @@ const inbound: DAGHandoffType = {
   registryVersion: REGISTRY_VERSION,
   correlationId: 'order-001',
   placementPath: [],
-  graphState: inboundState.snapshotJsonLd(),
+  graphState: inboundState.snapshotTransientState(),
 };
 
 process.stdout.write(`[inbound]  correlationId="${inbound.correlationId}" status="pending"\n`);

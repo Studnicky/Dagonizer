@@ -170,7 +170,7 @@ export class Validator {
    * const isWidget = Validator.compile<Widget>(WidgetSchema);
    * const widget = isWidget.validate(externalJson);
    */
-  static compile<T>(schema: { readonly $id?: string }): EntityValidatorInterface<T> {
+  static compile<T>(schema: Record<string, unknown> & { readonly $id?: string }): EntityValidatorInterface<T> {
     return Validator.compileNamed<T>(schema.$id ?? '<schema>', schema);
   }
 
@@ -183,7 +183,7 @@ export class Validator {
    * this method looks the already-registered validator up before
    * compiling fresh.
    */
-  private static compileNamed<T>(name: string, schema: { readonly $id?: string }): EntityValidatorInterface<T> {
+  private static compileNamed<T>(name: string, schema: Record<string, unknown> & { readonly $id?: string }): EntityValidatorInterface<T> {
     const id = schema.$id;
     // Typed as `ValidateFunction<T>` so the compiled Ajv function IS a type
     // guard: `validator(value)` narrows `value` to `T`, making the validated

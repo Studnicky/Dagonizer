@@ -20,9 +20,11 @@ import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
+import type { TransientNodeStateResponseStateType } from '../entities/executor/TransientNodeState.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
@@ -43,7 +45,7 @@ export type RunNodeResultType = {
   'gatherRecords'?: readonly GatherRecordType[];
 };
 
-export type GatherRecordSinkType = (record: GatherRecordType) => Promise<void>;
+export type GatherRecordSinkType = (records: readonly GatherRecordType[]) => Promise<void>;
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
 export type RunOptionsType = { embedded: boolean };
@@ -78,6 +80,7 @@ export interface ScatterDispatchAdapterInterface {
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
+  readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
@@ -114,6 +117,7 @@ export interface ScatterDispatchSourceInterface {
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
+  readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
@@ -155,6 +159,7 @@ export class ScatterDispatchAdapter
   };
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
+  readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
@@ -165,6 +170,7 @@ export class ScatterDispatchAdapter
     this.stateMapper = source.stateMapper;
     this.nodes = source.nodes;
     this.dags = source.dags;
+    this.nodeIndex = source.nodeIndex;
     this.accessor = source.accessor;
     this.stateFactories = source.stateFactories;
     this.executionTopologyStore = source.executionTopologyStore;
@@ -239,6 +245,7 @@ export type ScatterRunContextType = {
   readonly aheadAcked: Map<number, string>;
   readonly outcomeTally: Map<string, number>;
   readonly gatherRecordSink: GatherRecordSinkType | null;
+  readonly responseState: TransientNodeStateResponseStateType;
 }
 
 /**
@@ -444,6 +451,7 @@ export class ScatterPoolDriver
         scatter.name,
         cloneState,
         state,
+        this.#ctx.responseState,
         scatter.container,
         signal,
         placementPath,
@@ -502,7 +510,7 @@ export class ScatterPoolDriver
     if (gatherRecordSink === null) {
       allFreshRecords.push(freshRecord);
     } else {
-      await gatherRecordSink(freshRecord);
+      await gatherRecordSink([freshRecord]);
     }
 
     ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
@@ -729,6 +737,7 @@ export class ScatterPoolDriver
           correlationId,
           Timeout.none(),
           repCloneForTask,
+          this.#ctx.responseState,
           context,
         );
         outcomes = await container.runDag(task, batch, { 'relay': scatterRelay });
@@ -746,6 +755,7 @@ export class ScatterPoolDriver
             itemCorrelationId,
             Timeout.none(),
             clone,
+            this.#ctx.responseState,
             itemContext,
           );
           const singleBatch = Batch.from([{ 'id': String(buffered.index), 'state': clone }]);
@@ -820,6 +830,7 @@ export class ScatterPoolDriver
    */
   async ackBatch(batchResult: ScatterItemBatchResultType): Promise<void> {
     const { scatter, state, inbox, allFreshRecords, watermarkRef, aheadAcked, outcomeTally, gatherRecordSink } = this.#ctx;
+    const freshRecords: GatherRecordType[] = [];
 
     // Collect all item indexes to remove up-front so the inbox scan is O(inbox)
     // total rather than O(inbox × batch) from per-item findIndex+splice.
@@ -832,9 +843,13 @@ export class ScatterPoolDriver
       if (gatherRecordSink === null) {
         allFreshRecords.push(freshRecord);
       } else {
-        await gatherRecordSink(freshRecord);
+        freshRecords.push(freshRecord);
       }
       ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
+    }
+
+    if (gatherRecordSink !== null && freshRecords.length > 0) {
+      await gatherRecordSink(freshRecords);
     }
 
     // Bulk-remove all batch items from inbox in a single O(inbox) pass.

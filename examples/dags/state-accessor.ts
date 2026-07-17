@@ -31,7 +31,7 @@ export const dotAccessor: StateAccessorInterface = new DottedPathAccessor();
 /**
  * PrefixAccessor: a custom StateAccessorInterface that silently adds a fixed namespace
  * prefix to every key before delegating to DottedPathAccessor.
- * Demonstrates the adapter contract: implement get + set, no callbacks.
+ * Demonstrates the adapter contract: implement get + set + append, no callbacks.
  */
 export class PrefixAccessor implements StateAccessorInterface {
   readonly #prefix: string;
@@ -48,6 +48,10 @@ export class PrefixAccessor implements StateAccessorInterface {
 
   set(target: object, path: string, value: unknown): void {
     this.#inner.set(target, `${this.#prefix}.${path}`, value);
+  }
+
+  append(target: object, path: string, value: unknown): void {
+    this.#inner.append(target, `${this.#prefix}.${path}`, value);
   }
 }
 // #endregion custom-accessor

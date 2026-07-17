@@ -26,6 +26,7 @@ import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import type { TransientNodeStateSelectionType } from '@studnicky/dagonizer';
 
 import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
@@ -101,6 +102,14 @@ export class InsightsFoldGather extends GatherStrategy {
   readonly name = 'insights-fold';
   readonly '@id' = 'urn:noocodec:node:insights-fold';
 
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': ['enriched', 'capturedErrors'],
+      'metadataKeys': [],
+    };
+  }
+
   // ── initial: reset accumulators in state ─────────────────────────────────
 
   override initial(
@@ -110,6 +119,7 @@ export class InsightsFoldGather extends GatherStrategy {
   ): void {
     accessor.set(state, 'insights',             new Map<string, RegionInsights>());
     accessor.set(state, 'journeyAccumulators',  new Map<string, JourneyAccumulator>());
+    accessor.set(state, 'processedCountExact',  0);
     accessor.set(state, 'sampleRecords',        []);
     accessor.set(state, 'sampleRecordsCursor',  0);
     accessor.set(state, 'sampleRecordsWrapped', false);
@@ -138,6 +148,9 @@ export class InsightsFoldGather extends GatherStrategy {
       if (!EnrichedShipmentGuard.is(rawEnriched) || !rawEnriched.shipmentId) continue;
       const enriched: EnrichedShipment = rawEnriched;
 
+      const rawProcessedCount = accessor.get(state, 'processedCountExact');
+      const processedCount = typeof rawProcessedCount === 'number' ? rawProcessedCount : 0;
+      accessor.set(state, 'processedCountExact', processedCount + 1);
       this.foldRegion(enriched, state, accessor);
       this.foldJourney(enriched, state, accessor);
       this.pushSampleRing(enriched, state, accessor);

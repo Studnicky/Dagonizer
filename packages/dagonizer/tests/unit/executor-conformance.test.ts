@@ -83,6 +83,7 @@ class LoopbackContainer extends DagContainerBase<LoopbackWorker> {
         'registryModule': registryModuleUrl,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {} satisfies JsonObjectType,
+        'graphStateTransferFormats': ['application/n-quads'],
       },
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });

@@ -4,7 +4,7 @@
  * DAG A collects items and ends at a terminal named "handoff". The
  * dispatcher is constructed with `channels: { handoff: channel }`. When
  * DAG A reaches that terminal the engine builds a DAGHandoff envelope
- * containing the full state snapshot and publishes it to the channel.
+ * containing the transient state snapshot and publishes it to the channel.
  *
  * A HandoffChannel subclass overrides the protected `onPublished` hook to
  * restore the envelope state into a fresh PipelineState and immediately run
@@ -59,7 +59,7 @@ class HandoffChannel extends InMemoryChannel {
 
   protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     const continuationState = new PipelineState();
-    await continuationState.restoreJsonLd(continuationState.runIri, handoff.graphState);
+    await continuationState.restoreTransientState(continuationState.runIri, handoff.graphState);
 
     // Execute DAG B on the restored state.
     const result = await dispatcherB.execute('urn:noocodec:dag:pipeline-b', continuationState);
@@ -115,6 +115,6 @@ if (channel.lastResultState !== null) {
   process.stdout.write(`  summary: ${channel.lastResultState.summary}\n`);
 }
 
-process.stdout.write('\nLesson: the DAGHandoff envelope carries the full state snapshot.\n');
-process.stdout.write('        Any host that can call PipelineState.restore() can continue\n');
+process.stdout.write('\nLesson: the DAGHandoff envelope carries the transient state snapshot.\n');
+process.stdout.write('        Any host that can call PipelineState.restoreTransientState() can continue\n');
 process.stdout.write('        the pipeline — no shared in-process memory required.\n');

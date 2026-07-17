@@ -11,6 +11,7 @@ import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } 
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
+import type { WritePointType } from './contracts/WritePoint.js';
 import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
@@ -27,10 +28,10 @@ import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
 import { DagGraphTerms } from './graph/DagGraphTerms.js';
-import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
 import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
-import type { NodeStateInterface } from './NodeStateBase.js';
+import { InMemoryTopologyStore } from './graph/InMemoryTopologyStore.js';
+import { NodeStateBase, type NodeStateInterface } from './NodeStateBase.js';
 import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
 import type { DispatcherHooksInterface } from './observer/ObserverRelay.js';
@@ -244,6 +245,12 @@ export interface DagonizerInterface<
    * been registered.
    */
   getChildStateFactory(dagIri: string): ChildStateFactoryType | undefined;
+  /** Resolved DAG-level write-point policy for the registered DAG, if present. */
+  getDagWritePoints(dagIri: string): readonly WritePointType[] | undefined;
+  /** Resolved write-point policy for the registered placement, if present. */
+  getPlacementWritePoints(placementIri: string): readonly WritePointType[] | undefined;
+  /** Dedicated RAM-only snapshot store populated by the `InMemorySnapshot` write point. */
+  getInMemorySnapshotStore(): GraphDatasetInterface;
 
   /**
    * List every registered DAG. Useful for visualization, contract checks,
@@ -459,10 +466,13 @@ implements DagonizerInterface<TState> {
       readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
       readonly nodeIndex = new Map<string, DAGNodeType>();
       readonly stateFactories = new Map<string, ChildStateFactoryType>();
+      readonly dagWritePoints = new Map<string, ReadonlySet<WritePointType>>();
+      readonly placementWritePoints = new Map<string, ReadonlySet<WritePointType>>();
       readonly pluginSpecifiers = new Map<string, string>();
       readonly accessor: StateAccessorInterface;
       readonly stateMapper: StateMapper;
       readonly executionTopologyStore: GraphDatasetInterface;
+      readonly inMemorySnapshotStore: GraphDatasetInterface;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
       readonly registryVersion: string;
       readonly #containers: Readonly<Record<string, DagContainerInterface>>;
@@ -476,6 +486,7 @@ implements DagonizerInterface<TState> {
         this.accessor = resolved.accessor;
         this.stateMapper = new StateMapper(resolved.accessor);
         this.executionTopologyStore = options.executionTopologyStore ?? resolved.graphStore.root('urn:dagonizer:topology');
+        this.inMemorySnapshotStore = new InMemoryTopologyStore();
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
@@ -494,6 +505,10 @@ implements DagonizerInterface<TState> {
        */
       get outputSchemaValidator(): OutputSchemaValidatorInterface | null {
         return this.#outputSchemaValidator;
+      }
+
+      resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined {
+        return this.placementWritePoints.get(placementIri);
       }
 
       /**
@@ -745,6 +760,18 @@ implements DagonizerInterface<TState> {
         }
       }
 
+      projectNodeStart(placementIri: string, batch: Batch<NodeStateInterface>): void {
+        this.#projectNodeEdges(placementIri, batch, 'started', null);
+      }
+
+      projectNodeEnd(placementIri: string, batch: Batch<NodeStateInterface>, output: string | null): void {
+        this.#projectNodeEdges(placementIri, batch, 'completed', output);
+      }
+
+      projectNodeError(placementIri: string, batch: Batch<NodeStateInterface>): void {
+        this.#projectNodeEdges(placementIri, batch, 'failed', null);
+      }
+
       /**
        * Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`,
        * then call each muxed observer's `onNodeStart` callback in registration order.
@@ -778,6 +805,58 @@ implements DagonizerInterface<TState> {
         self.onError(nodeName, error, state, placementPath, signal);
         for (const obs of this.#observers) {
           obs.onError?.(nodeName, error, state, placementPath, signal);
+        }
+      }
+
+      #projectNodeEdges(
+        placementIri: string,
+        batch: Batch<NodeStateInterface>,
+        event: 'started' | 'completed' | 'failed',
+        output: string | null,
+      ): void {
+        const writePoints = this.placementWritePoints.get(placementIri);
+        if (writePoints === undefined || !writePoints.has('NodeEdges')) return;
+        const graph = DagGraphTerms.defaultGraph();
+        const quads = [];
+        for (const item of batch) {
+          const execution = DagGraphTerms.namedNode(GraphStateTerms.placementExecutionIri(item.state.runIri, placementIri));
+          quads.push(
+            { 'subject': execution, 'predicate': DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE), 'object': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.PlacementExecution), graph },
+            { 'subject': execution, 'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.PlacementPredicate), 'object': DagGraphTerms.namedNode(placementIri), graph },
+            { 'subject': execution, 'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.LifecycleEvent), 'object': DagGraphTerms.literal(event), graph },
+          );
+          if (output !== null) {
+            quads.push({
+              'subject': execution,
+              'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Output),
+              'object': DagGraphTerms.literal(output),
+              graph,
+            });
+          }
+        }
+        this.executionTopologyStore.add(quads);
+      }
+
+      async projectStateSnapshot(placementIri: string, batch: Batch<NodeStateInterface>): Promise<void> {
+        const writePoints = this.placementWritePoints.get(placementIri);
+        if (writePoints === undefined) return;
+        const projectToExecutionStore = writePoints.has('FullItemProjection');
+        const projectToInMemoryStore = writePoints.has('InMemorySnapshot');
+        if (!projectToExecutionStore && !projectToInMemoryStore) return;
+
+        for (const item of batch) {
+          const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(item.state.runIri));
+          const quads = [];
+          for await (const quad of item.state.snapshotGraph(item.state.runIri)) quads.push(quad);
+
+          if (projectToExecutionStore) {
+            this.executionTopologyStore.clearGraph(graph);
+            this.executionTopologyStore.importGraph(quads);
+          }
+          if (projectToInMemoryStore) {
+            this.inMemorySnapshotStore.clearGraph(graph);
+            this.inMemorySnapshotStore.importGraph(quads);
+          }
         }
       }
 
@@ -896,6 +975,9 @@ implements DagonizerInterface<TState> {
     this.#host.nodes.clear();
     this.#host.dags.clear();
     this.#host.nodeIndex.clear();
+    this.#host.stateFactories.clear();
+    this.#host.dagWritePoints.clear();
+    this.#host.placementWritePoints.clear();
     this.#host.pluginSpecifiers.clear();
     this.registeredPlugins.clear();
   }
@@ -921,6 +1003,20 @@ implements DagonizerInterface<TState> {
    */
   getChildStateFactory(dagIri: string): ChildStateFactoryType | undefined {
     return this.#host.stateFactories.get(dagIri);
+  }
+
+  getDagWritePoints(dagIri: string): readonly WritePointType[] | undefined {
+    const resolved = this.#host.dagWritePoints.get(dagIri);
+    return resolved === undefined ? undefined : [...resolved];
+  }
+
+  getPlacementWritePoints(placementIri: string): readonly WritePointType[] | undefined {
+    const resolved = this.#host.placementWritePoints.get(placementIri);
+    return resolved === undefined ? undefined : [...resolved];
+  }
+
+  getInMemorySnapshotStore(): GraphDatasetInterface {
+    return this.#host.inMemorySnapshotStore;
   }
 
   /**
@@ -1080,10 +1176,14 @@ implements DagonizerInterface<TState> {
     }
     const state = factory(dataset, runIri);
     if (state.runIri !== runIri) throw new Error('State factory must construct state with the supplied run identity');
+    if (!(state instanceof NodeStateBase)) {
+      throw new DAGError('State factory must construct a NodeStateBase instance when resuming from a graph provider', { 'code': 'VALIDATION_ERROR' });
+    }
     state.bindGraphDatasetProvider(this.graphDatasetProvider);
     const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri));
-    const document = GraphStateJsonLdCodec.encode(dataset.exportGraph(graph));
-    await state.restoreJsonLd(state.runIri, document);
+    await state.restoreGraph(state.runIri, (async function *graphSnapshot() {
+      yield *dataset.exportGraph(graph);
+    })());
     return yield* this.runNodes(dagName, state, fromStage, { signal });
   }
 

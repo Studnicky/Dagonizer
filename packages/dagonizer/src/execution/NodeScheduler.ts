@@ -12,6 +12,7 @@ import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
@@ -29,6 +30,7 @@ import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
+import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
@@ -88,11 +90,21 @@ export interface NodeSchedulerSourceInterface {
   readonly executionTopologyStore: GraphDatasetInterface;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
+  /** Resolved write points for a registered placement IRI. */
+  resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined;
 
   /** Relay a flow-start event into the dispatcher's `onFlowStart` hook. */
   relayFlowStart(dagName: string, state: NodeStateInterface, signal: AbortSignal): void;
   /** Relay a flow-end event into the dispatcher's `onFlowEnd` hook. */
   relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal): void;
+  /** Project a placement-start batch into the host topology store. */
+  projectNodeStart(placementIri: string, batch: Batch<NodeStateInterface>): void;
+  /** Project a placement-completion batch into the host topology store. */
+  projectNodeEnd(placementIri: string, batch: Batch<NodeStateInterface>, output: string | null): void;
+  /** Project a placement-failure batch into the host topology store. */
+  projectNodeError(placementIri: string, batch: Batch<NodeStateInterface>): void;
+  /** Project completed item state into the configured post-completion stores. */
+  projectStateSnapshot(placementIri: string, batch: Batch<NodeStateInterface>): Promise<void>;
   /** Relay a node-start event into the dispatcher's `onNodeStart` hook. */
   relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   /** Relay a node-end event into the dispatcher's `onNodeEnd` hook. */
@@ -304,18 +316,29 @@ export class NodeScheduler {
       if (fromStage !== null && !runOptions.embedded) {
         const gatherBlob = GatherCheckpoint.read(state);
         if (gatherBlob !== undefined) {
-          await gatherBuffers.restore(gatherBlob, state);
+          const resetGatherTargets = new Set<string>();
+          await gatherBuffers.restore(gatherBlob, state, {
+            'applyContribution': (gatherKey, record) => {
+              const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
+              if (gatherTarget === undefined) return;
+              if (!resetGatherTargets.has(gatherTarget['@id'])) {
+                this.#resetGatherAccumulator(gatherTarget, state);
+                resetGatherTargets.add(gatherTarget['@id']);
+              }
+              this.#applyGatherContribution(gatherTarget, state, record.contribution);
+            },
+          });
           GatherCheckpoint.clear(state);
         }
 
         const workSetBlob = WorkSetCheckpoint.read(state);
         if (workSetBlob !== undefined) {
               // Rebuild pending from the blob: for each placement, reconstruct each
-              // item's state from its graph document, then accumulate into the
+              // item's transient state snapshot, then accumulate into the
           // work set in declaration order.
           //
-              // `state.clone()` copies the current graph; graph restore replaces
-              // the clone's run graph with the item's graph document.
+              // `state.clone()` copies the current domain/control surface;
+              // transient restore rehydrates the clone without RDF projection.
           for (const entry of workSetBlob.entries) {
             const items: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const workItem of entry.items) {
@@ -324,7 +347,7 @@ export class NodeScheduler {
                 dagIri,
                 'placementIri': entry.placement,
               });
-              await itemState.restoreJsonLd(itemState.runIri, workItem.graphState);
+              await itemState.restoreTransientState(itemState.runIri, workItem.graphState);
               entrypointSourceByState.set(itemState, workItem.source ?? this.#entrypointIri(dagIri, 'main'));
               entrypointRootByState.set(itemState, state);
               items.push({ 'id': workItem.id, 'state': itemState });
@@ -456,7 +479,7 @@ export class NodeScheduler {
                 const items: WorkSetProgressType['entries'][number]['items'] = [];
                 for (const item of batch) {
                   const source = entrypointSourceByState.get(item.state);
-                  const graphState = item.state.snapshotJsonLd(item.state.runIri);
+                  const graphState = item.state.snapshotTransientState();
                   items.push(source === undefined
                     ? { 'id': item.id, 'graphState': graphState }
                     : { 'id': item.id, source, 'graphState': graphState });
@@ -468,7 +491,14 @@ export class NodeScheduler {
             if (gatherBuffers.isEmpty()) {
               GatherCheckpoint.clear(state);
             } else {
-              GatherCheckpoint.write(state, gatherBuffers.toProgress((gatherKey) => this.#gatherTargetForBufferKey(gatherKey)?.gather));
+              GatherCheckpoint.write(state, gatherBuffers.toProgress(
+                (gatherKey) => this.#gatherTargetForBufferKey(gatherKey)?.gather,
+                (gatherKey, _gather, record) => {
+                  const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
+                  if (gatherTarget === undefined) return undefined;
+                  return this.#gatherContribution(gatherTarget, record);
+                },
+              ));
             }
           }
 
@@ -498,9 +528,11 @@ export class NodeScheduler {
         // this is identical to the single cursor state — byte-identical to today.
         const repState = batch.row(0).state;
 
+        this.#source.projectNodeStart(currentPlacementIri, batch);
         this.#source.relayNodeStart(node.name, repState, placementPath, signal, currentPlacementIri);
 
         if (Placement.isGather(node)) {
+          const completedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
           for (const item of batch) {
             const gatherKey = this.#gatherBufferKey(node, item.id);
             scheduledGatherKeys.delete(gatherKey);
@@ -518,6 +550,12 @@ export class NodeScheduler {
             }
             pending.add(nextStage, Batch.of(item.state, item.id));
             executedNodes.push(node.name);
+            const completed = completedByOutput.get(gatherRun.output);
+            if (completed !== undefined) {
+              completed.push({ 'id': item.id, 'state': item.state });
+            } else {
+              completedByOutput.set(gatherRun.output, [{ 'id': item.id, 'state': item.state }]);
+            }
             this.#source.relayNodeEnd(node.name, gatherRun.output, item.state, placementPath, signal, currentPlacementIri);
             yield {
               'output': gatherRun.output,
@@ -526,6 +564,10 @@ export class NodeScheduler {
               'state': item.state,
               'intermediateResults': [],
             };
+          }
+          for (const [output, items] of completedByOutput) {
+            this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+            await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
           }
           continue scheduleLoop;
         }
@@ -555,6 +597,8 @@ export class NodeScheduler {
             }
           }
           executedNodes.push(terminal.name);
+          this.#source.projectNodeEnd(currentPlacementIri, batch, terminal.outcome);
+          await this.#source.projectStateSnapshot(currentPlacementIri, batch);
           const terminalResult: NodeResultType<NodeStateInterface> = {
             'output': terminal.outcome,
             'skipped': false,
@@ -580,6 +624,7 @@ export class NodeScheduler {
         // early with a populated `parked` entity on the result.
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultType<NodeStateInterface>;
+          let projectedRouted: RoutedBatchType<string, NodeStateInterface> | null;
           try {
             const fired = await this.#fireSinglePlacement(node, batch, dagName, signal, dagContext);
 
@@ -600,6 +645,8 @@ export class NodeScheduler {
                 'cursor': currentPlacementIri,
                 'dagName': dagName,
               };
+              this.#source.projectNodeEnd(currentPlacementIri, batch, 'parked');
+              await this.#source.projectStateSnapshot(currentPlacementIri, batch);
               this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath, signal, currentPlacementIri);
               const parkResult = this.#composeResult(currentPlacementIri, executedNodes, skippedNodes, null, null, state, parkedEntity);
               await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, signal, placementPath);
@@ -607,6 +654,7 @@ export class NodeScheduler {
             }
 
             const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
+            projectedRouted = validated;
             nodeResult = this.#routeToPending(
               node,
               fired.dagNode,
@@ -621,6 +669,8 @@ export class NodeScheduler {
             );
           } catch (caughtError) {
             const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.projectNodeError(currentPlacementIri, batch);
+            await this.#source.projectStateSnapshot(currentPlacementIri, batch);
             this.#source.relayError(currentPlacementIri, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
@@ -645,6 +695,10 @@ export class NodeScheduler {
           }
 
           executedNodes.push(nodeResult.nodeName);
+          for (const [outputPort, subBatch] of projectedRouted?.entries() ?? []) {
+            this.#source.projectNodeEnd(currentPlacementIri, subBatch, outputPort);
+            await this.#source.projectStateSnapshot(currentPlacementIri, subBatch);
+          }
           this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath, signal, currentPlacementIri);
           yield nodeResult;
           continue scheduleLoop;
@@ -860,6 +914,21 @@ export class NodeScheduler {
             yield intermediate;
           }
 
+          const projectedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
+          for (const item of parentItems) {
+            const output = routeOutputByItemId.get(item.id);
+            if (output === undefined) continue;
+            const projected = projectedByOutput.get(output);
+            if (projected !== undefined) {
+              projected.push(item);
+            } else {
+              projectedByOutput.set(output, [item]);
+            }
+          }
+          for (const [output, items] of projectedByOutput) {
+            this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+            await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
+          }
           executedNodes.push(node.name);
           this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
@@ -912,6 +981,8 @@ export class NodeScheduler {
             // classification + lifecycle handling as the single-item path; the
             // representative state for telemetry is the batch's first item.
             const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.projectNodeError(currentPlacementIri, batch);
+            await this.#source.projectStateSnapshot(currentPlacementIri, batch);
             this.#source.relayError(currentPlacementIri, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
@@ -965,6 +1036,8 @@ export class NodeScheduler {
           } else {
             executedNodes.push(soleResult.nodeName);
           }
+          this.#source.projectNodeEnd(currentPlacementIri, batch, soleResult.output);
+          await this.#source.projectStateSnapshot(currentPlacementIri, batch);
           this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath, signal, currentPlacementIri);
           yield {
             'output': soleResult.output,
@@ -978,6 +1051,27 @@ export class NodeScheduler {
           let repOutput: string | null = composite[0]?.result.output ?? null;
           for (const entry of composite) {
             if (entry.result.output !== repOutput) { repOutput = null; break; }
+          }
+          const projectedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
+          for (const entry of composite) {
+            const output = entry.result.output;
+            if (output === null) continue;
+            const projected = projectedByOutput.get(output);
+            const item = { 'id': entry.itemId, 'state': entry.state };
+            if (projected !== undefined) {
+              projected.push(item);
+            } else {
+              projectedByOutput.set(output, [item]);
+            }
+          }
+          if (projectedByOutput.size === 0) {
+            this.#source.projectNodeEnd(currentPlacementIri, batch, null);
+            await this.#source.projectStateSnapshot(currentPlacementIri, batch);
+          } else {
+            for (const [output, items] of projectedByOutput) {
+              this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+              await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
+            }
           }
           this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
@@ -1010,6 +1104,9 @@ export class NodeScheduler {
                 }
                 pending.add(nextStage, Batch.of(entry.state, entry.itemId));
                 executedNodes.push(gatherTarget.name);
+                this.#source.projectNodeStart(gatherTarget['@id'], Batch.of(entry.state, entry.itemId));
+                this.#source.projectNodeEnd(gatherTarget['@id'], Batch.of(entry.state, entry.itemId), gatherRun.output);
+                await this.#source.projectStateSnapshot(gatherTarget['@id'], Batch.of(entry.state, entry.itemId));
                 this.#source.relayNodeEnd(gatherTarget.name, gatherRun.output, entry.state, placementPath, signal);
                 yield {
                   'output': gatherRun.output,
@@ -1171,7 +1268,7 @@ export class NodeScheduler {
     if (terminalNodeName !== null) {
       const channel = this.#source.channels[terminalNodeName];
       if (channel !== undefined) {
-        const graphState = await state.snapshotJsonLd(state.runIri);
+        const graphState = state.snapshotTransientState();
         const handoff: DAGHandoffType = {
           'dagName': dagName,
           'terminalName': terminalNodeName,
@@ -1500,6 +1597,118 @@ export class NodeScheduler {
     return undefined;
   }
 
+  #gatherContribution(gatherTarget: GatherNodeType, record: GatherRecordType): unknown | undefined {
+    const config = gatherTarget.gather;
+    const accessor = this.#source.accessor;
+
+    if (config.strategy === 'append') {
+      return {
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.item,
+      };
+    }
+
+    if (config.strategy === 'collect') {
+      return {
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.output,
+      };
+    }
+
+    if (config.strategy === 'map') {
+      const values: Record<string, unknown> = {};
+      for (const [clonePath, parentPath] of Object.entries(config.mapping ?? {})) {
+        values[parentPath] = accessor.get(record.cloneState, clonePath);
+      }
+      return { values };
+    }
+
+    if (config.strategy === 'partition') {
+      return {
+        'target': (config.partitions ?? {})[record.output] ?? null,
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.item,
+      };
+    }
+
+    return undefined;
+  }
+
+  #gatherJournalRecord(gatherTarget: GatherNodeType, record: GatherRecordType) {
+    const contribution = this.#gatherContribution(gatherTarget, record);
+    return {
+      'source': record.source,
+      'index': record.index,
+      ...(record.item === undefined ? {} : { 'item': record.item }),
+      'output': record.output,
+      'terminalOutcome': record.terminalOutcome,
+      ...(record.result === undefined ? {} : { 'result': record.result }),
+      ...(contribution === undefined ? {} : { contribution }),
+    };
+  }
+
+  #shouldJournalFoldDeltas(placementIri: string): boolean {
+    const resolved = this.#source.resolvedPlacementWritePoints(placementIri);
+    return resolved?.has('FoldDeltaJournal') === true && resolved.has('WatermarkCommit');
+  }
+
+  #applyGatherContribution(
+    gatherTarget: GatherNodeType,
+    state: NodeStateInterface,
+    contribution: unknown,
+  ): void {
+    const config = gatherTarget.gather;
+    const accessor = this.#source.accessor;
+
+    if (config.strategy === 'append' || config.strategy === 'collect') {
+      if (!JsonObject.is(contribution) || !('value' in contribution)) return;
+      if (config.target === undefined) return;
+      accessor.append(state, config.target, contribution['value']);
+      return;
+    }
+
+    if (config.strategy === 'map') {
+      if (!JsonObject.is(contribution) || !JsonObject.is(contribution['values'])) return;
+      for (const [parentPath, value] of Object.entries(contribution['values'])) {
+        accessor.append(state, parentPath, value);
+      }
+      return;
+    }
+
+    if (config.strategy === 'partition') {
+      if (!JsonObject.is(contribution) || !('target' in contribution)) return;
+      const target = typeof contribution['target'] === 'string' ? contribution['target'] : null;
+      if (target === null) return;
+      accessor.append(state, target, contribution['value']);
+    }
+  }
+
+  #resetGatherAccumulator(gatherTarget: GatherNodeType, state: NodeStateInterface): void {
+    const config = gatherTarget.gather;
+    const accessor = this.#source.accessor;
+
+    if (config.strategy === 'append' || config.strategy === 'collect') {
+      if (config.target !== undefined) accessor.set(state, config.target, []);
+      return;
+    }
+
+    if (config.strategy === 'map') {
+      for (const parentPath of Object.values(config.mapping ?? {})) {
+        accessor.set(state, parentPath, []);
+      }
+      return;
+    }
+
+    if (config.strategy === 'partition') {
+      for (const parentPath of Object.values(config.partitions ?? {})) {
+        accessor.set(state, parentPath, []);
+      }
+    }
+  }
+
   #gatherBufferKey(gatherTarget: GatherNodeType, scope: string): string {
     return `${gatherTarget['@id']}/execution/${encodeURIComponent(scope)}`;
   }
@@ -1533,6 +1742,7 @@ export class NodeScheduler {
     const routeRecords: GatherRouteRecordType[] = [];
     const retainedRecords: GatherRecordType[] = [];
     const retainRecord = this.#gather.retainsRecordsForFinalize(target);
+    const journalFoldDeltas = !retainRecord && this.#shouldJournalFoldDeltas(scatter['@id']);
 
     const storedProgress = ScatterCheckpoint.read(parentState, scatter['@id']);
     const initialized = storedProgress?.mode === 'bounded'
@@ -1540,20 +1750,28 @@ export class NodeScheduler {
       : (storedProgress?.ackedResults.length ?? 0) > 0;
 
     let binding: StreamedGatherBindingType;
-    const sink: GatherRecordSinkType = async (record) => {
-      const projected: GatherRecordType = {
+    const sink: GatherRecordSinkType = async (records) => {
+      const projectedRecords: GatherRecordType[] = records.map((record) => ({
         ...record,
         source,
         'result': this.#projectGatherResult(target, source, record.cloneState),
-      };
+      }));
+      if (projectedRecords.length === 0) return;
       if (!binding.initialized) {
         this.#gather.initialGather(target, gatherState);
         binding.initialized = true;
       }
-      await this.#gather.reduceGather(target, [projected], gatherState);
-      routeRecords.push(projected);
+      await this.#gather.reduceGather(target, projectedRecords, gatherState);
+      routeRecords.push(...projectedRecords);
       if (retainRecord) {
-        retainedRecords.push(projected);
+        retainedRecords.push(...projectedRecords);
+      }
+      if (journalFoldDeltas) {
+        GatherCheckpoint.append(
+          gatherState,
+          key,
+          projectedRecords.map((record) => this.#gatherJournalRecord(target, record)),
+        );
       }
     };
 

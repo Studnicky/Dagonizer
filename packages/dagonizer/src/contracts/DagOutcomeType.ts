@@ -7,27 +7,26 @@
  *                     `'success'` | `'error'`).
  * `errors`          — collected errors from the child run (never thrown;
  *                     always collected).
- * `graphState`      — the batch-level graph-state payload the host returned,
- *                     carried back so `DagContainerBase` can split it and
- *                     restore each clone's terminal state. Restore is owned by
- *                     the container; by the time the outcome reaches a caller
- *                     the clone is already restored. Absent on transport-error
+ * `graphState`      — the batch-level plain transient-state payload the host
+ *                     returned, carried back so `DagContainerBase` can restore
+ *                     each clone's terminal state. Restore is owned by the
+ *                     container; by the time the outcome reaches a caller the
+ *                     clone is already restored. Absent on transport-error
  *                     outcomes (no host response was produced).
- * `runIri`          — the run IRI locating this item's subgraph within
- *                     `graphState`. Absent on transport-error outcomes.
+ * `runIri`          — the run IRI for this item's restored clone. Absent on
+ *                     transport-error outcomes.
  * `intermediates`   — per-node results from the child DAG, forwarded to the
  *                     parent execution stream as intermediate yields.
  */
 
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+import type { TransientNodeStateBatchType } from '../entities/executor/TransientNodeState.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
-
-import type { GraphStateTransferType } from './GraphStateTransfer.js';
 
 export type DagOutcomeType = {
   readonly terminalOutput: string;
   readonly errors: readonly NodeErrorWireType[];
-  readonly graphState?: GraphStateTransferType;
+  readonly graphState?: TransientNodeStateBatchType;
   readonly runIri?: string;
   readonly intermediates: readonly ExecutorIntermediateType[];
 };

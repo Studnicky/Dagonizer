@@ -368,6 +368,19 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const itemsValue = entryValue['items'];
       assert.ok(Array.isArray(itemsValue), 'blob entry must have an items array');
       assert.equal(itemsValue.length, FAN_N, `blob entry must have ${FAN_N} items`);
+      const firstItem = itemsValue[0];
+      assert.ok(
+        firstItem !== null && typeof firstItem === 'object' && !Array.isArray(firstItem),
+        'first work-set item must be an object',
+      );
+      assert.ok(
+        'graphState' in firstItem && firstItem['graphState'] !== null && typeof firstItem['graphState'] === 'object' && !Array.isArray(firstItem['graphState']),
+        'first work-set item must carry a transient graphState object',
+      );
+      const graphState = firstItem['graphState'] as Record<string, unknown>;
+      assert.ok(!('@context' in graphState), 'work-set graphState must not be JSON-LD');
+      assert.ok('domain' in graphState, 'work-set graphState must carry transient domain fields');
+      assert.ok('metadata' in graphState, 'work-set graphState must carry transient metadata');
     },
   );
 

@@ -35,7 +35,7 @@ For application authors, the important knob is still scatter concurrency. With `
 
 ### DAG registration and diagram
 
-The DAG shape is standard scatter; the source path resolves to an `AsyncIterable` at runtime. [The Cartographer](./the-cartographer) is the in-browser runnable for this principle: five entrypoints target five producer feed DAGs, each feed DAG scatters its producer-local `sourceFeed` through `ingest-source`, and the top-level `canonical-feed` gather converges the outputs before `process-stream`.
+The DAG shape is standard scatter; the source path resolves to an `AsyncIterable` at runtime. [The Cartographer](./the-cartographer) is the in-browser runnable for this principle: five entrypoints target five producer feed DAGs, each feed DAG opens its producer-local `sourceFeed`, and the top-level `source-intake` gather merges the streams before `process-stream`.
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer async-source scatter DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
@@ -69,7 +69,7 @@ Producer feed nodes create one async stream per event type. Each producer feed D
 
 - **`AsyncIterable` as scatter source.** Any async generator or async-iterable value is a valid scatter source. The engine calls `.next()` lazily on each tick of the concurrency pool.
 - **Bounded-concurrency backpressure.** With `concurrency=2`, at most two clones run simultaneously. The pull loop does not call `iterator.next()` until a slot frees, capping how far ahead the generator runs. Array sources follow the same discipline — "eagerly available" only affects when data is produced, not the concurrency semantics.
-- **Resumability note.** An `AsyncIterable` on state is not captured by `Checkpoint.capture()` — generators are not JSON-serialisable. Cartographer resumes the enrichment scatter after the producer feed DAGs have emitted a checkpointable `canonicalEvents` array.
+- **Resumability note.** An `AsyncIterable` on state is not captured by `Checkpoint.capture()` — generators are not JSON-serialisable. Cartographer resumes the enrichment scatter after the producer feed DAGs and the `source-intake` gather have emitted a checkpointable `source-payload` array.
 - **Runnable source.** The Cartographer **Stream** panel is fed by the same async source path as the DAG.
 
 ## Related Concepts

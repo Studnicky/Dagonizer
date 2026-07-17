@@ -13,7 +13,7 @@ import { describe, it } from 'node:test';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
+import { stateSnapshot } from '../_support/GraphStateSupport.js';
 
 void describe('NodeStateBase: retry attempts', () => {
   void it('records and reads per-key attempt counts independently', () => {
@@ -70,15 +70,15 @@ void describe('NodeStateBase: retry attempts', () => {
     assert.equal(state.retriesFor(key), 3);
   });
 
-  void it('graph JSON-LD restore round-trips the retry budget', async () => {
+  void it('transient restore round-trips the retry budget', async () => {
     const state = new NodeStateBase();
     state.recordAttempt('extract-query');
     state.recordAttempt('extract-query');
     state.recordAttempt('decide-tools');
 
-    const snap = graphStateDocument(state);
+    const snap = stateSnapshot(state);
     const restored = new NodeStateBase();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     assert.equal(restored.retriesFor('extract-query'), 2);
     assert.equal(restored.retriesFor('decide-tools'), 1);
     assert.equal(restored.retriesFor('never-recorded'), 0);

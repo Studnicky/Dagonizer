@@ -1,16 +1,15 @@
 /**
- * SourceIntakeGather: source-payload compatibility gather.
+ * SourceIntakeGather: top-level source-payload gather.
  *
- * The current runnable Cartographer topology uses producer feed DAGs plus
- * CanonicalFeedGather. This strategy remains registered for source-payload
- * compatibility examples that can emit either a merged `state['source-payload']`
- * stream (stream-source strategy) or `state.sources` (legacy consumers).
+ * The runnable Cartographer topology gathers producer feed results into one
+ * merged source-payload collection for the process-stream scatter.
  */
 
 import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import type { TransientNodeStateSelectionType } from '@studnicky/dagonizer';
 
 import { CartographerSourceIntake } from '../nodes/sourceIntake.ts';
 
@@ -18,6 +17,14 @@ import { CartographerSourceIntake } from '../nodes/sourceIntake.ts';
 export class SourceIntakeGather extends GatherStrategy {
   readonly name = 'source-intake';
   readonly '@id' = 'urn:noocodec:node:source-intake';
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': ['sourceFeed'],
+      'metadataKeys': [],
+    };
+  }
 
   override initial(
     _config: GatherConfigType,

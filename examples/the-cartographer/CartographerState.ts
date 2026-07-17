@@ -3,8 +3,8 @@
  *
  * Top-level (cartographer DAG):
  *   - `sourceFeed`      – producer-local stream opened by one feed node
- *   - `canonicalEvents` – open-gather result consumed by process-stream
- *   - `sources`         – source-intake helper output used by compatibility flows
+ *   - `sources`         – source-intake helper mirror of the gathered payloads
+ *   - `source-payload`  – open-gather result consumed by process-stream
  *   - `eventCount`  – display/run scale hint for host tooling
  *   - `records`     – gathered from scatter clones via the 'append' gather strategy
  *   - `insights`    – fixed-size regional aggregate produced by summarizeInsights
@@ -21,9 +21,10 @@
  *   - `enriched`         – compact EnrichedShipment written by aggregate-event;
  *                          the parent gather appends this to state.records
  *
- * Checkpoint/resume: the graph round-trips durable state only.
+ * Checkpoint/resume: transient snapshots and durable checkpoints carry the
+ * durable state only.
  * Durable: eventCount, eventConfig, useStreamingSource, streamCount,
- * ingestBuckets, canonicalEvents, records, sampleRecords, enriched, insights,
+ * records, sampleRecords, enriched, insights,
  * journeyAccumulators, errorRollup.
  * Per-event scratch (sourceFeed, currentSource, decodedText, parsedRecords,
  * mappedRecords, ingestedEvents, canonical, canonicalVariant, raw, normalized,
@@ -31,11 +32,20 @@
  * coldChainBreach, customsDwellHours,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
- * AsyncIterable feed fields are not checkpointable. Resume restores
- * canonicalEvents and relies on the scatter checkpoint for exactly-once
- * process-stream continuation.
- * The scatter durable-inbox handles exactly-once delivery; un-acked items are
- * reprocessed from the inbox, not re-read from source.
+ * AsyncIterable feed fields are not checkpointable. `source-payload` itself
+ * is one: SourceIntakeGather.reduce() sets it to a round-robin AsyncIterable
+ * (CartographerSourceIntake.mergeRecords), not a materialized array — the
+ * whole point of the streaming/source-intake path is to never hold all
+ * events in memory at once. This means process-stream's scatter source is
+ * NOT index-stable, so ScatterExecutor's automatic resume gap-detection
+ * (which only applies to array/sync-iterable sources) does not apply to it;
+ * see ScatterExecutor.executeScatter's "isIndexStableSource" branch. Resuming
+ * cartographerResumeDAG directly at 'process-stream' therefore does not, by
+ * itself, reconstruct a correctly-positioned continuation of this stream —
+ * that would require the caller to regenerate the round-robin stream and
+ * skip the acked prefix before resuming, which CartographerResumableScenario
+ * does not currently do. Known gap; see
+ * plans/streaming-durability-and-state-redesign.md §9.
  */
 
 import { CanonicalEventVariantBuilder } from './entities/CanonicalEvent.ts';
@@ -68,6 +78,7 @@ import type { JourneyAccumulator } from './core/InsightsFoldGather.ts';
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { GraphScopeType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
+import type { TransientNodeStateType } from '@studnicky/dagonizer';
 
 /** Per-region aggregated insights (fixed-size accumulator). */
 export interface RegionInsights {
@@ -135,6 +146,26 @@ export interface JourneyInsights {
 
 // #region cartographer-state
 export class CartographerState extends NodeStateBase {
+  private static readonly transientDomainKeys = new Set<string>([
+    'eventCount',
+    'eventConfig',
+    'useStreamingSource',
+    'streamCount',
+    'streamChannelCapacity',
+    'records',
+    'processedCountExact',
+    'sampleRecords',
+    'sampleRecordsCursor',
+    'sampleRecordsWrapped',
+    'insights',
+    'journeys',
+    'journeyAccumulators',
+    'errorRollup',
+    'routing',
+    'capturedErrors',
+    'enriched',
+  ]);
+
   /** Number of synthetic journeys to generate; part of the checkpoint/resume serialized state. */
   eventCount: number = 200;
 
@@ -171,9 +202,7 @@ export class CartographerState extends NodeStateBase {
   streamChannelCapacity: number = 0;
 
   /**
-   * Producer-local source stream emitted by one concrete feed node. The owning
-   * producer feed DAG scatters this stream through ingest-source, then emits the
-   * resulting canonicalEvents array to the top-level open gather.
+   * Producer-local source stream emitted by one concrete feed node.
    */
   sourceFeed: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
@@ -182,25 +211,9 @@ export class CartographerState extends NodeStateBase {
    * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
    *
-   * Snapshot/restore serialises the array path only. The current Cartographer
-   * DAG reads canonicalEvents after the producer feed DAGs converge.
+   * Snapshot/restore serialises the array path only.
    */
   sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
-
-  /**
-   * Ingestion fan-in buckets: the `append` gather of the ingestion scatter
-   * appends each source clone's `ingestedEvents` array as one element here, so
-   * this is one bucket per source. The `merge-events` node flattens it into the
-   * unified `canonicalEvents` collection.
-   */
-  ingestBuckets: CanonicalEventVariant[][] = [];
-
-  /**
-   * The unified canonical event collection. Every source's decoded events are
-   * flattened into this one array (from `ingestBuckets`); the enrichment scatter
-   * then reads it.
-   */
-  canonicalEvents: CanonicalEventVariant[] = [];
 
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
   /** The source payload currently being ingested from the producer feed scatter. */
@@ -233,6 +246,9 @@ export class CartographerState extends NodeStateBase {
 
   /** Enriched shipment records gathered from scatter clones. */
   records: EnrichedShipment[] = [];
+
+  /** Exact processed enriched-record count, maintained incrementally by the fold gather. */
+  processedCountExact: number = 0;
 
   /**
    * Bounded FIFO sample of enriched scans (cap 200) produced by the
@@ -565,23 +581,18 @@ export class CartographerState extends NodeStateBase {
     const copy = super.clone(childScope); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
     copy.eventConfig = this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
-    if (Array.isArray(this.sources)) {
-      copy.sources = this.sources.map((s) => ({ ...s }));
-    } else {
-      // AsyncIterable — shared by reference
-      copy.sources = this.sources;
-    }
-    if (Array.isArray(this.sourceFeed)) {
-      copy.sourceFeed = this.sourceFeed.map((s) => ({ ...s }));
-    } else {
-      copy.sourceFeed = this.sourceFeed;
-    }
+    // Producer intake buffers stay on the parent state. Per-event worker clones
+    // read the scattered item from metadata, not from the gathered source arrays.
+    // Copying these arrays into every clone scales linearly with event count and
+    // explodes container-return memory for the browser demo.
+    copy.sources = [];
+    copy.sourceFeed = [];
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
     copy.streamChannelCapacity = this.streamChannelCapacity;
     // Parent-level accumulators: reset to defaults in child clones.
     //
-    // ingestBuckets, canonicalEvents, records, sampleRecords, insights, and
+    // records, sampleRecords, insights, and
     // journeys are scatter-gather accumulators written by the parent DAG's
     // gather strategy (InsightsFoldGather) or by post-scatter summary nodes.
     // Scatter body clones (event-pipeline-typed, ingestion) never read these
@@ -592,9 +603,8 @@ export class CartographerState extends NodeStateBase {
     // heap spike. Resetting to defaults eliminates that overhead with no loss
     // of correctness: the child never reads them, and the parent retains its
     // own live copies.
-    copy.ingestBuckets          = [];
-    copy.canonicalEvents        = [];
     copy.records                = [];
+    copy.processedCountExact    = 0;
     copy.sampleRecords          = [];
     copy.sampleRecordsCursor    = 0;
     copy.sampleRecordsWrapped   = false;
@@ -673,6 +683,23 @@ export class CartographerState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
+  override snapshotTransientState(): TransientNodeStateType {
+    const snapshot = super.snapshotTransientState();
+    const domain: Record<string, JsonObjectType[keyof JsonObjectType] | unknown> = {};
+    for (const [key, value] of Object.entries(snapshot.domain)) {
+      if (!CartographerState.transientDomainKeys.has(key)) continue;
+      domain[key] = value;
+    }
+
+    return {
+      ...snapshot,
+      domain: domain as TransientNodeStateType['domain'],
+      // Transient worker hops do not need the duplicate graph-backed mirror for
+      // the cartographer demo. Domain fields above are the only values the
+      // demo restores across isolate boundaries.
+      'graphDomain': {},
+    };
+  }
 
   // #endregion snapshot-restore
 

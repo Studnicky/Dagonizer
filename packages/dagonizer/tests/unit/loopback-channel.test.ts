@@ -37,13 +37,14 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 const INIT_MSG: BridgeMessageType = {
   'variant': 'init',
   'registryModule': '/test/module.js',
   'registryVersion': '1.0.0',
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 const SHUTDOWN_MSG: BridgeMessageType = { 'variant': 'shutdown' };
@@ -219,6 +220,7 @@ class LoopbackTask {
       'items': [{ 'id': correlationId, 'runIri': runIri }],
       'timeoutMs': null,
       'correlationId': correlationId,
+      'responseState': FULL_RESPONSE_STATE,
     };
     return {
       'dagName': 'test-dag',
@@ -226,6 +228,7 @@ class LoopbackTask {
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
+      'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {
         return request;
@@ -248,6 +251,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class SingleChannelContainer extends DagContainerBase<null> {
@@ -305,6 +309,7 @@ class LoopbackFakeHost {
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
@@ -406,6 +411,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
         pending.push({ 'correlationId': msg.request.correlationId });
@@ -483,7 +489,7 @@ void describe('worker observability: forwarded node events reach the parent obse
     // WorkerObserver does for a contained sub-DAG), then complete the request.
     hostSide.onMessage((msg: BridgeMessageType) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         hostSide.send({

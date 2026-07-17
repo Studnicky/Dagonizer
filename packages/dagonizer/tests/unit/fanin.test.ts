@@ -583,7 +583,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
   });
 
-  void it('gather checkpoint retains snapshots for built-in reducers that read clone state', async () => {
+  void it('gather checkpoint stores fold contributions for built-in reducers that read clone state', async () => {
     class ChildState extends NodeStateBase {
       static readonly FIELDS = { 'answer': 'string' } as const;
 
@@ -655,7 +655,8 @@ void describe('Dagonizer scatter gather strategies', () => {
     const retained = buffered.find((record) => record.source === entrypointIri(RETAINED_GATHER_RESULT_DAG_IRI, 'embedded-answer'));
     assert.ok(retained !== undefined, 'embedded producer record should be checkpointed');
     assert.equal(retained.result, 'forty-two');
-    assert.equal('graphState' in retained, true, 'built-in reducers need graph state for resume');
+    assert.equal('graphState' in retained, false, 'built-in reducers checkpoint contributions, not clone graph state');
+    assert.deepEqual(retained.contribution, { 'value': 'forty-two' });
 
     assert.ok(partial.cursor !== null);
     const resumed = await dispatcher.resume(RETAINED_GATHER_RESULT_DAG_IRI, partial.state, partial.cursor);
@@ -713,7 +714,15 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.equal(partial.terminalOutcome, null);
     assert.equal(partial.cursor, placementIri(SOURCE_LABEL_RESUME_DAG_IRI, 'right-node'));
-    assert.ok(partial.state.getMetadata(GATHER_PROGRESS_KEY));
+    const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined, 'gather checkpoint should be present after abort');
+    const progress = Validator.gatherProgress.validate(rawProgress);
+    const buffered = Object.values(progress.entries).flat();
+    const retained = buffered.find((record) => record.source === entrypointIri(SOURCE_LABEL_RESUME_DAG_IRI, 'left-label'));
+    assert.ok(retained !== undefined, 'left entrypoint record should be checkpointed');
+    assert.ok(retained.graphState !== undefined, 'custom gather should retain transient clone state');
+    assert.ok(!('@context' in retained.graphState), 'retained gather graphState must not be JSON-LD');
+    assert.ok('domain' in retained.graphState, 'retained gather graphState must carry transient domain fields');
 
     assert.ok(partial.cursor !== null);
     const resumed = await dispatcher.resume(SOURCE_LABEL_RESUME_DAG_IRI, partial.state, partial.cursor);

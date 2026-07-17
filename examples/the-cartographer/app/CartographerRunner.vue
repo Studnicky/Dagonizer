@@ -20,14 +20,24 @@
 
 import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue';
 
+import { CartographerBrowserRuntime } from '../CartographerBrowserRuntime.ts';
 import { CartographerState } from '../CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
-import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import type { FormatMix } from '../services.ts';
 import type { CytoscapeGraphOptionsType } from '../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
+import type { DAGType } from '../../../packages/dagonizer/src/entities/dag/DAG.ts';
+import {
+  buildLiveStreamFeed,
+  buildCartographerBrowserTelemetry,
+  CARTOGRAPHER_BROWSER_TELEMETRY_KEY,
+  parseCartographerBrowserHarness,
+  type CartographerBrowserTelemetryType,
+  type LiveStreamLineType,
+} from './cartographerBrowserHarness.ts';
+import { DiscardingGraphDataset } from './DiscardingGraphDataset.ts';
 
 import { ObservedDag } from '../../the-archivist/ObservedDag.ts';
 import { ConsoleLogger } from '../../the-archivist/logger/ConsoleLogger.ts';
@@ -60,13 +70,19 @@ type TraceEvent =
   | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** One line in the live stream feed (one gathered record per line). */
-interface StreamLine {
-  readonly shipmentId: string;
-  readonly scanSeq: number;
-  readonly status: string;
-  readonly continent: string;
-  readonly redacted: boolean;
+interface MainThreadStats {
+  flushCount: number;
+  stateRefreshCount: number;
+  skippedStateRefreshCount: number;
+  graphMutationCount: number;
+  lastFlushMs: number;
+  maxFlushMs: number;
+  totalFlushMs: number;
 }
+
+type BrowserWindowWithCartographerTelemetry = Window & typeof globalThis & {
+  [CARTOGRAPHER_BROWSER_TELEMETRY_KEY]?: CartographerBrowserTelemetryType;
+};
 
 // ── State ────────────────────────────────────────────────────────────────────
 const isRunning = ref(false);
@@ -75,10 +91,19 @@ const errorMessage = ref<string | null>(null);
 const trace = ref<TraceEvent[]>([]);
 
 /** Live streaming feed: one entry per gathered EnrichedShipment record. */
-const streamFeed = ref<StreamLine[]>([]);
+const streamFeed = ref<LiveStreamLineType[]>([]);
 
 /** 0–100 progress percentage, driven by records/total. */
 const progressPct = ref(0);
+const mainThreadStats = ref<MainThreadStats>({
+  'flushCount': 0,
+  'stateRefreshCount': 0,
+  'skippedStateRefreshCount': 0,
+  'graphMutationCount': 0,
+  'lastFlushMs': 0,
+  'maxFlushMs': 0,
+  'totalFlushMs': 0,
+});
 
 /** Total canonical events requested for the run. */
 let totalEvents = 0;
@@ -88,8 +113,6 @@ const feedContainerRef = ref<HTMLElement | null>(null);
 
 // Finished state snapshot (set after execution completes).
 const records = ref<EnrichedShipment[]>([]);
-/** Pre-stream canonical events captured in onFlowEnd (the before payloads). */
-const canonicalEvents = ref<CanonicalEventVariant[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
@@ -116,7 +139,7 @@ let runtimeDagModulesPromise:
       CartographerWorkersDag: typeof import('../dag.ts').CartographerWorkersDag;
       cartographerWorkerRuntimeBundle: typeof import('../dag.ts').cartographerWorkerRuntimeBundle;
       ingestSourceBundle: typeof import('../embedded-dags/IngestSourceDAG.ts').ingestSourceBundle;
-      producerFeedBundle: typeof import('../embedded-dags/ProducerFeedDAG.ts').producerFeedBundle;
+      streamProducerFeedBundle: typeof import('../embedded-dags/ProducerFeedDAG.ts').streamProducerFeedBundle;
       GeoSourceResolveDAG: typeof import('../embedded-dags/GeoSourceResolveDAG.ts').GeoSourceResolveDAG;
       gdprComplianceBundle: typeof import('../embedded-dags/GdprComplianceDAG.ts').gdprComplianceBundle;
       orderEnrichmentBundle: typeof import('../embedded-dags/OrderEnrichmentDAG.ts').orderEnrichmentBundle;
@@ -128,7 +151,7 @@ let topLevelDagPromise: Promise<DAGType> | null = null;
 
 function loadTopLevelDag() {
   if (topLevelDagPromise === null) {
-    topLevelDagPromise = import('../dag.ts').then((dagModule) => dagModule.cartographerWorkersDAG);
+    topLevelDagPromise = Promise.resolve(CartographerBrowserRuntime.build());
   }
   return topLevelDagPromise;
 }
@@ -156,7 +179,7 @@ function loadRuntimeDagModules() {
       CartographerWorkersDag: dagModule.CartographerWorkersDag,
       cartographerWorkerRuntimeBundle: dagModule.cartographerWorkerRuntimeBundle,
       ingestSourceBundle: ingestModule.ingestSourceBundle,
-      producerFeedBundle: producerModule.producerFeedBundle,
+      streamProducerFeedBundle: producerModule.streamProducerFeedBundle,
       GeoSourceResolveDAG: geoModule.GeoSourceResolveDAG,
       gdprComplianceBundle: gdprModule.gdprComplianceBundle,
       orderEnrichmentBundle: orderModule.orderEnrichmentBundle,
@@ -184,7 +207,7 @@ async function loadEmbeddedTopology(): Promise<void> {
 
     embeddedDagRegistry.value = new Map(
       [
-        ...modules.producerFeedBundle.dags,
+        ...modules.streamProducerFeedBundle.dags,
         ...modules.ingestSourceBundle.dags,
         ...modules.cartographerWorkerRuntimeBundle.dags,
         ...geoDocBundle.dags,
@@ -208,13 +231,6 @@ const cartographerGraphLayoutOptions = {
   edgeWeight: 4,
 } satisfies CytoscapeGraphOptionsType['layoutOptions'];
 
-/**
- * Browser graph-state contract for Cartographer demo traffic: N-Quads transfer
- * only, with inline payloads and codec-backed streaming on both sides of the
- * container boundary.
- */
-const CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS = ['application/n-quads'] as const;
-
 // ── Feed configuration ───────────────────────────────────────────────────────
 
 /**
@@ -223,7 +239,7 @@ const CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS = ['application/n-quads'] as con
  * at run time. Streaming is the only execution mode.
  */
 interface TypeRow {
-  eventType: CanonicalEventVariant['eventType'];
+  eventType: typeof CARTOGRAPHER_IRIS.intakeEventTypes[number];
   pct: number;
 }
 
@@ -349,26 +365,14 @@ const savings = computed(() => {
 });
 
 /**
- * ABox entities: pairs each EnrichedShipment (after) with its CanonicalEvent
- * (before) by matching shipmentId + scanSeq. The before payload is optional —
- * when no match is found the accordion still renders the after payload only.
+ * ABox entities: render the enriched record payload keyed by shipmentId+scanSeq.
+ * The streaming topology does not retain pre-enrichment canonical-event arrays.
  */
 const aboxEntities = computed<AboxEntity[]>(() => {
-  // Build a lookup map keyed by "shipmentId::scanSeq" for O(1) pairing.
-  const beforeMap = new Map<string, CanonicalEventVariant>();
-  for (const ev of canonicalEvents.value) {
-    const key = `${ev.shipmentId}::${ev.body.scanSeq}`;
-    // If duplicates exist, prefer the one whose epochMs matches (first wins).
-    if (!beforeMap.has(key)) {
-      beforeMap.set(key, ev);
-    }
-  }
-
   return records.value.map<AboxEntity>((after) => {
     const key = `${after.shipmentId}::${after.scanSeq}`;
-    const before = beforeMap.get(key);
     const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.status} · ${after.continent}`;
-    return { 'id': key, label, before, after };
+    return { 'id': key, label, 'before': undefined, after };
   });
 });
 
@@ -393,9 +397,45 @@ const flowHint = computed<string>(() => {
       ? `streaming ${String(progressPct.value)}%`
       : 'streaming…';
   }
-  if (isDone.value) return `${String(records.value.length)} events processed`;
+  if (isDone.value) return `${processedCount.value.toLocaleString()} events processed`;
   return 'ready';
 });
+
+const averageFlushMs = computed<number>(() => {
+  const flushCount = mainThreadStats.value.flushCount;
+  if (flushCount === 0) return 0;
+  return mainThreadStats.value.totalFlushMs / flushCount;
+});
+
+const telemetrySnapshot = computed<CartographerBrowserTelemetryType>(() =>
+  buildCartographerBrowserTelemetry({
+    'status': errorMessage.value !== null
+      ? 'failed'
+      : isRunning.value
+        ? 'running'
+        : isDone.value
+          ? 'completed'
+          : 'idle',
+    'progressPct': mainThreadStats.value.flushCount === 0 && !isRunning.value && !isDone.value
+      ? 0
+      : progressPct.value,
+    'processedCount': processedCount.value,
+    'totalEvents': totalEvents,
+    'sampleRecordCount': records.value.length,
+    'insightCount': insightsMap.value.size,
+    'journeyCount': journeysMap.value.size,
+    'errorMessage': errorMessage.value,
+    'flushCount': mainThreadStats.value.flushCount,
+    'averageFlushMs': averageFlushMs.value,
+    'lastFlushMs': mainThreadStats.value.lastFlushMs,
+    'maxFlushMs': mainThreadStats.value.maxFlushMs,
+    'stateRefreshCount': mainThreadStats.value.stateRefreshCount,
+    'skippedStateRefreshCount': mainThreadStats.value.skippedStateRefreshCount,
+    'graphMutationCount': mainThreadStats.value.graphMutationCount,
+  }),
+);
+
+const telemetryJson = computed<string>(() => JSON.stringify(telemetrySnapshot.value));
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 const leftTabs = computed(() => [
@@ -458,6 +498,11 @@ function scrollFeedToBottom(): void {
   }
 }
 
+function publishTelemetry(): void {
+  if (typeof window === 'undefined') return;
+  (window as BrowserWindowWithCartographerTelemetry)[CARTOGRAPHER_BROWSER_TELEMETRY_KEY] = telemetrySnapshot.value;
+}
+
 // ── Browser observer (class extension) ───────────────────────────────────────
 // CartographerBrowserObserver subclasses ObservedDag<CartographerState> to add
 // Vue-reactive DOM updates on top of the base leveled logging. The buffer/RAF
@@ -485,7 +530,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     // Trace records top-level node events only; inner per-clone activity is
     // conveyed through the progress bar, feed, and throttled graph lighting.
     if (placementPath.length === 0) {
-      traceBuffer.push({ 'variant': 'start', 'node': fullId, 'ts': Date.now() });
+      pushTrace({ 'variant': 'start', 'node': fullId, 'ts': Date.now() });
     }
     scheduleFlush();
   }
@@ -507,7 +552,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     frameCompletedNodes.add(fullId);
     if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
     if (placementPath.length === 0) {
-      traceBuffer.push({ 'variant': 'end', 'node': fullId, 'ts': Date.now(), output });
+      pushTrace({ 'variant': 'end', 'node': fullId, 'ts': Date.now(), output });
     }
     scheduleFlush();
   }
@@ -525,7 +570,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     }
     const fullId = [...placementPath, nodeName].join('/');
     frameErroredNode = fullId;
-    traceBuffer.push({ 'variant': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) });
+    pushTrace({ 'variant': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) });
     scheduleFlush();
   }
 
@@ -539,12 +584,12 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     // Final synchronous flush — capture the terminal state exactly.
     latestRunState = state;
     records.value = [...state.sampleRecords];
-    canonicalEvents.value = [...state.canonicalEvents];
     insightsMap.value = new Map(state.insights);
     journeysMap.value = new Map(state.journeys);
     trace.value = traceBuffer.slice(-MAX_TRACE);
     applyLiveState(state);
     progressPct.value = 100;
+    publishTelemetry();
   }
 }
 
@@ -558,11 +603,6 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
 // static sub-DAG (~dozens), never by event count.
 const MAX_TRACE = 60;
 
-// Number of drain-loop stages between macrotask yields (see the `run()`
-// drain loop). Bounds how long the main thread runs uninterrupted during a
-// 1,000,000-event stream so the tab stays responsive to paint and input.
-const DRAIN_YIELD_INTERVAL = 256;
-
 let latestRunState: CartographerState | null = null;
 let traceBuffer: TraceEvent[] = [];
 const frameActiveNodes = new Set<string>();
@@ -571,33 +611,43 @@ const frameTraversedEdges = new Set<string>();
 let frameErroredNode: string | null = null;
 let flushScheduled = false;
 let flushHandle = 0;
+let lastRenderedProcessed = -1;
 
-/** Exact processed-event count from the bounded region rollup. */
-function exactProcessed(state: CartographerState): number {
-  let sum = 0;
-  for (const region of state.insights.values()) sum += region.shipmentCount;
-  return sum;
+function pushTrace(entry: TraceEvent): void {
+  traceBuffer.push(entry);
+  if (traceBuffer.length > MAX_TRACE) {
+    traceBuffer = traceBuffer.slice(-MAX_TRACE);
+  }
 }
 
+/** Exact processed-event count from the bounded region rollup. */
 /** Push progress, feed, and processed-count from a state snapshot. */
-function applyLiveState(state: CartographerState): void {
-  const processed = exactProcessed(state);
+function applyLiveState(state: CartographerState): boolean {
+  const processed = state.processedCountExact;
+  if (processed === lastRenderedProcessed) return false;
+  lastRenderedProcessed = processed;
   processedCount.value = processed;
   if (totalEvents > 0) {
     progressPct.value = Math.min(100, Math.round((processed / totalEvents) * 100));
   }
-  streamFeed.value = state.sampleRecords.slice(-MAX_VISIBLE_FEED).map((rec) => ({
-    shipmentId: rec.shipmentId,
-    scanSeq:    rec.scanSeq,
-    status:     rec.status,
-    continent:  rec.continent,
-    redacted:   rec.redactionApplied,
-  }));
+  streamFeed.value = [...buildLiveStreamFeed(
+    state.sampleRecords,
+    state.sampleRecordsCursor,
+    state.sampleRecordsWrapped,
+    MAX_VISIBLE_FEED,
+  )];
+  return true;
 }
 
 /** Apply all buffered observer state to the DOM. Runs at most once per frame. */
 function flushLiveState(): void {
+  const startedAt = performance.now();
   flushScheduled = false;
+  const graphMutations =
+    frameCompletedNodes.size
+    + frameActiveNodes.size
+    + frameTraversedEdges.size
+    + (frameErroredNode === null ? 0 : 1);
   for (const id of frameCompletedNodes) dagGraph.value?.setCompleted(id);
   frameCompletedNodes.clear();
   for (const id of frameActiveNodes) dagGraph.value?.setActive(id);
@@ -610,10 +660,24 @@ function flushLiveState(): void {
   if (frameErroredNode !== null) { dagGraph.value?.setErrored(frameErroredNode); frameErroredNode = null; }
 
   trace.value = traceBuffer.slice(-MAX_TRACE);
+  let stateRefreshed = false;
   if (latestRunState !== null) {
-    applyLiveState(latestRunState);
-    void nextTick(scrollFeedToBottom);
+    stateRefreshed = applyLiveState(latestRunState);
+    if (stateRefreshed) {
+      void nextTick(scrollFeedToBottom);
+    }
   }
+
+  const elapsedMs = performance.now() - startedAt;
+  const stats = mainThreadStats.value;
+  stats.flushCount++;
+  stats.graphMutationCount += graphMutations;
+  stats.lastFlushMs = elapsedMs;
+  stats.totalFlushMs += elapsedMs;
+  if (elapsedMs > stats.maxFlushMs) stats.maxFlushMs = elapsedMs;
+  if (stateRefreshed) stats.stateRefreshCount++;
+  else stats.skippedStateRefreshCount++;
+  publishTelemetry();
 }
 
 function scheduleFlush(): void {
@@ -629,10 +693,21 @@ function resetLiveBuffers(): void {
   flushScheduled = false;
   latestRunState = null;
   traceBuffer = [];
+  lastRenderedProcessed = -1;
   frameActiveNodes.clear();
   frameCompletedNodes.clear();
   frameTraversedEdges.clear();
   frameErroredNode = null;
+  mainThreadStats.value = {
+    'flushCount': 0,
+    'stateRefreshCount': 0,
+    'skippedStateRefreshCount': 0,
+    'graphMutationCount': 0,
+    'lastFlushMs': 0,
+    'maxFlushMs': 0,
+    'totalFlushMs': 0,
+  };
+  publishTelemetry();
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────
@@ -644,7 +719,6 @@ async function run(): Promise<void> {
   errorMessage.value = null;
   trace.value = [];
   records.value = [];
-  canonicalEvents.value = [];
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   streamFeed.value = [];
@@ -652,18 +726,17 @@ async function run(): Promise<void> {
   progressPct.value = 0;
   totalEvents = clampedTotal.value;
   resetLiveBuffers();
+  publishTelemetry();
 
   await dagGraph.value?.reset();
 
   let dispatcher: CartographerBrowserObserver | null = null;
 
   try {
-    await loadEmbeddedTopology();
-    const runtimeModules = await loadRuntimeDagModules();
     // Offline recorded geo on both sides: the worker registry builds its own
     // recorded services record; the main thread (seed + summarize + gather) needs
     // no network. Deterministic and infeasible-to-network-at-1M.
-    const services: CartographerServices = GeoResolvers.recorded();
+    GeoResolvers.recorded();
 
     // #region cartographer-browser-containers
     // Separate role bindings use the same worker entry and registry while still
@@ -674,19 +747,18 @@ async function run(): Promise<void> {
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
       'poolSize':        clampedPoolSize.value,
-      'graphStateTransferFormats': CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS,
-      'graphStateTransferMode': 'inline-nquads',
+      'instrumentationPlacementPathDepth': 1,
     });
     const ioContainer = new CartographerWorkerContainer({
       'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
       'poolSize':        1,
-      'graphStateTransferFormats': CARTOGRAPHER_GRAPH_STATE_TRANSFER_FORMATS,
-      'graphStateTransferMode': 'inline-nquads',
+      'instrumentationPlacementPathDepth': 1,
     });
 
     dispatcher = new CartographerBrowserObserver(_cartographerLogger, {
+      'executionTopologyStore': new DiscardingGraphDataset(),
       'containers': {
         'cpu': cpuContainer,
         'io':  ioContainer,
@@ -694,17 +766,8 @@ async function run(): Promise<void> {
     });
     // #endregion cartographer-browser-containers
 
-    // Bundle registration order: sub-DAGs first so their names resolve.
-    dispatcher.registerBundle(runtimeModules.GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
-    dispatcher.registerBundle(runtimeModules.orderEnrichmentBundle);
-    dispatcher.registerBundle(runtimeModules.gdprComplianceBundle);
-    // #region cartographer-browser-plugin-registration
-    dispatcher.registerPlugin(runtimeModules.normalizeSourcesPlugin);
-    // #endregion cartographer-browser-plugin-registration
-    dispatcher.registerBundle(runtimeModules.ingestSourceBundle);
-    dispatcher.registerBundle(runtimeModules.CartographerWorkersDag.bundle(
+    dispatcher.registerBundle(CartographerBrowserRuntime.bundle(
       clampedBatchCapacity.value,
-      { 'strategy': 'stream-source' },
     ));
 
     const state = new CartographerState();
@@ -726,38 +789,28 @@ async function run(): Promise<void> {
     activeAbortController = new AbortController();
 
     // #region cartographer-streaming-execution
-    const execution = dispatcher.execute(runtimeModules.cartographerWorkersDAG['@id'], state, { 'signal': activeAbortController.signal });
-    let stagesSinceYield = 0;
-    for await (const stage of execution) {
-      // Each yielded stage lights up a node via the observer hooks above.
-      // Consume silently; the observer drives the UI.
-      void stage;
-      stagesSinceYield += 1;
-      if (stagesSinceYield >= DRAIN_YIELD_INTERVAL) {
-        stagesSinceYield = 0;
-        // Yield to a macrotask (not just a microtask) so the browser event
-        // loop gets a paint/input slot during long runs. `await`ing a
-        // resolved promise only drains microtasks and never lets the tab
-        // render — `setTimeout` schedules a real macrotask.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    }
-    await execution;
+    // The observer hooks already drive progress, feed, trace, and graph
+    // updates. Await the execution summary directly so the browser does not
+    // also drain every stage on the main thread during million-event runs.
+    await dispatcher.execute(CARTOGRAPHER_IRIS.dag.cartographer, state, {
+      'signal': activeAbortController.signal,
+    });
     // #endregion cartographer-streaming-execution
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
+    publishTelemetry();
   } finally {
     await dispatcher?.destroy();
     activeAbortController = null;
     isRunning.value = false;
     isDone.value = true;
+    publishTelemetry();
   }
 }
 
 function reset(): void {
   if (isRunning.value) return;
   records.value = [];
-  canonicalEvents.value = [];
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   trace.value = [];
@@ -768,6 +821,7 @@ function reset(): void {
   resetLiveBuffers();
   isDone.value = false;
   errorMessage.value = null;
+  publishTelemetry();
   void dagGraph.value?.reset();
 }
 
@@ -775,12 +829,27 @@ function reset(): void {
 // SSR guard: browser-only initialisation goes here.
 onMounted(() => {
   // No auto-run: the visitor clicks Run to start.
-  void primeTopLevelDag();
+  void (async () => {
+    await primeTopLevelDag();
+    const harness = parseCartographerBrowserHarness(window.location.search);
+    if (harness.totalEvents !== null) totalEventsInput.value = harness.totalEvents;
+    if (harness.poolSize !== null) poolSizeInput.value = harness.poolSize;
+    if (harness.batchCapacity !== null) batchCapacityInput.value = harness.batchCapacity;
+    publishTelemetry();
+    if (harness.loadEmbeddedTopology) await loadEmbeddedTopology();
+    if (harness.autorun) await nextTick(run);
+  })();
 });
 </script>
 
 <template>
-  <div :class="['cartographer-runner', { 'is-running': isRunning }]">
+  <div
+    :class="['cartographer-runner', { 'is-running': isRunning }]"
+    :data-cartographer-status="telemetrySnapshot.status"
+    :data-cartographer-progress="telemetrySnapshot.progressPct"
+    :data-cartographer-processed="telemetrySnapshot.processedCount"
+  >
+    <output id="cartographer-telemetry-json" hidden>{{ telemetryJson }}</output>
 
     <!-- Error banner -->
     <div v-if="errorMessage" class="cr-error-banner" role="alert">
@@ -1021,9 +1090,10 @@ onMounted(() => {
                 </button>
               </div>
               <DagGraph
+                v-if="cartographerDag !== null"
                 :key="embeddedTopologyLoaded ? 'expanded-topology' : 'parent-topology'"
                 ref="dagGraph"
-                :dag="cartographerDag ?? undefined"
+                :dag="cartographerDag"
                 :embedded-d-a-gs="embeddedDagRegistry"
                 :expand-all="embeddedTopologyLoaded"
                 id-mode="iri"
@@ -1137,11 +1207,50 @@ onMounted(() => {
                 batch size {{ clampedBatchCapacity.toLocaleString() }}
               </div>
 
+              <div class="cr-config-section">
+                <div class="cr-section-head">Main-thread flush telemetry</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <tbody>
+                    <tr>
+                      <td>Flushes</td>
+                      <td class="cr-feed-fmt mono">{{ mainThreadStats.flushCount.toLocaleString() }}</td>
+                      <td class="cr-feed-fmt">requestAnimationFrame commits</td>
+                    </tr>
+                    <tr>
+                      <td>Avg flush</td>
+                      <td class="cr-feed-fmt mono">{{ averageFlushMs.toFixed(2) }} ms</td>
+                      <td class="cr-feed-fmt">mean DOM/graph update cost</td>
+                    </tr>
+                    <tr>
+                      <td>Max flush</td>
+                      <td class="cr-feed-fmt mono">{{ mainThreadStats.maxFlushMs.toFixed(2) }} ms</td>
+                      <td class="cr-feed-fmt">worst observed frame flush</td>
+                    </tr>
+                    <tr>
+                      <td>State refreshes</td>
+                      <td class="cr-feed-fmt mono">{{ mainThreadStats.stateRefreshCount.toLocaleString() }}</td>
+                      <td class="cr-feed-fmt">feed/progress repaints with new data</td>
+                    </tr>
+                    <tr>
+                      <td>Skipped refreshes</td>
+                      <td class="cr-feed-fmt mono">{{ mainThreadStats.skippedStateRefreshCount.toLocaleString() }}</td>
+                      <td class="cr-feed-fmt">flushes that only touched graph/trace state</td>
+                    </tr>
+                    <tr>
+                      <td>Graph mutations</td>
+                      <td class="cr-feed-fmt mono">{{ mainThreadStats.graphMutationCount.toLocaleString() }}</td>
+                      <td class="cr-feed-fmt">active/completed/error/edge updates applied</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
               <div class="cr-config-note">
                 The generative streamer yields events lazily — heap stays flat regardless of total.
                 The live feed is virtualized to the most recent {{ MAX_VISIBLE_FEED }} lines and the
-                DAG/trace updates are frame-throttled, so a 1,000,000-event run does not freeze the
-                tab. The Stream badge shows the true processed count.
+                DAG/trace updates are frame-throttled. The telemetry above shows the browser-side
+                flush cost the demo is actually paying on this device; the Stream badge shows the
+                true processed count.
               </div>
 
             </div>

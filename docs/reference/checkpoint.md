@@ -265,7 +265,7 @@ declare const adapter: CheckpointRestoreAdapterInterface<{ value: number }>;
 const _result: { value: number } = adapter.restore();
 ```
 
-Contract for constructing a graph-backed state instance before `Checkpoint.restoreState()` restores its JSON-LD graph. Wrap a factory with `CheckpointRestoreAdapter.wrap(() => new MyState())`. Ships from `@studnicky/dagonizer/checkpoint`.
+Contract for constructing a state instance before `Checkpoint.restoreState()` restores its plain transient snapshot. Wrap a factory with `CheckpointRestoreAdapter.wrap(() => new MyState())`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 
@@ -330,7 +330,7 @@ import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 declare const data: CheckpointDataType;
 const _dagIri: string = data.dagName;
 const _placementIri: string | null = data.cursor;
-const _graph = data.graph;
+const _state = data.state;
 const _executedNodes: string[] = data.executedNodes;
 const _skippedNodes: string[] = data.skippedNodes;
 const _stores: CheckpointDataType['stores'] = data.stores;

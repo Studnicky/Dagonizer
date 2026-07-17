@@ -51,6 +51,8 @@
 import type { AdaptiveConfigEntity } from '@studnicky/throttle';
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { WritePointsSchema } from '../../contracts/WritePoint.js';
+
 import { DagReferenceShapeSchema } from './DagReference.js';
 
 const ScatterThrottleAdaptiveSchema = {
@@ -114,6 +116,7 @@ export const ScatterNodeSchema = {
     // A node-body scatter with container set is a validation error.
     // Bound at dispatcher construction via DagonizerOptionsType.containers.
     'container': { 'type': 'string', 'minLength': 1 },
+    'writePoints': WritePointsSchema,
     // Unified concurrency-limiting policy: ONE discriminated `mode` structure
     // instead of three uncoordinated sibling knobs. See the module doc comment
     // above for the full `item` vs `reservoir` semantics. Absent means

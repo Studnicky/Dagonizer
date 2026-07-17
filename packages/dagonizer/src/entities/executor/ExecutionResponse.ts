@@ -2,16 +2,11 @@
  * ExecutionResponse: wire-safe result returned from an isolating container
  * backend to the dispatcher after completing a whole embedded DAG.
  *
- * `graphState` is ONE batch-level payload (`GraphStateTransfer`) for the whole
- * response. In the default `combined-nquads` transport it is the union of every
- * item's terminal state graph, encoded and hashed once; in the `per-item`
- * transport (non-inline modes) it carries one full transfer per item. `items`
- * carries one `{ id, runIri, terminalOutcome, jsonLd? }` entry per item; `runIri`
- * locates the item's `${runIri}#state` subgraph within the combined payload (or
- * matches its per-item transfer), and `terminalOutcome` is the routing output
- * the child DAG resolved to for that item. `jsonLd` carries the optional ld+json
- * cold-path view when that format is negotiated. Single-item responses (N=1)
- * are a batch of one through the identical path.
+ * `graphState` is ONE batch-level plain transient-state payload for the whole
+ * response. It carries the terminal clone state as plain JSON data, batched
+ * once for the entire item set. `items` carries one `{ id, runIri,
+ * terminalOutcome }` entry per item, and `terminalOutcome` is the routing
+ * output the child DAG resolved to for that item.
  *
  * The NodeError item shape references the single-source `NodeErrorProperties`
  * const and `NodeErrorSchema.required` from `node/NodeError.ts` structurally;
@@ -23,11 +18,10 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
 import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
 
-import { GraphStateJsonLdSchema, GraphStateTransferSchema } from './GraphStateTransferSchema.js';
-import type { GraphStateTransferType } from './GraphStateTransferSchema.js';
+import { TransientNodeStateBatchSchema } from './TransientNodeState.js';
+import type { TransientNodeStateBatchType } from './TransientNodeState.js';
 
 export const ExecutionResponseSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionResponse',
@@ -36,7 +30,7 @@ export const ExecutionResponseSchema = {
   'required': ['correlationId', 'graphState', 'items', 'errors', 'intermediates'],
   'properties': {
     'correlationId': { 'type': 'string', 'minLength': 1 },
-    'graphState':    GraphStateTransferSchema,
+    'graphState':    TransientNodeStateBatchSchema,
     'items': {
       'type': 'array',
       'minItems': 1,
@@ -47,7 +41,6 @@ export const ExecutionResponseSchema = {
           'id':              { 'type': 'string', 'minLength': 1 },
           'runIri':          { 'type': 'string', 'minLength': 1 },
           'terminalOutcome': { 'type': 'string' },
-          'jsonLd':          GraphStateJsonLdSchema,
         },
         'additionalProperties': false,
       },
@@ -80,13 +73,13 @@ export const ExecutionResponseSchema = {
 
 type ExecutionResponseWireType = FromSchema<typeof ExecutionResponseSchema>;
 type ExecutionResponseItemWireType = ExecutionResponseWireType['items'][number];
-type ExecutionResponseItemType = Omit<ExecutionResponseItemWireType, 'jsonLd'> & { jsonLd?: GraphStateJsonLdDocumentType };
+type ExecutionResponseItemType = ExecutionResponseItemWireType;
 
-/** One response item: id, its state-graph run IRI, terminal outcome, and optional ld+json view. */
+/** One response item: id, its state-graph run IRI, and terminal outcome. */
 export type { ExecutionResponseItemType };
 
-/** TypeScript type derived from `ExecutionResponseSchema` with canonical graph transfer typing. */
+/** TypeScript type derived from `ExecutionResponseSchema` with plain transient-state batch typing. */
 export type ExecutionResponseType = Omit<ExecutionResponseWireType, 'graphState' | 'items'> & {
-  graphState: GraphStateTransferType;
+  graphState: TransientNodeStateBatchType;
   items: ExecutionResponseItemType[];
 };

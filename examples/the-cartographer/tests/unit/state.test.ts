@@ -92,16 +92,19 @@ describe('CartographerState#clone', () => {
     assert.equal(s.eventCount, 10);
   });
 
-  it('clone.sources array is a separate array (not shared reference)', () => {
+  it('clone clears parent intake buffers', () => {
     const s = new CartographerState();
     s.sources = [
       { 'sourceId': 'a', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
     ];
+    s.sourceFeed = [
+      { 'sourceId': 'feed-1', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
+    ];
     const c = s.clone(CLONE_SCOPE);
     assert.ok(Array.isArray(c.sources), 'clone.sources should be an array');
-    assert.ok(Array.isArray(s.sources), 's.sources should be an array');
-    c.sources.push({ 'sourceId': 'b', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' });
-    assert.equal(s.sources.length, 1);
+    assert.ok(Array.isArray(c.sourceFeed), 'clone.sourceFeed should be an array');
+    assert.equal(c.sources.length, 0);
+    assert.equal(c.sourceFeed.length, 0);
   });
 
   it('clone.raw lineItems are a separate array', () => {
@@ -133,6 +136,7 @@ describe('CartographerState#clone', () => {
   it('parent scatter accumulators are reset to defaults in the clone', () => {
     const s = new CartographerState();
     s.records = [s.enriched];
+    s.processedCountExact = 12;
     s.insights.set('Europe', {
       'region': 'Europe', 'country': '', 'hub': '',
       'deliveries': 1, 'exceptions': 0, 'onTimeCount': 1, 'lateCount': 0,
@@ -144,6 +148,7 @@ describe('CartographerState#clone', () => {
     const c = s.clone(CLONE_SCOPE);
     // Child clones should not carry parent accumulators (memory optimisation documented in CartographerState.clone)
     assert.equal(c.records.length, 0);
+    assert.equal(c.processedCountExact, 0);
     assert.equal(c.insights.size, 0);
   });
 
@@ -161,6 +166,37 @@ describe('CartographerState#clone', () => {
     const c = s.clone(CLONE_SCOPE);
     c.gdprResult.personalDataFields.push('phone');
     assert.equal(s.gdprResult.personalDataFields.length, 2);
+  });
+
+  it('snapshotTransientState keeps only the bounded worker-return surface', () => {
+    const s = new CartographerState();
+    s.decodedText = 'very large source payload';
+    s.currentSource.payload = 'raw-wire-payload';
+    s.raw.shipmentId = 'RAW-ONLY';
+    s.normalized.shipmentId = 'NORM-ONLY';
+    s.enriched.shipmentId = 'ENRICHED-ONLY';
+    s.processedCountExact = 33;
+    s.capturedErrors = [{ 'source': 'gps', 'variant': 'range', 'message': 'bad coords', 'input': '' }];
+    s.setMetadata('source-payload', {
+      'sourceId': 'raw-1',
+      'format': 'json',
+      'compression': 'none',
+      'mappingKey': 'json-position',
+      'eventType': 'position-ping',
+      'payload': 'abc',
+    });
+
+    const snapshot = s.snapshotTransientState();
+
+    assert.equal('decodedText' in snapshot.domain, false);
+    assert.equal('currentSource' in snapshot.domain, false);
+    assert.equal('raw' in snapshot.domain, false);
+    assert.equal('normalized' in snapshot.domain, false);
+    assert.equal('enriched' in snapshot.domain, true);
+    assert.equal(snapshot.domain['processedCountExact'], 33);
+    assert.equal('capturedErrors' in snapshot.domain, true);
+    assert.deepEqual(snapshot.graphDomain, {});
+    assert.ok('source-payload' in snapshot.metadata);
   });
 });
 

@@ -18,6 +18,11 @@ type GatherReducedSummaryType = {
   readonly source: string;
   readonly output: string;
   readonly terminalOutcome: 'completed' | 'failed' | null;
+  readonly contribution?: unknown;
+};
+
+type GatherProgressRestoreOptionsType = {
+  readonly applyContribution: (gatherKey: string, record: GatherRecordProgressType) => void;
 };
 
 export class GatherBuffers {
@@ -34,7 +39,7 @@ export class GatherBuffers {
     records.set(this.#recordKey(record), record);
   }
 
-  addReduced(gatherKey: string, record: GatherRecordType, retainRecord: boolean): void {
+  addReduced(gatherKey: string, record: GatherRecordType, retainRecord: boolean, contribution?: unknown): void {
     if (retainRecord) {
       this.add(gatherKey, record);
       return;
@@ -49,6 +54,7 @@ export class GatherBuffers {
       'source': record.source,
       'output': record.output,
       'terminalOutcome': record.terminalOutcome,
+      ...(contribution === undefined ? {} : { contribution }),
     });
   }
 
@@ -91,16 +97,25 @@ export class GatherBuffers {
     };
   }
 
-  async restore(progress: GatherProgressType, state: NodeStateInterface): Promise<void> {
+  async restore(
+    progress: GatherProgressType,
+    state: NodeStateInterface,
+    options: GatherProgressRestoreOptionsType,
+  ): Promise<void> {
     for (const [gatherKey, records] of Object.entries(progress.entries)) {
       for (const record of records) {
+        if (record.contribution !== undefined) {
+          options.applyContribution(gatherKey, record);
+          this.#restoreReduced(gatherKey, record);
+          continue;
+        }
         const childScope: GraphScopeType = {
           'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
           'dagIri': state.runIri,
           'placementIri': record.source,
         };
         const cloneState = state.clone(childScope);
-        if (record.graphState !== undefined) await cloneState.restoreJsonLd(cloneState.runIri, record.graphState);
+        if (record.graphState !== undefined) await cloneState.restoreTransientState(cloneState.runIri, record.graphState);
         this.add(gatherKey, {
           'source': record.source,
           'index': record.index,
@@ -114,12 +129,15 @@ export class GatherBuffers {
     }
   }
 
-  toProgress(strategyForGather: (gatherKey: string) => GatherConfigType | undefined): GatherProgressType {
+  toProgress(
+    strategyForGather: (gatherKey: string) => GatherConfigType | undefined,
+    contributionForRecord: (gatherKey: string, gather: GatherConfigType | undefined, record: GatherRecordType) => unknown | undefined,
+  ): GatherProgressType {
     const entries: GatherProgressType['entries'] = {};
     for (const [gatherKey, records] of this.#records) {
       const gather = strategyForGather(gatherKey);
       entries[gatherKey] = [...records.values()]
-        .map((record) => GatherBuffers.toProgressRecord(record, gather));
+        .map((record) => GatherBuffers.toProgressRecord(record, gather, contributionForRecord(gatherKey, gather, record)));
     }
     for (const [gatherKey, records] of this.#reduced) {
       if (entries[gatherKey] !== undefined) continue;
@@ -128,7 +146,7 @@ export class GatherBuffers {
         'index': null,
         'output': record.output,
         'terminalOutcome': record.terminalOutcome,
-        'result': null,
+        ...(record.contribution === undefined ? { 'result': null } : { 'contribution': record.contribution }),
       }));
     }
     return { entries };
@@ -142,6 +160,7 @@ export class GatherBuffers {
   private static toProgressRecord(
     record: GatherRecordType,
     gather: GatherConfigType | undefined,
+    contribution: unknown | undefined,
   ): GatherRecordProgressType {
     const item = record.item === undefined ? {} : { 'item': record.item };
     const result = record.result === undefined ? {} : { 'result': record.result };
@@ -154,6 +173,13 @@ export class GatherBuffers {
       ...result,
     };
 
+    if (contribution !== undefined) {
+      return {
+        ...base,
+        contribution,
+      };
+    }
+
     if (gather !== undefined && GatherBuffers.canCompactRecord(gather, record)) {
       return {
         ...base,
@@ -163,7 +189,7 @@ export class GatherBuffers {
 
     return {
       ...base,
-      'graphState': record.cloneState.snapshotJsonLd(record.cloneState.runIri),
+      'graphState': record.cloneState.snapshotTransientState(),
     };
   }
 
@@ -230,6 +256,27 @@ export class GatherBuffers {
   }
 
   #recordKey(record: GatherRecordType): string {
+    if (record.index !== null) return `${record.source}:${record.index}`;
+    const key = `${record.source}:scalar:${this.#scalarOrdinal}`;
+    this.#scalarOrdinal += 1;
+    return key;
+  }
+
+  #restoreReduced(gatherKey: string, record: GatherRecordProgressType): void {
+    let records = this.#reduced.get(gatherKey);
+    if (records === undefined) {
+      records = new Map<string, GatherReducedSummaryType>();
+      this.#reduced.set(gatherKey, records);
+    }
+    records.set(this.#progressRecordKey(record), {
+      'source': record.source,
+      'output': record.output,
+      'terminalOutcome': record.terminalOutcome,
+      ...(record.contribution === undefined ? {} : { 'contribution': record.contribution }),
+    });
+  }
+
+  #progressRecordKey(record: GatherRecordProgressType): string {
     if (record.index !== null) return `${record.source}:${record.index}`;
     const key = `${record.source}:scalar:${this.#scalarOrdinal}`;
     this.#scalarOrdinal += 1;

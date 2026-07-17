@@ -86,6 +86,8 @@ export type { GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStat
 export type { GraphStateLifecycleInterface } from './GraphStateLifecycleInterface.js';
 export type { GraphStateTransferType } from './GraphStateTransfer.js';
 export { GRAPH_STATE_TRANSFER_FORMATS, DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from './GraphStateTransferFormat.js';
+export { DEFAULT_WRITE_POINTS, WRITE_POINTS, WritePointsSchema } from './WritePoint.js';
+export type { WritePointType } from './WritePoint.js';
 export type { GraphStateTransferIdentityType, GraphStateTransferMetadataType } from './GraphStateTransferMetadata.js';
 export type { GraphStateSnapshotReferenceType } from './GraphStateSnapshotReference.js';
 export type { GraphStateTransferLeaseType } from './GraphStateTransferLease.js';

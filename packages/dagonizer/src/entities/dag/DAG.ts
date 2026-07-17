@@ -13,6 +13,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 import { DagonizerContexts } from '../../context/DagonizerContexts.js';
+import { WritePointsSchema } from '../../contracts/WritePoint.js';
 
 import { EmbeddedDAGNodeSchema } from './EmbeddedDAGNode.js';
 import { GatherNodeSchema } from './GatherNode.js';
@@ -80,6 +81,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'resultField': { '@id': `${NS}resultField` },
   'policy':      { '@id': `${NS}policy` },
   'reducer':     { '@id': `${NS}reducer` },
+  'writePoints': { '@id': `${NS}writePoints`, '@container': '@set' },
 
   // terminal properties
   'outcome': { '@id': `${NS}outcome` },
@@ -130,6 +132,7 @@ export const DAGSchema = {
     '@type':    { 'type': 'string', 'const': 'DAG' },
     'name':       { 'type': 'string', 'minLength': 1 },
     'version':    { 'type': 'string', 'minLength': 1 },
+    'writePoints': WritePointsSchema,
     'entrypoints': {
       'type': 'object',
       'minProperties': 1,

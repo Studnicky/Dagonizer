@@ -31,6 +31,7 @@ import { Batch, Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 import { DagTask } from '@studnicky/dagonizer/container';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
+import type { TransientNodeStateResponseStateType } from '@studnicky/dagonizer/entities';
 import { Timeout } from '@studnicky/dagonizer/runtime';
 import {
   ConformanceRegistry,
@@ -376,6 +377,7 @@ class ZombieWorker implements WebWorkerLikeInterface {
         'variant': 'ready',
         'registryVersion': Reflect.get(message, 'registryVersion'),
         'capabilities': [],
+        'graphStateTransferFormats': ['application/n-quads'],
       };
       setImmediate(() => {
         for (const listener of this.#mainListeners) {
@@ -452,14 +454,18 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
       'validateOutputs': false,
       'outputSchemaValidator': null,
     };
+    const responseState: TransientNodeStateResponseStateType = {
+      'defaultSelection': { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] },
+      'outputSelections': {},
+    };
 
     const task1 = new DagTask(
       'p0-dag', [], 'corr-1', Timeout.none(),
-      new ConformanceState(), context,
+      new ConformanceState(), responseState, context,
     );
     const task2 = new DagTask(
       'p0-dag', [], 'corr-2', Timeout.none(),
-      new ConformanceState(), context,
+      new ConformanceState(), responseState, context,
     );
 
     // Launch both runDag calls concurrently. runDag #1 will acquire + hang

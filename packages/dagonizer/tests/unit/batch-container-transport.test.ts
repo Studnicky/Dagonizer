@@ -32,7 +32,7 @@ import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { inlineTransfer, emptyInlineTransfer, requestItems } from '../_support/GraphStateSupport.js';
+import { FULL_RESPONSE_STATE, inlineTransfer, emptyInlineTransfer, requestItems } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TestState
@@ -52,6 +52,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class BatchTestTask {
@@ -68,6 +69,7 @@ class BatchTestTask {
       correlationId,
       'timeout': Timeout.none(),
       state,
+      'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {
         return {
@@ -77,6 +79,7 @@ class BatchTestTask {
           'items': requestItems([{ 'id': correlationId, state }]),
           'timeoutMs': null,
           correlationId,
+          'responseState': FULL_RESPONSE_STATE,
         };
       },
     };
@@ -128,7 +131,7 @@ void describe('batch-container-transport: (a) single-item batch produces one res
 
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         // Single-item batch (a batch of one): respond with items[0] carrying terminalOutcome.
@@ -158,7 +161,8 @@ void describe('batch-container-transport: (a) single-item batch produces one res
     assert.strictEqual(outcome.terminalOutput, 'completed');
     // items[0].snapshot → outcome.graphState
     assert.ok(outcome.graphState);
-    assert.equal(outcome.graphState.transport, 'inline-nquads');
+    assert.strictEqual(outcome.graphState.states.length, 1);
+    assert.strictEqual(outcome.graphState.states[0]?.id, 'single-1');
     assert.deepStrictEqual(outcome.errors, []);
     assert.deepStrictEqual(outcome.intermediates, []);
   });
@@ -169,7 +173,7 @@ void describe('batch-container-transport: (a) single-item batch produces one res
 
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         hostSide.send({
@@ -211,14 +215,14 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
     // one entry per item, each with a deterministic terminalOutcome.
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId, items } = msg.request;
         hostSide.send({
           'variant': 'result',
           'response': {
             correlationId,
-            'graphState': emptyInlineTransfer(items.map((item) => item.runIri)),
+            'graphState': emptyInlineTransfer(items.map((item) => item.id)),
             'items': items.map((item) => ({
               'id': item.id,
               'runIri': item.runIri,
@@ -257,7 +261,7 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
     // Each result is keyed by its item id.
     assert.strictEqual(results[0]?.id, 'item-A');
     assert.strictEqual(results[0]?.terminalOutput, 'done-item-A');
-    assert.equal(results[0]?.graphState?.transport, 'inline-nquads');
+    assert.strictEqual(results[0]?.graphState?.states.length, 3);
 
     assert.strictEqual(results[1]?.id, 'item-B');
     assert.strictEqual(results[1]?.terminalOutput, 'done-item-B');
@@ -274,7 +278,7 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
 
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         receivedRequests.push(msg);
         const { correlationId, items } = msg.request;
@@ -282,7 +286,7 @@ void describe('batch-container-transport: (b) multi-item batch returns N results
           'variant': 'result',
           'response': {
             correlationId,
-            'graphState': emptyInlineTransfer(items.map((item) => item.runIri)),
+            'graphState': emptyInlineTransfer(items.map((item) => item.id)),
             'items': items.map((item) => ({
               'id': item.id,
               'runIri': item.runIri,
@@ -360,6 +364,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
             'variant': 'ready',
             'registryVersion': msg.registryVersion,
             'capabilities': [],
+            'graphStateTransferFormats': ['application/n-quads'],
           });
         });
         return;

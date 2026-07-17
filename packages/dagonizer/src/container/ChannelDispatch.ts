@@ -131,10 +131,9 @@ export class ChannelDispatch {
         'registryModule': message['registryModule'],
         'registryVersion': message['registryVersion'],
         'servicesConfig': message['servicesConfig'],
-        ...(message['graphStateTransferFormats'] === undefined
-          ? {}
-          : { 'graphStateTransferFormats': [...message['graphStateTransferFormats']] }),
+        'graphStateTransferFormats': [...message['graphStateTransferFormats']],
         ...(message['coalesceInstrumentation'] === undefined ? {} : { 'coalesceInstrumentation': message['coalesceInstrumentation'] }),
+        ...(message['instrumentationPlacementPathDepth'] === undefined ? {} : { 'instrumentationPlacementPathDepth': message['instrumentationPlacementPathDepth'] }),
       });
     });
   }
@@ -287,9 +286,7 @@ export class ChannelDispatch {
           ));
         } else {
           this.#capabilities = [...m.capabilities];
-          this.#graphStateTransferFormats = m.graphStateTransferFormats === undefined
-            ? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS
-            : [...m.graphStateTransferFormats];
+          this.#graphStateTransferFormats = [...m.graphStateTransferFormats];
           waiter.resolve();
         }
       },

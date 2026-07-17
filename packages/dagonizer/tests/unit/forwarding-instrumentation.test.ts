@@ -104,4 +104,22 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
       assert.deepStrictEqual(msg.items[0]?.placementPath, ['a', 'b', 'c']);
     }
   });
+
+  void it('drops events deeper than instrumentationPlacementPathDepth before they cross the worker boundary', async () => {
+    const ch = new CollectingChannel();
+    const exposed = new ExposedObserver(ch, CORR, ['parent'], {}, { 'instrumentationPlacementPathDepth': 1 });
+
+    exposed.callNodeStart('kept', state, []);
+    exposed.callNodeStart('dropped', state, ['child']);
+    await Promise.resolve();
+
+    const msg = ch.sent[0];
+    assert.ok(msg !== undefined);
+    assert.strictEqual(msg.variant, 'instrumentationBatch');
+    if (msg.variant === 'instrumentationBatch') {
+      assert.equal(msg.items.length, 1);
+      assert.equal(msg.items[0]?.nodeName, 'kept');
+      assert.deepStrictEqual(msg.items[0]?.placementPath, ['parent']);
+    }
+  });
 });

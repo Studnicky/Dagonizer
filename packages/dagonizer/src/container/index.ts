@@ -31,3 +31,8 @@ export {
   DAG_CONTAINER_WORKER_DIED,
   TransportErrorCode,
 } from './TransportErrorCode.js';
+export {
+  DEFAULT_GRAPH_STATE_TRANSFER_FORMATS,
+  GRAPH_STATE_TRANSFER_FORMATS,
+} from '../contracts/GraphStateTransferFormat.js';
+export type { GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';

@@ -1,5 +1,10 @@
 /** Supported graph-state transfer formats (wire-contract negotiation values). */
-export type GraphStateTransferFormatType = 'application/n-quads' | 'application/ld+json';
+export type GraphStateTransferFormatType = 'application/n-quads';
 
-/** Graph-state envelopes; JSON-LD is the Node.js IR and N-Quads is the transfer serialization. */
+/**
+ * Graph-state envelopes for graph snapshot persistence and export surfaces.
+ *
+ * Container execution no longer uses these envelopes for transient worker
+ * state; it uses `TransientNodeStateBatch` plain JSON snapshots instead.
+ */
 export type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';

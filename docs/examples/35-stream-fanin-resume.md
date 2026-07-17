@@ -21,21 +21,21 @@ import { cartographerResumeDAG } from '../exampleDags.ts';
 
 ## What It Is
 
-Stream Resume Cursor is the streaming counterpart to scatter resume. The Cartographer aborts the canonical event scatter, reads `StreamCursor.resumeAfter(...)`, restores the canonical feed output and scatter checkpoint, and resumes without duplicate processing.
+Stream Resume Cursor is the streaming counterpart to scatter resume. The Cartographer aborts the source-payload scatter, reads `StreamCursor.resumeAfter(...)`, restores the merged source-intake output and scatter checkpoint, and resumes without duplicate processing.
 
 The source must be regenerable and ordered. Given that, Dagonizer can reconnect the resumed scatter to the right point in the stream.
 
 ## How It Works
 
-The scatter stores durable progress in checkpoint state. On resume, `StreamCursor.resumeAfter(...)` reports the safe continuation point for `process-stream`; the restored `canonicalEvents` collection and scatter checkpoint let the dispatcher skip acknowledged items and replay only uncertain or remaining work.
+The scatter stores durable progress in checkpoint state. On resume, `StreamCursor.resumeAfter(...)` reports the safe continuation point for `process-stream`; the restored `state['source-payload']` collection and scatter checkpoint let the dispatcher skip acknowledged items and replay only uncertain or remaining work.
 
-This divides responsibility cleanly: the producer feed DAGs create canonical input, while the process scatter records what it has safely pulled and acknowledged.
+This divides responsibility cleanly: the producer feed DAGs and the `source-intake` gather merge the source input, while the process scatter records what it has safely pulled and acknowledged.
 
 ## Diagrams, Examples, and Outputs
 
 ### DAG registration and diagram
 
-The [Cartographer](./the-cartographer) resume DAG uses the same producer feed topology as the main DAG, but the enrichment scatter runs in item mode so abort can land between pulls. `StreamCursor.resumeAfter(state, 'process-stream')` reads the durable pull count from checkpoint state; resume continues from `process-stream` using the restored `canonicalEvents` array and scatter checkpoint.
+The [Cartographer](./the-cartographer) resume DAG uses the same producer feed topology as the main DAG, but the enrichment scatter runs in item mode so abort can land between pulls. `StreamCursor.resumeAfter(state, 'process-stream')` reads the durable pull count from checkpoint state; resume continues from `process-stream` using the restored `source-payload` array and scatter checkpoint.
 
 <DagJsonMermaid :dag="cartographerResumeDAG" title="Cartographer resumable stream DAG" aria-label="Cartographer resumable stream JSON-LD DAG beside Mermaid generated from it." />
 
@@ -59,9 +59,9 @@ The producer feed DAGs create the canonical input before the resumable scatter:
 
 <<< @/../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts#producer-feed-dags
 
-The canonical open gather is the DAG-visible convergence point before the resumable scatter:
+The source-intake open gather is the DAG-visible convergence point before the resumable scatter:
 
-<<< @/../examples/the-cartographer/core/CanonicalFeedGather.ts#canonical-feed-gather
+<<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 The CLI scenario aborts, resumes, and compares fingerprints:
 

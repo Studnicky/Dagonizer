@@ -80,7 +80,6 @@ class WorkersHarness {
   /** Execute the workers pipeline and drain the stage iterator. Returns final state. */
   static async runPipeline(
     config?: CartographerState['eventConfig'],
-    strategy: 'canonical' | 'stream-source' = 'canonical',
     capacity: number = 1000,
   ): Promise<CartographerState> {
     const dispatcher = WorkersHarness.dispatcher();
@@ -88,9 +87,9 @@ class WorkersHarness {
     const activeConfig = config ?? WorkersHarness.minimalEventConfig();
     state.eventConfig = activeConfig;
     state.eventCount = activeConfig.reduce((acc, item) => acc + item.count, 0);
-    state.streamCount = strategy === 'stream-source' ? state.eventCount : 0;
-    state.useStreamingSource = strategy === 'stream-source';
-    dispatcher.registerBundle(CartographerWorkersDag.bundle(capacity, { 'strategy': strategy }));
+    state.streamCount = state.eventCount;
+    state.useStreamingSource = true;
+    dispatcher.registerBundle(CartographerWorkersDag.bundle(capacity));
 
     const execution = dispatcher.execute('urn:noocodec:dag:cartographer', state);
     for await (const _stage of execution) { /* drain stages */ }
@@ -129,9 +128,17 @@ describe('Cartographer workers-bundle registration', () => {
     const bundle = CartographerWorkersDag.bundle();
     const dag = bundle.dags.find((candidate) => candidate['@id'] === CARTOGRAPHER_IRIS.dag.cartographer);
     assert.ok(dag, 'cartographer DAG must be registered');
+    assert.deepEqual(dag.writePoints, ['NodeEdges', 'WatermarkCommit']);
 
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
-    const feedSources = CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer);
+    const sourceBindings = Object.freeze(
+      Object.fromEntries(
+        CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+          CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, eventType),
+          { 'resultField': 'sourceFeed' },
+        ]),
+      ),
+    );
 
     assert.deepEqual(dag.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographer));
     assert.ok(!dag.nodes.some((node) => node['@type'] === 'PhaseNode'), 'workers cartographer must not use a pre-phase intake node');
@@ -142,7 +149,7 @@ describe('Cartographer workers-bundle registration', () => {
       assert.ok(feedPlacementNode, `feed placement for '${source}' must exist`);
       assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
       if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`feed placement '${source}' must be an EmbeddedDAGNode`);
-      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.streamFeedDagIri(source));
       assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
       assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
     }
@@ -151,18 +158,19 @@ describe('Cartographer workers-bundle registration', () => {
     assert.ok(gather, 'intake-gather placement must exist');
     assert.equal(gather['@type'], 'GatherNode');
     if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-    assert.deepEqual(gather.sources, feedSources);
-    assert.equal(gather.gather.strategy, 'canonical-feed');
+    assert.deepEqual(gather.sources, sourceBindings);
+    assert.equal(gather.gather.strategy, 'source-intake');
 
     const scatter = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
     assert.ok(scatter, 'process-stream placement must exist');
     assert.equal(scatter['@type'], 'ScatterNode');
     if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
-    assert.equal(scatter.source, 'canonicalEvents');
+    assert.equal(scatter.source, 'source-payload');
     assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
-    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
-    assert.equal(scatter.itemKey, 'canonical-event');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
+    assert.equal(scatter.itemKey, 'source-payload');
     assert.equal(scatter.container, 'cpu');
+    assert.deepEqual(scatter.writePoints, []);
 
     const summary = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'summarize-insights'));
     assert.ok(summary, 'summarize-insights placement must exist');
@@ -172,8 +180,9 @@ describe('Cartographer workers-bundle registration', () => {
     assert.equal(summary.dag, CARTOGRAPHER_IRIS.dag.insightsSummary);
   });
 
-  it('CartographerWorkersDag.build(…, { strategy: \'stream-source\' }) wires source-payload flow', () => {
-    const dag = CartographerWorkersDag.build(50, { 'strategy': 'stream-source' });
+  it('CartographerWorkersDag.build(…) wires source-payload flow', () => {
+    const dag = CartographerWorkersDag.build(50);
+    assert.deepEqual(dag.writePoints, ['NodeEdges', 'WatermarkCommit']);
     const dagIntake = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
     const streamSources = Object.freeze(
       Object.fromEntries(
@@ -214,6 +223,7 @@ describe('Cartographer workers-bundle registration', () => {
     assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
     assert.equal(scatter.itemKey, 'source-payload');
     assert.equal(scatter.container, 'cpu');
+    assert.deepEqual(scatter.writePoints, []);
   });
 
   it('workers dispatcher uses recorded geo services', () => {
@@ -465,12 +475,11 @@ describe('Cartographer workers DAG — single-type position-ping run', () => {
 });
 
 describe('Cartographer workers DAG — stream-source end-to-end', () => {
-  it('supports strategy: \'stream-source\' for the same contract workload', { timeout: 60_000 }, async () => {
-    const state = await WorkersHarness.runPipeline(undefined, 'stream-source');
+  it('supports the source-payload contract workload', { timeout: 60_000 }, async () => {
+    const state = await WorkersHarness.runPipeline();
     assert.equal(state.lifecycle.variant, 'completed');
     assert.ok(state.insights.size >= 1, `Expected ≥1 region in insights, got ${state.insights.size}`);
     assert.ok(state.sampleRecords.length > 0, 'Expected at least one enriched record in sampleRecords');
-    assert.ok(state.canonicalEvents.length === 0, 'Stream-source should not accumulate canonicalEvents before enrichment');
     let totalScans = 0;
     for (const entry of state.insights.values()) totalScans += entry.shipmentCount;
     assert.ok(totalScans >= state.eventCount, `Expected insights total >= ${state.eventCount}, got ${totalScans}`);

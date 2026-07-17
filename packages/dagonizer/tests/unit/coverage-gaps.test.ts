@@ -4,8 +4,8 @@
  * Six new coverage tests for paths hardened in the W4/W5 cycle but not yet
  * exercised by the existing suite:
  *
- *   TST-16: graph JSON-LD state restoration.
- *   TST-17: DAGHandoffType graphState (by-reference) publishing path.
+ *   TST-16: transient state restoration.
+ *   TST-17: DAGHandoffType transient graphState publishing path.
  *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
  *   TST-20: Signal.compose with a pre-aborted signal.
@@ -38,13 +38,12 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
 
-// ── TST-16: graph JSON-LD state restoration ──────────────────────────────────
+// ── TST-16: transient state restoration ─────────────────────────────────────
 
 class TypedState extends NodeStateBase {
   count: number = 0;
@@ -53,23 +52,23 @@ class TypedState extends NodeStateBase {
 
 }
 
-void describe('TST-16: graph JSON-LD state restoration', () => {
+void describe('TST-16: transient state restoration', () => {
   void it('round-trips graph-owned domain fields', async () => {
     const state = new TypedState();
     state.count = 7;
     state.label = 'seven';
-    const snap = graphStateDocument(state);
+    const snap = state.snapshotTransientState();
     const restored = new TypedState();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     assert.equal(restored.count, 7);
     assert.equal(restored.label, 'seven');
   });
 });
 
-// ── TST-17: DAGHandoffType graphState publishing path ───────────────────────
+// ── TST-17: DAGHandoffType transient graphState publishing path ─────────────
 
-void describe('TST-17: DAGHandoffType graphState publishing path', () => {
-  void it('a channel that rewrites to by-ref envelope produces a valid DAGHandoffType', async () => {
+void describe('TST-17: DAGHandoffType transient graphState publishing path', () => {
+  void it('publishes a valid transient-state DAGHandoffType envelope', async () => {
     const receivedEnvelopes: DAGHandoffType[] = [];
 
     class ByRefChannel {
@@ -115,8 +114,8 @@ void describe('TST-17: DAGHandoffType graphState publishing path', () => {
     const envelope = receivedEnvelopes[0];
     assert.ok(envelope !== undefined);
 
-    assert.ok('@context' in envelope.graphState);
-    assert.ok('@graph' in envelope.graphState);
+    assert.ok('domain' in envelope.graphState);
+    assert.ok('graphDomain' in envelope.graphState);
     assert.ok(Validator.dagHandoff.is(envelope),
       `handoff must satisfy DAGHandoffType schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
   });
@@ -251,7 +250,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badRaw = {
       'dagName': 'type-mismatch-test',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:type-mismatch', 'graphIri': 'urn:dagonizer:run:type-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:type-mismatch', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {
@@ -284,7 +283,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badVersion = {
       'dagName': 'version-mismatch-test',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:version-mismatch', 'graphIri': 'urn:dagonizer:run:version-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:version-mismatch', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {

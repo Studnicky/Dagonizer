@@ -32,8 +32,8 @@ import {
   DagContainerBase,
   DAG_CONTAINER_WORKER_DIED,
 } from '@studnicky/dagonizer/container';
-import type { DagContainerOptionsType, PoolEntryType } from '@studnicky/dagonizer/container';
-import type { GraphStateTransferFormatType } from '@studnicky/dagonizer/contracts';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
@@ -75,12 +75,6 @@ export type WebWorkerContainerOptionsType = {
   readonly graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
 
   /**
-   * Default graph transfer mode when graph state is present.
-   * Defaults to `inline-nquads`.
-   */
-  readonly graphStateTransferMode?: DagContainerOptionsType['graphStateTransferMode'];
-
-  /**
    * Opt-out for the host's per-flush instrumentation-event dedup, which
    * collapses identical `nodeStart`/`nodeEnd`/etc. events from scatter
    * clones sharing a static placementPath before they cross the worker
@@ -88,6 +82,11 @@ export type WebWorkerContainerOptionsType = {
    * Pass `false` to receive every raw instrumentation event.
    */
   readonly coalesceInstrumentation?: boolean;
+  /**
+   * Optional cap on worker-side instrumentation placement-path depth.
+   * Events deeper than this are dropped before they cross the worker boundary.
+   */
+  readonly instrumentationPlacementPathDepth?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -99,20 +98,22 @@ export class WebWorkerContainer extends DagContainerBase<WebWorkerLikeInterface>
   constructor(options: WebWorkerContainerOptionsType) {
     const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();
     const servicesConfig: JsonObjectType = options.servicesConfig ?? {};
-    const graphStateTransferFormats = options.graphStateTransferFormats;
-    const graphStateTransferMode = options.graphStateTransferMode;
+    const graphStateTransferFormats = options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
     const coalesceInstrumentation = options.coalesceInstrumentation;
+    const instrumentationPlacementPathDepth = options.instrumentationPlacementPathDepth;
 
     super({
       ...DagContainerBase.defaultOptions,
       'poolSize': poolSize,
-      ...(graphStateTransferFormats === undefined ? {} : { 'graphStateTransferFormats': graphStateTransferFormats }),
-      ...(graphStateTransferMode === undefined ? {} : { 'graphStateTransferMode': graphStateTransferMode }),
+      'graphStateTransferFormats': graphStateTransferFormats,
       ...(coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': coalesceInstrumentation }),
+      ...(instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': instrumentationPlacementPathDepth }),
       'init': {
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,
         'servicesConfig': servicesConfig,
+        'graphStateTransferFormats': [...graphStateTransferFormats],
+        ...(instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': instrumentationPlacementPathDepth }),
       },
     });
   }

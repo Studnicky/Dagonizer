@@ -78,9 +78,9 @@ export class RestoredState extends NodeStateBase {
 
   static async demo(): Promise<void> {
     const state = new RestoredState();
-    const snap = state.snapshotJsonLd();
+    const snap = state.snapshotTransientState();
     const restored = new RestoredState();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     if (!(restored instanceof RestoredState)) {
       throw new Error('restore did not return RestoredState');
     }

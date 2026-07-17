@@ -9,7 +9,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
+import { stateSnapshot } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -217,7 +217,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     );
   });
 
-  void it('domain field round-trips through graph JSON-LD', async () => {
+  void it('domain field round-trips through transient state snapshot', async () => {
     const state = new DomainState();
     state.domainValue = 99;
 
@@ -226,10 +226,10 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     // populated yet. Restoring the original graph populates the field.
     assert.strictEqual(cloned.domainValue, 0, 'fresh clone should have default domainValue');
 
-    const snap = graphStateDocument(state);
-    await cloned.restoreJsonLd(state.runIri, snap);
+    const snap = stateSnapshot(state);
+    await cloned.restoreTransientState(state.runIri, snap);
 
-    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive graph restore');
+    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive transient restore');
   });
 
   void it('metadata is preserved; lifecycle and errors reset on clone', () => {

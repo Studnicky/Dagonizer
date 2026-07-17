@@ -31,7 +31,6 @@ import type {
   GatherProgressType as TypeBarrelGatherProgressType,
   GatherRecordProgressType as TypeBarrelGatherRecordProgressType,
 } from '../../src/types/index.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
 
 void describe('public root surface', () => {
   void it('exports the gather progress key', () => {
@@ -41,7 +40,7 @@ void describe('public root surface', () => {
   void it('exports gather checkpoint and progress schemas', () => {
     const progress: RootGatherProgressType = { 'entries': {} };
     const sameProgress: TypeBarrelGatherProgressType = progress;
-    const graphState = graphStateDocument(new NodeStateBase());
+    const graphState = new NodeStateBase().snapshotTransientState();
     const record: RootGatherRecordProgressType = {
       'source': 'left',
       'index': null,

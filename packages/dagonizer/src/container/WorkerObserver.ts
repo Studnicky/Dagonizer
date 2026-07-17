@@ -51,10 +51,15 @@ type WorkerObserverOptionsType = {
    * to receive every raw event.
    */
   coalesceInstrumentation?: boolean;
+  /**
+   * Optional cap on the composed placement-path depth emitted over the worker
+   * boundary. Events deeper than this are dropped at the source.
+   */
+  instrumentationPlacementPathDepth?: number;
 };
 
 /** Module-level default for `WorkerObserverOptionsType`. */
-const WORKER_OBSERVER_DEFAULTS: Required<WorkerObserverOptionsType> = {
+const WORKER_OBSERVER_DEFAULTS: Required<Pick<WorkerObserverOptionsType, 'coalesceInstrumentation'>> = {
   'coalesceInstrumentation': true,
 };
 
@@ -68,6 +73,7 @@ export class WorkerObserver<
   readonly #instrumentationQueue: Array<InstrumentationEvent>;
   #instrumentationFlushScheduled: boolean;
   readonly #coalesceInstrumentation: boolean;
+  readonly #instrumentationPlacementPathDepth: number | undefined;
 
   constructor(
     channel: MessageChannelInterface,
@@ -83,10 +89,16 @@ export class WorkerObserver<
     this.#instrumentationQueue = [];
     this.#instrumentationFlushScheduled = false;
     this.#coalesceInstrumentation = { ...WORKER_OBSERVER_DEFAULTS, ...options }.coalesceInstrumentation;
+    this.#instrumentationPlacementPathDepth = options.instrumentationPlacementPathDepth;
   }
 
   #composePath(innerPath: readonly string[]): string[] {
     return [...this.#basePath, ...innerPath];
+  }
+
+  #shouldEmitPath(composedPath: readonly string[]): boolean {
+    return this.#instrumentationPlacementPathDepth === undefined
+      || composedPath.length <= this.#instrumentationPlacementPathDepth;
   }
 
   /**
@@ -128,15 +140,21 @@ export class WorkerObserver<
   }
 
   protected override onNodeStart(nodeName: string, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeStart', this.#composePath(placementPath), { 'nodeName': nodeName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('nodeStart', composedPath, { 'nodeName': nodeName });
   }
 
   protected override onNodeEnd(nodeName: string, output: string | null, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeEnd', this.#composePath(placementPath), { 'nodeName': nodeName, 'output': output });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('nodeEnd', composedPath, { 'nodeName': nodeName, 'output': output });
   }
 
   protected override onError(nodeName: string, error: Error, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('error', this.#composePath(placementPath), { 'nodeName': nodeName, 'message': error.message });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('error', composedPath, { 'nodeName': nodeName, 'message': error.message });
   }
 
   protected override onPhaseEnter(
@@ -146,7 +164,9 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseEnter', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('phaseEnter', composedPath, { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
   protected override onPhaseExit(
@@ -156,7 +176,9 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('phaseExit', composedPath, { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
   /**

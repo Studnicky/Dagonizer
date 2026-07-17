@@ -19,6 +19,7 @@ import type {
 } from './ScatterDispatch.js';
 import { ScatterSource } from './ScatterSource.js';
 import { ScatterWorkerPool } from './ScatterWorkerPool.js';
+import { TransientResultSelection } from './TransientResultSelection.js';
 
 /**
  * `ScatterNode` placement executor.
@@ -165,6 +166,7 @@ export class ScatterExecutor {
       aheadAcked,
       outcomeTally,
       gatherRecordSink,
+      'responseState': TransientResultSelection.scatterResponseState(scatter, scatterAdapter.nodeIndex),
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────

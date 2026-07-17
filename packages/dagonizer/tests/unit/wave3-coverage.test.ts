@@ -36,7 +36,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
-import { emptyInlineTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -148,6 +148,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'dagName': 'pipeline',
       'placementPath': ['parent', 'child'],
       'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-1']),
+      'responseState': FULL_RESPONSE_STATE,
       'items': [{ 'id': 'corr-1', 'runIri': 'urn:dagonizer:run:corr-1' }],
       'timeoutMs': 5000,
       'correlationId': 'corr-1',

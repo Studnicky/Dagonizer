@@ -39,6 +39,7 @@ import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -109,6 +110,16 @@ export abstract class GatherStrategy {
     _config: GatherConfigType,
     _execution: GatherExecutionType,
   ): Promise<void> { /* no-op */ }
+
+  /**
+   * Declare the terminal clone-state surface this strategy reads during
+   * contained scatter replay. `mode: 'full'` means the strategy requires the
+   * whole clone state; `mode: 'selection'` lists the exact clone domain paths
+   * and metadata keys it consumes.
+   */
+  transientResultSelection(_config: GatherConfigType): TransientNodeStateSelectionType {
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
+  }
 }
 
 class MapGatherStrategy extends GatherStrategy {
@@ -128,6 +139,14 @@ class MapGatherStrategy extends GatherStrategy {
         accessor.append(state, parentPath, accessor.get(record.cloneState, clonePath));
       }
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': Object.keys(config.mapping ?? {}),
+      'metadataKeys': [],
+    };
   }
 }
 
@@ -151,6 +170,14 @@ class AppendGatherStrategy extends GatherStrategy {
         : record.item);
     }
   }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
+  }
 }
 
 class PartitionGatherStrategy extends GatherStrategy {
@@ -172,6 +199,14 @@ class PartitionGatherStrategy extends GatherStrategy {
         ? accessor.get(record.cloneState, config.field)
         : record.item);
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
   }
 }
 
@@ -207,6 +242,10 @@ class CustomGatherStrategy extends GatherStrategy {
     );
     await execution.invoker.invokeNode(config.customNode);
   }
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'selection', 'domainPaths': [], 'metadataKeys': [] };
+  }
 }
 
 /**
@@ -223,6 +262,10 @@ class DiscardGatherStrategy extends GatherStrategy {
 
   reduce(): void {
     // Intentional no-op: discard strategy folds nothing.
+  }
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'selection', 'domainPaths': [], 'metadataKeys': [] };
   }
 }
 
@@ -257,6 +300,14 @@ class CollectGatherStrategy extends GatherStrategy {
         ? accessor.get(record.cloneState, config.field)
         : record.output);
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
   }
 }
 

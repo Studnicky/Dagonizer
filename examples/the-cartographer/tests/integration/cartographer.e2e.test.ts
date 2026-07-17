@@ -93,9 +93,17 @@ describe('Cartographer DAG end-to-end', () => {
 
   it('declares source-specific feed DAG entrypoints that converge on the open intake gather', () => {
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
-    const feedSources = CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer);
+    const sourceBindings = Object.freeze(
+      Object.fromEntries(
+        CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+          CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, eventType),
+          { 'resultField': 'sourceFeed' },
+        ]),
+      ),
+    );
 
     assert.deepEqual(cartographerDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographer));
+    assert.deepEqual(cartographerDAG.writePoints, ['NodeEdges', 'WatermarkCommit']);
     assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'cartographer must not use a pre-phase intake node');
 
     for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
@@ -104,7 +112,7 @@ describe('Cartographer DAG end-to-end', () => {
       assert.ok(feedPlacementNode, `feed placement for '${source}' must exist`);
       assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
       if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`feed placement '${source}' must be an EmbeddedDAGNode`);
-      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.streamFeedDagIri(source));
       assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
       assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
     }
@@ -113,8 +121,8 @@ describe('Cartographer DAG end-to-end', () => {
     assert.ok(gather, 'intake-gather placement must exist');
     assert.equal(gather['@type'], 'GatherNode');
     if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-    assert.deepEqual(gather.sources, feedSources);
-    assert.equal(gather.gather.strategy, 'canonical-feed');
+    assert.deepEqual(gather.sources, sourceBindings);
+    assert.equal(gather.gather.strategy, 'source-intake');
 
     const gatherIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === intakeGatherIri);
     const scatterIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
@@ -125,16 +133,27 @@ describe('Cartographer DAG end-to-end', () => {
     assert.ok(scatter, 'process-stream placement must exist');
     assert.equal(scatter['@type'], 'ScatterNode');
     if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
-    assert.equal(scatter.source, 'canonicalEvents');
+    assert.equal(scatter.source, 'source-payload');
     assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
-    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
-    assert.equal(scatter.itemKey, 'canonical-event');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
+    assert.equal(scatter.itemKey, 'source-payload');
+    assert.deepEqual(scatter.writePoints, []);
   });
 
   it('declares the same producer feed topology for resume with item-mode processing', () => {
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'intake-gather');
 
     assert.deepEqual(cartographerResumeDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographerResume));
+    assert.deepEqual(cartographerResumeDAG.writePoints, ['NodeEdges', 'WatermarkCommit']);
+
+    const sourceBindings = Object.freeze(
+      Object.fromEntries(
+        CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+          CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, eventType),
+          { 'resultField': 'sourceFeed' },
+        ]),
+      ),
+    );
 
     for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
       const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, source);
@@ -142,7 +161,7 @@ describe('Cartographer DAG end-to-end', () => {
       assert.ok(feedPlacementNode, `resume feed placement for '${source}' must exist`);
       assert.equal(feedPlacementNode['@type'], 'EmbeddedDAGNode');
       if (feedPlacementNode['@type'] !== 'EmbeddedDAGNode') assert.fail(`resume feed placement '${source}' must be an EmbeddedDAGNode`);
-      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+      assert.equal(feedPlacementNode.dag, CARTOGRAPHER_IRIS.streamFeedDagIri(source));
       assert.equal(feedPlacementNode.outputs['success'], intakeGatherIri);
       assert.equal(feedPlacementNode.outputs['error'], intakeGatherIri);
     }
@@ -151,17 +170,18 @@ describe('Cartographer DAG end-to-end', () => {
     assert.ok(gather, 'resume intake-gather placement must exist');
     assert.equal(gather['@type'], 'GatherNode');
     if (gather['@type'] !== 'GatherNode') assert.fail('resume intake-gather must be a GatherNode');
-    assert.deepEqual(gather.sources, CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographerResume));
-    assert.equal(gather.gather.strategy, 'canonical-feed');
+    assert.deepEqual(gather.sources, sourceBindings);
+    assert.equal(gather.gather.strategy, 'source-intake');
 
     const scatter = cartographerResumeDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'process-stream'));
     assert.ok(scatter, 'resume process-stream placement must exist');
     assert.equal(scatter['@type'], 'ScatterNode');
     if (scatter['@type'] !== 'ScatterNode') assert.fail('resume process-stream must be a ScatterNode');
-    assert.equal(scatter.source, 'canonicalEvents');
+    assert.equal(scatter.source, 'source-payload');
     assert.ok('dag' in scatter.body, 'resume process-stream must use a DAG body');
-    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.eventPipelineTyped);
-    assert.equal(scatter.itemKey, 'canonical-event');
+    assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
+    assert.equal(scatter.itemKey, 'source-payload');
+    assert.deepEqual(scatter.writePoints, ['WatermarkCommit']);
     assert.deepEqual(scatter.execution, { 'mode': 'item', 'concurrency': 16 });
   });
 

@@ -8,7 +8,7 @@ const measurement = BenchmarkHarness.measure(() => {
   for (let index = 0; index < iterations; index += 1) {
     state.setMetadata(`key-${index % 20}`, index);
     state.recordAttempt('step');
-    state.snapshotJsonLd();
+    state.snapshotTransientState();
   }
 });
 const result = { 'benchmark': 'state-baseline', iterations, ...measurement };

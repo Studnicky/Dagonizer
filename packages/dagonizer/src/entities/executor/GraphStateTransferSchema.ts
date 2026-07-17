@@ -1,14 +1,14 @@
 /**
- * GraphStateTransfer: the batch-level graph-state payload carried by a
- * container `ExecutionRequest`/`ExecutionResponse`. ONE mode-aware transfer
- * for the whole batch — every transfer mode is combined-per-batch; there is
- * no per-item transfer path anywhere in the container protocol.
+ * GraphStateTransfer: graph snapshot envelope shapes for persistence and
+ * export surfaces that still move RDF/N-Quads directly.
  *
- * A discriminated union over `transport` ∈ the five transfer modes. All arms
- * are batch-scoped: `graphIris` spans every item's `${runIri}#state` graph,
- * and the codec work (encode + hash, or store write) is done ONCE for the
- * batch. The per-item `runIri` (carried on the request/response `items`
- * array) locates each item's subgraph within the combined payload.
+ * Container `ExecutionRequest`/`ExecutionResponse` no longer use this schema
+ * for transient worker state. They use `TransientNodeStateBatchSchema` so
+ * per-clone dispatch stays in plain JSON and avoids RDF projection on the hot
+ * path.
+ *
+ * The envelope types remain for graph snapshot export, references, and shared
+ * graph access where N-Quads transport is still the right representation.
  *
  *   - `inline-nquads`        one combined N-Quads document; one encode + one hash.
  *   - `graph-ref`            one store reference to the whole batch's combined graph.
@@ -28,9 +28,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 /**
  * JSON Schema for the optional Node.js JSON-LD document view of a graph-state
- * payload. Reused by the transfer metadata and by the per-item `jsonLd` field of
- * the container execution request/response entities so the ld+json cold path has
- * one canonical wire shape.
+ * payload. Reused by transfer metadata persistence paths.
  */
 export const GraphStateJsonLdSchema = { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true } as const;
 
@@ -111,7 +109,7 @@ const GraphStateDeltaReferenceSchema = {
   'additionalProperties': false,
 } as const;
 
-/** JSON Schema for the batch-level graph-state transfer union (all modes batch-native). */
+/** JSON Schema for the graph snapshot transfer union. */
 export const GraphStateTransferSchema = {
   'oneOf': [GraphStateInlineSchema, GraphStateReferenceSchema, GraphStateSharedSchema, GraphStateInlineDeltaSchema, GraphStateDeltaReferenceSchema],
 } as const;
@@ -127,7 +125,7 @@ export type GraphStateInlineDeltaType = FromSchema<typeof GraphStateInlineDeltaS
 /** Combined store-referenced delta batch transfer (`delta-ref`). */
 export type GraphStateDeltaReferenceType = FromSchema<typeof GraphStateDeltaReferenceSchema>;
 
-/** The batch-level graph-state payload: one combined transfer per batch, mode-aware. */
+/** Graph snapshot transfer payload, mode-aware. */
 export type GraphStateTransferType =
   | GraphStateInlineType
   | GraphStateReferenceType

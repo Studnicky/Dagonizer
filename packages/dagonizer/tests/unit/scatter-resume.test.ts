@@ -4,12 +4,13 @@ import { describe, it } from 'node:test';
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
-import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
+import { GATHER_PROGRESS_KEY, SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
+import { stateSnapshot } from '../_support/GraphStateSupport.js';
+import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
@@ -244,6 +245,193 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [11, 22, 33, 44, 55]);
   });
 
+  void it('FoldDeltaJournal rebuilds the accumulator on same-state resume without preseeded parent data', async () => {
+    const dispatcher = new Dagonizer<ScatterState>();
+    let calls = 0;
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal', ['success'], () => {
+      calls++;
+      if (calls === 3) {
+        throw new Error('simulated mid-flight failure');
+      }
+      return 'success';
+    }));
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodec:dag:scatter-fold-journal',
+      '@type':    'DAG',
+      'name': 'scatter-fold-journal', 'version': '1', 'entrypoints': { 'main': placementIri('urn:noocodec:dag:scatter-fold-journal', 'fan') },
+      'nodes': [
+        { '@id': 'urn:noocodec:dag:scatter-fold-journal/node/fan', '@type': 'ScatterNode',
+          'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker-fold-journal' },
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'outputs': {
+            'all-success': placementIri('urn:noocodec:dag:scatter-fold-journal', 'join'),
+            'partial': placementIri('urn:noocodec:dag:scatter-fold-journal', 'join'),
+            'all-error': placementIri('urn:noocodec:dag:scatter-fold-journal', 'join'),
+            'empty': placementIri('urn:noocodec:dag:scatter-fold-journal', 'end'),
+          } },
+        { '@id': 'urn:noocodec:dag:scatter-fold-journal/node/join', '@type': 'GatherNode',
+          'name': 'join', 'sources': { [placementIri('urn:noocodec:dag:scatter-fold-journal', 'fan')]: {} }, 'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': placementIri('urn:noocodec:dag:scatter-fold-journal', 'end'),
+            'error': placementIri('urn:noocodec:dag:scatter-fold-journal', 'end'),
+            'empty': placementIri('urn:noocodec:dag:scatter-fold-journal', 'end'),
+          } },
+        { '@id': 'urn:noocodec:dag:scatter-fold-journal/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+    dispatcher.registerDAG(dag);
+
+    const state = new ScatterState();
+    state.items = [11, 22, 33, 44, 55];
+
+    const partial = await dispatcher.execute('urn:noocodec:dag:scatter-fold-journal', state);
+
+    assert.equal(partial.cursor, placementIri('urn:noocodec:dag:scatter-fold-journal', 'fan'));
+    assert.deepEqual(partial.state.processed, [11, 22], 'live state folds acked items before interruption');
+    const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined, 'fold-delta journal should be present after interruption');
+    const progress = Validator.gatherProgress.validate(rawProgress);
+    const buffered = Object.values(progress.entries).flat();
+    assert.equal(buffered.length, 2);
+    assert.deepEqual(buffered.map((record) => record.contribution), [{ 'value': 11 }, { 'value': 22 }]);
+    assert.ok(buffered.every((record) => !('graphState' in record)), 'journal records must not retain clone graph state');
+
+    const result = await dispatcher.resume('urn:noocodec:dag:scatter-fold-journal', partial.state, partial.cursor);
+
+    assert.equal(result.cursor, null);
+    assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [11, 22, 33, 44, 55]);
+    assert.equal(result.state.processed.length, 5, 'journal replay must not double-count acked items');
+    assert.equal(result.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
+  });
+
+  void it('FoldDeltaJournal journals one acked reservoir batch and replays it exactly once on resume', async () => {
+    const dispatcher = new Dagonizer<ScatterState>();
+    let batchCalls = 0;
+    dispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
+      'urn:noocodec:node:worker-fold-journal-reservoir',
+      ['success'],
+      (batch) => {
+        batchCalls++;
+        if (batchCalls === 2) {
+          throw new Error('simulated second-batch failure');
+        }
+        return new Map([['success', batch]]);
+      },
+    ));
+
+    const dagIri = 'urn:noocodec:dag:scatter-fold-journal-reservoir';
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const endIri = placementIri(dagIri, 'end');
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': dagIri,
+      '@type': 'DAG',
+      'name': 'scatter-fold-journal-reservoir',
+      'version': '1',
+      'entrypoints': { 'main': fanIri },
+      'nodes': [
+        {
+          '@id': fanIri,
+          '@type': 'ScatterNode',
+          'name': 'fan',
+          'body': { 'node': 'urn:noocodec:node:worker-fold-journal-reservoir' },
+          'source': 'items',
+          'itemKey': 'item',
+          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'execution': { 'mode': 'reservoir', 'concurrency': 1, 'reservoir': { 'keyField': 'bucket', 'capacity': 2 } },
+          'outputs': {
+            'all-success': joinIri,
+            'partial': joinIri,
+            'all-error': joinIri,
+            'empty': endIri,
+          },
+        },
+        {
+          '@id': joinIri,
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': { [fanIri]: {} },
+          'gather': { 'strategy': 'append', 'target': 'processed' },
+          'outputs': {
+            'success': endIri,
+            'error': endIri,
+            'empty': endIri,
+          },
+        },
+        { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    dispatcher.registerDAG(dag);
+
+    const partial = new ScatterState();
+    partial.items = [11, 22, 33, 44, 55];
+    const progressSnapshots: StoredScatterProgressType[] = [];
+    const originalSetMetadata = partial.setMetadata.bind(partial);
+    Object.defineProperty(partial, 'setMetadata', {
+      'configurable': true,
+      'enumerable': false,
+      'value': (key: string, value: unknown): void => {
+        originalSetMetadata(key, value);
+        if (key === SCATTER_PROGRESS_KEY) {
+          progressSnapshots.push(Validator.storedScatterProgress.validate(value));
+        }
+      },
+    });
+
+    const interrupted = await dispatcher.execute(dagIri, partial);
+
+    assert.equal(interrupted.cursor, fanIri);
+    assert.equal(batchCalls, 2, 'one batch should commit, the second batch should fail');
+    assert.deepEqual(interrupted.state.processed, [11, 22], 'only the first reservoir batch should fold before interruption');
+    assert.equal(progressSnapshots.length, 1, 'bounded scatter progress should persist once per acked reservoir batch');
+
+    const storedProgress = interrupted.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedProgress !== undefined, 'bounded scatter progress should survive interruption');
+    const scatterProgress = Validator.storedScatterProgress.validate(storedProgress);
+    const fanProgress = scatterProgress[fanIri];
+    assert.ok(fanProgress !== undefined);
+    assert.equal(fanProgress.mode, 'bounded');
+    if (fanProgress.mode === 'bounded') {
+      assert.equal(fanProgress.watermark, 2, 'first capacity-2 reservoir batch should advance watermark to 2');
+      assert.deepEqual(fanProgress.aheadAcked, []);
+      assert.deepEqual(fanProgress.outcomeTally, { 'success': 2 });
+    }
+
+    const rawGatherProgress = interrupted.state.getMetadata(GATHER_PROGRESS_KEY);
+    assert.ok(rawGatherProgress !== undefined, 'gather journal should survive interruption');
+    const gatherProgress = Validator.gatherProgress.validate(rawGatherProgress);
+    const buffered = Object.values(gatherProgress.entries).flat();
+    assert.equal(buffered.length, 2, 'exactly one reservoir batch worth of contributions should be journaled');
+    assert.deepEqual(buffered.map((record) => record.contribution), [{ 'value': 11 }, { 'value': 22 }]);
+    assert.ok(buffered.every((record) => !('graphState' in record)), 'reservoir fold journal must not persist clone graph state');
+
+    Object.defineProperty(interrupted.state, 'setMetadata', {
+      'configurable': true,
+      'enumerable': false,
+      'value': originalSetMetadata,
+    });
+    interrupted.state.processed = [];
+
+    const resumeDispatcher = new Dagonizer<ScatterState>();
+    resumeDispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
+      'urn:noocodec:node:worker-fold-journal-reservoir',
+      ['success'],
+      (batch) => new Map([['success', batch]]),
+    ));
+    resumeDispatcher.registerDAG(dag);
+
+    const resumed = await resumeDispatcher.resume(dagIri, interrupted.state, fanIri);
+
+    assert.equal(resumed.cursor, null);
+    assert.deepEqual([...resumed.state.processed].sort((a, b) => a - b), [11, 22, 33, 44, 55]);
+    assert.equal(resumed.state.processed.length, 5, 'reservoir fold journal replay must not double-count the acked batch');
+    assert.equal(resumed.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
+    assert.equal(resumed.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
+  });
+
   void it('resumed map gather is complete, source-ordered, and free of duplicates', async () => {
     // Fix-locking scenario. Each item's node writes state.produced = f(item).
     // A map gather collects `produced` from every clone into the parent
@@ -327,9 +515,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
-    const snap = graphStateDocument(partial.state);
+    const snap = stateSnapshot(partial.state);
     const restored = new ScatterState();
-    await restored.restoreJsonLd(partial.state.runIri, snap);
+    await restored.restoreTransientState(partial.state.runIri, snap);
     // The two incremental results survive the snapshot.
     assert.equal(restored.results.length, 2);
 
@@ -570,9 +758,9 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
         'outcomeTally': { 'success': 2 },
       },
     });
-    const snap = graphStateDocument(state);
+    const snap = stateSnapshot(state);
     const restored = new ScatterState();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     const storedRestoredRaw = restored.getMetadata(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestoredRaw !== undefined);
     const storedRestored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRestoredRaw);

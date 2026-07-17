@@ -70,8 +70,7 @@ const TripleInspector = defineAsyncComponent(() => import('../../../docs/.vitepr
 import type { IriSelectionType, LiteralSelectionType } from '../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import {
   SelectionController,
-  selectedInspectTarget,
-  selectedToolName,
+  SelectionTargets,
 } from '../../../packages/dagonizer/src/viz/SelectionController.ts';
 import type { InspectorTargetType } from '../../../packages/dagonizer/src/viz/InspectorTarget.ts';
 
@@ -258,12 +257,12 @@ const selectionController = new SelectionController({
   'onSelectionChange': (target) => { inspectorTarget.value = target; },
 });
 const selectedSelection = computed<MemorySelection | null>(() => {
-  const target = selectedInspectTarget(inspectorTarget.value);
+  const target = SelectionTargets.inspect(inspectorTarget.value);
   return target !== null && (target.variant === 'iri' || target.variant === 'literal')
     ? target
     : null;
 });
-const selectedTool = computed<string | null>(() => selectedToolName(inspectorTarget.value));
+const selectedTool = computed<string | null>(() => SelectionTargets.toolName(inspectorTarget.value));
 function onMemorySelect(sel: MemorySelection | null): void { selectionController.selectInspect(sel); }
 function onToolSelect(name: string): void { selectionController.selectTool(name); }
 function closeInspector(): void { selectionController.clear(); }

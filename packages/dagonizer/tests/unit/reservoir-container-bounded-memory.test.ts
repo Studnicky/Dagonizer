@@ -38,10 +38,10 @@ import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestItemType } from '../../src/entities/executor/ExecutionRequest.js';
-import type { GraphStateInlineType } from '../../src/entities/executor/GraphStateTransferSchema.js';
+import type { TransientNodeStateBatchType } from '../../src/entities/executor/TransientNodeState.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { inlineTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_RESPONSE_STATE, inlineTransferEntries } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // BatchFixture: builds a batch of N distinct clone states with unique run
@@ -52,13 +52,13 @@ import { inlineTransfer } from '../_support/GraphStateSupport.js';
 class BatchFixture {
   private constructor() {}
 
-  static of(ids: readonly string[]): { graphState: GraphStateInlineType; items: ExecutionRequestItemType[] } {
+  static of(ids: readonly string[]): { graphState: TransientNodeStateBatchType; items: ExecutionRequestItemType[] } {
     const entries = ids.map((id) => {
       const state = new NodeStateBase(undefined, `urn:dagonizer:run:${id}`);
       return { id, state };
     });
     return {
-      'graphState': inlineTransfer(entries.map((entry) => entry.state)),
+      'graphState': inlineTransferEntries(entries),
       'items': entries.map((entry) => ({ 'id': entry.id, 'runIri': entry.state.runIri })),
     };
   }
@@ -109,6 +109,7 @@ class HostSetup {
       'registryModule': REGISTRY_MODULE_URL,
       'registryVersion': REGISTRY_VERSION,
       'servicesConfig': {},
+      'graphStateTransferFormats': ['application/n-quads'],
     });
     const reply = await readyPromise;
     assert.strictEqual(reply.variant, 'ready', `DagHost init must reply 'ready'; got '${reply.variant}'`);
@@ -119,18 +120,18 @@ class HostSetup {
 // Tests: DagHost batch path intermediates contract
 // ---------------------------------------------------------------------------
 
-void describe('DagHost — batch request: intermediates are empty, live messages still sent', () => {
+void describe('DagHost — batch request: intermediates are empty and no live intermediate messages are sent', () => {
   /**
    * Core regression: a multi-item batch request (N>1 items) must produce a
    * result with `intermediates: []`. Before the fix, all N × M inner-node
    * results were buffered into the `intermediates` array on the worker side
    * and serialized into `ExecutionResponse.intermediates`.
    *
-   * Live `'intermediate'` BridgeMessages MUST still be forwarded so the
-   * observer relay receives per-node observability in real-time. These are
-   * independent of the (now-empty) `response.intermediates` array.
+   * The host no longer emits live `'intermediate'` BridgeMessages. Real-time
+   * worker observability flows through instrumentation relay only, and the
+   * batched result keeps `response.intermediates` empty for N>1 items.
    */
-  void it('batch response carries empty intermediates[] while live intermediate messages are still forwarded', async () => {
+  void it('batch response carries empty intermediates[] and emits no live intermediate messages', async () => {
     const { parentSide } = TestHostPair.create();
     await HostSetup.init(parentSide);
 
@@ -158,6 +159,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
           'items': batch.items,
           'timeoutMs': 10000,
           'correlationId': 'batch-test-1',
+          'responseState': FULL_RESPONSE_STATE,
         },
       });
     });
@@ -175,25 +177,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       `buffering regression is present.`,
     );
 
-    // Live observability contract: 'intermediate' BridgeMessages must still
-    // be forwarded per node per item so the relay receives real-time events.
-    // law1 has at least 1 node (recorder-node → done → terminal), so expect N messages.
-    assert.ok(
-      intermediateMessages.length >= N,
-      `At least N=${N} live 'intermediate' BridgeMessages must be forwarded (one per inner ` +
-      `node per item at minimum). Got ${intermediateMessages.length}. Live relay observability ` +
-      `is broken if this fails.`,
-    );
-
-    // Each live intermediate must carry the correct correlationId.
-    for (const msg of intermediateMessages) {
-      assert.strictEqual(
-        msg.correlationId,
-        'batch-test-1',
-        `All live intermediate messages must carry correlationId 'batch-test-1'. ` +
-        `Got '${msg.correlationId}'.`,
-      );
-    }
+    assert.strictEqual(intermediateMessages.length, 0);
 
     // Result must carry N item results.
     assert.strictEqual(
@@ -228,6 +212,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
           'items': single.items,
           'timeoutMs': 5000,
           'correlationId': 'single-test-1',
+          'responseState': FULL_RESPONSE_STATE,
         },
       });
     });
@@ -267,6 +252,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
           'items': batch.items,
           'timeoutMs': 30000,
           'correlationId': 'batch-test-large',
+          'responseState': FULL_RESPONSE_STATE,
         },
       });
     });
@@ -344,6 +330,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
             'items': batch.items,
             'timeoutMs': 30000,
             'correlationId': `heap-batch-${b}`,
+            'responseState': FULL_RESPONSE_STATE,
           },
         });
       });

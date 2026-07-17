@@ -2,31 +2,29 @@
  * CheckpointData: persistable snapshot of an in-flight flow execution.
  *
  * Contains the flow name, the next-node cursor (`null` if the flow has
- * completed), the graph-state JSON-LD document, and execution history.
+ * completed), the plain transient durable-state snapshot, and execution history.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
 import type { StoreSnapshotType } from '../../contracts/SnapshottableInterface.js';
+import { TransientNodeStateSchema } from '../executor/TransientNodeState.js';
+import type { TransientNodeStateType } from '../executor/TransientNodeState.js';
 
 export const CheckpointDataSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/CheckpointData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['dagName', 'cursor', 'graph', 'executedNodes', 'skippedNodes', 'stores'],
+  'required': ['dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
   'properties': {
     'dagName': { 'type': 'string', 'minLength': 1 },
     'cursor': { 'type': ['string', 'null'] },
-    'graph': {
+    'state': {
       'type': 'object',
-      'required': ['runIri', 'graphIri', 'nquads', 'hash', 'jsonLd'],
+      'required': ['runIri', 'transient'],
       'properties': {
         'runIri': { 'type': 'string', 'minLength': 1 },
-        'graphIri': { 'type': 'string', 'minLength': 1 },
-        'nquads': { 'type': 'string' },
-        'hash': { 'type': 'string', 'minLength': 1 },
-        'jsonLd': { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
+        'transient': TransientNodeStateSchema,
       },
       'additionalProperties': false,
     },
@@ -73,11 +71,8 @@ export const CheckpointDataSchema = {
  */
 export type CheckpointDataType = Omit<FromSchema<typeof CheckpointDataSchema>, 'stores'> & {
   stores: Record<string, StoreSnapshotType>;
-  graph: {
+  state: {
     runIri: string;
-    graphIri: string;
-    nquads: string;
-    hash: string;
-    jsonLd: GraphStateJsonLdDocumentType;
+    transient: TransientNodeStateType;
   };
 };

@@ -33,7 +33,7 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { inlineTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_RESPONSE_STATE, inlineTransfer } from '../_support/GraphStateSupport.js';
 
 import { Batch, Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
@@ -75,6 +75,7 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
         'registryModule': REGISTRY_MODULE_URL,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {},
+        'graphStateTransferFormats': ['application/n-quads'],
       },
       ...options,
     });
@@ -129,6 +130,7 @@ class MinimalTask implements DagTaskInterface {
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
+  readonly responseState = FULL_RESPONSE_STATE;
   readonly context: NodeContextType;
 
   constructor(correlationId: string) {
@@ -148,6 +150,7 @@ class MinimalTask implements DagTaskInterface {
       'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
+      'responseState': this.responseState,
     };
   }
 }
@@ -334,6 +337,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
+        'responseState': FULL_RESPONSE_STATE,
         'context': NodeContext.create(CONFORMANCE_DAG.law1, '', controller.signal),
         toRequest() {
           return {
@@ -343,6 +347,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
             'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
+            'responseState': this.responseState,
           };
         },
       };

@@ -69,9 +69,11 @@ export class DecodePayloadNode extends MonadicNode<CartographerState, 'decoded' 
     }
 
     const decoded = await TypedPayloadDecoder.decode(raw);
+    state.deleteMetadata('source-payload');
     const variant = CanonicalEventVariantBuilder.fromSourcePayload(raw, decoded);
 
     if (!variant.shipmentId) {
+      state.deleteMetadata('canonical-event');
       return NodeOutput.create('invalid');
     }
 

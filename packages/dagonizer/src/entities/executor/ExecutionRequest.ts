@@ -5,36 +5,34 @@
  * DAG-only: no `variant` discriminant, no `nodeName`. A container runs
  * only whole DAGs, never individual nodes.
  *
- * `graphState` is ONE batch-level payload (`GraphStateTransfer`) for the whole
- * request. In the default `combined-nquads` transport it is a single inline
- * N-Quads document encoded and hashed once regardless of item count; in the
- * `per-item` transport (non-inline modes, store injected) it carries one full
- * transfer per item. `items` carries one `{ id, runIri, jsonLd? }` entry per
- * item; `runIri` identifies the item's `${runIri}#state` named subgraph within
- * the combined payload (or matches its per-item transfer). Single-item requests
- * (N=1) are a batch of one through the identical path. `jsonLd` carries the
- * optional ld+json cold-path view when that format is negotiated; it never
- * appears on the N-Quads hot path.
+ * `graphState` is ONE batch-level plain transient-state payload for the whole
+ * request. It carries the child clone state as plain JSON data, batched once
+ * for the entire item set. `items` carries one `{ id, runIri }` entry per
+ * item; `runIri` remains the execution identity for that item. Single-item
+ * requests (N=1) are a batch of one through the identical path.
+ *
+ * `responseState` declares the exact terminal child-state surface the caller
+ * wants the host to return after contained execution. `defaultSelection`
+ * applies to every item unless an `outputSelections[routeOutput]` override is
+ * present for that routed output.
  *
  * JSON Schema 2020-12 entity: schema value + FromSchema-derived TypeScript type.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
-
-import { GraphStateJsonLdSchema, GraphStateTransferSchema } from './GraphStateTransferSchema.js';
-import type { GraphStateTransferType } from './GraphStateTransferSchema.js';
+import { TransientNodeStateBatchSchema, TransientNodeStateResponseStateSchema } from './TransientNodeState.js';
+import type { TransientNodeStateBatchType, TransientNodeStateResponseStateType } from './TransientNodeState.js';
 
 export const ExecutionRequestSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionRequest',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['dagName', 'placementPath', 'graphState', 'items', 'timeoutMs', 'correlationId'],
+  'required': ['dagName', 'placementPath', 'graphState', 'items', 'timeoutMs', 'correlationId', 'responseState'],
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-    'graphState':    GraphStateTransferSchema,
+    'graphState':    TransientNodeStateBatchSchema,
     'items': {
       'type': 'array',
       'minItems': 1,
@@ -44,26 +42,27 @@ export const ExecutionRequestSchema = {
         'properties': {
           'id':     { 'type': 'string', 'minLength': 1 },
           'runIri': { 'type': 'string', 'minLength': 1 },
-          'jsonLd': GraphStateJsonLdSchema,
         },
         'additionalProperties': false,
       },
     },
     'timeoutMs':     { 'type': ['number', 'null'] },
     'correlationId': { 'type': 'string', 'minLength': 1 },
+    'responseState': TransientNodeStateResponseStateSchema,
   },
   'additionalProperties': false,
 } as const;
 
 type ExecutionRequestWireType = FromSchema<typeof ExecutionRequestSchema>;
 type ExecutionRequestItemWireType = ExecutionRequestWireType['items'][number];
-type ExecutionRequestItemType = Omit<ExecutionRequestItemWireType, 'jsonLd'> & { jsonLd?: GraphStateJsonLdDocumentType };
+type ExecutionRequestItemType = ExecutionRequestItemWireType;
 
-/** One request item: id, its state-graph run IRI, and optional ld+json view. */
+/** One request item: id and its state-graph run IRI. */
 export type { ExecutionRequestItemType };
 
-/** TypeScript type derived from `ExecutionRequestSchema` with canonical graph transfer typing. */
+/** TypeScript type derived from `ExecutionRequestSchema` with plain transient-state batch typing. */
 export type ExecutionRequestType = Omit<ExecutionRequestWireType, 'graphState' | 'items'> & {
-  graphState: GraphStateTransferType;
+  graphState: TransientNodeStateBatchType;
   items: ExecutionRequestItemType[];
+  responseState: TransientNodeStateResponseStateType;
 };

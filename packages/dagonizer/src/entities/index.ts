@@ -160,6 +160,19 @@ export type { BackoffStrategyType } from './runtime/BackoffStrategy.js';
 export { ExecutorIntermediateSchema } from './executor/ExecutorIntermediate.js';
 export type { ExecutorIntermediateType } from './executor/ExecutorIntermediate.js';
 
+export {
+  TransientNodeStateSchema,
+  TransientNodeStateBatchSchema,
+  TransientNodeStateResponseStateSchema,
+  TransientNodeStateSelectionSchema,
+} from './executor/TransientNodeState.js';
+export type {
+  TransientNodeStateType,
+  TransientNodeStateBatchType,
+  TransientNodeStateResponseStateType,
+  TransientNodeStateSelectionType,
+} from './executor/TransientNodeState.js';
+
 export { GraphStateInlineSchema, GraphStateTransferSchema } from './executor/GraphStateTransferSchema.js';
 export type { GraphStateTransferType, GraphStateInlineType, GraphStateReferenceType, GraphStateSharedType, GraphStateInlineDeltaType, GraphStateDeltaReferenceType } from './executor/GraphStateTransferSchema.js';
 

@@ -24,6 +24,8 @@
  *                     wire shape without adding information.
  *   ⦿ `container`  — absence means "run in-process"; a present string is a
  *                     role name; there is no meaningful static default.
+ *   ⦿ `writePoints` — absence means "inherit the DAG-level policy"; a present
+ *                     array fully replaces it.
  *
  * Callers: `DAGBuilder.scatter` calls `ScatterOptions.resolve(options)` before
  * constructing the `ScatterNode` so every builder-produced placement carries
@@ -77,7 +79,7 @@ export class ScatterOptions {
     partial: ScatterOptionsType<TState>,
   ): ResolvedScatterOptionsType<TState> {
     // Resolve only the statically-defaultable fields via spread; all other
-    // fields (execution, inputs, container) pass through from partial.
+    // fields (execution, inputs, container, writePoints) pass through from partial.
     const { itemKey, reducer } = {
       ...SCATTER_OPTION_DEFAULTS,
       ...(partial.itemKey !== undefined ? { 'itemKey': partial.itemKey } : {}),

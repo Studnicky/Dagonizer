@@ -2,7 +2,7 @@ import type { GraphStateSnapshotReferenceType } from './GraphStateSnapshotRefere
 import type { GraphStateTransferLeaseType } from './GraphStateTransferLease.js';
 import type { QuadType } from './TripleStoreInterface.js';
 
-/** Adapter port for graph snapshot references and shared-endpoint leases. */
+/** Adapter port for graph snapshot references and shared graph leases. */
 export interface GraphStateTransferStoreInterface {
   readonly endpoint: string;
   putSnapshot(quads: AsyncIterable<QuadType>, metadata: GraphStateSnapshotReferenceType): Promise<GraphStateSnapshotReferenceType>;

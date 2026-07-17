@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS } from '@studnicky/dagonizer';
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
@@ -34,7 +35,12 @@ class BridgeMessages {
   private constructor() {}
 
   static ready(): BridgeMessageType {
-    return { 'variant': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
+    return {
+      'variant': 'ready',
+      'registryVersion': '1.0.0',
+      'capabilities': [],
+      'graphStateTransferFormats': [...DEFAULT_GRAPH_STATE_TRANSFER_FORMATS],
+    };
   }
 
   static error(): BridgeMessageType {

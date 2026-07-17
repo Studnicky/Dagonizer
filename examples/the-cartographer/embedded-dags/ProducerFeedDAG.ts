@@ -2,18 +2,13 @@
  * ProducerFeedDAG: source-specific feed/unpack/normalize DAGs.
  *
  * One DAG per Cartographer producer. Each opens only its producer's source
- * stream, scatters those payloads through the ingest-source unpack/normalize
- * DAG, folds the validated event buckets, and emits canonicalEvents for the
- * top-level open gather.
- *
- * Stream mode has a trimmed variant that bypasses normalization and produces
- * source streams directly for the source-intake/top-level stream-event body.
+ * stream and emits source payloads directly for the top-level source-intake /
+ * stream-event flow. The canonical materialize-into-array path is retired.
  */
 
 // #region producer-feed-dags
 import type { CartographerState } from '../CartographerState.ts';
 import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
-import { mergeEvents } from '../nodes/mergeEvents.ts';
 import {
   feedPositionPing,
   feedFacilityScan,
@@ -43,52 +38,6 @@ class ProducerFeedDAGBuilder {
   private constructor() { /* static-only */ }
 
   static build(spec: ProducerFeedSpecType): DAGType {
-    const dagIri = CARTOGRAPHER_IRIS.feedDagIri(spec.eventType);
-    const placement = (id: string): string => CARTOGRAPHER_IRIS.placementIri(dagIri, id);
-
-    return new DAGBuilder(dagIri, '1.0')
-      .node(placement(`feed-${spec.eventType}`), spec.feedNode, {
-        'ready': placement('unpack-normalize'),
-        'empty': placement('done'),
-      })
-      .scatter(
-        placement('unpack-normalize'),
-        'sourceFeed',
-        { 'dag': CARTOGRAPHER_IRIS.dag.ingestSource },
-        {
-          'all-success': placement('collect-normalized'),
-          'partial':     placement('collect-normalized'),
-          'all-error':   placement('collect-normalized'),
-          'empty':       placement('done'),
-        },
-        {
-          'itemKey': 'source',
-          'execution': { 'mode': 'item', 'concurrency': 8 },
-        },
-      )
-      .gather(placement('collect-normalized'), {
-        [placement('unpack-normalize')]: {},
-      }, { 'strategy': 'append', 'target': 'ingestBuckets', 'field': 'ingestedEvents' }, {
-        'success': placement('merge-events'),
-        'error':   placement('merge-events'),
-        'empty':   placement('done'),
-      })
-      .node(placement('merge-events'), mergeEvents, {
-        'merged': placement('done'),
-      })
-      .terminal(placement('done'), { outcome: 'completed' })
-      .build();
-  }
-}
-
-export const producerFeedDAGs: DAGType[] = PRODUCER_FEED_SPECS.map((spec) =>
-  ProducerFeedDAGBuilder.build(spec),
-);
-
-class ProducerStreamFeedDAGBuilder {
-  private constructor() { /* static-only */ }
-
-  static build(spec: ProducerFeedSpecType): DAGType {
     const dagIri = CARTOGRAPHER_IRIS.streamFeedDagIri(spec.eventType);
     const placement = (id: string): string => CARTOGRAPHER_IRIS.placementIri(dagIri, id);
 
@@ -102,20 +51,12 @@ class ProducerStreamFeedDAGBuilder {
   }
 }
 
-const producerStreamFeedDAGs: DAGType[] = PRODUCER_FEED_SPECS.map((spec) =>
-  ProducerStreamFeedDAGBuilder.build(spec),
+export const streamProducerFeedDAGs: DAGType[] = PRODUCER_FEED_SPECS.map((spec) =>
+  ProducerFeedDAGBuilder.build(spec),
 );
-
-export const producerFeedBundle: DispatcherBundleType<CartographerState> = {
-  'nodes': [
-    ...producerFeedNodes,
-    mergeEvents,
-  ],
-  'dags': producerFeedDAGs,
-};
 
 export const streamProducerFeedBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [...producerFeedNodes],
-  'dags': producerStreamFeedDAGs,
+  'dags': streamProducerFeedDAGs,
 };
 // #endregion producer-feed-dags

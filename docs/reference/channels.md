@@ -130,7 +130,7 @@ declare const downstreamDispatcher: Dagonizer<AppState>;
 class HandoffChannel extends InMemoryChannel {
   protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     const state = new AppState();
-    await state.restoreJsonLd(state.runIri, handoff.graphState);
+    await state.restoreTransientState(state.runIri, handoff.graphState);
     await downstreamDispatcher.execute('urn:noocodec:dag:continuation-dag', state);
   }
 }

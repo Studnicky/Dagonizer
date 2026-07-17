@@ -13,6 +13,7 @@ import { DagReferenceResolver } from './DagReferenceResolver.js';
 import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
+import { TransientResultSelection } from './TransientResultSelection.js';
 
 /**
  * Dispatcher surface `EmbeddedDagExecutor` needs to execute an
@@ -93,6 +94,7 @@ export class EmbeddedDagExecutor {
   ): Promise<RunNodeResultType> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
+    const responseState = TransientResultSelection.embeddedResponseState(placement);
 
     const parentDag = this.#source.dags.get(parentDagName);
     const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
@@ -147,6 +149,7 @@ export class EmbeddedDagExecutor {
       placement.name,
       cloneState,
       state,
+      responseState,
       placement.container,
       signal,
       placementPath,

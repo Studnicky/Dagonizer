@@ -21,20 +21,15 @@ import { CircularBuffer } from '@studnicky/circular-buffer';
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
-import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
-import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType, normalizeGraphStateTransferFormats, supportsJsonLd } from '../contracts/GraphStateTransferFormat.js';
-import type { GraphStateTransferIdentityType } from '../contracts/GraphStateTransferMetadata.js';
-import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
 import type { ExecutionRequestType, ExecutionRequestItemType } from '../entities/executor/ExecutionRequest.js';
-import type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
+import type { TransientNodeStateBatchType } from '../entities/executor/TransientNodeState.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
-import type { GraphStateTransferItemType } from '../graph/GraphStateTransferCodec.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 
@@ -86,18 +81,19 @@ export type DagContainerOptionsType = {
    * a custom value; omit to accept the default.
    */
   shutdownGraceMs?: number;
-  /** Adapter for graph-reference, shared-endpoint, and delta transfer modes. */
-  graphStateTransferStore?: GraphStateTransferStoreInterface;
   /** Graph-state transfer formats declared to host during init handshake. */
   graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
-  /** Default graph transfer mode; inline N-Quads is the canonical default. */
-  graphStateTransferMode?: 'inline-nquads' | 'graph-ref' | 'shared-endpoint' | 'inline-delta-nquads';
   /**
    * Opt-out for the host's per-flush instrumentation-event dedup. Omit to
    * accept the host default (`true`); pass `false` to receive every raw
    * instrumentation event.
    */
   coalesceInstrumentation?: boolean;
+  /**
+   * Optional cap on worker-side instrumentation placement-path depth. Events
+   * deeper than this are dropped before they cross the container boundary.
+   */
+  instrumentationPlacementPathDepth?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +120,6 @@ export abstract class DagContainerBase<TWorker = unknown>
   readonly #poolSize: number;
   readonly #init: InitMessageShapeType;
   readonly #shutdownGraceMs: number;
-  readonly #graphStateTransferStore: GraphStateTransferStoreInterface | null;
-  readonly #graphStateTransferMode: NonNullable<DagContainerOptionsType['graphStateTransferMode']>;
 
   /**
    * Ergonomic spread defaults for `DagContainerOptionsType`. Sources from the
@@ -138,7 +132,7 @@ export abstract class DagContainerBase<TWorker = unknown>
     DAG_CONTAINER_DEFAULTS;
 
   constructor(options: DagContainerOptionsType) {
-    const graphStateTransferFormats = normalizeGraphStateTransferFormats(options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS);
+    const graphStateTransferFormats = options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
     const { shutdownGraceMs } = { ...DAG_CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>();
@@ -148,13 +142,12 @@ export abstract class DagContainerBase<TWorker = unknown>
     this.#destroyed              = false;
     this.#poolSize               = options.poolSize;
     this.#init                   = { ...options.init, ...{
-      'graphStateTransferFormats': [...normalizeGraphStateTransferFormats(graphStateTransferFormats)],
+      'graphStateTransferFormats': [...graphStateTransferFormats],
     },
       ...(options.coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': options.coalesceInstrumentation }),
+      ...(options.instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': options.instrumentationPlacementPathDepth }),
     };
     this.#shutdownGraceMs        = shutdownGraceMs;
-    this.#graphStateTransferStore = options.graphStateTransferStore ?? null;
-    this.#graphStateTransferMode = options.graphStateTransferMode ?? 'inline-nquads';
   }
 
   // ---------------------------------------------------------------------------
@@ -269,8 +262,9 @@ export abstract class DagContainerBase<TWorker = unknown>
    * abort signal and task identity; items come from `batch`.
    *
    * Never throws — transport failures resolve to transport-error `RunResultType`
-   * entries, one per item. The graph state of every item is combined into ONE
-   * transfer on send and split/restored from ONE decode on receipt.
+   * entries, one per item. The transient state of every item is combined into
+   * ONE plain batch payload on send and restored from that shared payload on
+   * receipt.
    */
   async runDag(
     task: DagTaskInterface,
@@ -284,7 +278,7 @@ export abstract class DagContainerBase<TWorker = unknown>
       task.context.signal,
       async (_channel, dispatch) => {
         const entries = batch.items().map((item: ItemType<NodeStateInterface>) => ({ 'id': item.id, 'state': item.state }));
-        const request = await this.#composeRequest(task, entries, dispatch.graphStateTransferFormats);
+        const request = await this.#composeRequest(task, entries);
 
         DagContainerBase.requireGraphCapability(dispatch, request);
         const results = await dispatch.request(request, task.context.signal, relay);
@@ -292,9 +286,9 @@ export abstract class DagContainerBase<TWorker = unknown>
         // O(N²) — at reservoir capacity C over T total events that is C×T
         // comparisons on the dispatcher thread (1000×1_000_000 at defaults).
         const stateById = new Map(batch.items().map((item) => [item.id, item.state]));
-        // ONE combined decode/split for the whole batch, then restore each clone
-        // by id. All results share the same batch graphState payload; a
-        // transport-error batch carries no graphState and skips restore.
+        // ONE shared transient-state batch payload for the whole batch, then
+        // restore each clone by id. A transport-error batch carries no
+        // graphState and skips restore.
         const carrier = results.find((result) => result.graphState !== undefined);
         if (carrier?.graphState !== undefined) {
           const clones: { id: string; runIri: string; state: NodeStateInterface }[] = [];
@@ -317,86 +311,45 @@ export abstract class DagContainerBase<TWorker = unknown>
   }
 
   /**
-   * Restore a batch of clones from ONE combined transfer: one decode/read + one
-   * split for the whole batch, then restore each clone's `${runIri}#state`
-   * subgraph. Store-backed transports read the whole batch from the store once.
+   * Restore a batch of clones from ONE shared transient-state batch payload.
    */
   async #restoreClones(
-    graphState: GraphStateTransferType,
+    graphState: TransientNodeStateBatchType,
     clones: readonly { readonly id: string; readonly runIri: string; readonly state: NodeStateInterface }[],
   ): Promise<void> {
     if (clones.length === 0) return;
-    const parts = await GraphStateTransferCodec.restore(graphState, clones.map((clone) => ({ 'id': clone.id, 'runIri': clone.runIri })), this.#graphStateTransferStore);
-    const stateById = new Map(clones.map((clone) => [clone.id, clone.state]));
-    await Promise.all(parts.map((part) => {
-      const state = stateById.get(part.id);
-      if (state === undefined) return Promise.resolve();
-      if (!DagContainerBase.isGraphSnapshot(state)) throw new Error('Graph-state transfer requires a graph-backed parent state');
-      return state.restoreGraph(part.runIri, part.quads);
+    const snapshotById = new Map(graphState.states.map((entry) => [entry.id, entry.state]));
+    await Promise.all(clones.map((clone) => {
+      const snapshot = snapshotById.get(clone.id);
+      if (snapshot === undefined) return Promise.resolve();
+      return clone.state.restoreTransientState(clone.runIri, snapshot);
     }));
   }
 
   private static requireGraphCapability(dispatch: ChannelDispatch, request: ExecutionRequestType): void {
-    const transport = request.graphState.transport;
-    // Inline N-Quads is the required baseline protocol, not a negotiated
-    // capability. The handshake only advertises the optional transfer modes.
-    if (transport === 'inline-nquads') return;
-    if (!dispatch.supports(transport)) throw new Error(`Container host does not support the '${transport}' graph-state transfer capability`);
+    void dispatch;
+    void request;
   }
 
   /**
    * Build a wire `ExecutionRequest` for a batch of entries: `task.toRequest()`
    * supplies the identity fields (dagName, placementPath, timeout, correlationId)
-   * and the batch's combined `graphState` + `items` are computed here. A single
-   * `runDag` task is a batch of one through the identical path.
+   * and the batch's combined `graphState` + `items` are computed here. A
+   * single `runDag` task is a batch of one through the identical path.
    */
   async #composeRequest(
     task: DagTaskInterface,
     entries: readonly { readonly id: string; readonly state: NodeStateInterface }[],
-    formats: readonly GraphStateTransferFormatType[],
   ): Promise<ExecutionRequestType> {
     const base = task.toRequest();
-    const supportsLd = supportsJsonLd(formats);
-    const graphItems: GraphStateTransferItemType[] = [];
+    const graphStates: TransientNodeStateBatchType['states'] = [];
     const items: ExecutionRequestItemType[] = [];
     for (const entry of entries) {
-      if (!DagContainerBase.isGraphSnapshot(entry.state)) throw new Error('Every node state must expose the graph-state port');
-      const jsonLd = supportsLd ? entry.state.snapshotJsonLd(entry.state.runIri) : undefined;
-      items.push({ 'id': entry.id, 'runIri': entry.state.runIri, ...(jsonLd === undefined ? {} : { 'jsonLd': jsonLd }) });
-      graphItems.push({ 'runIri': entry.state.runIri, 'quads': GraphStateTransferCodec.asyncQuads(entry.state.snapshotGraph(entry.state.runIri)) });
+      items.push({ 'id': entry.id, 'runIri': entry.state.runIri });
+      graphStates.push({ 'id': entry.id, 'state': entry.state.snapshotTransientState() });
     }
-    const graphState = await this.#combineTransfer(graphItems, base);
+    const graphState = { 'states': graphStates };
     return { ...base, 'graphState': graphState, 'items': items };
-  }
-
-  /**
-   * Combine a batch of graph streams into ONE transfer, selecting the transport
-   * from the container's configured mode. Store-backed modes write the whole
-   * batch to the store in one bulk operation; the default inline mode does one
-   * encode + one hash. Delta modes seed as inline (there is no base for a seeded
-   * child), matching the pre-batch request behaviour.
-   */
-  async #combineTransfer(graphItems: readonly GraphStateTransferItemType[], request: ExecutionRequestType): Promise<GraphStateTransferType> {
-    if (this.#graphStateTransferMode === 'graph-ref') {
-      if (this.#graphStateTransferStore === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
-      return GraphStateTransferCodec.reference(this.#graphStateTransferStore, graphItems, DagContainerBase.transferIdentity(request));
-    }
-    if (this.#graphStateTransferMode === 'shared-endpoint') {
-      if (this.#graphStateTransferStore === null) throw new Error('Shared graph transfer requires a graph transfer store');
-      return GraphStateTransferCodec.shared(this.#graphStateTransferStore, graphItems, 60_000);
-    }
-    return GraphStateTransferCodec.inline(graphItems);
-  }
-
-  private static transferIdentity(request: ExecutionRequestType): GraphStateTransferIdentityType {
-    const placementIri = request.placementPath.at(-1);
-    if (placementIri === undefined) throw new Error('Graph transfer requires an absolute placement identity');
-    return { 'dagIri': request.dagName, 'placementPath': request.placementPath, 'placementIri': placementIri };
-  }
-
-  private static isGraphSnapshot(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
-    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
-      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
   }
 
   /**

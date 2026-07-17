@@ -2,18 +2,18 @@ import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js
 import type { GraphDatasetProviderInterface, GraphScopeType } from './contracts/GraphDatasetProviderInterface.js';
 import type { GraphStateDeltaInterface } from './contracts/GraphStateDeltaInterface.js';
 import type { GraphStateFieldDefinitionType } from './contracts/GraphStateFieldDefinition.js';
-import type { GraphStateJsonLdDocumentType } from './contracts/GraphStateJsonLd.js';
 import type { GraphStateLifecycleInterface } from './contracts/GraphStateLifecycleInterface.js';
 import type { GraphStateSnapshotInterface } from './contracts/GraphStateSnapshotInterface.js';
 import type { QuadType } from './contracts/TripleStoreInterface.js';
+import type { TransientNodeStateSelectionType, TransientNodeStateType } from './entities/executor/TransientNodeState.js';
 import type { JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
+import type { DAGLifecycleStateDataType } from './entities/state-machines/DAGLifecycleState.js';
 import { DAGError } from './errors/DAGError.js';
 import { DagGraphTerms } from './graph/DagGraphTerms.js';
 import { GraphDatasetRevision } from './graph/GraphDatasetRevision.js';
-import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
 import { GraphStateQueryService } from './graph/GraphStateQueryService.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
 import { InMemoryGraphDataset } from './graph/InMemoryGraphDataset.js';
@@ -40,7 +40,7 @@ const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
  * Errors are collected in state; they don't stop execution.
  *
  * The data fields (errors, warnings, metadata) mirror `NodeStateData`
- * (the graph projection exposed through the JSON-LD intermediate form).
+ * (the graph projection exposed through the explicit graph/codecs layer).
  * The `lifecycle` field here carries an in-memory `Error` on the `failed`
  * branch, which is not JSON-expressible; `NodeStateData` holds the opaque
  * wire form. See `entities/node/NodeStateData.ts` for the persistence shape.
@@ -55,11 +55,20 @@ export interface NodeStateInterface {
   /** Bind the graph scope identifying this state's run/dag/placement position. */
   bindGraphScope(scope: GraphScopeType): void;
 
-  /** Export the run graph as the Node.js JSON-LD intermediate representation. */
-  snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
+  /** Export the transient isolate-transfer payload as plain JSON data. */
+  snapshotTransientState(): TransientNodeStateType;
 
-  /** Restore this state from the context-bound JSON-LD graph document. */
-  restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType): Promise<void>;
+  /** Export only the selected transient isolate-transfer surface as plain JSON data. */
+  snapshotTransientStateSelection(selection: TransientNodeStateSelectionType): TransientNodeStateType;
+
+  /** Restore this state from the plain transient isolate-transfer payload. */
+  restoreTransientState(runIri: string, snapshot: TransientNodeStateType): Promise<void>;
+
+  /** Export the run graph as quads for explicit graph/codecs consumers. */
+  snapshotGraph(runIri?: string): AsyncIterable<QuadType>;
+
+  /** Restore this state from an explicit quad stream. */
+  restoreGraph(runIri: string, quads: AsyncIterable<QuadType>): Promise<void>;
 
   /** Stable IRI identifying this state’s execution run. */
   readonly runIri: string;
@@ -274,11 +283,6 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         this.#syncRuntimeFields();
         yield* this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)));
     }
-    snapshotJsonLd(runIri: string = this.#runIri): GraphStateJsonLdDocumentType {
-        this.#syncRuntimeFields();
-        const quads = [...this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)))];
-        return GraphStateJsonLdCodec.encode(quads);
-    }
     async snapshotGraphDelta(runIri: string = this.#runIri) {
         this.#syncRuntimeFields();
         const current = [...this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)))];
@@ -307,9 +311,75 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         this.#runIri = runIri;
         this.#restoreRuntimeFields();
     }
-    async restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType) {
-        const quads = GraphStateJsonLdCodec.rebase(GraphStateJsonLdCodec.decode(document), runIri);
-        await this.restoreGraph(runIri, GraphStateJsonLdCodec.asyncQuads(quads));
+    snapshotTransientState(): TransientNodeStateType {
+        const domain: Record<string, JsonValueType> = {};
+        for (const key of Object.keys(this)) {
+            if (key === 'getter')
+                continue;
+            const definition = this.#fieldDefinition(`domain.${key}`);
+            domain[key] = JsonValue.from(this.#jsonStateValue(this.graphStateValue(key, Reflect.get(this, key)), definition));
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.'))
+                continue;
+            const value = this.#readField(field.key);
+            if (value === undefined)
+                continue;
+            NodeStateBase.setPathValue(domain, field.key, JsonValue.from(this.#jsonStateValue(value, field)));
+        }
+        return this.#transientStateEnvelope(domain, null);
+    }
+    snapshotTransientStateSelection(selection: TransientNodeStateSelectionType): TransientNodeStateType {
+        if (selection.mode === 'full')
+            return this.snapshotTransientState();
+        const domain: Record<string, JsonValueType> = {};
+        const seen = new Set<string>();
+        for (const path of selection.domainPaths) {
+            if (seen.has(path))
+                continue;
+            seen.add(path);
+            if (path.includes('.')) {
+                const value = this.#readField(path);
+                if (value === undefined)
+                    continue;
+                const definition = this.#fieldDefinition(`domain.${path}`) ?? this.#fieldDefinition(path);
+                NodeStateBase.setPathValue(domain, path, JsonValue.from(this.#jsonStateValue(value, definition)));
+                continue;
+            }
+            const definition = this.#fieldDefinition(`domain.${path}`);
+            const raw = this.graphStateValue(path, Reflect.get(this, path));
+            if (raw === undefined)
+                continue;
+            domain[path] = JsonValue.from(this.#jsonStateValue(raw, definition));
+        }
+        return this.#transientStateEnvelope(domain, new Set(selection.metadataKeys));
+    }
+    async restoreTransientState(runIri: string, snapshot: TransientNodeStateType) {
+        await this.#dataset.transactAsync(async (dataset) => {
+            dataset.clearGraph(this.#graph());
+        });
+        this.#runIri = runIri;
+        this.#scope = { ...this.#scope, runIri };
+        this.#ensureRunFact();
+        for (const [key, value] of Object.entries(snapshot.domain)) {
+            const definition = this.#fieldDefinition(`domain.${key}`);
+            const nextValue = definition?.kind === 'map' ? this.#mapFromStateValue(value) : value;
+            this.#assignFieldValue(key, nextValue);
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.'))
+                continue;
+            const value = NodeStateBase.pathValue(snapshot.domain, field.key);
+            if (value === undefined)
+                continue;
+            this.#assignFieldValue(field.key, field.kind === 'map' ? this.#mapFromStateValue(value) : value);
+        }
+        for (const [key, value] of Object.entries(snapshot.graphDomain)) this.setGraphStateField(key, value);
+        for (const [key, value] of Object.entries(snapshot.metadata)) this.setMetadata(key, value);
+        for (const error of snapshot.errors) this.collectError(error);
+        for (const warning of snapshot.warnings) this.collectWarning(warning);
+        this.#restoreRetries(snapshot.retries);
+        this.#setLifecycle(this.#runtimeLifecycle(snapshot.lifecycle));
     }
     get runIri() {
         return this.#runIri;
@@ -716,6 +786,38 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     static quadKey(quad: QuadType): string {
         return JSON.stringify(quad);
     }
+    static setPathValue(target: Record<string, JsonValueType>, path: string, value: JsonValueType): void {
+        const segments = path.split('.');
+        let cursor: Record<string, JsonValueType> = target;
+        for (let i = 0; i < segments.length - 1; i++) {
+            const segment = segments[i];
+            if (segment === undefined)
+                continue;
+            const next = cursor[segment];
+            if (next === null || Array.isArray(next) || typeof next !== 'object') {
+                const created: Record<string, JsonValueType> = {};
+                cursor[segment] = created;
+                cursor = created;
+                continue;
+            }
+            cursor = next as Record<string, JsonValueType>;
+        }
+        const leaf = segments.at(-1);
+        if (leaf !== undefined)
+            cursor[leaf] = value;
+    }
+    static pathValue(source: Record<string, unknown>, path: string): unknown {
+        let cursor: unknown = source;
+        for (const segment of path.split('.')) {
+            if (!NodeStateBase.isPlainObject(cursor))
+                return undefined;
+            cursor = cursor[segment];
+        }
+        return cursor;
+    }
+    static isPlainObject(value: unknown): value is Record<string, unknown> {
+        return value !== null && !Array.isArray(value) && typeof value === 'object';
+    }
     #dispatch(event: Parameters<typeof DAGLifecycleMachine.transition>[1], targetVariant: string) {
         try {
             this.#setLifecycle(DAGLifecycleMachine.transition(this.lifecycle, event));
@@ -764,6 +866,56 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         if (value === null || Array.isArray(value) || typeof value !== 'object') return [];
         return Object.entries(value) as [string, JsonValueType][];
     }
+    #transientStateEnvelope(domain: Record<string, JsonValueType>, metadataKeys: ReadonlySet<string> | null): TransientNodeStateType {
+        const graphDomain: Record<string, JsonValueType> = {};
+        const metadata: Record<string, JsonValueType> = {};
+        for (const [key, value] of this.#values()) {
+            if (key.startsWith('domain.')) {
+                graphDomain[key.slice('domain.'.length)] = value;
+                continue;
+            }
+            if (!key.startsWith('metadata.'))
+                continue;
+            const metadataKey = key.slice('metadata.'.length);
+            if (metadataKeys !== null && !metadataKeys.has(metadataKey))
+                continue;
+            metadata[metadataKey] = value;
+        }
+        return {
+            domain,
+            graphDomain,
+            metadata,
+            'errors': [...this.errors],
+            'warnings': [...this.warnings],
+            'retries': this.#retrySnapshot(),
+            'lifecycle': this.#lifecycleData(this.lifecycle),
+        };
+    }
+    #retrySnapshot(): Record<string, number> {
+        const retries: Record<string, number> = {};
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        for (const quad of this.#dataset.match({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() })) {
+            if (quad.object.termType !== 'NamedNode')
+                continue;
+            const key = new GraphStateQueryService(this.#dataset, this.#runIri).objectsFor(quad.object, GraphStateTerms.DAGONIZER.AttemptKey).at(0);
+            const keyValue = key?.termType === 'Literal' ? key.value : undefined;
+            if (keyValue === undefined)
+                continue;
+            retries[keyValue] = this.retriesFor(keyValue);
+        }
+        return retries;
+    }
+    #restoreRetries(retries: Record<string, number>): void {
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        for (const [key, count] of Object.entries(retries)) {
+            const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
+            this.#dataset.add([
+                { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal(String(count), GraphStateTerms.XSD.integer), "graph": this.#graph() },
+            ]);
+        }
+    }
 
     #jsonStateValue(value: unknown, definition?: GraphStateFieldDefinitionType): unknown {
         if (value === null || value === undefined) return value;
@@ -808,6 +960,101 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         const result = new Map<string, JsonValueType>();
         for (const [key, item] of Object.entries(value)) result.set(key, item);
         return result;
+    }
+    #lifecycleData(lifecycle: DAGLifecycleStateType): DAGLifecycleStateDataType {
+        if (lifecycle.variant !== 'failed')
+            return lifecycle;
+        const error = lifecycle.error instanceof DAGError
+            ? {
+                'kind': 'DAGError',
+                'name': lifecycle.error.name,
+                'message': lifecycle.error.message,
+                'code': lifecycle.error.code,
+                'context': lifecycle.error.context,
+                'retryable': lifecycle.error.retryable,
+            }
+            : {
+                'kind': 'Error',
+                'name': lifecycle.error.name,
+                'message': lifecycle.error.message,
+            };
+        return { ...lifecycle, error };
+    }
+    #runtimeLifecycle(lifecycle: DAGLifecycleStateDataType): DAGLifecycleStateType {
+        switch (lifecycle.variant) {
+            case 'pending':
+                return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
+            case 'running':
+                return { 'variant': 'running', 'startedAt': lifecycle.startedAt ?? 0, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
+            case 'awaiting-input':
+                return {
+                    'variant': 'awaiting-input',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': null,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': lifecycle.correlationKey ?? '',
+                };
+            case 'completed':
+                return {
+                    'variant': 'completed',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': null,
+                };
+            case 'cancelled':
+                return {
+                    'variant': 'cancelled',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': lifecycle.reason ?? '',
+                    'correlationKey': null,
+                };
+            case 'timed_out':
+                return {
+                    'variant': 'timed_out',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': null,
+                };
+            case 'failed':
+                return {
+                    'variant': 'failed',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': this.#restoreLifecycleError(lifecycle.error),
+                    'reason': null,
+                    'correlationKey': null,
+                };
+        }
+    }
+    #restoreLifecycleError(payload: DAGLifecycleStateDataType['error']): Error {
+        if (payload === null)
+            return new Error('Unknown DAG failure');
+        if (NodeStateBase.isPlainObject(payload)) {
+            if (payload['kind'] === 'DAGError' && typeof payload['code'] === 'string' && typeof payload['message'] === 'string') {
+                const context = NodeStateBase.isPlainObject(payload['context'])
+                    ? Object.fromEntries(Object.entries(payload['context']))
+                    : {};
+                return new DAGError(payload['message'], {
+                    'code': payload['code'],
+                    context,
+                    'retryable': payload['retryable'] === true,
+                });
+            }
+            if (typeof payload['message'] === 'string') {
+                const error = new Error(payload['message']);
+                if (typeof payload['name'] === 'string')
+                    error.name = payload['name'];
+                return error;
+            }
+        }
+        return new Error('Unknown DAG failure');
     }
 
     #assignFieldValue(property: string, value: unknown): void {

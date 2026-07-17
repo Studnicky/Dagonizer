@@ -41,7 +41,7 @@ The runner wires real node classes, real DAG documents, and browser UI observers
 
 ### Architecture
 
-Five producer feed DAGs, one open gather, and one shared enrichment scatter:
+Five producer feed DAGs, one open gather, and one shared streaming-enrichment scatter:
 
 ```
 cartographer (top-level)
@@ -49,15 +49,16 @@ cartographer (top-level)
   ├─ dag-feed-position-ping         ─┐
   ├─ dag-feed-facility-scan         ─┤
   ├─ dag-feed-sensor-reading        ─┤  each producer feed DAG:
-  ├─ dag-feed-customs-event         ─┤    feed-* → scatter('unpack-normalize', sourceFeed, { dag: 'ingest-source' })
-  └─ dag-feed-delivery-confirmation ─┘      → collect-normalized → merge-events → canonicalEvents
-  gather('intake-gather', canonical-feed)  ← open fan-in over producer feed DAG outputs
-  scatter('process-stream', 'canonicalEvents',
-          { dag: 'event-pipeline-typed' },
+  ├─ dag-feed-customs-event         ─┤    feed-<type> opens that producer's lazy
+  └─ dag-feed-delivery-confirmation ─┘      payload stream onto state.sourceFeed → done
+  gather('intake-gather', source-intake)   ← open fan-in; merges each clone's stream
+                                              into the top-level state['source-payload']
+  scatter('process-stream', 'source-payload',
+          { dag: 'stream-event' },
           gather: insights-fold,             ← fold into state.insights / state.journeys / state.sampleRecords
           container: 'cpu',                  ← browser demo: WebWorkerContainer role
           execution: { mode: 'reservoir', concurrency: 16, reservoir: { keyField: 'eventType', capacity } })
-    └─ event-pipeline-typed                  ← route-event-type-variant
+    └─ stream-event                          ← decode-payload → route-event-type-variant
          ├─ position-ping       ──► pipeline-position-ping    (parse → geo-pipeline → enrich-leg → aggregate)
          ├─ sensor-reading      ──► pipeline-sensor-reading   (parse → geo-pipeline → cold-chain → enrich-leg → aggregate)
          ├─ customs-event       ──► pipeline-customs-event    (parse → geo-pipeline → customs-dwell → enrich-leg → aggregate)
@@ -75,10 +76,14 @@ cartographer (top-level)
   done
 ```
 
+`stream-event` shares its routing and per-type pipeline embeds with
+`event-pipeline-typed`, an earlier scatter body kept registered as a
+compatibility path; `process-stream` targets `stream-event` directly.
+
 The `insights-fold` gather accumulates each clone's `state.enriched` into three bounded
 accumulators (`state.insights`, `state.journeys`, `state.sampleRecords`) as clones
-complete. The producer feed fan-in also leaves the gathered canonical events on
-`state.canonicalEvents` so the Compare pane can show the normalized inputs that
+complete. The producer feed fan-in also leaves the merged source-payload batches on
+`state['source-payload']` so the Compare pane can show the inputs that
 enter the shared enrichment pipeline.
 
 The browser demo runs the `process-stream` scatter body through container role
@@ -274,19 +279,20 @@ Factory that assembles the `CartographerServices` record for the chosen backend.
 
 ### Key nodes
 
-#### `producerFeeds` and `CanonicalFeedGather` — producer DAG fan-in
+#### `producerFeeds` and `SourceIntakeGather` — producer DAG fan-in
 
-Each data-type entrypoint targets its own producer feed DAG. That DAG opens the
-producer-local source feed, scatters each source payload through `ingest-source`
-for decompress/parse/normalize/validate, merges the validated events, and emits
-`canonicalEvents`. The top-level `canonical-feed` gather is the open fan-in that
-flattens those producer DAG outputs into the single shared enrichment pipeline.
+Each data-type entrypoint targets its own producer stream-feed DAG. That DAG
+opens the producer-local source stream, scatters each source payload through
+`ingest-source` for decompress/parse/normalize/validate, and returns source
+payload batches to the top-level `intake-gather` placement. The `source-intake`
+gather is the open fan-in that merges those producer DAG outputs into the
+single shared `source-payload` collection the enrichment scatter reads.
 
 <<< ../../examples/the-cartographer/nodes/producerFeeds.ts#producer-feed-nodes
 
 <<< ../../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts#producer-feed-dags
 
-<<< ../../examples/the-cartographer/core/CanonicalFeedGather.ts#canonical-feed-gather
+<<< ../../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 #### `canonicalizeCore` — timestamp and location normalization
 

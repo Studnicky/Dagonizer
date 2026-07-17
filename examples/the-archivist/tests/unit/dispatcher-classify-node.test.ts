@@ -219,12 +219,12 @@ describe('ClassifyMessageNode', () => {
 });
 
 describe('DispatcherState graph state', () => {
-  it('round-trips classificationMode through graph JSON-LD', async () => {
+  it('round-trips classificationMode through transient state snapshot', async () => {
     const state = new DispatcherState();
     state.classificationMode = 'llm';
-    const snap = state.snapshotJsonLd();
+    const snap = state.snapshotTransientState();
     const restored = new DispatcherState();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     assert.equal(restored.classificationMode, 'llm');
   });
 

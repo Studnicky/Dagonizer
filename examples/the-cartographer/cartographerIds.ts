@@ -56,23 +56,8 @@ function feedPlacementIri(dagIri: string, source: typeof CARTOGRAPHER_INTAKE_EVE
   return placementIri(dagIri, `dag-feed-${source}`);
 }
 
-function feedDagIri(source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): string {
-  return `urn:noocodec:dag:cartographer-feed-${source}`;
-}
-
 function streamFeedDagIri(source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): string {
   return `urn:noocodec:dag:cartographer-stream-feed-${source}`;
-}
-
-function feedSources(dagIri: string): Readonly<Record<string, { readonly resultField: 'canonicalEvents' }>> {
-  return Object.freeze(
-    Object.fromEntries(
-      CARTOGRAPHER_INTAKE_EVENT_TYPES.map((source) => [
-        feedPlacementIri(dagIri, source),
-        { 'resultField': 'canonicalEvents' },
-      ]),
-    ),
-  ) as Readonly<Record<string, { readonly resultField: 'canonicalEvents' }>>;
 }
 
 function feedEntrypoints(dagIri: string): Readonly<Record<typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number], string>> {
@@ -87,11 +72,9 @@ export const CARTOGRAPHER_IRIS = Object.freeze({
   dag: CARTOGRAPHER_DAG_IRIS,
   intakeEventTypes: CARTOGRAPHER_INTAKE_EVENT_TYPES,
   entrypointIri,
-  feedDagIri,
   streamFeedDagIri,
   feedEntrypoints,
   feedPlacementIri,
-  feedSources,
   intakeSources,
   placementIri,
 });
