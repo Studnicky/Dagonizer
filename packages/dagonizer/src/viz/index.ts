@@ -22,28 +22,28 @@ export { MermaidRenderer } from './MermaidRenderer.js';
 export type { MermaidRenderOptionsType } from './MermaidRenderer.js';
 export { DpadMachine } from './DpadMachine.js';
 export type { DpadActionType, DpadModeType } from './DpadMachine.js';
-export { createCameraDpadMachine, runCameraControlAction } from './CameraControls.js';
+export { CameraControls } from './CameraControls.js';
 export type { CameraControlSurfaceType, CameraPanDirectionType } from './CameraControls.js';
 export { DEFAULT_VISUALIZER_ANIMATION_POLICY } from './AnimationPolicy.js';
 export type { VisualizerAnimationPolicyType } from './AnimationPolicy.js';
-export { createViewportStatus } from './ViewportStatus.js';
+export { ViewportStatus } from './ViewportStatus.js';
 export type { ViewportModeType, ViewportStatusType } from './ViewportStatus.js';
 export { ModalController } from './ModalController.js';
 export type { ModalDismissReasonType, ModalControllerHooksType } from './ModalController.js';
-export { viewerAction } from './ViewerActions.js';
+export { ViewerActions } from './ViewerActions.js';
 export type { ViewerActionIdType, ViewerActionToneType, ViewerActionType, ViewerActionVariantType } from './ViewerActions.js';
-export { SelectionController, selectedInspectTarget, selectedToolName, isSameToolTarget } from './SelectionController.js';
+export { SelectionController, SelectionTargets } from './SelectionController.js';
 export type { SelectionControllerHooksType } from './SelectionController.js';
 export { LegendMachine } from './LegendMachine.js';
 export type { LegendItemType, LegendSectionType, LegendSwatchType } from './LegendMachine.js';
-export { dagNodeSelection, iriSelection, literalSelection } from './InspectSelection.js';
+export { InspectSelection } from './InspectSelection.js';
 export type {
   DagNodeSelectionType,
   IriSelectionType,
   LiteralSelectionType,
   InspectSelectionType,
 } from './InspectSelection.js';
-export { toolInspectorTarget, isToolInspectorTarget, isInspectSelectionTarget } from './InspectorTarget.js';
+export { InspectorTarget } from './InspectorTarget.js';
 export type { ToolInspectorTargetType, InspectorTargetType } from './InspectorTarget.js';
 export { MermaidExplorer } from './MermaidExplorer.js';
 export type { MermaidExplorerOptionsType, MermaidExplorerThemeType } from './MermaidExplorer.js';

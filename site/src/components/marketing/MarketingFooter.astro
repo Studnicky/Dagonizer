@@ -2,17 +2,17 @@
 import UiActionLink from '@/components/marketing/UiActionLink.astro';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
 const navigateLinks = [
-  { href: siteHref('/architecture'), label: 'Architecture' },
-  { href: siteHref('/docs/examples/'), label: 'Examples' },
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site('/architecture'), label: 'Architecture' },
+  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 
 const referenceLinks = [
-  { href: siteHref('/getting-started'), label: 'Getting started' },
-  { href: siteHref('/docs/reference/dagonizer'), label: 'Runtime reference' },
+  { href: SiteLinks.site('/getting-started'), label: 'Getting started' },
+  { href: SiteLinks.site('/docs/reference/dagonizer'), label: 'Runtime reference' },
   { href: 'https://github.com/Studnicky/Dagonizer', label: 'GitHub' }
 ] as const;
 ---
@@ -25,8 +25,8 @@ const referenceLinks = [
         Explicit workflow execution for teams that need routing, visualization, and resume to stay legible under real operational pressure.
       </h2>
       <UiCtaRow>
-        <UiActionLink href={siteHref('/getting-started')} variant="primary">Get started</UiActionLink>
-        <UiActionLink href={siteHref('/docs')} variant="secondary">Browse docs</UiActionLink>
+        <UiActionLink href={SiteLinks.site('/getting-started')} variant="primary">Get started</UiActionLink>
+        <UiActionLink href={SiteLinks.site('/docs')} variant="secondary">Browse docs</UiActionLink>
       </UiCtaRow>
     </div>
 

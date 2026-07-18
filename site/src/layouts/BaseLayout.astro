@@ -1,7 +1,7 @@
 ---
 import '@/styles/global.css';
 import { siteConfig } from '@/config/site';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
 interface Props {
   title?: string;
@@ -12,7 +12,7 @@ const { title = siteConfig.title, description = siteConfig.description } = Astro
 const fullTitle = title === siteConfig.title ? title : `${title} | ${siteConfig.title}`;
 const pathname = Astro.url.pathname;
 const canonicalUrl = new URL(pathname, siteConfig.siteUrl).toString();
-const ogImageUrl = new URL(siteHref(siteConfig.ogImage), siteConfig.siteUrl).toString();
+const ogImageUrl = new URL(SiteLinks.site(siteConfig.ogImage), siteConfig.siteUrl).toString();
 const displayTitle = fullTitle;
 const isDocsExamplePage = pathname.startsWith(`${siteConfig.basePath}/docs/examples/`);
 const pathWithoutBase = pathname.startsWith(siteConfig.basePath)
@@ -24,7 +24,7 @@ const breadcrumbItems = [
     '@type': 'ListItem',
     position: 1,
     name: siteConfig.title,
-    item: new URL(siteHref('/'), siteConfig.siteUrl).toString()
+    item: new URL(SiteLinks.site('/'), siteConfig.siteUrl).toString()
   },
   ...routeSegments.map((segment, index) => {
     const accumulated = routeSegments.slice(0, index + 1).join('/');
@@ -33,7 +33,7 @@ const breadcrumbItems = [
       '@type': 'ListItem',
       position: index + 2,
       name: isLast ? title : segment.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
-      item: new URL(siteHref(`/${accumulated}`), siteConfig.siteUrl).toString()
+      item: new URL(SiteLinks.site(`/${accumulated}`), siteConfig.siteUrl).toString()
     };
   })
 ];
@@ -41,7 +41,7 @@ const webSiteSchema = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
   name: siteConfig.title,
-  url: new URL(siteHref('/'), siteConfig.siteUrl).toString(),
+  url: new URL(SiteLinks.site('/'), siteConfig.siteUrl).toString(),
   description: siteConfig.description,
   inLanguage: 'en-US'
 };
@@ -50,7 +50,7 @@ const softwareSchema = {
   '@type': 'SoftwareSourceCode',
   name: siteConfig.title,
   description: siteConfig.description,
-  url: new URL(siteHref('/'), siteConfig.siteUrl).toString(),
+  url: new URL(SiteLinks.site('/'), siteConfig.siteUrl).toString(),
   codeRepository: siteConfig.repoUrl,
   programmingLanguage: 'TypeScript',
   runtimePlatform: 'Node.js >=24',
@@ -66,8 +66,8 @@ const organizationSchema = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: siteConfig.title,
-  url: new URL(siteHref('/'), siteConfig.siteUrl).toString(),
-  logo: new URL(siteHref('/dagonizer-icon.svg'), siteConfig.siteUrl).toString(),
+  url: new URL(SiteLinks.site('/'), siteConfig.siteUrl).toString(),
+  logo: new URL(SiteLinks.site('/dagonizer-icon.svg'), siteConfig.siteUrl).toString(),
   sameAs: [siteConfig.repoUrl, siteConfig.npmUrl, siteConfig.authorUrl],
   founder: {
     '@type': 'Person',
@@ -109,16 +109,16 @@ const howToSchema = isDocsExamplePage
     <meta name="generator" content="Astro" />
     <meta name="referrer" content="origin-when-cross-origin" />
     <link rel="canonical" href={canonicalUrl} />
-    <link rel="icon" type="image/svg+xml" href={siteHref('/dagonizer-icon.svg')} />
-    <link rel="icon" type="image/x-icon" href={siteHref('/favicon.ico')} />
-    <link rel="icon" type="image/png" sizes="32x32" href={siteHref('/favicon-32.png')} />
-    <link rel="icon" type="image/png" sizes="192x192" href={siteHref('/favicon-192.png')} />
-    <link rel="shortcut icon" href={siteHref('/favicon.ico')} />
-    <link rel="apple-touch-icon" sizes="180x180" href={siteHref('/apple-touch-icon.png')} />
-    <link rel="manifest" href={siteHref('/manifest.webmanifest')} />
-    <link rel="sitemap" type="application/xml" href={siteHref('/sitemap-index.xml')} />
+    <link rel="icon" type="image/svg+xml" href={SiteLinks.site('/dagonizer-icon.svg')} />
+    <link rel="icon" type="image/x-icon" href={SiteLinks.site('/favicon.ico')} />
+    <link rel="icon" type="image/png" sizes="32x32" href={SiteLinks.site('/favicon-32.png')} />
+    <link rel="icon" type="image/png" sizes="192x192" href={SiteLinks.site('/favicon-192.png')} />
+    <link rel="shortcut icon" href={SiteLinks.site('/favicon.ico')} />
+    <link rel="apple-touch-icon" sizes="180x180" href={SiteLinks.site('/apple-touch-icon.png')} />
+    <link rel="manifest" href={SiteLinks.site('/manifest.webmanifest')} />
+    <link rel="sitemap" type="application/xml" href={SiteLinks.site('/sitemap-index.xml')} />
     <link rel="alternate" hreflang="en-US" href={canonicalUrl} />
-    <link rel="alternate" hreflang="x-default" href={new URL(siteHref('/'), siteConfig.siteUrl).toString()} />
+    <link rel="alternate" hreflang="x-default" href={new URL(SiteLinks.site('/'), siteConfig.siteUrl).toString()} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={siteConfig.title} />
     <meta property="og:title" content={displayTitle} />

@@ -149,7 +149,6 @@ export {
   DAGIdentity,
   ExecutorIntermediateSchema,
   TransientNodeStateSchema,
-  TransientNodeStateBatchSchema,
   TransientNodeStateResponseStateSchema,
   TransientNodeStateSelectionSchema,
   ExecutionRequestSchema,
@@ -204,7 +203,6 @@ export type {
   JsonSchemaTypeNameType,
   ExecutorIntermediateType,
   TransientNodeStateType,
-  TransientNodeStateBatchType,
   TransientNodeStateResponseStateType,
   TransientNodeStateSelectionType,
   ExecutionRequestType,
@@ -256,7 +254,7 @@ export type {
 export { InMemoryChannel } from './channels/index.js';
 export type { InMemoryChannelOptionsType } from './channels/index.js';
 export { StreamChannel, StreamCursor } from './channels/index.js';
-export type { StreamChannelInterface, StreamChannelOptionsType, StreamCursorOptionsType } from './channels/index.js';
+export type { StreamChannelInterface, StreamChannelOptionsType } from './channels/index.js';
 export type { StreamSinkInterface, StreamProducerInterface, ResumableStreamProducerInterface } from './contracts/index.js';
 export { NullStreamSink } from './contracts/index.js';
 
@@ -276,7 +274,7 @@ export type { DagContainerOptionsType } from './container/DagContainerBase.js';
 
 export { Dagonizer } from './Dagonizer.js';
 export { GATHER_PROGRESS_KEY, SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
-export type { DagonizerOptionsType, DispatcherObserverType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
+export type { DagonizerOptionsType, DispatcherObserverType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -376,7 +374,7 @@ export type {
 } from './plugin/defineDagonizerPlugin.js';
 export { PluginSpecifier } from './plugin/PluginSpecifier.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
-export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
+export type { DagTaskType } from './types/DagTask.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
 export type { NodeInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 export type { RemoteStoreInterface } from './contracts/RemoteStoreInterface.js';

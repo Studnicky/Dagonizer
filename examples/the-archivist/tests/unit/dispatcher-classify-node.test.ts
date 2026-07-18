@@ -77,6 +77,7 @@ class StubLlm implements DispatcherLlmInterface {
 
 /** Stub intent classifier: returns a canned {intent, score} or null. */
 class StubIntent implements DispatcherIntentInterface {
+  readonly displayName = 'Stub intent';
   readonly #result: { readonly intent: 'routine' | 'escalate' | 'off-topic'; readonly score: number } | null;
 
   constructor(result: { readonly intent: 'routine' | 'escalate' | 'off-topic'; readonly score: number } | null) {
@@ -87,6 +88,26 @@ class StubIntent implements DispatcherIntentInterface {
     _message: string,
   ): Promise<{ readonly intent: 'routine' | 'escalate' | 'off-topic'; readonly score: number } | null> {
     return this.#result;
+  }
+
+  async load(): Promise<DispatcherIntentInterface> {
+    return this;
+  }
+}
+
+class RejectingIntentProvider {
+  readonly displayName = null;
+
+  async load(): Promise<DispatcherIntentInterface> {
+    throw new Error('intent unavailable');
+  }
+}
+
+class UnexpectedIntentProvider {
+  readonly displayName = null;
+
+  async load(): Promise<DispatcherIntentInterface> {
+    throw new Error('intent must not be consulted in llm mode');
   }
 }
 
@@ -139,26 +160,19 @@ describe('ClassifyMessageNode', () => {
     assert.equal(routedOutput(result), 'routine');
   });
 
-  it('routes to LLM when no embedder is provisioned, and escalates on LLM failure', async () => {
+  it('surfaces intent provisioning failure in embedder mode', async () => {
     const state = new DispatcherState();
     state.message = 'a message';
-    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': null };
+    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': new RejectingIntentProvider() };
     const node = new ClassifyMessageNode(services);
-    const result = await node.execute(Batch.of(state), CTX);
-    assert.equal(routedOutput(result), 'escalate');
-    assert.equal(state.escalationReason, 'LLM unavailable; escalated for safety');
+    await assert.rejects(node.execute(Batch.of(state), CTX), /intent unavailable/);
   });
 
   it("classificationMode='llm': runs the LLM exclusively, never consulting the embedder", async () => {
     const state = new DispatcherState();
     state.message = 'what are your store hours?';
     state.classificationMode = 'llm';
-    const throwingIntent: DispatcherIntentInterface = {
-      async classify(): Promise<never> {
-        throw new Error('intent must not be consulted in llm mode');
-      },
-    };
-    const services: DispatcherServices = { 'llm': new StubLlm('routine'), 'intent': throwingIntent };
+    const services: DispatcherServices = { 'llm': new StubLlm('routine'), 'intent': new UnexpectedIntentProvider() };
     const node = new ClassifyMessageNode(services);
     const result = await node.execute(Batch.of(state), CTX);
     assert.equal(routedOutput(result), 'routine');
@@ -168,7 +182,7 @@ describe('ClassifyMessageNode', () => {
     const state = new DispatcherState();
     state.message = 'a message';
     state.classificationMode = 'llm';
-    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': null };
+    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': new UnexpectedIntentProvider() };
     const node = new ClassifyMessageNode(services);
     const result = await node.execute(Batch.of(state), CTX);
     assert.equal(routedOutput(result), 'escalate');
@@ -206,15 +220,13 @@ describe('ClassifyMessageNode', () => {
     assert.equal(routedOutput(result), 'routine');
   });
 
-  it("classificationMode='embedder': no embedder provisioned routes to the LLM, escalating on LLM failure", async () => {
+  it("classificationMode='embedder': intent provisioning failure rejects", async () => {
     const state = new DispatcherState();
     state.message = 'a message';
     state.classificationMode = 'embedder';
-    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': null };
+    const services: DispatcherServices = { 'llm': new StubLlm(null), 'intent': new RejectingIntentProvider() };
     const node = new ClassifyMessageNode(services);
-    const result = await node.execute(Batch.of(state), CTX);
-    assert.equal(routedOutput(result), 'escalate');
-    assert.equal(state.escalationReason, 'LLM unavailable; escalated for safety');
+    await assert.rejects(node.execute(Batch.of(state), CTX), /intent unavailable/);
   });
 });
 

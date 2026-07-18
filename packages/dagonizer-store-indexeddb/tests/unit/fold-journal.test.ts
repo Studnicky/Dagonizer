@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 import type { FoldJournalStoreInterface } from '@studnicky/dagonizer/contracts';
@@ -46,6 +47,26 @@ async function readAll(store: IndexedDbFoldJournalStore, runIri: string): Promis
   const results: FoldJournalStoreInterface.CommitType[] = [];
   for await (const commitEntry of store.read(runIri)) results.push(commitEntry);
   return results;
+}
+
+async function withGlobalIndexedDb(factory: IdbFactoryLikeInterface, operation: () => Promise<void>): Promise<void> {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+  Object.defineProperty(globalThis, 'indexedDB', {
+    'configurable': true,
+    'enumerable': false,
+    'value': factory,
+    'writable': true,
+  });
+
+  try {
+    await operation();
+  } finally {
+    if (previousDescriptor === undefined) {
+      assert.equal(Reflect.deleteProperty(globalThis, 'indexedDB'), true);
+    } else {
+      Object.defineProperty(globalThis, 'indexedDB', previousDescriptor);
+    }
+  }
 }
 
 void describe('IndexedDbFoldJournalStore', () => {
@@ -101,6 +122,79 @@ void describe('IndexedDbFoldJournalStore', () => {
     const afterRestart = await readAll(restarted, 'urn:test:run-restart');
     assert.deepEqual(afterRestart.map((entry) => entry.commitId), ['commit-1', 'commit-2', 'commit-3']);
     await restarted.disconnect();
+  });
+
+  void it('open() connects through globalThis.indexedDB and reopens a durable journal by database name', async () => {
+    await withGlobalIndexedDb(new IDBFactory(), async () => {
+      const databaseName = `dagonizer-fold-journal-open-${randomUUID()}`;
+      const runIri = 'urn:test:run-public-open';
+      const store = IndexedDbFoldJournalStore.open({ 'databaseName': databaseName });
+      await store.connect();
+
+      try {
+        await store.append(runIri, commit('commit-1', 0));
+        await store.append(runIri, commit('commit-2', 1));
+        assert.deepEqual(
+          (await readAll(store, runIri)).map((entry) => entry.commitId),
+          ['commit-1', 'commit-2'],
+        );
+      } finally {
+        await store.disconnect();
+      }
+
+      const reopened = IndexedDbFoldJournalStore.open({ 'databaseName': databaseName });
+      await reopened.connect();
+      try {
+        assert.deepEqual(
+          (await readAll(reopened, runIri)).map((entry) => entry.commitId),
+          ['commit-1', 'commit-2'],
+        );
+      } finally {
+        await reopened.disconnect();
+      }
+    });
+  });
+
+  void it('serializes concurrent appends across public-open instances without duplicate IDs or sequence loss', async () => {
+    await withGlobalIndexedDb(new IDBFactory(), async () => {
+      const databaseName = `dagonizer-fold-journal-concurrent-${randomUUID()}`;
+      const runIri = 'urn:test:run-public-concurrent';
+      const first = IndexedDbFoldJournalStore.open({ 'databaseName': databaseName });
+      const second = IndexedDbFoldJournalStore.open({ 'databaseName': databaseName });
+      await first.connect();
+      await second.connect();
+
+      const uniqueCommits = Array.from(
+        { 'length': 24 },
+        (_, index) => commit(`commit-${String(index).padStart(2, '0')}`, index),
+      );
+      const duplicate = commit('commit-duplicate', uniqueCommits.length);
+      const expectedCommitIds = [...uniqueCommits.map((entry) => entry.commitId), duplicate.commitId].sort();
+
+      try {
+        const appendOperations = uniqueCommits.map((entry, index) =>
+          (index % 2 === 0 ? first : second).append(runIri, entry));
+        appendOperations.push(
+          first.append(runIri, duplicate),
+          second.append(runIri, duplicate),
+        );
+        await Promise.all(appendOperations);
+      } finally {
+        await first.disconnect();
+        await second.disconnect();
+      }
+
+      const reopened = IndexedDbFoldJournalStore.open({ 'databaseName': databaseName });
+      await reopened.connect();
+      try {
+        const actualCommitIds = (await readAll(reopened, runIri)).map((entry) => entry.commitId);
+        assert.equal(actualCommitIds.length, expectedCommitIds.length);
+        assert.equal(new Set(actualCommitIds).size, expectedCommitIds.length);
+        assert.deepEqual(actualCommitIds.sort(), expectedCommitIds);
+      } finally {
+        await reopened.disconnect();
+      }
+    });
   });
 
   void it('throws StoreError when a stored commit record fails structural validation', async () => {

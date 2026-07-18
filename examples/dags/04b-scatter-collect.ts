@@ -121,7 +121,7 @@ export const dag: DAGType = {
       "body":         { "node": 'urn:noocodec:node:provider' },         // run provider once per clone
       "source":       'providers',                     // one clone per provider
       "itemKey":      'provider',                      // current provider bound under this key
-      "execution": { "mode": "item", "concurrency": 3 },                               // up to 3 providers in-flight
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 3 } } },      // up to 3 providers in-flight
       // Aggregate outputs from the default 'aggregate' reducer. All providers
       // emit 'produced' (success), so 'all-success' fires → route to select.
       "outputs": {

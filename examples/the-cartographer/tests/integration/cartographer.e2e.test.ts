@@ -103,7 +103,7 @@ describe('Cartographer DAG end-to-end', () => {
     );
 
     assert.deepEqual(cartographerDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographer));
-    assert.deepEqual(cartographerDAG.writePoints, ['NodeEdges', 'WatermarkCommit']);
+    assert.deepEqual(cartographerDAG.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
     assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'cartographer must not use a pre-phase intake node');
 
     for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
@@ -137,14 +137,14 @@ describe('Cartographer DAG end-to-end', () => {
     assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
     assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
     assert.equal(scatter.itemKey, 'source-payload');
-    assert.deepEqual(scatter.writePoints, []);
+    assert.deepEqual(scatter.configuration?.durability?.writePoints, []);
   });
 
   it('declares the same producer feed topology for resume with item-mode processing', () => {
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'intake-gather');
 
     assert.deepEqual(cartographerResumeDAG.entrypoints, CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_IRIS.dag.cartographerResume));
-    assert.deepEqual(cartographerResumeDAG.writePoints, ['NodeEdges', 'WatermarkCommit']);
+    assert.deepEqual(cartographerResumeDAG.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
 
     const sourceBindings = Object.freeze(
       Object.fromEntries(
@@ -181,8 +181,8 @@ describe('Cartographer DAG end-to-end', () => {
     assert.ok('dag' in scatter.body, 'resume process-stream must use a DAG body');
     assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
     assert.equal(scatter.itemKey, 'source-payload');
-    assert.deepEqual(scatter.writePoints, ['WatermarkCommit']);
-    assert.deepEqual(scatter.execution, { 'mode': 'item', 'concurrency': 16 });
+    assert.deepEqual(scatter.configuration?.durability?.writePoints, ['WatermarkCommit']);
+    assert.deepEqual(scatter.configuration?.execution?.batching, { 'mode': 'item', 'concurrency': 16 });
   });
 
   it('populates state.insights with at least one continent', () => {

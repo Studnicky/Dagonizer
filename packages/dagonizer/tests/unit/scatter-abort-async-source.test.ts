@@ -1,20 +1,9 @@
 /**
- * R1 (P0) — scatter async-iterable-source abort data-loss regression test.
+ * Scatter async-iterable abort and bounded-resume contract tests.
  *
- * Defect: when the run-level signal aborts while the scatter pull-loop is
- * actively pulling from an async-iterable source, the current code continues
- * the pull-loop (signal.aborted is not checked), acks and clears the
- * checkpoint for items that never ran, and returns normally — silently
- * discarding unprocessed items. A subsequent `resume()` sees an empty
- * checkpoint and believes the scatter is complete.
- *
- * Fix: the pull-loop condition adds `&& signal?.aborted !== true`; after the
- * drain loop, if the signal is aborted and no pool error occurred, throw
- * `DAGError.ofSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
- *
- * This test file:
- *   1. Reproduces the defect against current code (should FAIL before the fix).
- *   2. Passes after the fix is applied.
+ * An aborted pull loop preserves bounded progress and leaves the cursor at the
+ * scatter placement. Resume uses the watermark and ahead-acknowledgement set
+ * to execute only the remaining stable source indices.
  */
 
 import assert from 'node:assert/strict';
@@ -65,7 +54,7 @@ class TestAbortDag {
           'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),
@@ -93,17 +82,9 @@ class TestAbortDag {
 void describe('R1 — scatter abort with async-iterable source: data-loss regression', () => {
   /**
    * Core scenario: 50-item async generator, abort fires after the first few
-   * items complete, many items remain unprocessed. After abort the checkpoint
-   * must still record those unprocessed items (inbox or partial ackedResults),
-   * so a resume can reprocess them.
-   *
-   * Defect behaviour (before fix): the pull-loop ignores signal.aborted, drains
-   * the full source, acks everything, calls ScatterCheckpoint.clear(), and
-   * returns success — items that never ran are silently dropped.
-   *
-   * Correct behaviour (after fix): the pull-loop exits when signal.aborted is
-   * true, the throw fires before clear(), the run returns with cursor='fan',
-   * and the checkpoint contains the unprocessed items.
+   * items complete, many items remain unprocessed. The checkpoint records the
+   * acknowledged prefix and any in-flight inbox entries so resume can process
+   * the remainder.
    */
   void it('aborted scatter over async-iterable source preserves checkpoint — resume sees remaining items', async () => {
     const TOTAL_ITEMS = 50;
@@ -163,12 +144,8 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const entry = stored[placementIri('urn:noocodec:dag:abort-async-50', 'fan')];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
-    // 3. Not all items were acked — the acked count must be fewer than total.
-    //    If the defect is present, ackedCount === TOTAL_ITEMS and the
-    //    test fails here, exposing the silent data-loss.
-    const ackedCount = entry.mode === 'bounded'
-      ? entry.watermark + entry.aheadAcked.length
-      : entry.ackedResults.length;
+    // 3. Not all items were acknowledged.
+    const ackedCount = entry.watermark + entry.aheadAcked.length;
     assert.ok(
       ackedCount < TOTAL_ITEMS,
       `only ${ackedCount} of ${TOTAL_ITEMS} items should be acked after abort; ` +
@@ -298,7 +275,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:exactly-once-abort', 'join'),
             'partial': placementIri('urn:noocodec:dag:exactly-once-abort', 'join'),

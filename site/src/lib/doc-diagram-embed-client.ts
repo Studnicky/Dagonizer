@@ -1,5 +1,5 @@
 import mermaid from 'mermaid';
-import { MermaidRenderer } from '@studnicky/dagonizer/viz';
+import { MermaidExplorer, MermaidRenderer } from '@studnicky/dagonizer/viz';
 
 import type { DocDiagramEmbedPayload } from './doc-diagram-embed';
 
@@ -65,6 +65,7 @@ async function mountDiagram(root: Element, index: number): Promise<void> {
     if (typeof result.bindFunctions === 'function') {
       result.bindFunctions(frame);
     }
+    MermaidExplorer.enhance(frame);
   } catch (error) {
     frame.innerHTML = `<pre><code>${String(error)}</code></pre>`;
   }

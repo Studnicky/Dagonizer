@@ -63,7 +63,7 @@ import { innerDag, outerDag }      from '../examples/dags/36-dag-stream-producer
 import { agentDag as reactAgentMemoryAgentDag, traceDag as reactAgentMemoryTraceDag } from '../examples/dags/react-agent-memory.js';
 import { fanInCandidatesDag, streamProducerCandidatesDag } from '../examples/the-archivist/streaming/ArchivistStreamingDAGs.js';
 
-import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
+import { cartographerDAG }                         from '../examples/the-cartographer/dag.js';
 import { streamEventDAG }                          from '../examples/the-cartographer/embedded-dags/StreamEventDAG.js';
 import { gdprComplianceDAG }                       from '../examples/the-cartographer/embedded-dags/GdprComplianceDAG.js';
 import { ingestSourceDAG }                         from '../examples/the-cartographer/embedded-dags/IngestSourceDAG.js';
@@ -94,7 +94,6 @@ const dags: ReadonlyArray<readonly [string, DAGType]> = [
   ['the-cartographer / geoSourceResolveDAG',    geoSourceResolveDAG],
   ['the-cartographer / streamEventDAG',        streamEventDAG],
   ['the-cartographer / orderEnrichmentDAG',    orderEnrichmentDAG],
-  ['the-cartographer / eventPipelineTypedDAG', eventPipelineTypedDAG],
   ['the-cartographer / gdprComplianceDAG',     gdprComplianceDAG],
   ['dags / 34-stream-channel',               streamChannelDag],
   ['dags / 35-stream-fanin-resume (fanIn)',   fanInDag],

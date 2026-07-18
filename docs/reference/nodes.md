@@ -165,7 +165,7 @@ Generate-collect pattern (one clone per source-array item):
 | `outputs` | `Record<string, string>` | yes | Routes for the reduced outcome to placement IRIs |
 | `source` | `string` | yes | Dotted state-array path. One clone runs per item. |
 | `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
-| `execution` | `{ mode: 'item', concurrency?, throttle? } \| { mode: 'reservoir', concurrency?, reservoir }` | no | Unified concurrency-limiting policy — ONE discriminated `mode` structure instead of separate `concurrency`/`throttle`/`reservoir` knobs. Defaults to `{ mode: 'item', concurrency: 1 }` when absent. See [Execution policy](#execution-policy) below. |
+| `configuration` | `{ execution?: { batching?: BatchingInputType }, durability?: { writePoints?, foldJournalStoreKey? } }` | no | Placement policy tier. Each omitted field inherits from the DAG, dispatcher, then canonical defaults. See [Execution and durability policy](#execution-policy). |
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 | `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsType.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
@@ -175,11 +175,12 @@ whose `sources` map names one or more producer placement IRIs or entrypoint IRIs
 
 #### Execution policy
 
-`execution` groups scatter concurrency-limiting into ONE discriminated `mode`
-structure instead of three uncoordinated sibling fields:
+`configuration.execution.batching` groups scatter concurrency-limiting into one
+discriminated `mode` structure. Each field resolves independently from scatter
+placement to DAG to dispatcher to `DagConfiguration.DEFAULT`:
 
 - **`{ mode: 'item', concurrency?, throttle? }`** (the default: `{ mode: 'item', concurrency: 1 }`
-  when `execution` is absent). `concurrency` is an item-level `Semaphore`
+  after inheritance). `concurrency` is an item-level `Semaphore`
   permit count — the maximum number of clone bodies executing at once.
   `throttle`, when present (`{ concurrencyLimit: number, adaptive? }`), wraps
   dispatch through a second, independent `Throttle` concurrency window on top
@@ -198,6 +199,20 @@ structure instead of three uncoordinated sibling fields:
   variable-size batch dispatch.
 
 Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
+
+`configuration.durability.writePoints` accepts `NodeEdges`,
+`FullItemProjection`, `FoldDeltaJournal`, `WatermarkCommit`, and
+`InMemorySnapshot`. The default is `['NodeEdges', 'WatermarkCommit']`. A present
+array replaces the inherited array rather than merging with it. The default
+`foldJournalStoreKey` is `null`.
+
+`FoldDeltaJournal` requires `WatermarkCommit` and an explicit
+`configuration.durability.foldJournalStoreKey` bound in the dispatcher's
+`foldJournalStores`. Every non-empty scatter outcome must route to one
+first-class gather using `append`, `collect`, `map`, or `partition`; that gather
+must declare exactly one source, the originating scatter. Registration rejects
+missing stores, ambiguous gathers, direct terminal routes, and unsupported
+gather strategies.
 
 See [Execution tuning](/guide/execution-tuning) for when to choose scatter
 `concurrency`, throttle, adaptive concurrency, token buckets, circuit breakers,

@@ -128,7 +128,7 @@ describe('Cartographer workers-bundle registration', () => {
     const bundle = CartographerWorkersDag.bundle();
     const dag = bundle.dags.find((candidate) => candidate['@id'] === CARTOGRAPHER_IRIS.dag.cartographer);
     assert.ok(dag, 'cartographer DAG must be registered');
-    assert.deepEqual(dag.writePoints, ['NodeEdges', 'WatermarkCommit']);
+    assert.deepEqual(dag.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
 
     const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
     const sourceBindings = Object.freeze(
@@ -170,7 +170,7 @@ describe('Cartographer workers-bundle registration', () => {
     assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
     assert.equal(scatter.itemKey, 'source-payload');
     assert.equal(scatter.container, 'cpu');
-    assert.deepEqual(scatter.writePoints, []);
+    assert.deepEqual(scatter.configuration?.durability?.writePoints, []);
 
     const summary = dag.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'summarize-insights'));
     assert.ok(summary, 'summarize-insights placement must exist');
@@ -182,7 +182,7 @@ describe('Cartographer workers-bundle registration', () => {
 
   it('CartographerWorkersDag.build(…) wires source-payload flow', () => {
     const dag = CartographerWorkersDag.build(50);
-    assert.deepEqual(dag.writePoints, ['NodeEdges', 'WatermarkCommit']);
+    assert.deepEqual(dag.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
     const dagIntake = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather');
     const streamSources = Object.freeze(
       Object.fromEntries(
@@ -223,7 +223,7 @@ describe('Cartographer workers-bundle registration', () => {
     assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
     assert.equal(scatter.itemKey, 'source-payload');
     assert.equal(scatter.container, 'cpu');
-    assert.deepEqual(scatter.writePoints, []);
+    assert.deepEqual(scatter.configuration?.durability?.writePoints, []);
   });
 
   it('workers dispatcher uses recorded geo services', () => {

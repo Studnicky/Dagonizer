@@ -101,6 +101,8 @@ declare const _opts: DagonizerOptionsType;
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
 // registryVersion?: string
 // validateOutputs?: boolean
+// configuration?: DagConfiguration.InputType
+// foldJournalStores?: Readonly<Record<string, FoldJournalStoreInterface>>
 export {};
 ```
 
@@ -111,6 +113,23 @@ export {};
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 | `validateOutputs` | `boolean` | When `true`, validates each node output against the node's declared `outputSchema` for that port after execution. On mismatch the item is re-routed to `'error'`. Default `false` — zero overhead in production. Enable in dev/test to catch contract violations early. |
+| `configuration` | `DagConfiguration.InputType` | Dispatcher-wide execution and durability policy inherited by every DAG and scatter placement. |
+| `foldJournalStores` | `Readonly<Record<string, FoldJournalStoreInterface>>` | Runtime fold-journal stores keyed by `configuration.durability.foldJournalStoreKey`. Defaults to an empty registry. |
+
+Configuration resolves each field independently in this order: scatter
+placement `configuration`, DAG `configuration`, dispatcher `configuration`,
+then `DagConfiguration.DEFAULT`. The execution path is
+`configuration.execution.batching`. Its defaults are `mode: 'item'`,
+`concurrency: 1`, `throttle: null`, and `reservoir: null`. Durability defaults
+are `writePoints: ['NodeEdges', 'WatermarkCommit']` and
+`foldJournalStoreKey: null`. A present `writePoints` array replaces the
+inherited array, including an explicit empty array; write points do not merge.
+
+Selecting `FoldDeltaJournal` also requires `WatermarkCommit`, a non-null
+`foldJournalStoreKey` that resolves in `foldJournalStores`, and one replayable
+first-class gather (`append`, `collect`, `map`, or `partition`) bound to exactly
+the originating scatter source. Every non-empty scatter outcome must converge
+on that gather.
 
 ---
 

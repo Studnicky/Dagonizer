@@ -2,9 +2,8 @@
 export type GraphStateTransferFormatType = 'application/n-quads';
 
 /**
- * Graph-state envelopes for graph snapshot persistence and export surfaces.
- *
- * Container execution no longer uses these envelopes for transient worker
- * state; it uses `TransientNodeStateBatch` plain JSON snapshots instead.
+ * Graph-state envelopes for container execution, graph snapshot persistence,
+ * and export surfaces. Container state crosses the wire as one codec-backed
+ * N-Quads batch transfer.
  */
 export type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';

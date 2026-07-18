@@ -24,6 +24,7 @@ export class GraphStateTerms {
     'StateMember': 'https://noocodec.dev/ontology/dagonizer/member',
     'StateIndex': 'https://noocodec.dev/ontology/dagonizer/index',
     'StateField': 'https://noocodec.dev/ontology/dagonizer/stateField',
+    'TransientStatePayload': 'https://noocodec.dev/ontology/dagonizer/transientStatePayload',
     'Checkpoint': 'https://noocodec.dev/ontology/dagonizer/Checkpoint',
     'Workset': 'https://noocodec.dev/ontology/dagonizer/Workset',
     'BatchItem': 'https://noocodec.dev/ontology/dagonizer/BatchItem',

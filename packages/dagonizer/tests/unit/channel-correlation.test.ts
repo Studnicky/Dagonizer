@@ -1,11 +1,9 @@
 /**
  * channel-correlation.test.ts
  *
- * Regression guard for the EventEmitter listener-accumulation bug:
- *   Before fix: DagContainerBase.runDag called channel.onMessage(handler) on
- *   every request, accumulating O(N) listeners on a pooled worker channel.
- *   After fix: ChannelDispatch installs exactly ONE channel.onMessage handler
- *   for the channel's lifetime; correlationId routing demuxes all responses.
+ * Contract coverage for the single-subscription channel correlator.
+ * ChannelDispatch installs exactly one channel.onMessage handler for the
+ * channel lifetime and correlationId routing demuxes every response.
  *
  * What this test asserts:
  *   (a) Exactly ONE underlying subscription is installed regardless of request
@@ -32,20 +30,20 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { ChannelDispatch } from '../../src/container/ChannelDispatch.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import type { RunResultType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // CountingChannel: wraps a MessageChannelInterface and counts onMessage calls
@@ -85,13 +83,13 @@ class CountingChannel implements MessageChannelInterface {
 class MinimalState extends NodeStateBase {}
 
 // ---------------------------------------------------------------------------
-// MinimalDagTask: minimal DagTaskInterface implementation
+// MinimalDagTask: minimal DagTaskType implementation
 // ---------------------------------------------------------------------------
 
 class CorrelationTask {
   private constructor() {}
 
-  static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
+  static of(correlationId: string, signal: AbortSignal): DagTaskType {
     return {
       'dagName': 'test-dag',
       'placementPath': ['urn:dagonizer:placement:test'],
@@ -101,18 +99,6 @@ class CorrelationTask {
       'inputState': FULL_INPUT_STATE,
       'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
-      toRequest(): ExecutionRequestType {
-        const state = new MinimalState();
-        return {
-          'dagName': 'test-dag',
-          'placementPath': ['urn:dagonizer:placement:test'],
-          'graphState': inlineTransfer([state]),
-          'items': [{ 'id': correlationId, 'runIri': state.runIri }],
-          'timeoutMs': null,
-          'correlationId': correlationId,
-          'responseState': FULL_RESPONSE_STATE,
-        };
-      },
     };
   }
 }
@@ -131,11 +117,11 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
-  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
+  #initPromise: Promise<void> | null;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {
     super({
@@ -144,18 +130,21 @@ class SingleChannelContainer extends DagContainerBase<null> {
       'init': NOOP_INIT,
     });
     this.#channel = channel;
+    this.#initPromise = null;
   }
 
   // Override acquireChannel to bypass the pool and always return the same channel.
-  protected override acquireChannel(): Promise<MessageChannelInterface> {
-    return Promise.resolve(this.#channel);
+  protected override async acquireChannel(): Promise<MessageChannelInterface> {
+    this.#initPromise ??= this.initializeChannel(this.#channel);
+    await this.#initPromise;
+    return this.#channel;
   }
 
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
   protected override composeEntry(): PoolEntryType<null> {
-    return { 'worker': null, 'channel': this.#channel, 'initialized': true };
+    return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 
   protected override attachDeathListeners(_entry: PoolEntryType<null>): void {
@@ -192,15 +181,21 @@ class FakeHost {
           'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        const { correlationId } = msg.request;
+        const { correlationId, items } = msg.request;
+        const item = items[0];
+        assert.ok(item !== undefined);
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'graphState': emptyInlineTransfer([correlationId]),
-            'items': [{ 'id': correlationId, 'runIri': correlationId, 'terminalOutcome': `done-${correlationId}` }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([item.runIri]),
+            'items': [{
+              'id': correlationId,
+              'runIri': item.runIri,
+              'terminalOutcome': `done-${correlationId}`,
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -213,6 +208,27 @@ class FakeHost {
 // ---------------------------------------------------------------------------
 
 void describe('channel-correlation: single subscription + correlationId demux', () => {
+
+  void it('advertises no graph format before ready and stores the exact host contract after ready', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    hostSide.onMessage((message) => {
+      if (message.variant !== 'init') return;
+      assert.deepEqual(message.graphStateTransferFormats, ['application/n-quads']);
+      hostSide.send({
+        'variant': 'ready',
+        'registryVersion': message.registryVersion,
+        'capabilities': [],
+        'graphStateTransferFormats': ['application/n-quads'],
+      });
+    });
+    const dispatch = new ChannelDispatch(parentSide);
+
+    assert.deepEqual(dispatch.graphStateTransferFormats, []);
+    assert.equal(dispatch.supportsGraphStateTransferFormat('application/n-quads'), false);
+    await dispatch.init({ ...NOOP_INIT, 'graphStateTransferFormats': ['application/n-quads'] });
+    assert.deepEqual(dispatch.graphStateTransferFormats, ['application/n-quads']);
+    assert.equal(dispatch.supportsGraphStateTransferFormat('application/n-quads'), true);
+  });
 
   void it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
@@ -288,7 +304,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
-    const pending: Array<{ correlationId: string }> = [];
+    const pending: Array<{ correlationId: string; runIri: string }> = [];
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
         hostSide.send({
@@ -298,21 +314,29 @@ void describe('channel-correlation: single subscription + correlationId demux', 
           'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        pending.push({ 'correlationId': msg.request.correlationId });
+        const item = msg.request.items[0];
+        assert.ok(item !== undefined);
+        pending.push({ 'correlationId': msg.request.correlationId, 'runIri': item.runIri });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
           const secondId = pending[1]?.correlationId ?? '';
           const firstId = pending[0]?.correlationId ?? '';
+          const secondRunIri = pending[1]?.runIri ?? '';
+          const firstRunIri = pending[0]?.runIri ?? '';
           // Respond to second first, then first.
           setImmediate(() => {
             hostSide.send({
               'variant': 'result',
               'response': {
                 'correlationId': secondId,
-                'graphState': emptyInlineTransfer([secondId]),
-                'items': [{ 'id': secondId, 'runIri': secondId, 'terminalOutcome': `done-${secondId}` }],
-                'errors': [],
-                'intermediates': [],
+                'graphState': emptyInlineTransfer([secondRunIri]),
+                'items': [{
+                  'id': secondId,
+                  'runIri': secondRunIri,
+                  'terminalOutcome': `done-${secondId}`,
+                  'errors': [],
+                  'intermediates': [],
+                }],
               },
             });
             setImmediate(() => {
@@ -320,10 +344,14 @@ void describe('channel-correlation: single subscription + correlationId demux', 
                 'variant': 'result',
                 'response': {
                   'correlationId': firstId,
-                  'graphState': emptyInlineTransfer([firstId]),
-                  'items': [{ 'id': firstId, 'runIri': firstId, 'terminalOutcome': `done-${firstId}` }],
-                  'errors': [],
-                  'intermediates': [],
+                  'graphState': emptyInlineTransfer([firstRunIri]),
+                  'items': [{
+                    'id': firstId,
+                    'runIri': firstRunIri,
+                    'terminalOutcome': `done-${firstId}`,
+                    'errors': [],
+                    'intermediates': [],
+                  }],
                 },
               });
             });
@@ -373,7 +401,9 @@ void describe('worker observability: forwarded node events reach the parent obse
       if (msg.variant === 'init') {
         hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
-        const { correlationId } = msg.request;
+        const { correlationId, items } = msg.request;
+        const item = items[0];
+        assert.ok(item !== undefined);
         hostSide.send({
           'variant': 'instrumentationBatch',
           'correlationId': correlationId,
@@ -392,10 +422,14 @@ void describe('worker observability: forwarded node events reach the parent obse
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'graphState': emptyInlineTransfer([correlationId]),
-            'items': [{ 'id': correlationId, 'runIri': correlationId, 'terminalOutcome': 'done' }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([item.runIri]),
+            'items': [{
+              'id': correlationId,
+              'runIri': item.runIri,
+              'terminalOutcome': 'done',
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }

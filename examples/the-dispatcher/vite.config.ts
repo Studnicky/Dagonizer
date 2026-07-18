@@ -9,6 +9,30 @@ import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
 
 import { transformersEmbedderAssets } from '../the-archivist/tooling/transformersEmbedderAssets.ts';
+import { dispatcherDeployPayloadPolicy } from './runtime/DispatcherDeployPayloadPolicy.ts';
+
+function dispatcherManualChunks(id: string): string | undefined {
+  if (
+    id.endsWith('/runtime/DispatcherProviderRuntime.ts')
+    || id.endsWith('/the-archivist/providers/BaseLlmClient.ts')
+    || id.endsWith('/the-archivist/providers/MobileDetection.ts')
+  ) return dispatcherDeployPayloadPolicy.providerRuntimeChunk;
+  if (
+    id.includes('/node_modules/.pnpm/@huggingface+transformers')
+  ) return dispatcherDeployPayloadPolicy.transformerRuntimeChunk;
+  if (id.includes('/node_modules/.pnpm/onnxruntime-')) {
+    return dispatcherDeployPayloadPolicy.onnxRuntimeChunk;
+  }
+  if (id.includes('/node_modules/.pnpm/@vue+')) return 'vue-vendor';
+  if (id.includes('/packages/dagonizer/dist/')) return 'dagonizer-core';
+  if (
+    id.includes('/node_modules/.pnpm/ajv')
+    || id.includes('/node_modules/.pnpm/fast-deep-equal')
+    || id.includes('/node_modules/.pnpm/fast-uri')
+    || id.includes('/node_modules/.pnpm/json-schema-traverse')
+  ) return 'schema-vendor';
+  return undefined;
+}
 
 export default defineConfig({
   // Vue compiles `app/DispatcherRunner.vue` (the same SFC the docs site
@@ -31,7 +55,20 @@ export default defineConfig({
     'open':           false,
     'forwardConsole': { 'logLevels': ['warn', 'error'], 'unhandledErrors': true },
   },
-  'build':   { 'target': 'es2022' },
+  'build':   {
+    'target': 'es2022',
+    'rollupOptions': {
+      'output': {
+        'codeSplitting': {
+          'groups': [{
+            'name': (id) => dispatcherManualChunks(id) ?? null,
+            'test': (id) => dispatcherManualChunks(id) !== undefined,
+            'includeDependenciesRecursively': false,
+          }],
+        },
+      },
+    },
+  },
   // esbuild can't parse `"target": "ES2024"` from the base tsconfig; pin
   // it to a version esbuild understands so the dev/build pipelines run
   // without warnings.

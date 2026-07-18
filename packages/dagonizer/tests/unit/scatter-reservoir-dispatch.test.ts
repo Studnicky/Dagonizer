@@ -11,10 +11,9 @@
  *   all routes to 'completed'. The counting gather fold confirms all 8 items
  *   were processed.
  *
- * Suite B — reservoir + DAG body, container loopback (Branch C):
- *   Uses a plain DagContainerInterface implementation (not a DagContainerBase
- *   subclass) to exercise the per-item Branch C path. Asserts that
- *   container.runDag is called once per item and the gather accumulator
+ * Suite B — reservoir + DAG body, container loopback:
+ *   Uses a plain DagContainerInterface implementation to prove the interface
+ *   itself receives one call per released batch and the gather accumulator
  *   reflects all 8 items.
  *
  * Suite C — reservoir + node body regression:
@@ -22,11 +21,9 @@
  *   reservoir + two-group source (6 items). Guards against the executeBatch
  *   refactor breaking the node-body path.
  *
- * Suite D — reservoir + DAG body through a REAL DagContainerBase (Branch C
- *   runDag path):
+ * Suite D — reservoir + DAG body through a real DagContainerBase:
  *   Wires a real DagHost + LoopbackChannel behind a DagContainerBase subclass
- *   so Branch C takes the `instanceof DagContainerBase` → runDag branch
- *   (one transport round-trip per released batch). The host genuinely runs the
+ *   for one transport round-trip per released batch. The host genuinely runs the
  *   sub-DAG, so per-item routing is real: even values route to the `accept`
  *   terminal (outcome completed → success), odd values to the `reject` terminal
  *   (outcome failed → error). Asserts (a) clean completion, (b) the per-item
@@ -38,14 +35,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
-import type { InitMessageShapeType } from '../../src/container/ChannelDispatch.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { PoolEntryType } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
 import type { RunResultType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
-import type { CheckpointRestoreAdapterInterface } from '../../src/contracts/CheckpointRestoreAdapterInterface.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
@@ -67,9 +60,11 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { GraphStateTransferCodec } from '../../src/graph/GraphStateTransferCodec.js';
 import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 import { inlineTransfer, emptyInlineTransfer } from '../_support/GraphStateSupport.js';
@@ -262,7 +257,7 @@ const reservoirDagBodyDag: DAGType = Validator.dag.validate({
       'body': { 'dag': ROUTE_BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'currentItem',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 } } },
       'outputs': {
         'all-success': placementIri(RESERVOIR_DAG_BODY_IRI, 'join'),
         'partial': placementIri(RESERVOIR_DAG_BODY_IRI, 'join'),
@@ -357,7 +352,7 @@ const dynamicReservoirParentDag: DAGType = Validator.dag.validate({
       },
       'source': 'items',
       'itemKey': 'currentItem',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 1 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 1 } } },
       'outputs': {
         'all-success': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'join'),
         'partial': placementIri(DYNAMIC_RESERVOIR_PARENT_DAG_IRI, 'join'),
@@ -408,7 +403,7 @@ const dynamicReservoirContainerParentDag: DAGType = Validator.dag.validate({
       },
       'source': 'items',
       'itemKey': 'currentItem',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 } } },
       'container': CONTAINER_ROLE,
       'outputs': {
         'all-success': placementIri(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_IRI, 'join'),
@@ -457,7 +452,7 @@ const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': ROUTE_BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'currentItem',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 2 } } },
       'container': CONTAINER_ROLE,
       'outputs': {
         'all-success': placementIri(RESERVOIR_DAG_BODY_CONTAINER_IRI, 'join'),
@@ -521,7 +516,7 @@ const reservoirNodeBodyDag: DAGType = Validator.dag.validate({
       'body': { 'node': 'urn:noocodec:node:pass-through' },
       'source': 'items',
       'itemKey': 'item',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 3 } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 3 } } } },
       'outputs': {
         'all-success': placementIri(RESERVOIR_NODE_BODY_IRI, 'join'),
         'partial': placementIri(RESERVOIR_NODE_BODY_IRI, 'join'),
@@ -636,35 +631,37 @@ class LoopbackContainer {
   ): DagContainerInterface {
     return {
       async runDag(
-        task: DagTaskInterface,
+        task: DagTaskType,
         batch: Batch<NodeStateInterface>,
         _options?: { readonly relay?: ObserverRelayInterface },
       ): Promise<RunResultType[]> {
         callCounter.count++;
-        const [item] = batch.items();
-        const id = item?.id ?? task.correlationId;
-        const rawState = item?.state ?? task.state;
-        if (!(rawState instanceof ReservoirDispatchState)) {
-          throw new Error(`LoopbackContainer: expected ReservoirDispatchState, got ${rawState.constructor.name}`);
-        }
-        try {
-          const exec = innerDispatcher.execute(task.dagName, rawState);
-          const iter = exec[Symbol.asyncIterator]();
-          let step = await iter.next();
-          while (!step.done) {
-            step = await iter.next();
+        const items = batch.items().map((item) => {
+          if (!(item.state instanceof ReservoirDispatchState)) {
+            throw new Error(`LoopbackContainer: expected ReservoirDispatchState, got ${item.state.constructor.name}`);
           }
-          const terminal = step.value;
-          return [{
-            'id': id,
-            'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
-            'errors': [...terminal.state.errors],
-            'graphState': inlineTransfer([terminal.state]),
+          return { 'id': item.id, 'state': item.state };
+        });
+        const typedBatch = Batch.from(items);
+        const terminalByItemId = new Map<string, 'completed' | 'failed'>();
+        const graphState = inlineTransfer(items.map((item) => item.state));
+        try {
+          const exec = innerDispatcher.executeBatch(task.dagName, typedBatch, terminalByItemId);
+          const iter = exec[Symbol.asyncIterator]();
+          while (!(await iter.next()).done) {
+            // The test container consumes the complete scheduler execution.
+          }
+          return items.map((item) => ({
+            'id': item.id,
+            'terminalOutput': terminalByItemId.get(item.id) ?? 'failed',
+            'errors': [...item.state.errors],
+            graphState,
+            'runIri': item.state.runIri,
             'intermediates': [],
-          }];
+          }));
         } catch (err: unknown) {
-          return [{
-            'id': id,
+          return items.map((item) => ({
+            'id': item.id,
             'terminalOutput': 'failed',
             'errors': [{
               'code': 'CONTAINER_ERROR',
@@ -676,15 +673,15 @@ class LoopbackContainer {
             }],
             'graphState': emptyInlineTransfer(),
             'intermediates': [],
-          }];
+          }));
         }
       },
     };
   }
 }
 
-void describe('Scatter reservoir: DAGType body with container loopback (Branch C)', () => {
-  void it('routes each item through container.runDag; runDag called once per item; gather counter equals 8', async () => {
+void describe('Scatter reservoir: DAGType body with container loopback', () => {
+  void it('routes two released batches through container.runDag; gather counter equals 8', async () => {
     // Inner dispatcher runs the sub-DAG in-process.
     const innerDispatcher = new Dagonizer<ReservoirDispatchState>();
     innerDispatcher.registerNode(new RouterNode());
@@ -725,11 +722,10 @@ void describe('Scatter reservoir: DAGType body with container loopback (Branch C
       8,
       `gather counter must equal 8; got ${result.state.counter}`,
     );
-    // Branch C: plain DagContainerInterface → per-item runDag calls.
     assert.strictEqual(
       callCounter.count,
-      8,
-      `container.runDag must be called once per item (8 total); got ${callCounter.count}`,
+      2,
+      `container.runDag must be called once per released batch (2 total); got ${callCounter.count}`,
     );
   });
 });
@@ -833,7 +829,7 @@ const reservoirDContainerDag: DAGType = Validator.dag.validate({
       'source': 'items',
       'itemKey': 'currentItem',
       'stateMapping': { 'input': { 'counter': 'counter' } },
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 } } },
       'container': CONTAINER_ROLE,
       'outputs': {
         'all-success': placementIri(RESERVOIR_D_CONTAINER_IRI, 'join'),
@@ -879,7 +875,7 @@ const reservoirDInProcessDag: DAGType = Validator.dag.validate({
       'body': { 'dag': ROUTE_BODY_D_DAG_IRI },
       'source': 'items',
       'itemKey': 'currentItem',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 } } },
       'outputs': {
         'all-success': placementIri(RESERVOIR_D_INPROCESS_IRI, 'join'),
         'partial': placementIri(RESERVOIR_D_INPROCESS_IRI, 'join'),
@@ -914,13 +910,10 @@ const SUITE_D_REGISTRY_VERSION = '1.0.0';
 /**
  * Static registry injected into the real DagHost. Carries the router node and
  * the route-body-d sub-DAG so the host genuinely runs per-item routing. The
- * restore adapter rehydrates a fresh ReservoirDispatchState (metadata, set by
+ * state factory rehydrates a fresh ReservoirDispatchState (metadata, set by
  * the scatter clone seeding, survives the snapshot round-trip — that is how the
  * router reads `currentItem` on the host side).
  */
-const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface> =
-  CheckpointRestoreAdapter.wrap(() => new ReservoirDispatchState());
-
 const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
   // RouterNode extends MonadicNode<NodeStateBase, ...> which is structurally
   // compatible with NodeInterface<NodeStateInterface, string, unknown> —
@@ -935,7 +928,7 @@ const suiteDRegistry: RegistryModuleInterface = {
       'bundle': suiteDBundle,
       'services': undefined,
       'registryVersion': SUITE_D_REGISTRY_VERSION,
-      'restoreState': suiteDRestoreAdapter,
+      'restoreState': (dataset, runIri) => new ReservoirDispatchState(dataset, runIri),
     });
   },
 };
@@ -977,11 +970,10 @@ class ExecuteCountingChannel implements MessageChannelInterface {
  * LoopbackChannel parent side wired to a real DagHost. The init handshake uses
  * the SAME registryVersion the host's bundle reports.
  */
-const SUITE_D_INIT: InitMessageShapeType = {
+const SUITE_D_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'suite-d',
   'registryVersion': SUITE_D_REGISTRY_VERSION,
   'servicesConfig': {},
-  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class SingleChannelContainer extends DagContainerBase<null> {
@@ -1007,7 +999,7 @@ class SingleChannelContainer extends DagContainerBase<null> {
   // the channel's init waiter.
   protected override async acquireChannel(): Promise<MessageChannelInterface> {
     if (this.#initPromise === null) {
-      this.#initPromise = this.initializeChannel(this.#channel, SUITE_D_INIT);
+      this.#initPromise = this.initializeChannel(this.#channel);
     }
     await this.#initPromise;
     return this.#channel;
@@ -1037,7 +1029,7 @@ const SUITE_D_ITEMS: Array<{ group: string; value: number }> = [
   { 'group': 'A', 'value': 7 },
 ];
 
-void describe('Scatter reservoir: DAGType body through real DagContainerBase (Branch C runDag)', () => {
+void describe('Scatter reservoir: DAGType body through real DagContainerBase', () => {
   void it('routes 8 items through runDag (2 batches, 2 execute messages); even→success, odd→error; parity with in-process', async () => {
     // ── Real DagHost behind a LoopbackChannel, fronted by DagContainerBase ──
     const [parentSide, hostSide] = LoopbackChannel.pair();
@@ -1096,8 +1088,9 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     );
     assert.strictEqual(countingParent.requests.length, 2);
     for (const request of countingParent.requests) {
-      assert.strictEqual(request.graphState.states.length, 4);
-      for (const itemState of request.graphState.states) {
+      const transferred = await GraphStateTransferCodec.restoreTransient(request.graphState, request.items, null);
+      assert.strictEqual(transferred.length, 4);
+      for (const itemState of transferred) {
         assert.deepStrictEqual(Object.keys(itemState.state.domain), ['counter']);
         assert.deepStrictEqual(Object.keys(itemState.state.metadata).sort(), ['currentItem', 'itemIndex']);
       }

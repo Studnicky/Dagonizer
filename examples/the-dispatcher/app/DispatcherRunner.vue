@@ -15,177 +15,164 @@
  * the DagGraph's imperative surface; no polling, no JS animation loops.
  *
  * HITL flow:
- *   execute() → ParkForOperatorNode parks → lifecycle = awaiting-input
+ *   DispatcherBatchDispatch.run() → ParkForOperatorNode parks → lifecycle = awaiting-input
  *   Left pane auto-switches to the Operator tab (leftActiveKey).
  *   Operator types response → click "Send response".
- *   Checkpoint.capture → restoreState → set response → dispatcher.resume().
+ *   Checkpoint.capture → restoreState → set response → DispatcherBatchDispatch.resume().
  *
- * LLM backend: BackendPicker (same as ArchivistRunner). Detection runs at mount.
- * When no backend is available, the no-model gate shows BackendPicker inline.
+ * LLM backend configuration is shared with the Archivist. Detection runs at
+ * mount, and the no-model gate exposes the same LLM Select surface inline.
  * classify-message resolves the intent (on-device embedder by default, or the
  * LLM in `llm` mode); ai-compose calls the LLM. The trolley switch and
  * escalation routing are deterministic overrides on top of that decision.
  */
 
-import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
-import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
-import type { ExecutionResultType } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
-import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
+import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import { LogFault } from '@studnicky/logger';
 
 import { DispatcherState } from '../DispatcherState.ts';
 import type { ConversationTurnType } from '../DispatcherState.ts';
 import { supportDispatcherDAG } from '../dag.ts';
+import { DispatcherBatchDispatch } from '../execution/DispatcherBatchDispatch.ts';
+import { UserLanguage } from '../language/UserLanguage.ts';
 import { AiComposeNode } from '../nodes/AiComposeNode.ts';
 import { ClassifyMessageNode } from '../nodes/ClassifyMessageNode.ts';
 import { DeclineNode } from '../nodes/DeclineNode.ts';
 import { ParkForOperatorNode } from '../nodes/ParkForOperatorNode.ts';
+import { ProvisionEmbedderNode } from '../nodes/ProvisionEmbedderNode.ts';
 import { SendResponseNode } from '../nodes/SendResponseNode.ts';
 import { SetupNode } from '../nodes/SetupNode.ts';
 import type { DispatcherServices } from '../services.ts';
-import { DispatcherLlmClient } from '../providers/DispatcherLlmClient.ts';
-import { DispatcherIntentClassifier } from '../providers/DispatcherIntentClassifier.ts';
-import { UserLanguage } from '../language/UserLanguage.ts';
+import { DispatcherBrowserRuntime } from '../runtime/DispatcherBrowserRuntime.ts';
+import { DispatcherRunnerSetup } from '../runtime/DispatcherRunnerSetup.ts';
 
-import { ApiKeyStore, BackendMatrix, BaseLlmClient, EmbedderProvisioner, MobileDetection, PreferredModels, ProviderInstantiator } from '../../the-archivist/providers/index.ts';
-import type { BackendAvailability, EmbedderProvisionOptionsType, ProviderId } from '../../the-archivist/providers/index.ts';
+import type { BackendAvailability, ProviderId } from '../../the-archivist/providers/index.ts';
 import { ObservedDag } from '../../the-archivist/ObservedDag.ts';
-import { DomConsoleLogger } from '../../the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../the-archivist/logger/ConsoleLogger.ts';
-
-import BackendPicker from '../../../docs/.vitepress/theme/components/BackendPicker.vue';
+import { DomConsoleLogger } from '../../the-archivist/logger/DomConsoleLogger.ts';
 import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
+import LlmConfigurationPane from '../../../docs/.vitepress/theme/components/LlmConfigurationPane.vue';
+import { LlmBackendStatus } from '../../../docs/.vitepress/theme/components/LlmBackendStatus.ts';
 import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
 import TraceFeed from '../../../docs/.vitepress/theme/components/TraceFeed.vue';
 
-// ── Types ────────────────────────────────────────────────────────────────────
-type TraceEvent =
+type DispatcherTraceEvent =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
-  | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
+  | { readonly variant: 'end'; readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
-// ── Backend state ─────────────────────────────────────────────────────────────
-const backends = ref<readonly BackendAvailability[]>([]);
-const savedBackend = typeof localStorage !== 'undefined'
-  ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
-  : null;
-const activeBackend = ref<ProviderId | null>(savedBackend);
-const warmState = ref<'idle' | 'warming' | 'ready' | 'unavailable'>('idle');
-const noModel  = ref(false);
-const isMobile = ref(false);
-const apiKeys  = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
-const preferredModels = ref<Partial<Record<ProviderId, string>>>(PreferredModels.load());
+interface PaneTab {
+  readonly key: string;
+  readonly label: string;
+  readonly badge: string;
+  readonly tone: 'default' | 'live' | 'warn';
+}
 
-const resolvedModel = computed<string>(() => {
-  if (activeBackend.value !== null) {
-    const preferred = preferredModels.value[activeBackend.value];
-    if (typeof preferred === 'string' && preferred.length > 0) return preferred;
-  }
-  const entry = backends.value.find((b) => b.id === activeBackend.value);
-  return entry?.resolvedModel ?? '';
-});
-
-// ── Language ─────────────────────────────────────────────────────────────────
-// Visitor's device language (navigator.language in-browser), threaded into
-// DispatcherLlmClient so composed replies come back in the visitor's own
-// language rather than always English.
-const visitorLanguage = UserLanguage.detect();
-
-// ── State ────────────────────────────────────────────────────────────────────
-const customerQuery    = ref('');
-const operatorInput    = ref('');
-const isRunning        = ref(false);
-const humanMode        = ref(false);
-const classificationMode = ref<'embedder' | 'llm'>('embedder');
-// shallowRef holds opaque service instances by reference: deep reactivity
-// strips the nominal private-field type off class instances (mirrors ArchivistRunner).
-const embedder         = shallowRef<EmbedderInterface | null>(null);
-const dispatcherIntent = shallowRef<DispatcherIntentClassifier | null>(null);
-const conversation     = ref<ConversationTurnType[]>([]);
-const trace            = ref<TraceEvent[]>([]);
-const logEvents        = ref<LogEvent[]>([]);
-const logger           = new DomConsoleLogger({ 'events': logEvents.value });
-const dispatcherDag    = ref<DAGType>(supportDispatcherDAG);
-const dagGraph         = ref<InstanceType<typeof DagGraph> | null>(null);
-const streamRef        = ref<HTMLOListElement | null>(null);
-const leftActiveKey    = ref<'customer' | 'operator'>('customer');
-const terminalVariant  = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
-const escalationReason = ref('');
-
-// Parked execution: stored outside Vue reactivity to preserve class identity.
-// Vue's Proxy wrapping strips private class fields; ExecutionResultType<DispatcherState>
-// must stay as a plain module-level variable. The reactive ref only holds the
-// cursor string (UI-relevant) + a boolean indicating a parked state exists.
 interface ParkedExecution {
   readonly result: ExecutionResultType<DispatcherState>;
   readonly dagName: string;
   readonly cursor: string;
 }
-let parkedExecution: ParkedExecution | null = null;
+
+interface DispatcherRunnerSnapshot {
+  readonly conversation: readonly ConversationTurnType[];
+  readonly customerQuery: string;
+  readonly isRunning: boolean;
+  readonly leftActiveKey: 'customer' | 'operator';
+  readonly operatorInput: string;
+  readonly parked: { readonly cursor: string; readonly dagName: string } | null;
+  readonly parkedExecution: ParkedExecution | null;
+  readonly terminalVariant: 'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+  readonly trace: readonly DispatcherTraceEvent[];
+}
+
+const browserRuntime = new DispatcherBrowserRuntime();
+const dispatcherDagName = supportDispatcherDAG['@id'];
+
+const backends = ref<readonly BackendAvailability[]>([]);
+const activeBackend = ref<ProviderId | null>(null);
+const noModel = ref(false);
+const isMobile = ref(false);
+const apiKeys = ref<Partial<Record<ProviderId, string>>>({});
+const preferredModels = ref<Partial<Record<ProviderId, string>>>({});
+const llmWarning = computed(() => LlmBackendStatus.warning(activeBackend.value));
+
+const resolvedModel = computed<string>(() => {
+  if (activeBackend.value !== null) {
+    const preferred = preferredModels.value[activeBackend.value];
+    if (typeof preferred === 'string' && preferred.length > 0) {
+      return preferred;
+    }
+  }
+  const entry = backends.value.find((backend) => backend.id === activeBackend.value);
+  return entry?.resolvedModel ?? '';
+});
+
+const visitorLanguage = UserLanguage.detect();
+
+const customerQuery = ref('');
+const operatorInput = ref('');
+const isRunning = ref(false);
+const humanMode = ref(false);
+const classificationMode = ref<'embedder' | 'llm'>('embedder');
+const conversation = ref<ConversationTurnType[]>([]);
+const trace = ref<DispatcherTraceEvent[]>([]);
+const logEvents = ref<LogEvent[]>([]);
+const logger = new DomConsoleLogger({ 'events': logEvents.value });
+const dispatcherDag = ref<DAGType>(supportDispatcherDAG);
+const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
+const streamRef = ref<HTMLOListElement | null>(null);
+const leftActiveKey = ref<'customer' | 'operator'>('customer');
+const terminalVariant = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
+const escalationReason = ref('');
+const embedderDisplayName = ref<string | null>(null);
 const parked = ref<{ readonly cursor: string; readonly dagName: string } | null>(null);
 
 let activeAbortController: AbortController | null = null;
+let parkedExecution: ParkedExecution | null = null;
 
-// ── Cancel ───────────────────────────────────────────────────────────────────
 function cancel(): void {
   if (activeAbortController !== null) {
     activeAbortController.abort(new Error('cancelled by operator'));
   }
 }
 
-// ── DAG variant map for node styling ─────────────────────────────────────────
 const DISPATCHER_NODE_VARIANTS: Readonly<Record<string, string>> = {
-  'setup':              'phase',
-  'classify-message':   'classify',
-  'ai-compose':         'ai',
-  'park-for-operator':  'park',
-  'send-response':      'send',
-  'decline':            'decline',
+  'setup': 'phase',
+  'provision-embedder': 'phase',
+  'classify-message': 'classify',
+  'ai-compose': 'ai',
+  'park-for-operator': 'park',
+  'send-response': 'send',
+  'decline': 'decline',
 };
 
-/**
- * Dispatch map: log a detail line after key nodes complete.
- */
 const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState, output: string | null) => void>> = {
   'classify-message': (state, output) => {
     if (output === 'escalate') {
       logger.note(`classify: escalate — ${state.escalationReason}`);
-    } else if (output === 'off-topic') {
-      logger.note('classify: off-topic — declining (unrelated to the bookstore)');
-    } else {
-      logger.note('classify: routine — AI will compose response');
+      return;
     }
+    if (output === 'off-topic') {
+      logger.note('classify: off-topic — declining (unrelated to the bookstore)');
+      return;
+    }
+    logger.note('classify: routine — AI will compose response');
   },
   'park-for-operator': (state) => {
     if (state.response.length > 0) {
       logger.note('park-for-operator: response received — routing ready');
-    } else {
-      logger.note('park-for-operator: parked — awaiting operator input');
+      return;
     }
+    logger.note('park-for-operator: parked — awaiting operator input');
   },
 };
 
-// ── Browser observer ─────────────────────────────────────────────────────────
-// #region dispatcher-browser-observer
-/**
- * DispatcherBrowserObserver: wires lifecycle hooks to the Vue reactive state
- * (trace feed, DAG graph, conversation, awaiting-input tab auto-switch).
- */
 class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
-  readonly #services: DispatcherServices;
-
-  constructor(log: DomConsoleLogger, services: DispatcherServices) {
-    super(log);
-    this.#services = services;
-  }
-
-  protected override onFlowStart(dagName: string, state: DispatcherState, signal: AbortSignal): void {
-    super.onFlowStart(dagName, state, signal);
-    void this.#services.llm.warm().catch(() => { /* best-effort: never block or fail a flow start */ });
-  }
-
   protected override onNodeStart(
     nodeName: string,
     state: DispatcherState,
@@ -209,7 +196,9 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     const fullId = [...placementPath, nodeName].join('/');
     trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
     dagGraph.value?.setCompleted(fullId);
-    if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
+    if (output !== null) {
+      dagGraph.value?.markEdgeTraversed(fullId, output);
+    }
     DISPATCHER_NODE_TRACE[nodeName]?.(state, output);
   }
 
@@ -240,26 +229,21 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     super.onFlowEnd(dagName, state, result, signal);
 
     const lifecycleVariant = state.lifecycle.variant;
-
-    // Update conversation from state.
     if (state.conversation.length > 0) {
       conversation.value = [...state.conversation];
     }
 
     escalationReason.value = state.escalationReason;
     terminalVariant.value = (
-      lifecycleVariant === 'completed' ||
-      lifecycleVariant === 'failed' ||
-      lifecycleVariant === 'cancelled' ||
-      lifecycleVariant === 'timed_out'
+      lifecycleVariant === 'completed'
+      || lifecycleVariant === 'failed'
+      || lifecycleVariant === 'cancelled'
+      || lifecycleVariant === 'timed_out'
     ) ? lifecycleVariant : 'pending';
 
     if (lifecycleVariant === 'awaiting-input' && result.parked !== null) {
-      // Store the full result outside Vue reactivity (preserves class identity).
       parkedExecution = { 'result': result, 'dagName': dagName, 'cursor': result.parked.cursor };
-      // Expose only the cursor to Vue so the template can react.
       parked.value = { 'dagName': dagName, 'cursor': result.parked.cursor };
-      // Auto-switch left pane to Operator tab.
       leftActiveKey.value = 'operator';
       logger.note(`parked at cursor: ${result.parked.cursor} · key: ${result.parked.correlationKey}`);
     } else {
@@ -270,313 +254,304 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     logger.result(`lifecycle=${lifecycleVariant} · conversation=${String(state.conversation.length)} turns`);
   }
 }
-// #endregion dispatcher-browser-observer
 
-// ── Tabs ─────────────────────────────────────────────────────────────────────
-const leftTabs = computed(() => {
+function createDispatcher(services: DispatcherServices): DispatcherBrowserObserver {
+  const dispatcher = new DispatcherBrowserObserver(logger);
+  dispatcher.registerBundle({
+    'nodes': [
+      new SetupNode(),
+      new ProvisionEmbedderNode(services),
+      new ClassifyMessageNode(services),
+      new AiComposeNode(services),
+      new ParkForOperatorNode(),
+      new SendResponseNode(),
+      new DeclineNode(),
+    ],
+    'dags': [supportDispatcherDAG],
+  });
+  return dispatcher;
+}
+
+function reportRunnerFault(operation: string, message: string, error: Error): void {
+  logger.error(
+    LogFault.create()
+      .component('dispatcher-runner')
+      .operation(operation)
+      .status('failed')
+      .name(error.constructor.name)
+      .message(message + error.message)
+      .context({})
+      .build(),
+  );
+}
+
+function currentRunnerState(): DispatcherRunnerSnapshot {
+  return {
+    'conversation': [...conversation.value],
+    'customerQuery': customerQuery.value,
+    'isRunning': isRunning.value,
+    'leftActiveKey': leftActiveKey.value,
+    'operatorInput': operatorInput.value,
+    'parked': parked.value === null
+      ? null
+      : { 'cursor': parked.value.cursor, 'dagName': parked.value.dagName },
+    parkedExecution,
+    'terminalVariant': terminalVariant.value,
+    'trace': [...trace.value],
+  };
+}
+
+function applyRunnerState(state: DispatcherRunnerSnapshot): void {
+  conversation.value = [...state.conversation];
+  customerQuery.value = state.customerQuery;
+  isRunning.value = state.isRunning;
+  leftActiveKey.value = state.leftActiveKey;
+  operatorInput.value = state.operatorInput;
+  parked.value = state.parked === null
+    ? null
+    : { 'cursor': state.parked.cursor, 'dagName': state.parked.dagName };
+  parkedExecution = state.parkedExecution;
+  terminalVariant.value = state.terminalVariant;
+  trace.value = [...state.trace];
+}
+
+const leftTabs = computed<readonly PaneTab[]>(() => {
   const operatorBadge = parked.value !== null ? '!' : '';
   const operatorTone = parked.value !== null ? 'warn' : 'default';
   return [
-    { 'key': 'customer', 'label': 'Customer', 'badge': String(conversation.value.length || ''), 'tone': 'default' as const },
-    { 'key': 'operator', 'label': 'Operator', 'badge': operatorBadge, 'tone': operatorTone as 'warn' | 'default' },
+    { 'key': 'customer', 'label': 'Customer', 'badge': String(conversation.value.length || ''), 'tone': 'default' },
+    { 'key': 'operator', 'label': 'Operator', 'badge': operatorBadge, 'tone': operatorTone },
   ];
 });
 
-const rightTabs = computed(() => {
+const rightTabs = computed<readonly PaneTab[]>(() => {
   const traceCount = trace.value.length + logEvents.value.length;
   return [
-    { 'key': 'dag',      'label': 'DAG',      'badge': isRunning.value ? 'live' : '', 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'config', 'label': 'Config', 'badge': humanMode.value ? 'HUMAN' : '', 'tone': (humanMode.value ? 'warn' : 'default') as 'warn' | 'default' },
-    { 'key': 'trace',    'label': 'Trace',    'badge': String(traceCount || ''), 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'dag', 'label': 'DAG', 'badge': isRunning.value ? 'live' : '', 'tone': isRunning.value ? 'live' : 'default' },
+    { 'key': 'config', 'label': 'Config', 'badge': humanMode.value ? 'HUMAN' : '', 'tone': humanMode.value ? 'warn' : 'default' },
+    {
+      'key': 'llm',
+      'label': 'LLM Select',
+      'badge': llmWarning.value === null ? activeBackend.value ?? '' : '⚠',
+      'tone': llmWarning.value === null ? 'default' : 'warn',
+    },
+    { 'key': 'trace', 'label': 'Trace', 'badge': String(traceCount || ''), 'tone': isRunning.value ? 'live' : 'default' },
   ];
 });
 
-// ── Auto-scroll stream ────────────────────────────────────────────────────────
+async function selectBackend(id: string): Promise<void> {
+  const resolved = await browserRuntime.resolveProviderId(id);
+  if (resolved !== null) {
+    activeBackend.value = resolved;
+  }
+}
+
+function selectPreferredModels(models: Partial<Record<ProviderId, string>>): void {
+  preferredModels.value = models;
+}
+
+async function refreshBackends(): Promise<void> {
+  const refreshed = await browserRuntime.refreshBackends({
+    'apiKeys': apiKeys.value,
+    'isMobile': isMobile.value,
+    'preferredModels': preferredModels.value,
+  });
+  backends.value = refreshed.backends;
+  noModel.value = refreshed.noModel;
+}
+
 watch(
   () => conversation.value.length,
   async () => {
-    const el = streamRef.value;
-    if (el === null) return;
-    const wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+    const element = streamRef.value;
+    if (element === null) {
+      return;
+    }
+    const wasAtBottom = (element.scrollHeight - element.scrollTop - element.clientHeight) < 80;
     await nextTick();
-    if (wasAtBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    if (wasAtBottom) {
+      element.scrollTo({ 'top': element.scrollHeight, 'behavior': 'smooth' });
+    }
   },
 );
 
-// ── Backend watches ───────────────────────────────────────────────────────────
 watch(apiKeys, async () => {
-  backends.value = await BackendMatrix.detect({
-    'apiKeys': apiKeys.value,
-    'preferredModels': preferredModels.value,
-  });
-  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  await browserRuntime.saveApiKeys(apiKeys.value);
+  await refreshBackends();
 }, { 'deep': true });
 
 watch(preferredModels, async (models) => {
-  PreferredModels.save(models);
-  backends.value = await BackendMatrix.detect({
-    'apiKeys': apiKeys.value,
-    'preferredModels': models,
-  });
-  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  await browserRuntime.savePreferredModels(models);
+  await refreshBackends();
 }, { 'deep': true });
 
 watch(activeBackend, (id) => {
-  if (typeof localStorage !== 'undefined' && id !== null) {
-    localStorage.setItem('dagonizer-active-backend', id);
+  if (typeof localStorage === 'undefined') {
+    return;
   }
+  if (id === null) {
+    localStorage.removeItem('dagonizer-active-backend');
+    return;
+  }
+  localStorage.setItem('dagonizer-active-backend', id);
 });
 
-watch(activeBackend, () => { void warmActiveBackend(); });
-
-watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
-
-// ── Boot ─────────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  isMobile.value = MobileDetection.isLikelyMobile();
+  const savedBackendId = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('dagonizer-active-backend')
+    : null;
+  const bootstrap = await browserRuntime.loadBootstrapState(savedBackendId);
 
-  // Provision the on-device embedder independently of LLM backend detection:
-  // classification can use it as soon as it's ready, regardless of which (or
-  // whether any) LLM backend is later selected.
-  try {
-    const base = import.meta.env.BASE_URL;
-    const assetPaths: EmbedderProvisionOptionsType = {
-      'transformersLocalModelPath': `${base}@transformers-embedder/models/`,
-      'transformersWasmPaths':      `${base}@transformers-embedder/ort/`,
-    };
-    const result = await EmbedderProvisioner.provision(assetPaths);
-    if (result.embedder !== null) {
-      embedder.value = result.embedder;
-      dispatcherIntent.value = await DispatcherIntentClassifier.create(result.embedder);
-      logger.note(`embedder provisioned: ${result.embedder.displayName}`);
-    } else {
-      logger.warn('no embedder available; classification will use the LLM path');
-    }
-  } catch (err) {
-    logger.warn(`embedder provisioning failed: ${err instanceof Error ? err.message : String(err)}; falling back to LLM classification`);
+  isMobile.value = bootstrap.isMobile;
+  apiKeys.value = bootstrap.apiKeys;
+  preferredModels.value = bootstrap.preferredModels;
+  backends.value = bootstrap.backends;
+  noModel.value = bootstrap.noModel;
+  activeBackend.value = bootstrap.activeBackend;
+
+  if (bootstrap.backendNote !== null) {
+    logger.note(bootstrap.backendNote);
   }
-
-  backends.value = await BackendMatrix.detect({
-    'apiKeys': apiKeys.value,
-    'preferredModels': preferredModels.value,
-  });
-
-  if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
-    noModel.value = true;
+  if (bootstrap.noModel) {
     logger.warn('no LLM backend detected; select one to enable the demo');
     return;
   }
-  noModel.value = false;
-
-  // Honor a saved user preference only when that backend is runnable right now;
-  // otherwise default to the best available backend (in-browser web models first).
-  const savedEntry = savedBackend !== null
-    ? backends.value.find((b) => b.id === savedBackend) ?? null
-    : null;
-  if (savedEntry !== null && savedEntry.runnable) {
-    logger.note(`backend from saved preference: ${savedBackend}`);
-  } else {
-    const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
-    if (picked !== null) {
-      activeBackend.value = picked.id;
-      logger.note(
-        savedBackend === null
-          ? `backend auto-selected: ${picked.displayName}`
-          : `saved preference "${savedBackend}" unavailable; defaulting to ${picked.displayName}`,
-      );
-    }
-  }
-
-  void warmActiveBackend();
 });
 
-// ── Services factory ──────────────────────────────────────────────────────────
-function buildServices(): DispatcherServices {
-  if (activeBackend.value === null) throw new Error('no backend selected');
-  const client = ProviderInstantiator.instantiate(activeBackend.value, {
+async function buildServices(): Promise<DispatcherServices> {
+  return browserRuntime.buildServices({
+    'activeBackend': activeBackend.value,
     'apiKeys': apiKeys.value,
-    'model':   resolvedModel.value,
+    'baseUrl': import.meta.env.BASE_URL,
+    'language': visitorLanguage,
+    'model': resolvedModel.value,
   });
-  // ProviderInstantiator returns BaseLlmClient instances; access the underlying
-  // adapter so DispatcherLlmClient can drive the chat calls directly.
-  if (!(client instanceof BaseLlmClient)) throw new Error('unexpected client type');
-  return { 'llm': new DispatcherLlmClient(client.adapter, { 'language': visitorLanguage }), 'intent': dispatcherIntent.value };
 }
 
-/**
- * Fires the underlying model's warm-up as soon as a backend is selected, so
- * cold-load latency is paid during read/type time instead of on the first
- * real classify()/compose() call. Strictly best-effort: instantiation can
- * throw synchronously (missing API key, unsupported client type), so the
- * whole body is guarded — a warm-up failure never escapes to the caller.
- */
-async function warmActiveBackend(): Promise<void> {
-  if (activeBackend.value === null || warmState.value === 'warming') return;
-  warmState.value = 'warming';
-  try {
-    const client = ProviderInstantiator.instantiate(activeBackend.value, {
-      'apiKeys': apiKeys.value,
-      'model':   resolvedModel.value,
-    });
-    if (!(client instanceof BaseLlmClient)) {
-      warmState.value = 'unavailable';
-      return;
-    }
-    await new DispatcherLlmClient(client.adapter, { 'language': visitorLanguage }).warm();
-    warmState.value = 'ready';
-  } catch (err) {
-    warmState.value = 'unavailable';
-    logger.warn(`model warm-up failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-// ── Execute ───────────────────────────────────────────────────────────────────
-// #region dispatcher-browser-run
 async function ask(): Promise<void> {
-  if (isRunning.value || customerQuery.value.trim().length === 0 || activeBackend.value === null) return;
+  const submittedQuery = customerQuery.value.trim();
+  if (isRunning.value || submittedQuery.length === 0 || activeBackend.value === null) {
+    return;
+  }
 
-  const queryText = customerQuery.value.trim();
-  customerQuery.value = '';
-  isRunning.value = true;
-  terminalVariant.value = 'pending';
-  parked.value = null;
-  trace.value = [];
-  // Seed the stream with THIS run's customer message so it shows immediately and
-  // the Operator pane quotes the message actually being escalated. Each run uses
-  // a fresh DispatcherState (empty conversation until send-response/decline
-  // appends), so without this the pane would surface a prior run's stale turn.
-  conversation.value = [{ 'role': 'customer', 'text': queryText, 'ts': Date.now() }];
+  const setup = DispatcherRunnerSetup.forDispatch(currentRunnerState(), submittedQuery, Date.now());
+  applyRunnerState(setup.initialState);
+
+  let services: DispatcherServices;
+  try {
+    services = await buildServices();
+  } catch (error) {
+    applyRunnerState(setup.rollbackState());
+    reportRunnerFault(
+      'dispatch-setup',
+      'dispatch setup failed: ',
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    return;
+  }
+
   logger.clear();
-  logger.note(`run start — message: "${queryText}" · humanMode: ${String(humanMode.value)}`);
-
+  logger.note(`run start — message: "${submittedQuery}" · humanMode: ${String(humanMode.value)}`);
   await dagGraph.value?.reset();
 
-  const services = buildServices();
-  const setup           = new SetupNode();
-  const classifyMessage = new ClassifyMessageNode(services);
-  const aiCompose       = new AiComposeNode(services);
-  const parkForOperator = new ParkForOperatorNode();
-  const sendResponse    = new SendResponseNode();
-  const decline         = new DeclineNode();
-
   const state = new DispatcherState();
-  state.message           = queryText;
-  state.humanMode         = humanMode.value;
+  state.message = submittedQuery;
+  state.humanMode = humanMode.value;
   state.classificationMode = classificationMode.value;
-  state.language          = visitorLanguage;
+  state.language = visitorLanguage;
 
-  const dispatcher = new DispatcherBrowserObserver(logger, services);
-  dispatcher.registerBundle({
-    'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
-    'dags':  [supportDispatcherDAG],
-  });
+  const dispatcher = createDispatcher(services);
+  const item = { 'id': state.runIri, state };
 
   activeAbortController = new AbortController();
   try {
-    await dispatcher.execute('support-dispatcher', state, { 'signal': activeAbortController.signal });
+    await DispatcherBatchDispatch.run(dispatcher, dispatcherDagName, [item], {
+      'signal': activeAbortController.signal,
+    });
   } catch (error) {
-    logger.error(
-      LogFault.create()
-        .component('dispatcher-runner')
-        .operation('execute')
-        .status('failed')
-        .name(error instanceof Error ? error.constructor.name : 'Error')
-        .message(`execute error: ${error instanceof Error ? error.message : String(error)}`)
-        .context({})
-        .build(),
-    );
+    reportRunnerFault('execute', 'execute error: ', error instanceof Error ? error : new Error(String(error)));
   } finally {
+    if (services.intent.displayName !== null && embedderDisplayName.value !== services.intent.displayName) {
+      embedderDisplayName.value = services.intent.displayName;
+      logger.note(`embedder provisioned: ${services.intent.displayName}`);
+    }
     await dispatcher.destroy();
     activeAbortController = null;
     isRunning.value = false;
   }
 }
-// #endregion dispatcher-browser-run
 
-// ── Operator resume ───────────────────────────────────────────────────────────
-// #region dispatcher-browser-resume
 async function sendOperatorResponse(): Promise<void> {
-  // Use the non-reactive store: parked.value is just the cursor signal.
-  const pe = parkedExecution;
-  if (pe === null || operatorInput.value.trim().length === 0) return;
-
+  const parkedRun = parkedExecution;
   const responseText = operatorInput.value.trim();
-  operatorInput.value = '';
-  isRunning.value = true;
-  trace.value = [...trace.value, {
+  if (parkedRun === null || responseText.length === 0) {
+    return;
+  }
+
+  const setup = DispatcherRunnerSetup.forResume(currentRunnerState(), {
     'node': 'operator',
     'ts': Date.now(),
     'variant': 'start',
-  }];
-  logger.note(`operator response captured — resuming from cursor: ${pe.cursor}`);
+  });
+  applyRunnerState(setup.initialState);
 
-  const services = buildServices();
-  const setup           = new SetupNode();
-  const classifyMessage = new ClassifyMessageNode(services);
-  const aiCompose       = new AiComposeNode(services);
-  const parkForOperator = new ParkForOperatorNode();
-  const sendResponse    = new SendResponseNode();
-  const decline         = new DeclineNode();
-  await dagGraph.value?.reset();
-
-  let restored: { state: DispatcherState; dagName: string; cursor: string } | null = null;
+  let services: DispatcherServices;
   try {
-    // pe.result was stored outside Vue reactivity so it retains class identity.
-    const ckpt = await Checkpoint.capture(pe.dagName, pe.result);
-    restored = await ckpt.restoreState(
+    services = await buildServices();
+  } catch (error) {
+    applyRunnerState(setup.rollbackState());
+    reportRunnerFault(
+      'resume-setup',
+      'resume setup failed: ',
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    return;
+  }
+
+  let restored: { readonly dagName: string; readonly cursor: string; readonly state: DispatcherState };
+  try {
+    const checkpoint = await Checkpoint.capture(parkedRun.dagName, parkedRun.result);
+    restored = await checkpoint.restoreState(
       CheckpointRestoreAdapter.wrap(() => new DispatcherState()),
     );
-  } catch (err) {
-    logger.error(
-      LogFault.create()
-        .component('dispatcher-runner')
-        .operation('checkpoint-restore')
-        .status('failed')
-        .name(err instanceof Error ? err.constructor.name : 'Error')
-        .message(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`)
-        .context({})
-        .build(),
+  } catch (error) {
+    applyRunnerState(setup.rollbackState());
+    reportRunnerFault(
+      'checkpoint-restore',
+      'checkpoint restore failed: ',
+      error instanceof Error ? error : new Error(String(error)),
     );
-    isRunning.value = false;
     return;
   }
 
   restored.state.response = responseText;
+  logger.note(`operator response captured — resuming from cursor: ${parkedRun.cursor}`);
+  await dagGraph.value?.reset();
 
-  const dispatcher = new DispatcherBrowserObserver(logger, services);
-  dispatcher.registerBundle({
-    'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
-    'dags':  [supportDispatcherDAG],
-  });
+  const dispatcher = createDispatcher(services);
+  const item = { 'id': restored.state.runIri, 'state': restored.state };
 
   activeAbortController = new AbortController();
   try {
-    await dispatcher.resume(restored.dagName, restored.state, restored.cursor, {
-      'signal': activeAbortController.signal,
-    });
-  } catch (error) {
-    logger.error(
-      LogFault.create()
-        .component('dispatcher-runner')
-        .operation('resume')
-        .status('failed')
-        .name(error instanceof Error ? error.constructor.name : 'Error')
-        .message(`resume error: ${error instanceof Error ? error.message : String(error)}`)
-        .context({})
-        .build(),
+    const resumed = await DispatcherBatchDispatch.resume(
+      dispatcher,
+      restored.dagName,
+      item,
+      restored.cursor,
+      { 'signal': activeAbortController.signal },
     );
+    if (resumed.awaitingInput.length === 0) {
+      leftActiveKey.value = 'customer';
+    }
+  } catch (error) {
+    reportRunnerFault('resume', 'resume error: ', error instanceof Error ? error : new Error(String(error)));
   } finally {
     await dispatcher.destroy();
     activeAbortController = null;
     isRunning.value = false;
-    parkedExecution = null;
-    parked.value = null;
-    if (leftActiveKey.value === 'operator') leftActiveKey.value = 'customer';
   }
 }
-// #endregion dispatcher-browser-resume
 
-// ── Reset ─────────────────────────────────────────────────────────────────────
 function reset(): void {
   conversation.value = [];
   trace.value = [];
@@ -586,21 +561,23 @@ function reset(): void {
   terminalVariant.value = 'pending';
   customerQuery.value = '';
   operatorInput.value = '';
+  leftActiveKey.value = 'customer';
   logger.clear();
   void dagGraph.value?.reset();
 }
 
-// ── Computed lifecycle badge text ─────────────────────────────────────────────
 const lifecycleBadge = computed<string>(() => {
-  if (isRunning.value) return 'running';
-  if (parked.value !== null) return 'awaiting-input';
-  const t = terminalVariant.value;
-  return t === 'pending' ? 'idle' : t;
+  if (isRunning.value) {
+    return 'running';
+  }
+  if (parked.value !== null) {
+    return 'awaiting-input';
+  }
+  return terminalVariant.value === 'pending' ? 'idle' : terminalVariant.value;
 });
 
 const isAwaiting = computed(() => parked.value !== null);
 
-// ── Example prompts ───────────────────────────────────────────────────────────
 const EXAMPLE_PROMPTS: readonly string[] = [
   'What are your store hours?',
   'Do you carry graphic novels?',
@@ -620,15 +597,15 @@ function fillPrompt(text: string): void {
     <section v-if="noModel" class="dr-no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
       <p>The Dispatcher demo now uses real LLM calls for classification and reply composition. Enable one of the backends below to start:</p>
-      <BackendPicker
+      <LlmConfigurationPane
         :backends="backends"
-        :active-id="activeBackend ?? ''"
+        :active-id="activeBackend"
         :api-keys="apiKeys"
         :preferred-models="preferredModels"
         :is-mobile="isMobile"
-        @update:active-id="activeBackend = $event as ProviderId"
+        @update:active-id="selectBackend"
         @update:api-keys="apiKeys = $event"
-        @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
+        @update:preferred-models="selectPreferredModels"
       />
     </section>
 
@@ -832,16 +809,9 @@ function fillPrompt(text: string): void {
                   Generative classification via the LLM adapter — slower, since every message
                   loads/queries the model.
                 </p>
-                <p class="dr-config-hint" v-if="dispatcherIntent === null">
-                  Embedder unavailable in this session — "embedder" mode transparently falls
-                  back to the LLM classifier for every message.
-                </p>
                 <p class="dr-status-line">
-                  {{ dispatcherIntent !== null ? dispatcherIntent.embedderDisplayName : 'embedder unavailable' }}
+                  {{ embedderDisplayName ?? 'embedder provisions on first execution' }}
                   · mode: {{ classificationMode }}
-                </p>
-                <p class="dr-status-line" v-if="activeBackend !== null">
-                  model: {{ warmState === 'warming' ? 'warming…' : warmState === 'ready' ? 'ready' : warmState === 'unavailable' ? 'unavailable' : 'idle' }}
                 </p>
               </section>
 
@@ -866,21 +836,22 @@ function fillPrompt(text: string): void {
                 <p class="dr-escalation-reason">{{ escalationReason }}</p>
               </section>
 
-              <!-- Backend picker -->
-              <section class="dr-config-section">
-                <h5 class="dr-config-head">Backend</h5>
-                <BackendPicker
-                  :backends="backends"
-                  :active-id="activeBackend ?? ''"
-                  :api-keys="apiKeys"
-                  :preferred-models="preferredModels"
-                  :is-mobile="isMobile"
-                  @update:active-id="activeBackend = $event as ProviderId"
-                  @update:api-keys="apiKeys = $event"
-                  @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
-                />
-              </section>
+            </div>
+          </template>
 
+          <template #llm>
+            <div class="dr-config-pane">
+              <LlmConfigurationPane
+                :backends="backends"
+                :active-id="activeBackend"
+                :api-keys="apiKeys"
+                :preferred-models="preferredModels"
+                :is-mobile="isMobile"
+                :disabled="isRunning"
+                @update:active-id="selectBackend"
+                @update:api-keys="apiKeys = $event"
+                @update:preferred-models="selectPreferredModels"
+              />
             </div>
           </template>
 

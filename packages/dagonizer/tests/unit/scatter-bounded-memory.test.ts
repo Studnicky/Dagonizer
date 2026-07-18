@@ -13,9 +13,7 @@
  *    path folds every item into state, and finalize runs exactly once with
  *    the bounded accumulator fully built.
  *
- * These tests cover the fix for the O(N)-memory leak where ackItem and
- * ackBatch unconditionally pushed freshRecord (carrying cloneState) to
- * allFreshRecords, defeating the bounded-checkpoint guarantee.
+ * Ack paths keep clone records only when finalize explicitly requires them.
  */
 
 import assert from 'node:assert/strict';
@@ -25,6 +23,7 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
@@ -51,6 +50,70 @@ class ItemCountState extends CountState {
 
 
 }
+
+class RetainingState extends NodeStateBase {
+  items: number[] = [];
+  finalizeRecordCount = -1;
+  finalizedItems: number[] = [];
+  finalizeCount = 0;
+}
+
+class RecordCountingCustomGather extends GatherStrategy {
+  readonly name = 'record-counting-custom';
+  readonly '@id' = 'urn:noocodec:node:record-counting-custom';
+  override readonly retainsRecordsForFinalize = true;
+
+  override reduce(): void { /* finalize consumes the retained records */ }
+
+  override async finalize(
+    _config: GatherConfigType,
+    execution: GatherExecutionType<number>,
+  ): Promise<void> {
+    assert.ok(execution.state instanceof RetainingState);
+    execution.state.finalizeRecordCount = execution.records.length;
+    execution.state.finalizedItems = execution.records.flatMap((record) =>
+      record.item === undefined ? [] : [record.item]);
+    execution.state.finalizeCount++;
+  }
+}
+
+const retainingDag = (dagIri: string, concurrency: number): DAGType => {
+  const fanIri = placementIri(dagIri, 'fan');
+  const joinIri = placementIri(dagIri, 'join');
+  const endIri = placementIri(dagIri, 'end');
+  return {
+    '@context': DAG_CONTEXT,
+    '@id': dagIri,
+    '@type': 'DAG',
+    'name': dagIri,
+    'version': '1',
+    'entrypoints': { 'main': fanIri },
+    'nodes': [
+      {
+        '@id': fanIri,
+        '@type': 'ScatterNode',
+        'name': 'fan',
+        'body': { 'node': 'urn:noocodec:node:track-pass' },
+        'source': 'items',
+        'itemKey': 'item',
+        'configuration': {
+          'execution': { 'batching': { 'mode': 'item', concurrency } },
+          'durability': { 'writePoints': ['WatermarkCommit'] },
+        },
+        'outputs': { 'all-success': joinIri, 'partial': joinIri, 'all-error': joinIri, 'empty': endIri },
+      },
+      {
+        '@id': joinIri,
+        '@type': 'GatherNode',
+        'name': 'join',
+        'sources': { [fanIri]: {} },
+        'gather': { 'strategy': 'record-counting-custom' },
+        'outputs': { 'success': endIri, 'error': endIri, 'empty': endIri },
+      },
+      { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+    ],
+  };
+};
 
 // ── test gather strategy ─────────────────────────────────────────────────────
 
@@ -115,7 +178,7 @@ class TestScatterDag {
           'body':        { 'node': 'urn:noocodec:node:pass' },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),
@@ -161,7 +224,7 @@ class TestScatterDag {
           'body':        { 'dag': MULTI_BODY_DAG_IRI },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),
@@ -195,6 +258,7 @@ class TestScatterDag {
 // ── setup: register the test strategy once ────────────────────────────────────
 
 GatherStrategies.register(new CountingGather());
+GatherStrategies.register(new RecordCountingCustomGather());
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -221,7 +285,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     );
 
     // finalize ran and received 0 records — confirming allFreshRecords was not
-    // accumulated for this compactable gather (the core leak fix).
+    // accumulated for this compactable gather.
     assert.equal(
       result.state.finalizeRecordCount,
       0,
@@ -282,114 +346,81 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     );
   });
 
-  void it('non-compactable gather is unaffected: finalize still receives all N records', async () => {
-    // The 'custom' strategy has retainsRecordsForFinalize=true (non-compactable).
-    // Its finalize depends on receiving every record. Verify the fix does not
-    // regress non-compactable mode.
+  void it('retaining gather finalizes with all records from its bounded execution', async () => {
     const N = 20;
+    const dagIri = 'urn:noocodec:dag:retained-record-count';
+    const dispatcher = new Dagonizer<RetainingState>();
+    dispatcher.registerNode(TestNode.make<RetainingState>('urn:noocodec:node:track-pass', ['done']));
+    dispatcher.registerDAG(retainingDag(dagIri, 2));
 
-    class TrackingState extends NodeStateBase {
-      items: number[] = [];
-      finalizeRecordCount: number = -1;
-
-
-    }
-
-    const trackingNode = TestNode.make<TrackingState>('urn:noocodec:node:track-pass', ['done']);
-
-    // Use a local subclass registered under a unique name to capture record count
-    // We override via a local subclass registered under a unique name.
-    class RecordCountingCustomGather extends GatherStrategy {
-      readonly name = 'record-counting-custom';
-      readonly '@id' = 'urn:noocodec:node:record-counting-custom';
-      override readonly retainsRecordsForFinalize = true;
-
-      override reduce(): void { /* custom does no per-clone work */ }
-
-      override async finalize(
-        _config: GatherConfigType,
-        execution: GatherExecutionType<NodeStateBase>,
-      ): Promise<void> {
-        assert.ok(
-          execution.state instanceof TrackingState,
-          'RecordCountingCustomGather.finalize: expected TrackingState',
-        );
-        execution.state.finalizeRecordCount = execution.records.length;
-      }
-    }
-
-    GatherStrategies.register(new RecordCountingCustomGather());
-
-    const retainedDag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id': 'urn:noocodec:dag:retained-record-count',
-      '@type':    'DAG',
-      'name':     'retained-record-count',
-      'version':  '1',
-      'entrypoints': { 'main': placementIri('urn:noocodec:dag:retained-record-count', 'fan') },
-      'nodes': [
-        {
-          '@id': 'urn:noocodec:dag:retained-record-count/node/fan',
-          '@type':       'ScatterNode',
-          'name':        'fan',
-          'body':        { 'node': 'urn:noocodec:node:track-pass' },
-          'source':      'items',
-          'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': 2 },
-          'outputs': {
-            'all-success': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
-            'partial': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
-            'all-error': placementIri('urn:noocodec:dag:retained-record-count', 'join'),
-            'empty': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
-          },
-        },
-        {
-          '@id': 'urn:noocodec:dag:retained-record-count/node/join',
-          '@type': 'GatherNode',
-          'name': 'join',
-          'sources': { [placementIri('urn:noocodec:dag:retained-record-count', 'fan')]: {} },
-          'gather': { 'strategy': 'record-counting-custom' },
-          'outputs': {
-            'success': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
-            'error': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
-            'empty': placementIri('urn:noocodec:dag:retained-record-count', 'end'),
-          },
-        },
-        {
-          '@id': 'urn:noocodec:dag:retained-record-count/node/end',
-          '@type':   'TerminalNode',
-          'name':    'end',
-          'outcome': 'completed',
-        },
-      ],
-    };
-
-    const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(trackingNode);
-    dispatcher.registerDAG(retainedDag);
-
-    const state = new TrackingState();
+    const state = new RetainingState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
-    const result = await dispatcher.execute('urn:noocodec:dag:retained-record-count', state);
+    const result = await dispatcher.execute(dagIri, state);
 
     assert.equal(result.cursor, null, 'flow must complete cleanly');
     assert.equal(
       result.state.finalizeRecordCount,
       N,
-      `non-compactable finalize must receive all N=${N} records; got ${result.state.finalizeRecordCount}. ` +
-      `The fix must not affect retained-mode gathers.`,
+      `retaining finalize must receive all N=${N} records; got ${result.state.finalizeRecordCount}. ` +
+      `The retaining gather must keep every current-execution record.`,
     );
+    assert.equal(result.state.finalizeCount, 1);
+    assert.deepEqual(result.state.finalizedItems, state.items);
+  });
+
+  void it('retaining gather writes no progress and reruns the complete replayable input on resume', async () => {
+    const dagIri = 'urn:noocodec:dag:retaining-bounded-resume';
+    const fanIri = placementIri(dagIri, 'fan');
+    const state = new RetainingState();
+    state.items = [1, 2, 3, 4, 5];
+    let progressWrites = 0;
+    const originalSetMetadata = state.setMetadata.bind(state);
+    state.setMetadata = (key: string, value: unknown): void => {
+      if (key === SCATTER_PROGRESS_KEY) progressWrites++;
+      originalSetMetadata(key, value);
+    };
+
+    let firstRunCalls = 0;
+    const interruptDispatcher = new Dagonizer<RetainingState>();
+    interruptDispatcher.registerNode(TestNode.make<RetainingState>('urn:noocodec:node:track-pass', ['done'], () => {
+      firstRunCalls++;
+      if (firstRunCalls === 3) throw new Error('interrupt retaining gather');
+      return 'done';
+    }));
+    const dag = retainingDag(dagIri, 1);
+    interruptDispatcher.registerDAG(dag);
+
+    const interrupted = await interruptDispatcher.execute(dagIri, state);
+    assert.equal(interrupted.cursor, fanIri);
+    assert.equal(firstRunCalls, 3);
+    assert.equal(progressWrites, 0);
+    assert.equal(interrupted.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
+
+    const resumeCalls: number[] = [];
+    const resumeDispatcher = new Dagonizer<RetainingState>();
+    resumeDispatcher.registerNode(TestNode.make<RetainingState>('urn:noocodec:node:track-pass', ['done'], (clone) => {
+      resumeCalls.push(clone.getter.number('item'));
+      return 'done';
+    }));
+    resumeDispatcher.registerDAG(dag);
+
+    const resumed = await resumeDispatcher.resume(dagIri, interrupted.state, fanIri);
+
+    assert.deepEqual(resumeCalls, [1, 2, 3, 4, 5]);
+    assert.equal(progressWrites, 0);
+    assert.equal(resumed.state.finalizeCount, 1);
+    assert.equal(resumed.state.finalizeRecordCount, state.items.length);
+    assert.deepEqual(resumed.state.finalizedItems, [1, 2, 3, 4, 5]);
+    assert.equal(resumed.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 });
 
 // ── multi-node DAG body tests ─────────────────────────────────────────────────
 //
 // A scatter whose body is a sub-DAG (body: { dag: '...' }) runs each item's
-// clone through an in-process runNodes call. Prior to the fix, every inner
-// node result for every clone was pushed into this.#ctx.intermediateResults,
-// producing O(N*M) buffering (N items × M inner nodes). After the fix the
-// array stays empty (inner nodes fire observers live; no buffering occurs).
+// clone through an in-process runNodes call. Inner node results fire observers
+// live and the representative result keeps an empty intermediate array.
 //
 // Structural assertion: the scatter's representative NodeResultType
 // carries an EMPTY intermediateResults array, proving inner nodes are no
@@ -501,9 +532,8 @@ GatherStrategies.register(new MultiNodeBodyGather());
 
 void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-process path)', () => {
   void it('scatter result carries empty intermediateResults proving inner nodes are not buffered', async () => {
-    // N items × 3 inner nodes = 3000 inner results that would have been buffered
-    // before the fix. Assert the scatter's representative result has an empty
-    // intermediateResults array (the structural proof of the fix).
+    // N items × 3 inner nodes fire without populating the representative
+    // scatter result's intermediateResults array.
     const N = 1000;
 
     const dispatcher = new Dagonizer<MultiNodeBodyState>();
@@ -540,10 +570,8 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
   });
 
   void it('multi-node DAG body scatter completes correctly at N=3000 with correct accumulator', async () => {
-    // 3000 items × 3 inner nodes = 9000 inner results that would have caused
-    // significant heap growth before the fix. Confirm correctness: each item
-    // runs all 3 inner nodes (InnerNodeA increments counter once per clone),
-    // so the gathered counter must equal N.
+    // 3000 items × 3 inner nodes exercise the live-observer path at scale.
+    // Each item runs all 3 inner nodes, so the gathered counter equals N.
     const N = 3000;
 
     const dispatcher = new Dagonizer<MultiNodeBodyState>();

@@ -49,11 +49,10 @@ export interface GatherSourceInterface {
 /**
  * Gather execution composer and registered-node invoker.
  *
- * Extracts the two gather-adjacent methods that previously lived on `Dagonizer`:
- * `composeGatherExecution` (builds the `GatherExecutionType` handed to a
- * `GatherStrategy`) and `invokeRegisteredNode` (runs a registered node IRI during a
- * `custom` gather's finalize pass). Both depend only on the narrow
- * `GatherSourceInterface` port, not the full dispatcher.
+ * `composeGatherExecution` builds the `GatherExecutionType` handed to a
+ * `GatherStrategy`; `invokeRegisteredNode` runs a registered node IRI during a
+ * `custom` gather's finalize pass. Both depend on the narrow
+ * `GatherSourceInterface` port.
  *
  * Implements `NodeInvokerSourceInterface` so it can be passed as the source
  * to `NodeInvoker` instances produced during `composeGatherExecution`.

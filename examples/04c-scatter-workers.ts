@@ -89,7 +89,7 @@ const scrapeWithContainerDag: DAGType = {
       "body":         { "dag": 'urn:noocodec:dag:probe-item' },  // sub-DAG body — required for containers
       "source":       'urls',
       "itemKey":      'url',
-      "execution": { "mode": "item", "concurrency": 2 },
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },
       // container: 'io',                        // ← uncomment + bind WorkerThreadContainer
       //                                         //   to route each item to a worker thread
       "outputs": { 'all-success': 'urn:noocodec:dag:scrape-c/node/gather-probes', "partial": 'urn:noocodec:dag:scrape-c/node/gather-probes', 'all-error': 'urn:noocodec:dag:scrape-c/node/gather-probes', "empty": 'urn:noocodec:dag:scrape-c/node/end' },

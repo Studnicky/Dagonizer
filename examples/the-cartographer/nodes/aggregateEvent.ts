@@ -17,6 +17,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
+import { Continent } from '../entities/Continent.ts';
 import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -59,7 +60,7 @@ export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
         'timezone':         geo.timezone,
         'jurisdiction':     geo.jurisdiction,
         // Macro continent for the per-region insights rollup (from the real API).
-        'continent':        geo.continent || AggregateEventNode.DEFAULT_GEO_LABEL,
+        'continent':        Continent.require(geo.continent),
         'region':           geo.region || AggregateEventNode.DEFAULT_GEO_LABEL,
         'country':          geo.country || AggregateEventNode.DEFAULT_GEO_LABEL,
         'hub':              geo.hub || AggregateEventNode.DEFAULT_GEO_LABEL,

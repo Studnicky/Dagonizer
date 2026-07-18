@@ -4,6 +4,7 @@ import Menubar from 'primevue/menubar';
 import Menu from 'primevue/menu';
 import Drawer from 'primevue/drawer';
 import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
 import UiActionLink from '@/components/islands/UiActionLink.vue';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
 import UiFactTags from '@/components/islands/UiFactTags.vue';
@@ -14,9 +15,12 @@ const props = defineProps<{
   iconHref: string;
   ctaHref: string;
   repoUrl: string;
+  docsHref: string;
 }>();
 
 const mobileOpen = ref(false);
+const desktopSearchQuery = ref('');
+const mobileSearchQuery = ref('');
 const desktopNavItems = computed(() =>
   props.links.map((link) => ({
     label: link.label,
@@ -34,6 +38,20 @@ const topFacts = ['Typed DAG runtime', 'Inspectable execution', 'Durable resume'
 
 function closeDrawer() {
   mobileOpen.value = false;
+}
+
+function docsSearchHref(term: string): string {
+  const trimmed = term.trim();
+  return trimmed.length === 0 ? props.docsHref : `${props.docsHref}?q=${encodeURIComponent(trimmed)}`;
+}
+
+function submitDesktopSearch() {
+  window.location.href = docsSearchHref(desktopSearchQuery.value);
+}
+
+function submitMobileSearch() {
+  closeDrawer();
+  window.location.href = docsSearchHref(mobileSearchQuery.value);
 }
 </script>
 
@@ -87,6 +105,14 @@ function closeDrawer() {
             </template>
           </Menubar>
 
+          <InputText
+            v-model="desktopSearchQuery"
+            placeholder="Search docs..."
+            aria-label="Search docs"
+            class="w-40 shrink-0 xl:w-56"
+            @keydown.enter="submitDesktopSearch"
+          />
+
           <UiCtaRow>
             <UiActionLink :href="ctaHref" variant="primary" label="Get started" />
             <UiActionLink :href="repoUrl" target="_blank" rel="noreferrer" label="GitHub" />
@@ -96,6 +122,14 @@ function closeDrawer() {
 
       <Drawer v-model:visible="mobileOpen" position="right" header="Dagonizer">
         <div class="flex flex-col gap-3">
+          <InputText
+            v-model="mobileSearchQuery"
+            placeholder="Search docs..."
+            aria-label="Search docs"
+            class="w-full"
+            @keydown.enter="submitMobileSearch"
+          />
+
           <Menu :model="mobileNavItems">
             <template #item="{ item, props: itemProps }">
               <a

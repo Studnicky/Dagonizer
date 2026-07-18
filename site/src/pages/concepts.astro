@@ -1,39 +1,31 @@
 ---
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import TopNav from '@/components/marketing/TopNav.astro';
-import SectionShell from '@/components/marketing/SectionShell.astro';
-import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
-import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
-import UiActionLink from '@/components/marketing/UiActionLink.astro';
-import { siteHref } from '@/lib/links';
+import { getEntry } from 'astro:content';
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
+
+const doc = await getEntry('docs', 'concepts');
+if (doc === undefined) {
+  throw new Error('Missing documentation entry: concepts');
+}
+
+const pageTitle = doc.data.title ?? DocPageRenderer.leadingTitle(doc.body) ?? 'Concepts';
+const rendered = await DocPageRenderer.render(doc.body, { title: pageTitle, slug: doc.id });
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site(SiteLinks.route(doc.id)), label: pageTitle }
+];
 ---
 
-<BaseLayout title="Concepts">
-  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
-    <TopNav />
-    <SectionShell
-      eyebrow="Concepts"
-      title="Learn the vocabulary that makes Dagonizer workflows readable."
-      description="Start with the core model before diving into full guides and runnable examples. Concepts gives teams the shared language for graph identity, routing, terminals, execution state, and visualization."
-    >
-      <div class="grid gap-4 md:grid-cols-3">
-        <UiContentPanel title="Graph structure" compact>
-          <p>Understand placements, entrypoints, terminals, embedded DAGs, scatter, and gather as explicit graph-level concepts.</p>
-        </UiContentPanel>
-        <UiContentPanel title="Runtime semantics" compact>
-          <p>Learn how state moves, how routes resolve, what checkpoints preserve, and why execution remains inspectable under retry and resume.</p>
-        </UiContentPanel>
-        <UiContentPanel title="Operational surfaces" compact>
-          <p>Connect the same concepts across documentation, diagrams, runnable examples, and the live execution/inspection surfaces.</p>
-        </UiContentPanel>
-      </div>
-
-      <div class="mt-6 flex flex-wrap gap-3">
-        <UiActionLink href={siteHref('/docs/concepts')} variant="primary">Read the full concepts reference</UiActionLink>
-        <UiActionLink href={siteHref('/architecture')}>View architecture summary</UiActionLink>
-        <UiActionLink href={siteHref('/docs/examples/the-archivist')}>Open a runnable example</UiActionLink>
-      </div>
-    </SectionShell>
-  </main>
-  <MarketingFooter />
-</BaseLayout>
+<DocPageShell
+  title={pageTitle}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings}
+  sections={[]}
+  sourceLabel="concepts.md"
+  sourceHref={SiteDocs.edit(doc.id)}
+  crumbs={crumbs}
+>
+  <Fragment set:html={rendered.html} />
+</DocPageShell>

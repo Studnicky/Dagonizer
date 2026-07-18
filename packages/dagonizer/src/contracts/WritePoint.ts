@@ -24,6 +24,7 @@ export const DEFAULT_WRITE_POINTS: readonly WritePointType[] = [
 /** Shared JSON Schema for explicit write-point arrays. */
 export const WritePointsSchema = {
   'type': 'array',
+  'uniqueItems': true,
   'items': {
     'type': 'string',
     'enum': WRITE_POINTS,

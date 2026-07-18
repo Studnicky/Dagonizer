@@ -1,13 +1,14 @@
-import { mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { setTimeout } from 'node:timers/promises';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 
+import { CartographerTelemetryContract } from '../app/CartographerTelemetryContract.ts';
+import { CpuProfileAttribution } from '../app/CpuProfileAttribution.ts';
+
 const PREVIEW_HOST = '127.0.0.1';
-const DEFAULT_PREVIEW_PORT = 5175;
-const DEFAULT_CHROME_DEBUG_PORT = 9222;
 const TELEMETRY_KEY = '__cartographerTelemetry';
 const TRACE_CATEGORIES = [
   '-*',
@@ -44,70 +45,6 @@ function formatChildLogs(buffer) {
   return parts.length === 0 ? `${buffer.name} emitted no logs` : parts.join('\n\n');
 }
 
-function parseArgs(argv) {
-  const args = {
-    totalEvents: 1000,
-    poolSize: 4,
-    batchCapacity: 1000,
-    loadTopology: false,
-    trace: false,
-    tracePath: '.orchestration/perf/cartographer-browser-trace.json',
-    timeoutMs: 180000,
-    chromePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    previewPort: DEFAULT_PREVIEW_PORT,
-    chromeDebugPort: DEFAULT_CHROME_DEBUG_PORT,
-  };
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    switch (key) {
-      case '--total-events':
-        if (value !== undefined) args.totalEvents = Math.max(1, Math.min(1_000_000, Number.parseInt(value, 10) || args.totalEvents));
-        i++;
-        break;
-      case '--pool-size':
-        if (value !== undefined) args.poolSize = Math.max(1, Math.min(32, Number.parseInt(value, 10) || args.poolSize));
-        i++;
-        break;
-      case '--batch-capacity':
-        if (value !== undefined) args.batchCapacity = Math.max(1, Math.min(10_000, Number.parseInt(value, 10) || args.batchCapacity));
-        i++;
-        break;
-      case '--timeout-ms':
-        if (value !== undefined) args.timeoutMs = Math.max(1000, Number.parseInt(value, 10) || args.timeoutMs);
-        i++;
-        break;
-      case '--trace-path':
-        if (value !== undefined) args.tracePath = value;
-        i++;
-        break;
-      case '--chrome-path':
-        if (value !== undefined) args.chromePath = value;
-        i++;
-        break;
-      case '--preview-port':
-        if (value !== undefined) args.previewPort = Math.max(1, Number.parseInt(value, 10) || args.previewPort);
-        i++;
-        break;
-      case '--chrome-debug-port':
-        if (value !== undefined) args.chromeDebugPort = Math.max(1, Number.parseInt(value, 10) || args.chromeDebugPort);
-        i++;
-        break;
-      case '--load-topology':
-        args.loadTopology = true;
-        break;
-      case '--trace':
-        args.trace = true;
-        break;
-      default:
-        break;
-    }
-  }
-
-  return args;
-}
-
 async function findAvailablePort(startPort) {
   let candidate = startPort;
   while (candidate < startPort + 1000) {
@@ -139,15 +76,15 @@ async function waitForHttp(url, timeoutMs) {
     } catch (error) {
       lastError = error;
     }
-    await sleep(250);
+    await setTimeout(250);
   }
   throw new Error(`Timed out waiting for ${url}${lastError instanceof Error ? `: ${lastError.message}` : ''}`);
 }
 
 function startPreviewServer(port) {
   const child = spawn(
-    'npm',
-    ['run', 'preview', '--', '--host', PREVIEW_HOST, '--port', String(port), '--strictPort'],
+    'pnpm',
+    ['exec', 'vite', 'preview', '--host', PREVIEW_HOST, '--port', String(port), '--strictPort'],
     {
       cwd: new URL('..', import.meta.url),
       detached: true,
@@ -235,7 +172,7 @@ class CdpClient {
   send(method, params = {}, timeoutMs = 30000) {
     const id = ++this.#id;
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeout = globalThis.setTimeout(() => {
         this.#pending.delete(id);
         reject(new Error(`CDP ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
@@ -291,7 +228,7 @@ async function openCdpPageClient(timeoutMs, debugPort) {
     } catch {
       // continue polling
     }
-    await sleep(250);
+    await setTimeout(250);
   }
   throw new Error('Timed out opening CDP page client');
 }
@@ -314,7 +251,7 @@ async function waitForChromeDebugEndpoint(chromeChild, chromeLogs, debugPort, ti
     } catch (error) {
       lastError = error;
     }
-    await sleep(250);
+    await setTimeout(250);
   }
 
   throw new Error(
@@ -326,14 +263,15 @@ async function collectTrace(client, enabled, tracePath) {
   if (!enabled) {
     return {
       async stop() {
-        return null;
+        return { trace: null, cpuAttribution: null };
       },
     };
   }
 
   const events = [];
   const onData = (params) => {
-    for (const value of params.value ?? []) events.push(value);
+    if (!Array.isArray(params.value)) throw new TypeError('Tracing.dataCollected requires an event array');
+    for (const value of params.value) events.push(value);
   };
   client.on('Tracing.dataCollected', onData);
 
@@ -351,9 +289,9 @@ async function collectTrace(client, enabled, tracePath) {
             const completePromise = client.once('Tracing.tracingComplete');
             await client.send('Tracing.end');
             await completePromise;
-            await mkdir(join(process.cwd(), '.orchestration', 'perf'), { recursive: true });
-            await writeFile(tracePath, `${JSON.stringify({ traceEvents: events })}\n`, 'utf8');
-            return tracePath;
+            const trace = await CartographerTelemetryContract.persistTrace(tracePath, events);
+            const cpuAttribution = CpuProfileAttribution.compute(events);
+            return { trace, cpuAttribution };
           } finally {
             client.off('Tracing.dataCollected', onData);
           }
@@ -376,7 +314,7 @@ async function stopChild(child) {
   }
   await Promise.race([
     new Promise((resolve) => child.once('exit', resolve)),
-    sleep(5000).then(() => {
+    setTimeout(5000).then(() => {
       if (child.exitCode !== null) return;
       try {
         process.kill(killPid, 'SIGKILL');
@@ -390,6 +328,7 @@ async function stopChild(child) {
 async function waitForCompletion(client, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let probeTimeoutCount = 0;
+  let lastTelemetry = null;
   while (Date.now() < deadline) {
     let telemetry;
     try {
@@ -403,13 +342,17 @@ async function waitForCompletion(client, timeoutMs) {
       continue;
     }
     const value = telemetry.result?.value ?? null;
+    lastTelemetry = value;
     if (value !== null && (value.status === 'completed' || value.status === 'failed')) {
       const metrics = await client.send('Performance.getMetrics');
       return { telemetry: value, metrics: metrics.metrics ?? [], probeTimeoutCount };
     }
-    await sleep(500);
+    await setTimeout(500);
   }
-  throw new Error(`Timed out waiting for browser telemetry after ${timeoutMs}ms (${probeTimeoutCount} CDP probe timeouts)`);
+  throw new Error(
+    `Timed out waiting for browser telemetry after ${timeoutMs}ms ` +
+    `(${probeTimeoutCount} CDP probe timeouts); last telemetry: ${JSON.stringify(lastTelemetry)}`,
+  );
 }
 
 function metricMap(metrics) {
@@ -417,7 +360,8 @@ function metricMap(metrics) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const startedAt = performance.now();
+  const args = CartographerTelemetryContract.parseArguments(process.argv.slice(2));
   await ensureBuilt();
 
   const previewPort = await findAvailablePort(args.previewPort);
@@ -429,6 +373,8 @@ async function main() {
     totalEvents: String(args.totalEvents),
     poolSize: String(args.poolSize),
     batchCapacity: String(args.batchCapacity),
+    reservoirIdleMs: String(args.reservoirIdleMs),
+    liveFlushMs: String(args.liveFlushMs),
     ...(args.loadTopology ? { loadTopology: '1' } : {}),
   });
   const targetUrl = `http://${PREVIEW_HOST}:${previewPort}/?${query.toString()}`;
@@ -441,36 +387,70 @@ async function main() {
     chrome = startChrome(args.chromePath, userDataDir, targetUrl, chromeDebugPort);
     await waitForChromeDebugEndpoint(chrome.child, chrome.logs, chromeDebugPort, 30000);
     client = await openCdpPageClient(30000, chromeDebugPort);
+    const runtimeDiagnostics = [];
+    client.on('Runtime.exceptionThrown', (params) => {
+      if (runtimeDiagnostics.length >= 20) return;
+      const details = params.exceptionDetails ?? {};
+      runtimeDiagnostics.push({
+        'kind': 'exception',
+        'text': details.exception?.description ?? details.text ?? 'Unknown browser exception',
+        'url':  details.url ?? '',
+        'line': details.lineNumber ?? null,
+      });
+    });
     await client.send('Runtime.enable');
     await client.send('Performance.enable');
 
     trace = await collectTrace(client, args.trace, args.tracePath);
-    const { telemetry, metrics, probeTimeoutCount } = await waitForCompletion(client, args.timeoutMs);
-    const traceFile = await trace.stop();
-    const browserMetrics = metricMap(metrics);
+    let completion;
+    try {
+      completion = await waitForCompletion(client, args.timeoutMs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${message}; runtime diagnostics: ${JSON.stringify(runtimeDiagnostics)}`);
+    }
+    const { telemetry, metrics, probeTimeoutCount } = completion;
+    const hardwareProbe = await client.send('Runtime.evaluate', {
+      expression: 'navigator.hardwareConcurrency',
+      returnByValue: true,
+    });
+    const hardwareConcurrency = hardwareProbe.result?.value;
+    if (!Number.isInteger(hardwareConcurrency) || hardwareConcurrency <= 0) {
+      throw new TypeError(`navigator.hardwareConcurrency must be a positive integer, received ${hardwareConcurrency}`);
+    }
+    const { trace: traceEvidence, cpuAttribution } = await trace.stop();
+    const rawBrowserMetrics = metricMap(metrics);
+    await client.send('HeapProfiler.collectGarbage');
+    const retainedMetrics = await client.send('Performance.getMetrics');
+    if (!Array.isArray(retainedMetrics.metrics)) {
+      throw new TypeError('Performance.getMetrics requires a metrics array');
+    }
+    const retainedBrowserMetrics = metricMap(retainedMetrics.metrics);
 
     const result = {
       targetUrl,
+      hardwareConcurrency,
       telemetry,
       browserMetrics: {
-        TaskDuration: browserMetrics.TaskDuration ?? null,
-        ScriptDuration: browserMetrics.ScriptDuration ?? null,
-        LayoutDuration: browserMetrics.LayoutDuration ?? null,
-        RecalcStyleDuration: browserMetrics.RecalcStyleDuration ?? null,
-        JSHeapUsedSize: browserMetrics.JSHeapUsedSize ?? null,
-        Nodes: browserMetrics.Nodes ?? null,
+        TaskDuration: rawBrowserMetrics.TaskDuration ?? null,
+        ScriptDuration: rawBrowserMetrics.ScriptDuration ?? null,
+        LayoutDuration: rawBrowserMetrics.LayoutDuration ?? null,
+        RecalcStyleDuration: rawBrowserMetrics.RecalcStyleDuration ?? null,
+        rawJSHeapUsedSize: rawBrowserMetrics.JSHeapUsedSize ?? null,
+        retainedJSHeapUsedSize: retainedBrowserMetrics.JSHeapUsedSize ?? null,
+        Nodes: retainedBrowserMetrics.Nodes ?? null,
       },
       probeTimeoutCount,
-      traceFile,
+      trace: traceEvidence,
+      cpuAttribution: args.trace ? cpuAttribution : null,
+      runDurationMs: performance.now() - startedAt,
     };
 
     console.log(JSON.stringify(result, null, 2));
-
-    if (telemetry.status !== 'completed') {
-      throw new Error(`Cartographer browser run failed: ${telemetry.errorMessage ?? 'unknown error'}`);
-    }
+    CartographerTelemetryContract.assertResult(args, result);
+    await CartographerTelemetryContract.persistReport(args.reportPath, result);
   } finally {
-    if (trace !== null) await trace.stop().catch(() => null);
+    if (trace !== null) await trace.stop();
     client?.close();
     await stopChild(preview.child);
     if (chrome !== null) await stopChild(chrome.child);

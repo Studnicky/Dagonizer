@@ -1,7 +1,7 @@
 /**
  * verify-point-containment: reverse-geocodes the highest-weight valid-point
  * `GeoResolution` candidate (real WGS-84 lat/lng, matching the validity gate
- * in `score-signals`) via `OfflineGeoResolver`, and checks it against the
+ * in `score-signals`) against the coordinate's containing country or water body and the
  * `geo-consensus` country.
  *
  *   - Point resolves to the consensus country (or there is no consensus
@@ -12,7 +12,7 @@
  *     real information), but `conflict` is recorded rather than silently
  *     preferring one side — the next node lowers confidence accordingly.
  *   - No valid point candidate at all → fall back to the consensus country's
- *     centroid (`Geo.centroidForCountry`) when a consensus country exists;
+ *     centroid when a consensus country exists;
  *     otherwise the position stays empty.
  *
  * Writes `state.setMetadata('geo-position', ...)`. Always routes 'resolved'.
@@ -22,7 +22,8 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { GeoResolution } from '../../entities/GeoResolution.ts';
 import { DEFAULT_GEO_CONSENSUS, GeoConsensusGuard } from '../../entities/GeoConsensus.ts';
 import { GeoPositionBuilder } from '../../entities/GeoPosition.ts';
-import { Geo, OfflineGeoResolver } from '@studnicky/geo-resolver';
+import { CoordinateGeoResolver } from '../../services/CoordinateGeoResolver.ts';
+import { CountryCentroid } from '@studnicky/geo-resolver';
 import {
   MonadicNode,
   RoutedBatch,
@@ -65,9 +66,9 @@ export class VerifyPointContainmentNode extends MonadicNode<CartographerState, '
         .sort((a, b) => b.weight - a.weight)[0];
 
       if (pointCandidate !== undefined) {
-        const outcome = OfflineGeoResolver.resolve(pointCandidate.lat, pointCandidate.lng);
-        const resolvedCountry = outcome.candidate.country;
-        const resolvedWater = outcome.candidate.water;
+        const resolved = CoordinateGeoResolver.resolve(pointCandidate.lat, pointCandidate.lng);
+        const resolvedCountry = resolved.country;
+        const resolvedWater = resolved.water;
 
         let conflict = false;
         let conflictCountry = '';
@@ -99,7 +100,7 @@ export class VerifyPointContainmentNode extends MonadicNode<CartographerState, '
       }
 
       const centroid = !consensus.isWater && consensus.country.length > 0
-        ? Geo.centroidForCountry(consensus.country)
+        ? CountryCentroid.lookup(consensus.country)
         : null;
 
       item.state.setMetadata('geo-position', GeoPositionBuilder.from(

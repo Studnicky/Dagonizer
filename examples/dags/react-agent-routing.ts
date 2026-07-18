@@ -174,7 +174,7 @@ export const routingDag: DAGType = {
       // Chunks route by their own `routeKey`; TranscriptStore.append is safe
       // under any interleaving (single-threaded event loop), so raising this
       // is a free performance choice, not a correctness requirement.
-      'execution': { 'mode': 'item', 'concurrency': 4 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',
         'partial': 'urn:noocodec:dag:react-agent-routing/node/collect-chunks',

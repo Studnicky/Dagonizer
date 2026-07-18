@@ -85,11 +85,11 @@ class ThrottleTestDag {
           'body':        { 'node': 'urn:noocodec:node:delayed' },
           'source':      'items',
           'itemKey':     'item',
-          'execution': {
+          'configuration': { 'execution': { 'batching': {
             'mode': 'item',
             'concurrency': itemCount,
             ...(throttle !== null ? { 'throttle': throttle } : {}),
-          },
+          } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),

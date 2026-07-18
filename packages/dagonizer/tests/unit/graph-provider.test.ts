@@ -37,6 +37,39 @@ class ReopeningProvider implements GraphDatasetProviderInterface {
   }
 }
 
+class ExactChildProvider implements GraphDatasetProviderInterface {
+  constructor(readonly childDataset: GraphDatasetInterface) {}
+
+  root(_runIri: string): GraphDatasetInterface {
+    return new N3GraphDataset();
+  }
+
+  child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface {
+    return this.childDataset;
+  }
+
+  reopen(_runIri: string): Promise<GraphDatasetInterface | undefined> {
+    return Promise.resolve(undefined);
+  }
+}
+
+class CloneConstructorState extends NodeStateBase {
+  static readonly calls: Array<{
+    readonly dataset: GraphDatasetInterface;
+    readonly runIri: string;
+    readonly provider: GraphDatasetProviderInterface;
+  }> = [];
+
+  constructor(
+    dataset: GraphDatasetInterface,
+    runIri: string,
+    provider: GraphDatasetProviderInterface,
+  ) {
+    super(dataset, runIri, provider);
+    CloneConstructorState.calls.push({ dataset, runIri, provider });
+  }
+}
+
 void describe('GraphDatasetProviderInterface implementations', () => {
   void it('mints isolated in-memory root and child datasets', async () => {
     const provider = new InMemoryGraphDatasetProvider();
@@ -63,6 +96,29 @@ void describe('GraphDatasetProviderInterface implementations', () => {
     assert.notEqual(clone.graphDataset, state.graphDataset);
     assert.equal(clone.graphDataset.count({ 'subject': DagGraphTerms.namedNode('urn:dagonizer:parent') }), 0);
     assert.equal(await provider.reopen(scope.runIri), undefined);
+  });
+
+  void it('constructs a clone once with the exact provider child dataset and run IRI', () => {
+    const childDataset = new N3GraphDataset();
+    const provider = new ExactChildProvider(childDataset);
+    const parent = new CloneConstructorState(new N3GraphDataset(), scope.runIri, provider);
+    const childScope = {
+      ...scope,
+      'runIri': `${scope.runIri}/child`,
+      'placementIri': `${scope.placementIri}/child`,
+    };
+    CloneConstructorState.calls.length = 0;
+
+    const clone = parent.clone(childScope);
+
+    assert.equal(CloneConstructorState.calls.length, 1);
+    assert.deepEqual(CloneConstructorState.calls[0], {
+      'dataset': childDataset,
+      'runIri': childScope.runIri,
+      provider,
+    });
+    assert.equal(clone.graphDataset, childDataset);
+    assert.equal(clone.runIri, childScope.runIri);
   });
 
   void it('resumes a state reconstructed from a reopened provider dataset', async () => {

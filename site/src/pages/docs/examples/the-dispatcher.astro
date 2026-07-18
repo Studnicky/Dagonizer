@@ -1,18 +1,20 @@
 ---
 import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
 import LazyDispatcherRunner from '@/components/islands/LazyDispatcherRunner.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('examples/the-dispatcher')), 301);
 
 const relatedLinks = [
-  { href: siteHref('/docs/examples/the-archivist'), label: 'The Archivist' },
-  { href: siteHref('/docs/examples/the-cartographer'), label: 'The Cartographer' },
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'The Archivist' },
+  { href: SiteLinks.site('/docs/examples/the-cartographer'), label: 'The Cartographer' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/examples'), label: 'Examples' },
-  { href: siteHref('/docs/examples/the-dispatcher'), label: 'The Dispatcher' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
+  { href: SiteLinks.site('/docs/examples/the-dispatcher'), label: 'The Dispatcher' }
 ] as const;
 
 const proofPoints = [
@@ -30,5 +32,5 @@ const proofPoints = [
   proofPoints={proofPoints}
   relatedLinks={relatedLinks}
 >
-  <LazyDispatcherRunner client:visible />
+  <LazyDispatcherRunner client:only="vue" />
 </RunnableExampleShell>

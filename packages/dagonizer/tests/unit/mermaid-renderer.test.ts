@@ -569,7 +569,7 @@ const RESERVOIR_DAG: DAGType = {
       'name':     'buffer',
       'body':     { 'node': 'urn:noocodec:node:worker' },
       'source':   'events',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'tenantId', 'capacity': 50, 'idleMs': 5000 } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'tenantId', 'capacity': 50, 'idleMs': 5000 } } } },
       'outputs':  {
         'all-success': placementIri('urn:noocodex:dag:reservoir', 'end'),
         'partial': placementIri('urn:noocodex:dag:reservoir', 'end'),
@@ -596,7 +596,7 @@ const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
       'name':     'batch',
       'body':     { 'node': 'urn:noocodec:node:processor' },
       'source':   'records',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'region', 'capacity': 100 } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'region', 'capacity': 100 } } } },
       'outputs':  {
         'all-success': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),
         'partial': placementIri('urn:noocodex:dag:reservoir-no-idle', 'end'),

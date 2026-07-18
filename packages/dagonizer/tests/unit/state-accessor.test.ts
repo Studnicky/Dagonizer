@@ -23,8 +23,8 @@ const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri':
 class DomainState extends NodeStateBase {
   domainValue: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.domainValue = 0;
   }
 

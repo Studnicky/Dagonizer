@@ -6,7 +6,7 @@
  * instance fields. Each gather batch reads the bounded accumulators, folds all
  * records, and writes each accumulator back once through the state accessor.
  *
- *   (a) state.insights             — EXACT per-region rollup (bounded: ~6-8 continent keys).
+ *   (a) state.insights             — EXACT per-region rollup (bounded by the number of Continent.values entries).
  *   (b) state.journeyAccumulators  — BOUNDED per-journey in-progress accumulators (cap: MAX_SAMPLE_JOURNEYS).
  *   (c) state.journeys             — FINALIZED per-journey map, written by finalize().
  *   (d) state.sampleRecords        — CAPPED FIFO ring of recent scans (cap: MAX_SAMPLE_RECORDS).
@@ -106,12 +106,17 @@ export class InsightsFoldGather extends GatherStrategy {
   readonly name = 'insights-fold';
   readonly '@id' = 'urn:noocodec:node:insights-fold';
 
+  // `reduce()` below always reads `record.cloneState` directly
+  // (`accessor.get(record.cloneState, 'enriched'/'capturedErrors')`) — it never
+  // reads `record.result`. The `process-stream` scatter that feeds this gather
+  // declares no `resultField` for its source (see the write-up in `dag.ts`
+  // above `CARTOGRAPHER_RESUME_SCATTER_WRITE_POINTS`): a journaled/compacted
+  // entry would carry neither a derivable contribution nor a `result` and
+  // fails `GatherRecordProgress` schema validation. `mode: 'full'` is the
+  // honest declaration — this gather requires the retained clone state (or the
+  // live clone within one continuous execution), never a result-only replay.
   override transientResultSelection(): TransientNodeStateSelectionType {
-    return {
-      'mode': 'selection',
-      'domainPaths': ['enriched', 'capturedErrors'],
-      'metadataKeys': [],
-    };
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
   }
 
   // ── initial: reset accumulators in state ─────────────────────────────────

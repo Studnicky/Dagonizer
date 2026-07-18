@@ -22,9 +22,9 @@ import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
 import GraphLegend from './graph/GraphLegend.vue';
 import ViewerOverlay from './graph/ViewerOverlay.vue';
-import { createCameraDpadMachine } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
-import { createViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
-import { dagNodeSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import { CameraControls } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
+import { ViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
+import { InspectSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import { LegendMachine } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
 import type { LegendSectionType } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
 import type { DagNodeSelectionType } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
@@ -66,10 +66,10 @@ const loading = ref(true);
 const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
 let resizeObserver: ResizeObserver | null = null;
-const dpadMachine = createCameraDpadMachine({
+const dpadMachine = CameraControls.dpadMachine({
   'can': () => graph.value !== null,
   'getZoomLevel': () => zoomLevel.value,
-  'getHint': () => createViewportStatus(zoomLevel.value, 'inline', 'drag · wheel').hint,
+  'getHint': () => ViewportStatus.current(zoomLevel.value, 'inline', 'drag · wheel').hint,
   'zoomIn': zoomIn,
   'zoomOut': zoomOut,
   'pan': (direction) => {
@@ -129,7 +129,7 @@ onMounted(async () => {
     ...(props.layoutOptions !== undefined ? { 'layoutOptions': props.layoutOptions } : {}),
     'onNodeClick':  (name) => {
       emit('node-click', name);
-      emit('select', dagNodeSelection(name));
+      emit('select', InspectSelection.dagNode(name));
     },
     'onZoomChange': (level) => { zoomLevel.value = level; },
   });

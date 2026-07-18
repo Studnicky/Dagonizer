@@ -391,8 +391,9 @@ export class CytoscapeRenderer {
         // per-key fill. Per-key fill and per-firing batch size are runtime
         // values — the animation layer renders them from observer buffer-size
         // deltas; this renderer populates the static config only.
-        const reservoirConfig = sp.execution !== undefined && sp.execution.mode === 'reservoir'
-          ? sp.execution.reservoir
+        const batching = sp.configuration?.execution?.batching;
+        const reservoirConfig = batching?.mode === 'reservoir' && batching.reservoir?.keyField != null && batching.reservoir.capacity !== undefined
+          ? { ...batching.reservoir, 'keyField': batching.reservoir.keyField, 'capacity': batching.reservoir.capacity }
           : null;
         const scatterClasses = reservoirConfig !== null
           ? `${base.classes} dag-reservoir`
@@ -410,7 +411,7 @@ export class CytoscapeRenderer {
                   "reservoir": {
                     "keyField": reservoirConfig.keyField,
                     "capacity": reservoirConfig.capacity,
-                    ...(reservoirConfig.idleMs !== undefined
+                    ...(reservoirConfig.idleMs !== undefined && reservoirConfig.idleMs !== null
                       ? { "idleMs": reservoirConfig.idleMs }
                       : {}),
                   },

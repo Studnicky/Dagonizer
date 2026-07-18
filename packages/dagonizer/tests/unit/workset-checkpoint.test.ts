@@ -42,8 +42,8 @@ class WalkState extends NodeStateBase {
   value: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.value = 0;
     this.log = [];
   }

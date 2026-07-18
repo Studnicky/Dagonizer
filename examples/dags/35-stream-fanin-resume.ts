@@ -195,7 +195,7 @@ export const fanInDag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:collect' },
       'source':      'source',
       'itemKey':     'fan-item',
-      'execution': { 'mode': 'item', 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:stream-fanin/node/collect-results',
         'partial': 'urn:noocodec:dag:stream-fanin/node/collect-results',
@@ -239,7 +239,7 @@ export const resumeDag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:collect' },
       'source':      'source',
       'itemKey':     'fan-item',
-      'execution': { 'mode': 'item', 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:stream-resume/node/collect-results',
         'partial': 'urn:noocodec:dag:stream-resume/node/collect-results',

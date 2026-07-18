@@ -15,6 +15,7 @@ import type { StateAccessorInterface } from './contracts/StateAccessorInterface.
 import type { WritePointType } from './contracts/WritePoint.js';
 import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
+import type { DagConfiguration } from './entities/configuration/DagConfiguration.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
@@ -81,6 +82,8 @@ const EMPTY_CHANNELS: Readonly<Record<string, never>> = Object.freeze({});
 
 /** Empty observers array: the canonical "no observers" sentinel. */
 const EMPTY_OBSERVERS: ReadonlyArray<DispatcherObserverType> = Object.freeze([]);
+const EMPTY_CONFIGURATION: DagConfiguration.InputType = Object.freeze({});
+const EMPTY_FOLD_JOURNAL_STORES: Readonly<Record<string, FoldJournalStoreInterface>> = Object.freeze({});
 
 /**
  * Canonical defaults for `DagonizerOptionsType`.
@@ -96,12 +99,13 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'validateOutputs': false,
   'observers': EMPTY_OBSERVERS,
   'graphStore': new InMemoryGraphDatasetProvider(),
-  'foldJournalStore': null,
+  'configuration': EMPTY_CONFIGURATION,
+  'foldJournalStores': EMPTY_FOLD_JOURNAL_STORES,
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
 // re-exported here for public consumers.
-export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './entities/scatter/ScatterProgress.js';
+export type { ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './entities/scatter/ScatterProgress.js';
 
 /**
  * Observer record for the multi-observer mux.
@@ -191,8 +195,10 @@ export type DagonizerOptionsType = {
    * DAG choices across runs.
    */
   executionTopologyStore?: GraphDatasetInterface;
-  /** Durable atomic fold-contribution and scatter-watermark append log. */
-  foldJournalStore?: FoldJournalStoreInterface;
+  /** Dispatcher-wide policy tier inherited by every registered DAG and placement. */
+  configuration?: DagConfiguration.InputType;
+  /** Runtime fold journal resources keyed by `configuration.durability.foldJournalStoreKey`. */
+  foldJournalStores?: Readonly<Record<string, FoldJournalStoreInterface>>;
 }
 
 
@@ -253,6 +259,10 @@ export interface DagonizerInterface<
   getDagWritePoints(dagIri: string): readonly WritePointType[] | undefined;
   /** Resolved write-point policy for the registered placement, if present. */
   getPlacementWritePoints(placementIri: string): readonly WritePointType[] | undefined;
+  /** Resolved DAG configuration after dispatcher and DAG tiers are applied. */
+  getDagConfiguration(dagIri: string): DagConfiguration.ResolvedType | undefined;
+  /** Resolved placement configuration after all three policy tiers are applied. */
+  getPlacementConfiguration(placementIri: string): DagConfiguration.ResolvedType | undefined;
   /** Dedicated RAM-only snapshot store populated by the `InMemorySnapshot` write point. */
   getInMemorySnapshotStore(): GraphDatasetInterface;
 
@@ -297,7 +307,7 @@ export interface DagonizerInterface<
 
   /**
    * Reopen a provider-backed run graph, hydrate a fresh state from it, and
-   * resume without a JSON-LD checkpoint blob.
+   * resume without a serialized transient-state checkpoint.
    */
   resumeWithStateFactory(
     dagName: string,
@@ -470,6 +480,8 @@ implements DagonizerInterface<TState> {
       readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
       readonly nodeIndex = new Map<string, DAGNodeType>();
       readonly stateFactories = new Map<string, ChildStateFactoryType>();
+      readonly dagConfigurations = new Map<string, DagConfiguration.ResolvedType>();
+      readonly placementConfigurations = new Map<string, DagConfiguration.ResolvedType>();
       readonly dagWritePoints = new Map<string, ReadonlySet<WritePointType>>();
       readonly placementWritePoints = new Map<string, ReadonlySet<WritePointType>>();
       readonly pluginSpecifiers = new Map<string, string>();
@@ -477,7 +489,8 @@ implements DagonizerInterface<TState> {
       readonly stateMapper: StateMapper;
       readonly executionTopologyStore: GraphDatasetInterface;
       readonly inMemorySnapshotStore: GraphDatasetInterface;
-      readonly foldJournalStore: FoldJournalStoreInterface | null;
+      readonly configuration: DagConfiguration.InputType;
+      readonly foldJournalStores: Readonly<Record<string, FoldJournalStoreInterface>>;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
       readonly registryVersion: string;
       readonly #containers: Readonly<Record<string, DagContainerInterface>>;
@@ -492,7 +505,8 @@ implements DagonizerInterface<TState> {
         this.stateMapper = new StateMapper(resolved.accessor);
         this.executionTopologyStore = options.executionTopologyStore ?? resolved.graphStore.root('urn:dagonizer:topology');
         this.inMemorySnapshotStore = new InMemoryTopologyStore();
-        this.foldJournalStore = resolved.foldJournalStore;
+        this.configuration = resolved.configuration;
+        this.foldJournalStores = resolved.foldJournalStores;
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
@@ -515,6 +529,10 @@ implements DagonizerInterface<TState> {
 
       resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined {
         return this.placementWritePoints.get(placementIri);
+      }
+
+      resolvedPlacementConfiguration(placementIri: string): DagConfiguration.ResolvedType | undefined {
+        return this.placementConfigurations.get(placementIri);
       }
 
       /**
@@ -982,6 +1000,8 @@ implements DagonizerInterface<TState> {
     this.#host.dags.clear();
     this.#host.nodeIndex.clear();
     this.#host.stateFactories.clear();
+    this.#host.dagConfigurations.clear();
+    this.#host.placementConfigurations.clear();
     this.#host.dagWritePoints.clear();
     this.#host.placementWritePoints.clear();
     this.#host.pluginSpecifiers.clear();
@@ -1019,6 +1039,14 @@ implements DagonizerInterface<TState> {
   getPlacementWritePoints(placementIri: string): readonly WritePointType[] | undefined {
     const resolved = this.#host.placementWritePoints.get(placementIri);
     return resolved === undefined ? undefined : [...resolved];
+  }
+
+  getDagConfiguration(dagIri: string): DagConfiguration.ResolvedType | undefined {
+    return this.#host.dagConfigurations.get(dagIri);
+  }
+
+  getPlacementConfiguration(placementIri: string): DagConfiguration.ResolvedType | undefined {
+    return this.#host.placementConfigurations.get(placementIri);
   }
 
   getInMemorySnapshotStore(): GraphDatasetInterface {
@@ -1295,8 +1323,11 @@ implements DagonizerInterface<TState> {
     validateOutputs: boolean;
     observers: ReadonlyArray<DispatcherObserverType>;
     graphStore: GraphDatasetProviderInterface;
-    foldJournalStore: FoldJournalStoreInterface | null;
+    configuration: DagConfiguration.InputType;
+    foldJournalStores: Readonly<Record<string, FoldJournalStoreInterface>>;
   }> {
+    const configuration = partial.configuration ?? DAGONIZER_OPTION_DEFAULTS.configuration;
+    Validator.dagConfiguration.validate(configuration);
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
       'containers':      partial.containers ?? DAGONIZER_OPTION_DEFAULTS.containers,
@@ -1305,7 +1336,8 @@ implements DagonizerInterface<TState> {
       'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
       'observers':       partial.observers ?? DAGONIZER_OPTION_DEFAULTS.observers,
       'graphStore':      partial.graphStore ?? DAGONIZER_OPTION_DEFAULTS.graphStore,
-      'foldJournalStore': partial.foldJournalStore ?? DAGONIZER_OPTION_DEFAULTS.foldJournalStore,
+      configuration,
+      'foldJournalStores': partial.foldJournalStores ?? DAGONIZER_OPTION_DEFAULTS.foldJournalStores,
     };
   }
 

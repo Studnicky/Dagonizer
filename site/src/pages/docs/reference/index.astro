@@ -5,11 +5,13 @@ import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('reference')), 301);
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/reference'), label: 'Reference' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/reference'), label: 'Reference' }
 ] as const;
 
 const referenceTracks = [
@@ -17,29 +19,29 @@ const referenceTracks = [
     eyebrow: 'Core runtime',
     title: 'Dagonizer, runner, execution, and lifecycle',
     body: 'Read the main runtime classes, execution contracts, and lifecycle machinery that drive graph evaluation.',
-    href: siteHref('/docs/reference/dagonizer')
+    href: SiteLinks.site('/docs/reference/dagonizer')
   },
   {
     eyebrow: 'Contracts',
     title: 'Containers, channels, stores, and adapters',
     body: 'Inspect the seams for worker execution, state persistence, tool integrations, and deployment-specific bindings.',
-    href: siteHref('/docs/reference/contracts')
+    href: SiteLinks.site('/docs/reference/contracts')
   },
   {
     eyebrow: 'Visualization',
     title: 'Graph rendering and control surfaces',
     body: 'Review the API surface for the visualization package and the controls that sit around it.',
-    href: siteHref('/docs/reference/viz')
+    href: SiteLinks.site('/docs/reference/viz')
   }
 ] as const;
 
 const referenceLinks = [
-  { href: siteHref('/docs/reference/dagonizer'), label: 'Dagonizer runtime' },
-  { href: siteHref('/docs/reference/contracts'), label: 'Contracts' },
-  { href: siteHref('/docs/reference/execution'), label: 'Execution' },
-  { href: siteHref('/docs/reference/runtime'), label: 'Runtime utilities' },
-  { href: siteHref('/docs/reference/store'), label: 'Store' },
-  { href: siteHref('/docs/reference/viz'), label: 'Visualization' }
+  { href: SiteLinks.site('/docs/reference/dagonizer'), label: 'Dagonizer runtime' },
+  { href: SiteLinks.site('/docs/reference/contracts'), label: 'Contracts' },
+  { href: SiteLinks.site('/docs/reference/execution'), label: 'Execution' },
+  { href: SiteLinks.site('/docs/reference/runtime'), label: 'Runtime utilities' },
+  { href: SiteLinks.site('/docs/reference/store'), label: 'Store' },
+  { href: SiteLinks.site('/docs/reference/viz'), label: 'Visualization' }
 ] as const;
 ---
 

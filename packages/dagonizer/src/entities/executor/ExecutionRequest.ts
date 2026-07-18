@@ -5,9 +5,9 @@
  * DAG-only: no `variant` discriminant, no `nodeName`. A container runs
  * only whole DAGs, never individual nodes.
  *
- * `graphState` is ONE batch-level plain transient-state payload for the whole
- * request. It carries the child clone state as plain JSON data, batched once
- * for the entire item set. `items` carries one `{ id, runIri }` entry per
+ * `graphState` is ONE batch-level graph transfer for the whole request. The
+ * selected child clone state is encoded as N-Quads once for the entire item
+ * set. `items` carries one `{ id, runIri }` entry per
  * item; `runIri` remains the execution identity for that item. Single-item
  * requests (N=1) are a batch of one through the identical path.
  *
@@ -21,8 +21,10 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { TransientNodeStateBatchSchema, TransientNodeStateResponseStateSchema } from './TransientNodeState.js';
-import type { TransientNodeStateBatchType, TransientNodeStateResponseStateType } from './TransientNodeState.js';
+import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
+import type { GraphStateTransferType } from './GraphStateTransferSchema.js';
+import { TransientNodeStateResponseStateSchema } from './TransientNodeState.js';
+import type { TransientNodeStateResponseStateType } from './TransientNodeState.js';
 
 export const ExecutionRequestSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ExecutionRequest',
@@ -32,7 +34,7 @@ export const ExecutionRequestSchema = {
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-    'graphState':    TransientNodeStateBatchSchema,
+    'graphState':    GraphStateTransferSchema,
     'items': {
       'type': 'array',
       'minItems': 1,
@@ -41,7 +43,7 @@ export const ExecutionRequestSchema = {
         'required': ['id', 'runIri'],
         'properties': {
           'id':     { 'type': 'string', 'minLength': 1 },
-          'runIri': { 'type': 'string', 'minLength': 1 },
+          'runIri': { 'type': 'string', 'pattern': '^[A-Za-z][A-Za-z0-9+.-]*:' },
         },
         'additionalProperties': false,
       },
@@ -60,9 +62,9 @@ type ExecutionRequestItemType = ExecutionRequestItemWireType;
 /** One request item: id and its state-graph run IRI. */
 export type { ExecutionRequestItemType };
 
-/** TypeScript type derived from `ExecutionRequestSchema` with plain transient-state batch typing. */
+/** TypeScript type derived from `ExecutionRequestSchema` with graph-transfer typing. */
 export type ExecutionRequestType = Omit<ExecutionRequestWireType, 'graphState' | 'items'> & {
-  graphState: TransientNodeStateBatchType;
+  graphState: GraphStateTransferType;
   items: ExecutionRequestItemType[];
   responseState: TransientNodeStateResponseStateType;
 };

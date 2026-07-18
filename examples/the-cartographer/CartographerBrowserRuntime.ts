@@ -1,7 +1,10 @@
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
+import type { GatherNodeType } from '@studnicky/dagonizer/entities';
+import { DagConfiguration } from '@studnicky/dagonizer/entities';
 
 import type { CartographerState } from './CartographerState.ts';
+import { CartographerSystemProbe } from './app/CartographerSystemProbe.ts';
 import { CARTOGRAPHER_IRIS } from './cartographerIds.ts';
 import { streamProducerFeedBundle } from './embedded-dags/ProducerFeedDAG.ts';
 import './core/InsightsFoldGather.ts';
@@ -10,22 +13,42 @@ import './core/SourceIntakeGather.ts';
 const CARTOGRAPHER_DAG_IRI = CARTOGRAPHER_IRIS.dag.cartographer;
 const CARTOGRAPHER_DAG_WRITE_POINTS = ['NodeEdges', 'WatermarkCommit'] as const;
 const CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS = [] as const;
-const DEFAULT_RESERVOIR_CAPACITY = 1000;
-const DEFAULT_WORKER_CONCURRENCY = 4;
-
-type PlacementBindingsType = Record<string, { readonly resultField: 'sourceFeed' }>;
 
 export class CartographerBrowserRuntime {
   private constructor() { /* static-only */ }
 
+  static get configuration(): DagConfiguration.ResolvedType {
+    return DagConfiguration.resolve({
+      'execution': {
+        'batching': {
+          'mode': 'reservoir',
+          'concurrency': CartographerSystemProbe.workerCount(),
+          'reservoir': { 'keyField': 'eventType', 'capacity': 100, 'idleMs': null },
+        },
+      },
+    });
+  }
+
   static build(
-    capacity: number = DEFAULT_RESERVOIR_CAPACITY,
-    concurrency: number = DEFAULT_WORKER_CONCURRENCY,
+    configuration: DagConfiguration.InputType | DagConfiguration.ResolvedType = CartographerBrowserRuntime.configuration,
   ): DAGType {
+    const batching = configuration.execution?.batching;
+    const reservoir = batching?.reservoir;
+    if (
+      batching?.mode !== 'reservoir'
+      || batching.concurrency === undefined
+      || reservoir === undefined
+      || reservoir === null
+      || reservoir.keyField !== 'eventType'
+      || reservoir.capacity === undefined
+      || reservoir.idleMs === undefined
+    ) {
+      throw new TypeError('Cartographer browser runtime requires complete eventType reservoir batching');
+    }
     return CartographerBrowserRuntime.#appendSourceIntakeGather(
       CartographerBrowserRuntime.#appendProducerStreamFeedEntrypoints(
         new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0', {
-          'writePoints': CARTOGRAPHER_DAG_WRITE_POINTS,
+          'configuration': { 'durability': { 'writePoints': [...CARTOGRAPHER_DAG_WRITE_POINTS] } },
         }),
       ),
       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'),
@@ -43,8 +66,20 @@ export class CartographerBrowserRuntime {
         {
           'itemKey':     'source-payload',
           'container':   'cpu',
-          'writePoints': CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS,
-          'execution': { 'mode': 'reservoir', 'concurrency': concurrency, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
+          'configuration': {
+            'execution': {
+              'batching': {
+                'mode': 'reservoir',
+                'concurrency': batching.concurrency,
+                'reservoir': {
+                  'keyField': reservoir.keyField,
+                  'capacity': reservoir.capacity,
+                  'idleMs': reservoir.idleMs,
+                },
+              },
+            },
+            'durability': { 'writePoints': [...CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS] },
+          },
         },
       )
       .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'), {
@@ -67,8 +102,7 @@ export class CartographerBrowserRuntime {
   }
 
   static bundle(
-    capacity: number = DEFAULT_RESERVOIR_CAPACITY,
-    concurrency: number = DEFAULT_WORKER_CONCURRENCY,
+    configuration: DagConfiguration.InputType | DagConfiguration.ResolvedType = CartographerBrowserRuntime.configuration,
   ): DispatcherBundleType<CartographerState> {
     return {
       'nodes': [...streamProducerFeedBundle.nodes],
@@ -76,7 +110,7 @@ export class CartographerBrowserRuntime {
         ...streamProducerFeedBundle.dags,
         CartographerBrowserRuntime.#buildWorkerOwnedDagStub(CARTOGRAPHER_IRIS.dag.streamEvent),
         CartographerBrowserRuntime.#buildWorkerOwnedDagStub(CARTOGRAPHER_IRIS.dag.insightsSummary),
-        CartographerBrowserRuntime.build(capacity, concurrency),
+        CartographerBrowserRuntime.build(configuration),
       ],
     };
   }
@@ -97,12 +131,12 @@ export class CartographerBrowserRuntime {
   }
 
   static #appendSourceIntakeGather(builder: DAGBuilder, emptyTarget: string): DAGBuilder {
-    const sourceBindings = Object.fromEntries(
-      CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
-        CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_DAG_IRI, eventType),
-        { 'resultField': 'sourceFeed' },
-      ]),
-    ) as PlacementBindingsType;
+    const sourceBindings: GatherNodeType['sources'] = {};
+    for (const eventType of CARTOGRAPHER_IRIS.intakeEventTypes) {
+      sourceBindings[CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_DAG_IRI, eventType)] = {
+        'resultField': 'sourceFeed',
+      };
+    }
 
     return builder.gather(
       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'intake-gather'),

@@ -7,6 +7,8 @@ import type { GraphStateTransferIdentityType } from '../contracts/GraphStateTran
 import type { GraphStateTransferStoreInterface } from '../contracts/GraphStateTransferStoreInterface.js';
 import type { LiteralTermType, QuadType, TermType } from '../contracts/TripleStoreInterface.js';
 import type { GraphStateDeltaReferenceType, GraphStateInlineDeltaType, GraphStateInlineType, GraphStateReferenceType, GraphStateSharedType, GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
+import type { TransientNodeStateType } from '../entities/executor/TransientNodeState.js';
+import { Validator } from '../validation/Validator.js';
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 import { GraphDatasetRevision } from './GraphDatasetRevision.js';
@@ -42,6 +44,38 @@ export class GraphStateTransferCodec {
   static decode(input: string): QuadType[] {
     const parser = new Parser({ "format": 'N-Quads', "factory": DataFactory });
     return parser.parse(input).map(GraphStateTransferCodec.quadOf);
+  }
+
+  /** Validate batch item, response-pair, and transfer graph identities. */
+  static validateIdentity(
+    transfer: GraphStateTransferType,
+    items: readonly { readonly id: string; readonly runIri: string }[],
+    expectedItems: readonly { readonly id: string; readonly runIri: string }[] = items,
+  ): void {
+    const actualById = GraphStateTransferCodec.#validateItems(items);
+    const expectedById = GraphStateTransferCodec.#validateItems(expectedItems);
+    if (actualById.size !== expectedById.size) {
+      throw new Error('Graph transfer response identities do not exactly match request identities');
+    }
+    for (const [id, runIri] of actualById) {
+      if (expectedById.get(id) !== runIri) {
+        throw new Error('Graph transfer response identities do not exactly match request identities');
+      }
+    }
+
+    const declaredGraphs = new Set(transfer.graphIris);
+    if (declaredGraphs.size !== transfer.graphIris.length) {
+      throw new Error('Graph transfer contains duplicate graph IRIs');
+    }
+    const itemGraphs = new Set(items.map((item) => GraphStateTerms.runGraphIri(item.runIri)));
+    if (declaredGraphs.size !== itemGraphs.size) {
+      throw new Error('Graph transfer graph IRIs do not exactly match item run graphs');
+    }
+    for (const graphIri of declaredGraphs) {
+      if (!itemGraphs.has(graphIri)) {
+        throw new Error('Graph transfer graph IRIs do not exactly match item run graphs');
+      }
+    }
   }
 
   static async *encodeStream(quads: AsyncIterable<QuadType>, onQuad?: () => void): AsyncIterable<string> {
@@ -102,12 +136,7 @@ export class GraphStateTransferCodec {
     };
   }
 
-  /**
-   * Synchronous inline combine from already-materialized quad iterables. Used by
-   * the synchronous `DagTask.toRequest()` seam to build a valid inline batch
-   * payload (typically empty — the real payload is combined asynchronously by the
-   * container from the live graph stream). One encode + one hash, like `inline`.
-   */
+  /** Combine already-materialized quad iterables into one inline batch transfer. */
   static inlineSync(items: readonly { readonly runIri: string; readonly quads: Iterable<QuadType> }[]): GraphStateInlineType {
     const all: QuadType[] = [];
     for (const item of items) for (const quad of item.quads) all.push(quad);
@@ -121,6 +150,16 @@ export class GraphStateTransferCodec {
       'byteSize': new TextEncoder().encode(nquads).byteLength,
       'quadCount': all.length,
     };
+  }
+
+  /** Encode selected transient state for every item into one N-Quads batch. */
+  static inlineTransient(
+    items: readonly { readonly runIri: string; readonly state: TransientNodeStateType }[],
+  ): GraphStateInlineType {
+    return GraphStateTransferCodec.inlineSync(items.map((item) => ({
+      'runIri': item.runIri,
+      'quads': [GraphStateTransferCodec.#transientStateQuad(item.runIri, item.state)],
+    })));
   }
 
   /**
@@ -181,6 +220,7 @@ export class GraphStateTransferCodec {
     await store.writeShared(lease, GraphStateTransferCodec.iterableToAsync(quads));
     return {
       'transport': 'shared-endpoint',
+      'format': 'application/n-quads',
       'graphIris': [...lease.graphIris],
       'endpoint': lease.endpoint,
       'lease': lease.token,
@@ -213,6 +253,7 @@ export class GraphStateTransferCodec {
     const additions = GraphStateTransferCodec.encode(additionsQuads);
     const deletions = GraphStateTransferCodec.encode(deletionsQuads);
     const shared = {
+      'format': 'application/n-quads',
       'graphIris': items.map((item) => GraphStateTerms.runGraphIri(item.runIri)),
       'baseSnapshotRef': baseSnapshotRef,
       'additions': additions,
@@ -240,13 +281,16 @@ export class GraphStateTransferCodec {
     items: readonly { readonly id: string; readonly runIri: string }[],
     store: GraphStateTransferStoreInterface | null,
   ): Promise<GraphStateTransferPartType[]> {
+    GraphStateTransferCodec.validateIdentity(transfer, items);
     if (transfer.transport === 'inline-nquads') {
       if (GraphStateTransferCodec.transferHash(transfer.nquads, '') !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
       return GraphStateTransferCodec.#partition(GraphStateTransferCodec.decode(transfer.nquads), items);
     }
     if (transfer.transport === 'inline-delta-nquads' || transfer.transport === 'delta-ref') {
       if (GraphStateTransferCodec.transferHash(transfer.additions, transfer.deletions) !== transfer.hash) throw new Error('Graph transfer integrity hash mismatch');
-      return GraphStateTransferCodec.#partition(GraphStateTransferCodec.decode(transfer.additions), items);
+      const additions = GraphStateTransferCodec.decode(transfer.additions);
+      GraphStateTransferCodec.#validatePayloadGraphs(GraphStateTransferCodec.decode(transfer.deletions), items);
+      return GraphStateTransferCodec.#partition(additions, items);
     }
     if (transfer.transport === 'graph-ref') {
       if (store === null) throw new Error('Graph snapshot reference transfer requires a graph transfer store');
@@ -257,6 +301,39 @@ export class GraphStateTransferCodec {
     const quads: QuadType[] = [];
     for await (const quad of store.readShared(lease, transfer.graphIris)) quads.push(quad);
     return GraphStateTransferCodec.#partition(quads, items);
+  }
+
+  /** Decode one selected transient-state literal from each item graph. */
+  static async restoreTransient(
+    transfer: GraphStateTransferType,
+    items: readonly { readonly id: string; readonly runIri: string }[],
+    store: GraphStateTransferStoreInterface | null,
+  ): Promise<{ readonly id: string; readonly runIri: string; readonly state: TransientNodeStateType }[]> {
+    const parts = await GraphStateTransferCodec.restore(transfer, items, store);
+    const restored: { id: string; runIri: string; state: TransientNodeStateType }[] = [];
+    for (const part of parts) {
+      let state: TransientNodeStateType | null = null;
+      for await (const quad of part.quads) {
+        if (state !== null) throw new Error(`Graph transfer contains multiple transient states for '${part.id}'`);
+        if (
+          quad.subject.termType !== 'NamedNode'
+          || quad.subject.value !== part.runIri
+          || quad.predicate.termType !== 'NamedNode'
+          || quad.predicate.value !== GraphStateTerms.DAGONIZER.TransientStatePayload
+          || quad.object.termType !== 'Literal'
+          || quad.object.datatype?.value !== DagGraphTerms.RDF.JSON
+          || quad.graph.termType !== 'NamedNode'
+          || quad.graph.value !== GraphStateTerms.runGraphIri(part.runIri)
+        ) {
+          throw new Error(`Graph transfer contains an invalid transient-state quad for '${part.id}'`);
+        }
+        const parsed: unknown = JSON.parse(quad.object.value);
+        state = Validator.transientNodeState.validate(parsed);
+      }
+      if (state === null) throw new Error(`Graph transfer contains no transient state for '${part.id}'`);
+      restored.push({ 'id': part.id, 'runIri': part.runIri, state });
+    }
+    return restored;
   }
 
   static revision(quads: Iterable<QuadType>): string {
@@ -373,7 +450,7 @@ export class GraphStateTransferCodec {
   }
 
   private static digestOf(hashState: { chunks: string[] }): string {
-    return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')} `)}`;
+    return `sha256-${GraphDatasetRevision.sha256(`${hashState.chunks.join('')}\u0000`)}`;
   }
 
   static async #readVerified(quads: AsyncIterable<QuadType>, expectedHash: string): Promise<QuadType[]> {
@@ -392,6 +469,7 @@ export class GraphStateTransferCodec {
     quads: readonly QuadType[],
     items: readonly { readonly id: string; readonly runIri: string }[],
   ): GraphStateTransferPartType[] {
+    GraphStateTransferCodec.#validatePayloadGraphs(quads, items);
     const byGraph = new Map<string, QuadType[]>();
     for (const quad of quads) {
       const bucket = byGraph.get(quad.graph.value);
@@ -405,11 +483,50 @@ export class GraphStateTransferCodec {
     }));
   }
 
+  static #validateItems(
+    items: readonly { readonly id: string; readonly runIri: string }[],
+  ): Map<string, string> {
+    if (items.length === 0) throw new Error('Graph transfer requires at least one item');
+    const byId = new Map<string, string>();
+    const runIris = new Set<string>();
+    for (const item of items) {
+      if (item.id.length === 0) throw new Error('Graph transfer item id must be non-empty');
+      if (item.runIri.length === 0) throw new Error('Graph transfer item run IRI must be non-empty');
+      if (byId.has(item.id)) throw new Error(`Graph transfer contains duplicate item id '${item.id}'`);
+      if (runIris.has(item.runIri)) throw new Error(`Graph transfer contains duplicate item run IRI '${item.runIri}'`);
+      byId.set(item.id, item.runIri);
+      runIris.add(item.runIri);
+    }
+    return byId;
+  }
+
+  static #validatePayloadGraphs(
+    quads: readonly QuadType[],
+    items: readonly { readonly runIri: string }[],
+  ): void {
+    const declaredGraphs = new Set(items.map((item) => GraphStateTerms.runGraphIri(item.runIri)));
+    for (const quad of quads) {
+      if (quad.graph.termType !== 'NamedNode' || !declaredGraphs.has(quad.graph.value)) {
+        const graphIri = quad.graph.termType === 'DefaultGraph' ? 'default graph' : quad.graph.value;
+        throw new Error(`Graph transfer payload contains undeclared graph '${graphIri}'`);
+      }
+    }
+  }
+
   private static hash(value: string): string {
     return `sha256-${GraphDatasetRevision.sha256(value)}`;
   }
 
   private static transferHash(additions: string, deletions: string): string {
-    return GraphStateTransferCodec.hash(`${additions} ${deletions}`);
+    return GraphStateTransferCodec.hash(`${additions}\u0000${deletions}`);
+  }
+
+  static #transientStateQuad(runIri: string, state: TransientNodeStateType): QuadType {
+    return {
+      'subject': DagGraphTerms.namedNode(runIri),
+      'predicate': DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.TransientStatePayload),
+      'object': DagGraphTerms.literal(JSON.stringify(state), DagGraphTerms.RDF.JSON),
+      'graph': DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)),
+    };
   }
 }

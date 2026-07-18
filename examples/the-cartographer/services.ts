@@ -2,7 +2,7 @@
  * Cartographer services: static domain classes following the noun.verb() pattern.
  *
  * GeoLookup        — lat/lng → grid zone → GeoContext (country/region/hub/tz/jurisdiction)
- * TimeZoneResolver — coords → IANA zone (tz-lookup); UTC epoch → local ISO + offset
+ * TimeZoneResolver — coords → IANA zone; UTC epoch → local ISO + offset
  * Jurisdictions    — country code/name → privacy regime + strictness + retention
  * GdprRedactor     — location + consent driven PII redaction; coords-as-PII coarsening
  * GeoCoarsener     — precise lat/lng → grid-zone centroid (location-PII coarsening)
@@ -18,15 +18,15 @@
  * EtaEstimator     — shared transit fn + SLA promise vs disrupted ETA → DeliveryEstimate
  *
  * Determinism: ShipmentEvents uses a seeded LCG (no Date.now/Math.random).
- * tz-lookup and Intl.DateTimeFormat are pure functions of their inputs.
+ * Coordinate containment and Intl.DateTimeFormat are pure functions of their inputs.
  */
 
-import tzLookupDefault from 'tz-lookup';
-import { CoordTimezoneResolver, CountryLocale, Geo, JurisdictionResolver, OfflineGeoResolver } from '@studnicky/geo-resolver';
+import { ContinentResolver, CountryLocale, JurisdictionResolver } from '@studnicky/geo-resolver';
 
 import CATALOG_RAW from './data/product-catalog.json' with { type: 'json' };
 import CARRIER_RATES_RAW from './data/carrier-rates.json' with { type: 'json' };
 import FX_RATES_RAW from './data/fx-rates.json' with { type: 'json' };
+import { CoordinateGeoResolver } from './services/CoordinateGeoResolver.ts';
 
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
 import type { GdprResult } from './entities/GdprResult.ts';
@@ -58,10 +58,6 @@ export type TypedScan =
   | (RawShipmentEvent & { readonly eventType: 'sensor-reading'; readonly tempC: number; readonly humidityPct: number; readonly shockG: number })
   | (RawShipmentEvent & { readonly eventType: 'customs-event'; readonly customsStatus: 'held' | 'cleared' | 'inspection' })
   | (RawShipmentEvent & { readonly eventType: 'delivery-confirmation'; readonly delivered: true; readonly podSignature: string; readonly deliveredAt: string });
-
-// ── tz-lookup: CJS package; import-default works under tsx (Node CJS interop)
-// and under Vite (with optimizeDeps.include — see docs/.vitepress/config.ts).
-const tzLookup = tzLookupDefault;
 
 // ── Data tables (static JSON imports — ESM + Vite compatible; no createRequire)
 
@@ -96,18 +92,13 @@ const FX_TABLE: Record<string, number> = FX_RATES_RAW satisfies Record<string, n
 /**
  * TimeZoneResolver: location → IANA timezone, and UTC epoch → local time.
  *
- * `zoneFor` uses tz-lookup (offline coords→IANA). `localParts` formats a UTC
+ * `zoneFor` uses the canonical coordinate resolver. `localParts` formats a UTC
  * epoch in a target zone via Intl.DateTimeFormat (Node ICU) — a pure function
  * of (epoch, zone), so determinism holds on a fixed epoch.
  */
 export class TimeZoneResolver {
   static zoneFor(lat: number, lng: number): string {
-    try {
-      return tzLookup(lat, lng);
-    } catch {
-      // tz-lookup throws for out-of-range coords; use UTC.
-      return 'UTC';
-    }
+    return CoordinateGeoResolver.resolve(lat, lng).timezone || 'UTC';
   }
 
   /** Local ISO (YYYY-MM-DDTHH:mm:ss) + UTC offset label (e.g. 'GMT+9') at zone. */
@@ -181,15 +172,14 @@ export class Jurisdictions {
 
 // #region continents-service
 /**
- * Continents: country code/name → continent name, backed by
- * @studnicky/geo-resolver's global ISO-3166-1 continent table. Unknown
- * codes return 'Unmapped'.
+ * Continents: country code/name → continent name. Unknown codes return
+ * 'Unmapped'.
  */
 export class Continents {
   /** Resolve a continent name from a country code or display name. Unknown codes → 'Unmapped'. */
   static forIso2(countryIso2: string): string {
     const iso2 = CountryCodes.toIso2(countryIso2);
-    return iso2.length > 0 ? Geo.continentForCountry(iso2) : 'Unmapped';
+    return iso2.length > 0 ? ContinentResolver.forIso2(iso2) : 'Unmapped';
   }
 }
 // #endregion continents-service
@@ -549,14 +539,10 @@ export class CountryCodes {
   }
 
   static toIso2(raw: string): string {
-    const direct = Geo.normalizeCountryCode(raw);
-    if (direct !== null) return direct;
-    // Ingest-side normalization: raw event data carries colloquial country
-    // names (e.g. "United States", "Great Britain") geo-resolver's global
-    // lookup doesn't recognize. Resolve to the canonical ISO-3 form first,
-    // then defer to geo-resolver for the actual code resolution.
-    const canonicalIso3 = COUNTRY_CODE_MAP[CountryCodes.key(raw)];
-    return canonicalIso3 !== undefined ? Geo.normalizeCountryCode(canonicalIso3) ?? '' : '';
+    const key = CountryCodes.key(raw);
+    if (ISO2_TO_ISO3[key] !== undefined) return key;
+    const canonicalIso3 = CountryCodes.knownIso3(key);
+    return ISO3_TO_ISO2[canonicalIso3] ?? '';
   }
 
   static toGeoSignalIso2(countryCode: string, recipientCountry: string): string {
@@ -1437,10 +1423,10 @@ export class ShipmentEvents {
       if (slot.eventType === 'position-ping') {
         geoTyped = { ...typed, 'ipAddress': '' };
       } else if (slot.eventType === 'customs-event') {
-        const { country } = CoordTimezoneResolver.resolve(typed.latitude, typed.longitude);
+        const { country } = CoordinateGeoResolver.resolve(typed.latitude, typed.longitude);
         geoTyped = { ...typed, 'countryCode': country, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
       } else if (slot.eventType === 'delivery-confirmation') {
-        const { country } = CoordTimezoneResolver.resolve(typed.latitude, typed.longitude);
+        const { country } = CoordinateGeoResolver.resolve(typed.latitude, typed.longitude);
         const locale = CountryLocale.forIso2(country);
         geoTyped = { ...typed, 'localeTag': locale, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
       }
@@ -1727,13 +1713,11 @@ export class Sources {
       'disruptionReason': scan.disruptionReason,
     };
     if (withGeo) {
-      // RICH source pre-resolves geo via the offline country-coder (sync, universal).
-      // No fixture dependency — country-coder is deterministic across environments.
-      const cand = OfflineGeoResolver.resolve(scan.latitude, scan.longitude).candidate;
-      if (cand.resolved && !cand.water && cand.country.length > 0) {
-        record['geoCountry']   = cand.country;
-        record['geoContinent'] = cand.continent;
-        record['geoRegion']    = cand.region || cand.locality || cand.countryName;
+      const resolved = CoordinateGeoResolver.resolve(scan.latitude, scan.longitude);
+      if (!resolved.water && resolved.country.length > 0) {
+        record['geoCountry']   = resolved.country;
+        record['geoContinent'] = Continents.forIso2(resolved.country);
+        record['geoRegion']    = resolved.countryName;
       }
     }
     return record;
@@ -1870,9 +1854,9 @@ export class Sources {
       'yaml':   'yaml-position',
     };
 
-    const mapKey = FORMAT_MAP_KEY[format] ?? 'json-position';
+    const mapKey = FORMAT_MAP_KEY[format];
+    if (mapKey === undefined) throw new TypeError(`Unsupported source payload format: ${format}`);
     const map = FieldMappings.forKey(mapKey);
-    const eventVariant = eventType;
     const withGeo = format === 'json' || format === 'yaml';
 
     const rec = Sources.wireRecord(scan, withGeo);
@@ -1934,16 +1918,14 @@ export class Sources {
     }
 
     const payload = await Sources.maybeGzip(text, compression);
-    // sourceId encodes format, compression, and the scan's global index so each
-    // yielded payload has a distinct ID in the stream.
-    const sourceId = `${format}-${compression}-${scanIndex}`;
+    const sourceId = `${eventType}-${format}-${compression}-${scanIndex}`;
 
     return {
       'sourceId':    sourceId,
       'format':      format,
       'compression': compression,
       'mappingKey':  mapKey,
-      'eventType':   eventVariant,
+      'eventType':   eventType,
       'payload':     payload,
     };
   }
@@ -1990,8 +1972,12 @@ export class Sources {
       let localIndex = 0;
       for (const scan of scansGen) {
         // Determine format from thresholds.
-        let format: 'csv' | 'json' | 'ndjson' | 'yaml' = entry.formatMix[0]?.format ?? 'json';
-        let compression: 'none' | 'gzip' = entry.formatMix[0]?.compression ?? 'none';
+        const firstMix = entry.formatMix[0];
+        if (firstMix === undefined) {
+          throw new TypeError(`Source payload configuration for '${entry.eventType}' requires a format mix`);
+        }
+        let format: 'csv' | 'json' | 'ndjson' | 'yaml' = firstMix.format;
+        let compression: 'none' | 'gzip' = firstMix.compression;
         for (const threshold of mixThresholds) {
           if (localIndex < threshold.limit) {
             format = threshold.format;
@@ -2000,10 +1986,8 @@ export class Sources {
           }
         }
 
-        const sourceId = `${entry.eventType}-${format}-${compression}-${globalIndex}`;
         const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, entry.eventType);
-
-        results.push({ ...payload, 'sourceId': sourceId, 'eventType': entry.eventType });
+        results.push(payload);
 
         localIndex++;
         globalIndex++;

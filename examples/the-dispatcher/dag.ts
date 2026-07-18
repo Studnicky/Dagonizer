@@ -5,7 +5,10 @@
  * Demonstrates the HITL park-and-correlate primitive with a trolley switch.
  *
  * Flow:
- *   [pre] setup ← stamps per-run metadata; never gates
+ *   [pre] setup             ← stamps per-run metadata; never gates
+ *   [pre] provision-embedder ← warms the lazy embedder classifier when any
+ *                              item runs in 'embedder' classification mode;
+ *                              provisioning failures fail that partition
  *
  *   classify-message
  *     → 'routine'   → ai-compose → send-response → end (completed)
@@ -33,20 +36,24 @@ import type { DispatcherState } from './DispatcherState.ts';
 
 // #region dispatcher-bundle
 
-const setup           = new PlaceholderNode<DispatcherState, 'ready'>('urn:noocodec:node:dispatcher-setup', ['ready']);
+const setup             = new PlaceholderNode<DispatcherState, 'ready'>('urn:noocodec:node:dispatcher-setup', ['ready']);
+const provisionEmbedder = new PlaceholderNode<DispatcherState, 'ready'>('urn:noocodec:node:dispatcher-provision-embedder', ['ready']);
 const classifyMessage = new PlaceholderNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'>('urn:noocodec:node:classify-message', ['routine', 'escalate', 'off-topic']);
 const aiCompose       = new PlaceholderNode<DispatcherState, 'drafted'>('urn:noocodec:node:ai-compose', ['drafted']);
 const parkForOperator = new PlaceholderNode<DispatcherState, 'parked' | 'ready'>('urn:noocodec:node:park-for-operator', ['parked', 'ready']);
 const sendResponse    = new PlaceholderNode<DispatcherState, 'sent'>('urn:noocodec:node:send-response', ['sent']);
 const decline         = new PlaceholderNode<DispatcherState, 'declined'>('urn:noocodec:node:decline', ['declined']);
 
-const supportDispatcherDagIri = 'urn:noocodec:dag:support-dispatcher' as const;
+const supportDispatcherDagIri = 'urn:noocodec:dag:support-dispatcher';
 const placement = (placementIdentifier: string): string =>
   `${supportDispatcherDagIri}/node/${placementIdentifier}`;
 
 export const supportDispatcherDAG: DAGType = new DAGBuilder(supportDispatcherDagIri, '1')
   // Pre-phase: stamps runId before the entrypoint runs.
   .phase(placement('setup'), 'pre', setup)
+
+  // Pre-phase: warms the lazy embedder classifier before classify-message needs it.
+  .phase(placement('provision-embedder'), 'pre', provisionEmbedder)
 
   // Entrypoint: classify the inbound message.
   .node(placement('classify-message'), classifyMessage, {

@@ -16,6 +16,7 @@ import { Batch } from '@studnicky/dagonizer';
 import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
+import { EnrichedShipmentGuard } from '../../entities/EnrichedShipment.ts';
 
 import { ValidateCoordsNode } from '../../nodes/validateCoords.ts';
 import { RouteGeoNode } from '../../nodes/routeGeo.ts';
@@ -617,5 +618,20 @@ describe('AggregateEventNode', () => {
     await executeSingle(node, state);
     assert.equal(state.enriched.routing.geoLookupRun,     true);
     assert.equal(state.enriched.routing.redactionSkipped, true);
+  });
+
+  it('writes the maritime continent for water-resolved geo, accepted by EnrichedShipmentGuard', async () => {
+    const state = new CartographerState();
+    state.normalized.shipmentId = 'SHP-MARITIME-001';
+    state.geoContext.continent  = 'International Waters / Maritime';
+    state.geoContext.region     = 'International Waters';
+    state.geoContext.status     = 'water';
+    state.geoContext.jurisdiction = 'international-waters';
+    const node = new AggregateEventNode();
+    await executeSingle(node, state);
+
+    assert.equal(state.enriched.continent, 'International Waters / Maritime');
+    assert.equal(state.enriched.geoStatus, 'water');
+    assert.equal(EnrichedShipmentGuard.is(state.enriched), true);
   });
 });

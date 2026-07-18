@@ -160,7 +160,7 @@ export const scatterDiscardDag = new DAGBuilder(notifyDAGIri, '1')
       'empty': placement(notifyDAGIri, 'end'),
     },
     {
-      execution: { mode: 'item', concurrency: 10 },
+      configuration: { execution: { batching: { mode: 'item', concurrency: 10 } } },
     },
   )
   .terminal(placement(notifyDAGIri, 'end'))
@@ -211,7 +211,7 @@ export const scatterHeterogeneousDag = new DAGBuilder(searchDAGIri, '1')
     },
     {
       reducer:     'any-success',
-      execution: { mode: 'item', concurrency: 3 },
+      configuration: { execution: { batching: { mode: 'item', concurrency: 3 } } },
     },
   )
   .gather(
@@ -273,7 +273,7 @@ export const scatterMapDag = new DAGBuilder(batchDAGIri, '1')
       'empty': placement(batchDAGIri, 'end'),
     },
     {
-      execution: { mode: 'item', concurrency: 4 },
+      configuration: { execution: { batching: { mode: 'item', concurrency: 4 } } },
     },
   )
   .gather(
@@ -322,7 +322,7 @@ export const scatterPartitionDag = new DAGBuilder(batchDAGIri, '1')
       'empty': placement(batchDAGIri, 'end'),
     },
     {
-      execution: { mode: 'item', concurrency: 4 },
+      configuration: { execution: { batching: { mode: 'item', concurrency: 4 } } },
     },
   )
   .gather(

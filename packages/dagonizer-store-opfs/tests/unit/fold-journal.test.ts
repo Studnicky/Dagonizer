@@ -6,6 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 import type { FoldJournalStoreInterface } from '@studnicky/dagonizer';
@@ -48,6 +49,42 @@ async function readAll(store: OpfsFoldJournalStore, runIri: string): Promise<Fol
 }
 
 void describe('OpfsFoldJournalStore', () => {
+  void it('creates a named OPFS directory and appends and reads through rooted()', async () => {
+    const root = new MemDirectory();
+    const directoryName = `fold-journal-${randomUUID()}`;
+    const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    let getDirectoryCalls = 0;
+
+    Object.defineProperty(globalThis, 'navigator', {
+      'configurable': true,
+      'value': {
+        'storage': {
+          async getDirectory(): Promise<MemDirectory> {
+            getDirectoryCalls++;
+            return root;
+          },
+        },
+      },
+    });
+
+    try {
+      const store = await OpfsFoldJournalStore.rooted(directoryName);
+      await store.append('urn:test:rooted-run', commitOf('rooted-commit-1', 0));
+
+      const commits = await readAll(store, 'urn:test:rooted-run');
+      assert.deepEqual(commits.map((commit) => commit.commitId), ['rooted-commit-1']);
+      assert.equal(getDirectoryCalls, 1);
+
+      const directory = await root.getDirectoryHandle(directoryName);
+      assert.strictEqual(await root.getDirectoryHandle(directoryName), directory);
+      const directoryCommits = await readAll(new OpfsFoldJournalStore(directory), 'urn:test:rooted-run');
+      assert.deepEqual(directoryCommits.map((commit) => commit.commitId), ['rooted-commit-1']);
+    } finally {
+      if (navigatorDescriptor === undefined) Reflect.deleteProperty(globalThis, 'navigator');
+      else Object.defineProperty(globalThis, 'navigator', navigatorDescriptor);
+    }
+  });
+
   void it('reads committed records back in append order', async () => {
     const directory = new MemDirectory();
     const store = new OpfsFoldJournalStore(directory);
@@ -144,11 +181,54 @@ void describe('OpfsFoldJournalStore', () => {
     assert.deepEqual(new Set(commitsAfterRepeat.map((commit) => commit.commitId)), new Set(commitIds));
   });
 
-  void it('new writes stay O(1) after initialization: append after a completed scan does not rescan the directory', async () => {
+  void it('serializes concurrent appends across stores sharing one directory handle', async () => {
     const directory = new MemDirectory();
-    const store = new OpfsFoldJournalStore(directory);
-    await store.append('urn:test:run', commitOf('commit-1', 0));
-    await readAll(store, 'urn:test:run');
+    const first = new OpfsFoldJournalStore(directory);
+    const second = new OpfsFoldJournalStore(directory);
+
+    await Promise.all([
+      first.append('urn:test:shared-run', commitOf('commit-1', 0)),
+      second.append('urn:test:shared-run', commitOf('commit-2', 1)),
+    ]);
+
+    const commits = await readAll(first, 'urn:test:shared-run');
+    assert.deepEqual(commits.map((commit) => commit.commitId), ['commit-1', 'commit-2']);
+  });
+
+  void it('deduplicates one commit ID across stores sharing one directory handle', async () => {
+    const directory = new MemDirectory();
+    const first = new OpfsFoldJournalStore(directory);
+    const second = new OpfsFoldJournalStore(directory);
+
+    await Promise.all([
+      first.append('urn:test:shared-run', commitOf('commit-1', 0)),
+      second.append('urn:test:shared-run', commitOf('commit-1', 0)),
+    ]);
+
+    const commits = await readAll(first, 'urn:test:shared-run');
+    assert.deepEqual(commits.map((commit) => commit.commitId), ['commit-1']);
+  });
+
+  void it('shares append serialization across distinct handles for the same platform entry', async () => {
+    const directory = new MemDirectory();
+    const alias = directory.alias();
+    const first = new OpfsFoldJournalStore(directory);
+    const second = new OpfsFoldJournalStore(alias);
+
+    await Promise.all([
+      first.append('urn:test:alias-run', commitOf('commit-1', 0)),
+      second.append('urn:test:alias-run', commitOf('commit-2', 1)),
+    ]);
+
+    const commits = await readAll(second, 'urn:test:alias-run');
+    assert.deepEqual(commits.map((commit) => commit.commitId), ['commit-1', 'commit-2']);
+  });
+
+  void it('shares initialized run state across stores so later appends do not rescan the directory', async () => {
+    const directory = new MemDirectory();
+    const first = new OpfsFoldJournalStore(directory);
+    const second = new OpfsFoldJournalStore(directory);
+    await first.append('urn:test:run', commitOf('commit-1', 0));
 
     let entriesCalls = 0;
     const originalEntries = directory.entries.bind(directory);
@@ -157,7 +237,7 @@ void describe('OpfsFoldJournalStore', () => {
       return originalEntries();
     };
 
-    await store.append('urn:test:run', commitOf('commit-2', 1));
+    await second.append('urn:test:run', commitOf('commit-2', 1));
     assert.equal(entriesCalls, 0);
   });
 });

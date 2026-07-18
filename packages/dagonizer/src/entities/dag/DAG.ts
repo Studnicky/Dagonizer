@@ -13,7 +13,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 import { DagonizerContexts } from '../../context/DagonizerContexts.js';
-import { WritePointsSchema } from '../../contracts/WritePoint.js';
+import { DagConfiguration } from '../configuration/DagConfiguration.js';
 
 import { EmbeddedDAGNodeSchema } from './EmbeddedDAGNode.js';
 import { GatherNodeSchema } from './GatherNode.js';
@@ -66,7 +66,10 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'source':      { '@id': `${NS}source` },
   'sources': { '@id': `${NS}sources`, '@container': '@index' },
   'itemKey':     { '@id': `${NS}itemKey` },
+  'configuration': { '@id': `${NS}configuration` },
   'execution':   { '@id': `${NS}execution` },
+  'batching':    { '@id': `${NS}batching` },
+  'durability':  { '@id': `${NS}durability` },
   'concurrency': { '@id': `${NS}concurrency` },
   'throttle':    { '@id': `${NS}throttle` },
   'reservoir':   { '@id': `${NS}reservoir` },
@@ -132,7 +135,7 @@ export const DAGSchema = {
     '@type':    { 'type': 'string', 'const': 'DAG' },
     'name':       { 'type': 'string', 'minLength': 1 },
     'version':    { 'type': 'string', 'minLength': 1 },
-    'writePoints': WritePointsSchema,
+    'configuration': DagConfiguration.Schema,
     'entrypoints': {
       'type': 'object',
       'minProperties': 1,

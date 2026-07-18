@@ -1,39 +1,31 @@
 ---
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import TopNav from '@/components/marketing/TopNav.astro';
-import SectionShell from '@/components/marketing/SectionShell.astro';
-import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
-import UiContentPanel from '@/components/marketing/UiContentPanel.astro';
-import UiActionLink from '@/components/marketing/UiActionLink.astro';
-import { siteHref } from '@/lib/links';
+import { getEntry } from 'astro:content';
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
+
+const doc = await getEntry('docs', 'architecture');
+if (doc === undefined) {
+  throw new Error('Missing documentation entry: architecture');
+}
+
+const pageTitle = doc.data.title ?? DocPageRenderer.leadingTitle(doc.body) ?? 'Architecture';
+const rendered = await DocPageRenderer.render(doc.body, { title: pageTitle, slug: doc.id });
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site(SiteLinks.route(doc.id)), label: pageTitle }
+];
 ---
 
-<BaseLayout title="Architecture">
-  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
-    <TopNav />
-    <SectionShell
-      eyebrow="Architecture"
-      title="A runtime model that stays explicit from authoring through execution."
-      description="Dagonizer is built around a graph document, a deterministic execution model, and inspection surfaces that let teams understand routing, checkpoints, state flow, and terminal outcomes."
-    >
-      <div class="grid gap-4 md:grid-cols-3">
-        <UiContentPanel title="Graph definition" compact>
-          <p>Placements, routing, terminals, and shared state remain part of the workflow model instead of disappearing into implicit control flow.</p>
-        </UiContentPanel>
-        <UiContentPanel title="Execution behavior" compact>
-          <p>Retries, cancellation, fan-out, fan-in, streaming, and checkpoint resume are visible runtime concerns, not hidden implementation details.</p>
-        </UiContentPanel>
-        <UiContentPanel title="Operational visibility" compact>
-          <p>Documentation, runnable examples, and visualization surfaces all point back to the same DAG so teams can inspect what they actually run.</p>
-        </UiContentPanel>
-      </div>
-
-      <div class="mt-6 flex flex-wrap gap-3">
-        <UiActionLink href={siteHref('/docs/architecture')} variant="primary">Read the full architecture reference</UiActionLink>
-        <UiActionLink href={siteHref('/docs/guide/visualization')}>Inspect visualization surfaces</UiActionLink>
-        <UiActionLink href={siteHref('/docs/examples/the-cartographer')}>See a data workflow example</UiActionLink>
-      </div>
-    </SectionShell>
-  </main>
-  <MarketingFooter />
-</BaseLayout>
+<DocPageShell
+  title={pageTitle}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings}
+  sections={[]}
+  sourceLabel="architecture.md"
+  sourceHref={SiteDocs.edit(doc.id)}
+  crumbs={crumbs}
+>
+  <Fragment set:html={rendered.html} />
+</DocPageShell>

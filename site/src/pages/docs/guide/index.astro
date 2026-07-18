@@ -5,11 +5,13 @@ import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('guide')), 301);
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/guide'), label: 'Guide' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/guide'), label: 'Guide' }
 ] as const;
 
 const guideTracks = [
@@ -17,29 +19,29 @@ const guideTracks = [
     eyebrow: 'Authoring',
     title: 'Graph definition and builder patterns',
     body: 'Move from hand-authored JSON-LD through the builder, schema constraints, and node composition without losing inspectable graph structure.',
-    href: siteHref('/docs/guide/builder')
+    href: SiteLinks.site('/docs/guide/builder')
   },
   {
     eyebrow: 'Execution',
     title: 'Runtime behavior, retries, checkpoints, and HITL',
     body: 'Understand how runs progress, pause, resume, retry, checkpoint, and expose human-in-the-loop control points.',
-    href: siteHref('/docs/guide/checkpoint')
+    href: SiteLinks.site('/docs/guide/checkpoint')
   },
   {
     eyebrow: 'Visualization',
     title: 'Render and inspect DAGs in the browser',
     body: 'See how Cytoscape, Mermaid, and related visual surfaces fit the framework and what consumers can customize.',
-    href: siteHref('/docs/guide/visualization')
+    href: SiteLinks.site('/docs/guide/visualization')
   }
 ] as const;
 
 const guideLinks = [
-  { href: siteHref('/docs/getting-started'), label: 'Getting started' },
-  { href: siteHref('/docs/guide/builder'), label: 'Builder guide' },
-  { href: siteHref('/docs/guide/schema'), label: 'Schema guide' },
-  { href: siteHref('/docs/guide/checkpoint'), label: 'Checkpoint guide' },
-  { href: siteHref('/docs/guide/retry'), label: 'Retry guide' },
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site('/docs/getting-started'), label: 'Getting started' },
+  { href: SiteLinks.site('/docs/guide/builder'), label: 'Builder guide' },
+  { href: SiteLinks.site('/docs/guide/schema'), label: 'Schema guide' },
+  { href: SiteLinks.site('/docs/guide/checkpoint'), label: 'Checkpoint guide' },
+  { href: SiteLinks.site('/docs/guide/retry'), label: 'Retry guide' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 ---
 

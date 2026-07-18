@@ -7,6 +7,7 @@ export class DagGraphTerms {
   static readonly RDF = {
     'namespace': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
     'type': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
+    'JSON': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON',
     'TripleTerm': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#TripleTerm',
     'reifies': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies',
     'ttSubject': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#ttSubject',

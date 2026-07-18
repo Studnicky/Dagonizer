@@ -31,9 +31,7 @@ const registry: RegistryModuleInterface = {
         'dags':  [...geoBundle.dags,  ...cartographerWorkerRuntimeBundle.dags],
       },
       'registryVersion': '1.0.0',
-      'restoreState': {
-        restore: () => new CartographerState(),
-      },
+      'restoreState': (dataset, runIri) => new CartographerState(dataset, runIri),
     };
   },
 };

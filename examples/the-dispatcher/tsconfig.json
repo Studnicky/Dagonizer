@@ -19,6 +19,8 @@
     "language/**/*.ts",
     "nodes/**/*.ts",
     "providers/**/*.ts",
+    "runtime/**/*.ts",
+    "execution/**/*.ts",
     "tests/**/*.ts"
   ]
 }

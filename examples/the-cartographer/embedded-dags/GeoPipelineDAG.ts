@@ -16,9 +16,8 @@
  * materialises GeoContext from carried geo, skipping the live lookup).
  * validate-coords classifies WGS-84 bounds. Out-of-range coords are NOT silently
  * dropped at a failed terminal — they flow into geo-source-resolve too, where the
- * offline resolver (CoordTimezone) guards the out-of-range RangeError and returns
- * an empty timezone/country, so the resolution degrades to baseline rather than
- * the event vanishing.
+ * coordinate resolver rejects them before querying country containment, so the
+ * resolution degrades to baseline rather than the event vanishing.
  */
 
 // #region geo-pipeline-dag
@@ -47,8 +46,8 @@ export const geoPipelineDAG: DAGType = new DAGBuilder(GEO_PIPELINE_DAG_IRI, '1.0
   })
 
   // 3. validate-coords (lookup path): WGS-84 bounds classification. Both valid
-  //    and rejected coords flow into geo-source-resolve — rejected ones are NOT dropped;
-  //    CoordTimezone guards their out-of-range RangeError and degrades to baseline.
+  //    and rejected coords flow into geo-source-resolve — rejected ones are not dropped;
+  //    CoordinateGeoResolver returns an empty result and the chain reaches baseline.
   .node(CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'validate-coords'), validateCoords, {
     'valid':    CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'geo-source-resolve'),
     'rejected': CARTOGRAPHER_IRIS.placementIri(GEO_PIPELINE_DAG_IRI, 'geo-source-resolve'),

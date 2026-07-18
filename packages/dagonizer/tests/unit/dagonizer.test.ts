@@ -110,7 +110,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:fan/node/scatter', '@type': 'ScatterNode',
           'name': 'scatter', 'body': { 'node': 'urn:noocodec:node:double' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 2 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
           'outputs': {
             'all-success': 'urn:noocodec:dag:fan/node/join',
             'partial': 'urn:noocodec:dag:fan/node/join',

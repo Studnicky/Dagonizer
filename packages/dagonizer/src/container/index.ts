@@ -13,7 +13,6 @@
 
 export { BaseMessageChannel } from './BaseMessageChannel.js';
 export { DagTask } from './DagTask.js';
-export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export { DagHost } from './DagHost.js';
 export type { DagHostOptionsType } from './DagHost.js';
 export { DagContainerBase, DAG_CONTAINER_DEFAULTS } from './DagContainerBase.js';

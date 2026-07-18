@@ -6,8 +6,7 @@
  */
 
 import { WebWorkerEntry } from '@studnicky/dagonizer-executor-web';
-import type { WorkerScopeLikeInterface } from '@studnicky/dagonizer-executor-web';
 
 import cartographerRegistry from './cartographerWorkerRegistry.ts';
 
-WebWorkerEntry.start(self as unknown as WorkerScopeLikeInterface, cartographerRegistry);
+WebWorkerEntry.start(self, cartographerRegistry);

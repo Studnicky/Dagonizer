@@ -248,7 +248,7 @@ export class JsonLdRenderer {
         if ('dag' in sp.body) out['dag:dagReference'] = JsonLdRenderer.renderDagReferenceNode(sp.body.dag, placementIri, context);
         if (sp.source !== undefined)       out['dag:source']       = sp.source;
         if (sp.itemKey !== undefined)      out['dag:itemKey']      = sp.itemKey;
-        if (sp.execution !== undefined)    out['dag:execution']    = sp.execution;
+        if (sp.configuration !== undefined) out['dag:configuration'] = sp.configuration;
         if (sp.stateMapping !== undefined) out['dag:stateMapping'] = sp.stateMapping;
         if (sp.reducer !== undefined)      out['dag:reducer']      = sp.reducer;
         // container is a placement property mapped in DAG_CONTEXT; include when present.

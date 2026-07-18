@@ -1,14 +1,6 @@
 /**
- * GraphStateTransfer: graph snapshot envelope shapes for persistence and
- * export surfaces that still move RDF/N-Quads directly.
- *
- * Container `ExecutionRequest`/`ExecutionResponse` no longer use this schema
- * for transient worker state. They use `TransientNodeStateBatchSchema` so
- * per-clone dispatch stays in plain JSON and avoids RDF projection on the hot
- * path.
- *
- * The envelope types remain for graph snapshot export, references, and shared
- * graph access where N-Quads transport is still the right representation.
+ * GraphStateTransfer: batched RDF/N-Quads transfer envelopes used by container
+ * execution, persistence, references, and shared graph access.
  *
  *   - `inline-nquads`        one combined N-Quads document; one encode + one hash.
  *   - `graph-ref`            one store reference to the whole batch's combined graph.
@@ -25,12 +17,6 @@
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
-
-/**
- * JSON Schema for the optional Node.js JSON-LD document view of a graph-state
- * payload. Reused by transfer metadata persistence paths.
- */
-export const GraphStateJsonLdSchema = { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true } as const;
 
 /** JSON Schema for the combined per-batch inline N-Quads graph-state payload. */
 export const GraphStateInlineSchema = {
@@ -65,9 +51,10 @@ const GraphStateReferenceSchema = {
 
 const GraphStateSharedSchema = {
   'type': 'object',
-  'required': ['transport', 'graphIris', 'endpoint', 'lease', 'byteSize', 'quadCount'],
+  'required': ['transport', 'format', 'graphIris', 'endpoint', 'lease', 'byteSize', 'quadCount'],
   'properties': {
     'transport': { 'type': 'string', 'const': 'shared-endpoint' },
+    'format':    { 'type': 'string', 'const': 'application/n-quads' },
     'graphIris': { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
     'endpoint':  { 'type': 'string', 'minLength': 1 },
     'lease':     { 'type': 'string', 'minLength': 1 },
@@ -79,9 +66,10 @@ const GraphStateSharedSchema = {
 
 const GraphStateInlineDeltaSchema = {
   'type': 'object',
-  'required': ['transport', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
+  'required': ['transport', 'format', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
   'properties': {
     'transport':       { 'type': 'string', 'const': 'inline-delta-nquads' },
+    'format':          { 'type': 'string', 'const': 'application/n-quads' },
     'graphIris':       { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
     'baseSnapshotRef': { 'type': 'string', 'minLength': 1 },
     'additions':       { 'type': 'string' },
@@ -95,9 +83,10 @@ const GraphStateInlineDeltaSchema = {
 
 const GraphStateDeltaReferenceSchema = {
   'type': 'object',
-  'required': ['transport', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
+  'required': ['transport', 'format', 'graphIris', 'baseSnapshotRef', 'additions', 'deletions', 'hash', 'byteSize', 'quadCount'],
   'properties': {
     'transport':       { 'type': 'string', 'const': 'delta-ref' },
+    'format':          { 'type': 'string', 'const': 'application/n-quads' },
     'graphIris':       { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 } },
     'baseSnapshotRef': { 'type': 'string', 'minLength': 1 },
     'additions':       { 'type': 'string' },

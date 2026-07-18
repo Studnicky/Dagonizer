@@ -20,9 +20,9 @@
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ModalController } from '../../../../packages/dagonizer/src/viz/ModalController.ts';
-import { viewerAction } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
+import { ViewerActions } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
 import type { ViewerActionIdType } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
-import ViewerActions from './graph/ViewerActions.vue';
+import ViewerActionsBar from './graph/ViewerActions.vue';
 import PanelHeader from './ui/PanelHeader.vue';
 
 defineProps<{
@@ -41,12 +41,12 @@ const frameRef = ref<HTMLDivElement | null>(null);
 const expanded = ref(false);
 const isFullscreen = ref(false);
 const frameActions = computed(() => [
-  viewerAction('expand', {
+  ViewerActions.action('expand', {
     'label': expanded.value ? '⤡' : '⤢',
     'title': expanded.value ? 'Collapse' : 'Expand',
     'pressed': expanded.value,
   }),
-  viewerAction('fullscreen', {
+  ViewerActions.action('fullscreen', {
     'title': isFullscreen.value ? 'Exit fullscreen' : 'Fullscreen',
     'pressed': isFullscreen.value,
   }),
@@ -158,7 +158,7 @@ defineExpose({ toggleFullscreen, toggleExpand });
       </template>
       <template #actions>
         <slot name="controls" />
-        <ViewerActions
+        <ViewerActionsBar
           :actions="frameActions"
           @action="onFrameAction"
         />

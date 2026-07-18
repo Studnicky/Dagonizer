@@ -398,7 +398,7 @@ class ScatterDag {
           'body':        { 'dag': bodyDagIri },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': 4 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
           'outputs': {
             'all-success': ScatterDag.iri(dagIri, 'join'),
             'partial': ScatterDag.iri(dagIri, 'join'),

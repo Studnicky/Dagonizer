@@ -2,20 +2,11 @@
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Tag from 'primevue/tag';
-import { siteHref } from '@/lib/links';
-
-interface DocEntry {
-  readonly slug: string;
-  readonly url: string;
-  readonly section: string;
-  readonly title: string;
-  readonly description: string;
-  readonly excerpt: string;
-  readonly headings: readonly string[];
-}
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
 
 const props = defineProps<{
-  entry: DocEntry;
+  entry: Awaited<ReturnType<typeof SiteDocs.catalog>>[number];
 }>();
 
 function toDisplaySection(section: string): string {
@@ -46,7 +37,7 @@ function toDisplaySection(section: string): string {
             class="!border-white/10 !bg-white/4 !text-slate-300"
           />
         </div>
-        <Button as="a" :href="siteHref(props.entry.url)" label="Open page" variant="outlined" severity="contrast" />
+        <Button as="a" :href="SiteLinks.site(props.entry.url)" label="Open page" variant="outlined" severity="contrast" />
       </div>
     </template>
   </Card>

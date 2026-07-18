@@ -1,5 +1,3 @@
-import { DAGIdentity } from '@studnicky/dagonizer';
-
 const CARTOGRAPHER_INTAKE_EVENT_TYPES = [
   'position-ping',
   'facility-scan',
@@ -12,7 +10,6 @@ const CARTOGRAPHER_DAG_IRIS = Object.freeze({
   cartographer: 'urn:noocodec:dag:cartographer',
   cartographerResume: 'urn:noocodec:dag:cartographer-resume',
   insightsSummary: 'urn:noocodec:dag:insights-summary',
-  eventPipelineTyped: 'urn:noocodec:dag:event-pipeline-typed',
   streamEvent: 'urn:noocodec:dag:stream-event',
   geoPipeline: 'urn:noocodec:dag:geo-pipeline',
   geoSourceResolve: 'urn:noocodec:dag:geo-source-resolve',
@@ -36,24 +33,21 @@ const CARTOGRAPHER_DAG_IRIS = Object.freeze({
   ingestSource: 'urn:noocodec:dag:ingest-source',
 } as const);
 
-function entrypointIri(dagIri: string, label: string): string {
-  return `${DAGIdentity.id(dagIri)}/entrypoint/${encodeURIComponent(label)}`;
-}
-
 function placementIri(dagIri: string, placementIdentifier: string): string {
   return `${dagIri}/node/${placementIdentifier}`;
 }
 
-function intakeSources(dagIri: string): Readonly<Record<string, object>> {
-  return Object.freeze(
-    Object.fromEntries(
-      CARTOGRAPHER_INTAKE_EVENT_TYPES.map((source) => [entrypointIri(dagIri, source), {}]),
-    ),
-  ) as Readonly<Record<string, object>>;
-}
-
 function feedPlacementIri(dagIri: string, source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): string {
   return placementIri(dagIri, `dag-feed-${source}`);
+}
+
+function eventTypeForFeedPlacement(source: string): typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number] | null {
+  const marker = '/node/dag-feed-';
+  const markerIndex = source.lastIndexOf(marker);
+  if (markerIndex < 0) return null;
+
+  const label = source.slice(markerIndex + marker.length);
+  return CARTOGRAPHER_INTAKE_EVENT_TYPES.find((eventType) => eventType === label) ?? null;
 }
 
 function streamFeedDagIri(source: typeof CARTOGRAPHER_INTAKE_EVENT_TYPES[number]): string {
@@ -71,10 +65,9 @@ function feedEntrypoints(dagIri: string): Readonly<Record<typeof CARTOGRAPHER_IN
 export const CARTOGRAPHER_IRIS = Object.freeze({
   dag: CARTOGRAPHER_DAG_IRIS,
   intakeEventTypes: CARTOGRAPHER_INTAKE_EVENT_TYPES,
-  entrypointIri,
+  eventTypeForFeedPlacement,
   streamFeedDagIri,
   feedEntrypoints,
   feedPlacementIri,
-  intakeSources,
   placementIri,
 });

@@ -25,9 +25,10 @@ This audit maps the current shapes and identifies what each layer actually needs
 
 Contained execution uses one batched request shape:
 
-- `ExecutionRequest.graphState.states[]`
-  - one selected transient snapshot per item
-  - built in [DagContainerBase.ts](/Users/studs/Workspace/Dagonizer/packages/dagonizer/src/container/DagContainerBase.ts:340)
+- `ExecutionRequest.graphState`
+  - one codec-backed `application/n-quads` transfer for the whole batch
+  - one selected transient-state RDF literal per item named graph
+  - one N-Quads encode and integrity hash per batch
 - `ExecutionRequest.items[]`
   - `{ id, runIri }` only
 - `DagTask.inputState`
@@ -41,10 +42,10 @@ Current contract:
 
 - embedded input `domainPaths` are the child-side keys from `stateMapping.input`
 - scatter DAG-body input adds the explicit `itemKey` and `itemIndex` metadata keys
-- send-side batching snapshots every item with `snapshotTransientStateSelection(task.inputState)`
+- send-side batching snapshots every item with `snapshotTransientStateSelection(task.inputState)` and encodes the selected snapshots together
 - return-side projection is selective
 
-The task contract is engine-internal. `ExecutionRequest` carries the selected state itself rather than repeating the selection descriptor on the wire.
+The task contract is engine-internal. `ExecutionRequest` carries the selected state in the negotiated graph transfer rather than repeating the selection descriptor on the wire.
 
 ### 2.2 Host restore and response
 
@@ -54,7 +55,8 @@ On completion it computes one response batch in [DagHost.ts](/Users/studs/Worksp
 
 - route output is derived per item
 - selection is chosen from `responseState.outputSelections[routeOutput] ?? defaultSelection`
-- `snapshotTransientStateSelection(selection)` produces the returned per-item state
+- `snapshotTransientStateSelection(selection)` produces each returned state literal
+- `GraphStateTransferCodec.inlineTransient()` encodes all returned state literals in one N-Quads transfer
 
 This is the cleanest contract in the current design:
 
@@ -159,7 +161,7 @@ Effect:
 
 - batching reduces message count
 - input selection reduces per-item payload width
-- a reservoir batch carries one selected transient envelope per item in one execute message
+- a reservoir batch carries one selected transient state literal per item in one combined N-Quads transfer
 
 ### 4.2 Response boundary: correct contract, partial coverage
 
@@ -193,7 +195,7 @@ This is wasteful for:
 - durable aggregate fields
 - clone-local scratch fields
 - UI-facing sample and summary fields
-- compatibility source-stream fields
+- the one canonical source-payload stream
 
 The cartographer override trims what crosses worker boundaries, but the state type itself still mixes ownership domains heavily.
 

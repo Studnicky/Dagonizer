@@ -1,43 +1,39 @@
 /**
- * TestTask: shared static factory for building minimal `DagTaskInterface`
+ * TestTask: shared static factory for building minimal `DagTaskType`
  * instances in unit tests.
  *
  * Three files duplicated nearly identical `makeTask` freestanding functions
  * (batch-container-transport, channel-correlation, loopback-channel). All
- * three build a `DagTaskInterface` with:
+ * three build a `DagTaskType` with:
  *
  *   - a caller-supplied `correlationId` and `AbortSignal`
  *   - `dagName: 'test-dag'`, `placementPath: []`, `timeout: Timeout.none()`
  *   - an optional `state` arg (defaults to `new MinimalState()` or a
  *     caller-supplied `TState` instance)
- *   - `toRequest()` that snapshots the state into a single-item request
  *
  * `TestTask.of` covers the correlation/loopback variant (state defaults to
  * a fresh `NodeStateBase`). When a test supplies its own typed state it
  * passes it as the third positional argument.
  */
 
-import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
-import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 
-import { FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer, requestItems } from './GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE } from './GraphStateSupport.js';
 
 export class TestTask {
   private constructor() { /* static class */ }
 
   /**
-   * Build a minimal `DagTaskInterface` for use in tests that exercise
+   * Build a minimal `DagTaskType` for use in tests that exercise
    * container/channel correlation paths.
    *
    * Defaults:
    *   - `dagName`       → `'test-dag'`
    *   - `placementPath` → `[]`
    *   - `timeout`       → `Timeout.none()`
-   *
-   * `toRequest()` snapshots the live state into a single-item wire request.
    *
    * @param correlationId - Correlation id used for response demuxing.
    * @param signal        - AbortSignal forwarded on the task context.
@@ -47,12 +43,12 @@ export class TestTask {
     correlationId: string,
     signal: AbortSignal,
     state: TState,
-  ): DagTaskInterface {
+  ): DagTaskType {
     const dagName = 'test-dag';
 
     const context = NodeContext.create(dagName, 'test-node', signal);
 
-    const task: DagTaskInterface = {
+    const task: DagTaskType = {
       'dagName':       dagName,
       'placementPath': [],
       correlationId,
@@ -61,17 +57,6 @@ export class TestTask {
       'inputState':    FULL_INPUT_STATE,
       'responseState': FULL_RESPONSE_STATE,
       context,
-      toRequest(): ExecutionRequestType {
-        return {
-          'dagName':       dagName,
-          'placementPath': [],
-          'graphState':    inlineTransfer([state]),
-          'items':         requestItems([{ 'id': correlationId, state }]),
-          'timeoutMs':     null,
-          correlationId,
-          'responseState': FULL_RESPONSE_STATE,
-        };
-      },
     };
 
     return task;

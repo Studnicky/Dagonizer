@@ -9,14 +9,18 @@ export type InspectorTargetType =
   | ToolInspectorTargetType
   | InspectSelectionType;
 
-export function toolInspectorTarget(name: string): ToolInspectorTargetType {
-  return { 'variant': 'tool', name };
-}
+export class InspectorTarget {
+  private constructor() { /* static-only */ }
 
-export function isToolInspectorTarget(target: InspectorTargetType | null): target is ToolInspectorTargetType {
-  return target !== null && target.variant === 'tool';
-}
+  static tool(name: string): ToolInspectorTargetType {
+    return { 'variant': 'tool', name };
+  }
 
-export function isInspectSelectionTarget(target: InspectorTargetType | null): target is InspectSelectionType {
-  return target !== null && target.variant !== 'tool';
+  static isTool(target: InspectorTargetType | null): target is ToolInspectorTargetType {
+    return target !== null && target.variant === 'tool';
+  }
+
+  static isInspectSelection(target: InspectorTargetType | null): target is InspectSelectionType {
+    return target !== null && target.variant !== 'tool';
+  }
 }

@@ -20,7 +20,6 @@ void describe('GraphStateTransferCodec', () => {
     'placementPath': [`${graphIri}/placement`],
     'placementIri': `${graphIri}/placement`,
     'stateGraphIri': graphIri,
-    'jsonLd': { '@context': GraphStateTerms.JSON_LD_CONTEXT, '@graph': [] },
   });
   void it('round-trips RDF 1.2 triple terms and named graphs', () => {
     const graph = DagGraphTerms.namedNode('urn:dagonizer:run:test#state');
@@ -82,12 +81,12 @@ void describe('GraphStateTransferCodec', () => {
   });
 
   void it('restores a Node.js boundary transfer from inline N-Quads payload', async () => {
-    const runIri = 'urn:state:jsonld-transfer';
+    const runIri = 'urn:state:nquads-transfer';
     const graphIri = `${runIri}#state`;
     const source = [{
       "subject": DagGraphTerms.namedNode(runIri),
-      "predicate": DagGraphTerms.namedNode('urn:state:jsonld:value'),
-      "object": DagGraphTerms.literal('from-jsonld'),
+      "predicate": DagGraphTerms.namedNode('urn:state:nquads:value'),
+      "object": DagGraphTerms.literal('from-nquads'),
       "graph": DagGraphTerms.namedNode(graphIri),
     }];
     const transfer = GraphStateTransferCodec.inlineSync([{ runIri, 'quads': source }]);
@@ -128,6 +127,149 @@ void describe('GraphStateTransferCodec', () => {
     assert.equal(transfer.quadCount, 1);
     assert.ok(transfer.byteSize > 0);
     assert.deepEqual([...dataset.match({ "graph": DagGraphTerms.namedNode('urn:run#state') })], source);
+  });
+
+  void it('rejects empty and independently duplicated item identities', () => {
+    const firstRunIri = 'urn:identity:first';
+    const secondRunIri = 'urn:identity:second';
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [{ 'id': '', 'runIri': firstRunIri }]),
+      /item id must be non-empty/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [{ 'id': 'first', 'runIri': '' }]),
+      /item run IRI must be non-empty/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'duplicate', 'runIri': firstRunIri },
+        { 'id': 'duplicate', 'runIri': secondRunIri },
+      ]),
+      /duplicate item id/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': firstRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ]),
+      /duplicate item run IRI/u,
+    );
+  });
+
+  void it('requires transfer graph IRIs to be a duplicate-free exact item graph set', () => {
+    const firstRunIri = 'urn:graph-identity:first';
+    const secondRunIri = 'urn:graph-identity:second';
+    const firstGraphIri = GraphStateTerms.runGraphIri(firstRunIri);
+    const secondGraphIri = GraphStateTerms.runGraphIri(secondRunIri);
+    const items = [
+      { 'id': 'first', 'runIri': firstRunIri },
+      { 'id': 'second', 'runIri': secondRunIri },
+    ];
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, firstGraphIri] }, items),
+      /duplicate graph IRIs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri] }, items),
+      /do not exactly match item run graphs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, secondGraphIri, 'urn:graph-identity:extra#state'] }, items),
+      /do not exactly match item run graphs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, 'urn:graph-identity:other#state'] }, items),
+      /do not exactly match item run graphs/u,
+    );
+  });
+
+  void it('requires response identity pairs to exactly equal request pairs', () => {
+    const firstRunIri = 'urn:response-identity:first';
+    const secondRunIri = 'urn:response-identity:second';
+    const requestItems = [
+      { 'id': 'first', 'runIri': firstRunIri },
+      { 'id': 'second', 'runIri': secondRunIri },
+    ];
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(
+        { ...transfer, 'graphIris': [GraphStateTerms.runGraphIri(firstRunIri)] },
+        [{ 'id': 'first', 'runIri': firstRunIri }],
+        requestItems,
+      ),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(
+        GraphStateTransferCodec.inlineSync([
+          { 'runIri': firstRunIri, 'quads': [] },
+          { 'runIri': secondRunIri, 'quads': [] },
+          { 'runIri': 'urn:response-identity:extra', 'quads': [] },
+        ]),
+        [...requestItems, { 'id': 'extra', 'runIri': 'urn:response-identity:extra' }],
+        requestItems,
+      ),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': secondRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ], requestItems),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'duplicate', 'runIri': firstRunIri },
+        { 'id': 'duplicate', 'runIri': secondRunIri },
+      ], requestItems),
+      /duplicate item id/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': firstRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ], requestItems),
+      /duplicate item run IRI/u,
+    );
+  });
+
+  void it('rejects undeclared graphs in full and delta payloads before partition restore', async () => {
+    const runIri = 'urn:payload-identity:run';
+    const undeclaredQuad = {
+      'subject': DagGraphTerms.namedNode('urn:payload-identity:subject'),
+      'predicate': DagGraphTerms.namedNode('urn:payload-identity:predicate'),
+      'object': DagGraphTerms.literal('undeclared'),
+      'graph': DagGraphTerms.namedNode('urn:payload-identity:extra#state'),
+    };
+    const items = [{ 'id': 'item', runIri }];
+    const fullTransfer = GraphStateTransferCodec.inlineSync([{ runIri, 'quads': [undeclaredQuad] }]);
+    const deltaTransfer = GraphStateTransferCodec.delta([
+      { runIri, 'additions': [], 'deletions': [undeclaredQuad] },
+    ], 'urn:payload-identity:base');
+
+    await assert.rejects(
+      () => GraphStateTransferCodec.restore(fullTransfer, items, null),
+      /payload contains undeclared graph/u,
+    );
+    await assert.rejects(
+      () => GraphStateTransferCodec.restore(deltaTransfer, items, null),
+      /payload contains undeclared graph/u,
+    );
   });
 
   void it('treats repeated semantic assertions as exact-set-idempotent', () => {

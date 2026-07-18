@@ -94,8 +94,8 @@ class WalkState extends NodeStateBase {
   count: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.count = 0;
     this.log = [];
   }
@@ -182,8 +182,8 @@ class CompositeState extends NodeStateBase {
   value: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.value = 0;
     this.log = [];
   }
@@ -253,8 +253,8 @@ class ScatterParentState extends NodeStateBase {
   /** Log stamp set on each parent (fan-out index). */
   parentId: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.items = [];
     this.gathered = [];
     this.parentId = 0;
@@ -281,8 +281,8 @@ class CycleState extends NodeStateBase {
   exitAt: number;
   attempts: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.exitAt = 0;
     this.attempts = 0;
   }

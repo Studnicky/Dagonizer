@@ -15,7 +15,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 
-import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import { GRAPH_STATE_TRANSFER_FORMATS } from '../../src/contracts/GraphStateTransferFormat.js';
+import { BridgeMessageSchema, type BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
@@ -37,8 +38,8 @@ const validExecute: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'graphState': emptyInlineTransfer(['req-1']),
-    'items': [{ 'id': 'req-1', 'runIri': 'req-1' }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{ 'id': 'req-1', 'runIri': 'urn:dagonizer:run:req-1' }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
     'responseState': FULL_RESPONSE_STATE,
@@ -50,8 +51,8 @@ const validExecuteNullTimeout: BridgeMessageType = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'graphState': emptyInlineTransfer(['req-2']),
-    'items': [{ 'id': 'req-2', 'runIri': 'req-2' }],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-2']),
+    'items': [{ 'id': 'req-2', 'runIri': 'urn:dagonizer:run:req-2' }],
     'timeoutMs': null,
     'correlationId': 'req-2',
     'responseState': FULL_RESPONSE_STATE,
@@ -79,12 +80,16 @@ const validResult: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'graphState': emptyInlineTransfer(['req-1']),
-    'items': [{ 'id': 'req-1', 'runIri': 'req-1', 'terminalOutcome': 'completed' }],
-    'errors': [],
-    'intermediates': [
-      { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
-    ],
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{
+      'id': 'req-1',
+      'runIri': 'urn:dagonizer:run:req-1',
+      'terminalOutcome': 'completed',
+      'errors': [],
+      'intermediates': [
+        { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
+      ],
+    }],
   },
 };
 
@@ -92,17 +97,21 @@ const validResultNullSnapshot: BridgeMessageType = {
   'variant': 'result',
   'response': {
     'correlationId': 'req-1',
-    'graphState': emptyInlineTransfer(['req-1']),
-    'items': [{ 'id': 'req-1', 'runIri': 'req-1', 'terminalOutcome': 'failed' }],
-    'errors': [{
-      'code': 'ERR',
-      'context': {},
-      'message': 'something failed',
-      'operation': 'dag',
-      'recoverable': false,
-      'timestamp': '2024-01-01T00:00:00.000Z',
+    'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+    'items': [{
+      'id': 'req-1',
+      'runIri': 'urn:dagonizer:run:req-1',
+      'terminalOutcome': 'failed',
+      'errors': [{
+        'code': 'ERR',
+        'context': {},
+        'message': 'something failed',
+        'operation': 'dag',
+        'recoverable': false,
+        'timestamp': '2024-01-01T00:00:00.000Z',
+      }],
+      'intermediates': [],
     }],
-    'intermediates': [],
   },
 };
 
@@ -206,6 +215,14 @@ describe('BridgeMessageType schema — valid branches', () => {
 });
 
 describe('BridgeMessageType schema — graph-state format contract', () => {
+  it('uses the canonical supported-values tuple for init and ready negotiation', () => {
+    const initFormats = BridgeMessageSchema.oneOf[0].properties.graphStateTransferFormats.items.enum;
+    const readyFormats = BridgeMessageSchema.oneOf[4].properties.graphStateTransferFormats.items.enum;
+
+    assert.strictEqual(initFormats, GRAPH_STATE_TRANSFER_FORMATS);
+    assert.strictEqual(readyFormats, GRAPH_STATE_TRANSFER_FORMATS);
+  });
+
   it('rejects init when graphStateTransferFormats is not an array', () => {
     const invalid: unknown = {
       ...validInit,
@@ -220,6 +237,94 @@ describe('BridgeMessageType schema — graph-state format contract', () => {
       'graphStateTransferFormats': 'application/n-quads',
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
+  });
+
+  it('rejects empty and duplicate format contracts', () => {
+    for (const graphStateTransferFormats of [
+      [],
+      ['application/n-quads', 'application/n-quads'],
+    ]) {
+      assert.strictEqual(Validator.bridgeMessage.is({ ...validInit, graphStateTransferFormats }), false);
+      assert.strictEqual(Validator.bridgeMessage.is({ ...validReady, graphStateTransferFormats }), false);
+    }
+  });
+});
+
+describe('BridgeMessageType schema — canonical worker wire structures', () => {
+  it('accepts independent execute and result fixtures', () => {
+    assert.equal(Validator.bridgeMessage.is(validExecute), true);
+    assert.equal(Validator.bridgeMessage.is(validResult), true);
+  });
+
+  it('rejects every missing execute request field', () => {
+    for (const requiredField of [
+      'dagName',
+      'placementPath',
+      'graphState',
+      'items',
+      'timeoutMs',
+      'correlationId',
+      'responseState',
+    ]) {
+      const request: Record<string, unknown> = Object.fromEntries(
+        Object.entries(validExecute.request).filter(([field]) => field !== requiredField),
+      );
+      assert.equal(
+        Validator.bridgeMessage.is({ 'variant': 'execute', request }),
+        false,
+        `execute request without '${requiredField}' must be rejected`,
+      );
+    }
+  });
+
+  it('rejects every missing result response field', () => {
+    for (const requiredField of ['correlationId', 'graphState', 'items']) {
+      const response: Record<string, unknown> = Object.fromEntries(
+        Object.entries(validResult.response).filter(([field]) => field !== requiredField),
+      );
+      assert.equal(
+        Validator.bridgeMessage.is({ 'variant': 'result', response }),
+        false,
+        `result response without '${requiredField}' must be rejected`,
+      );
+    }
+  });
+
+  it('rejects additional execute request and result response fields', () => {
+    assert.equal(Validator.bridgeMessage.is({
+      'variant': 'execute',
+      'request': { ...validExecute.request, 'unexpected': true },
+    }), false);
+    assert.equal(Validator.bridgeMessage.is({
+      'variant': 'result',
+      'response': { ...validResult.response, 'unexpected': true },
+    }), false);
+  });
+
+  it('rejects response-global errors and intermediates', () => {
+    assert.equal(Validator.bridgeMessage.is({
+      'variant': 'result',
+      'response': { ...validResult.response, 'errors': [] },
+    }), false);
+    assert.equal(Validator.bridgeMessage.is({
+      'variant': 'result',
+      'response': { ...validResult.response, 'intermediates': [] },
+    }), false);
+  });
+
+  it('leaves cross-item identity uniqueness to semantic codec validation', () => {
+    const runIri = 'urn:dagonizer:run:semantic-duplicate';
+    assert.equal(Validator.bridgeMessage.is({
+      'variant': 'execute',
+      'request': {
+        ...validExecute.request,
+        'graphState': emptyInlineTransfer([runIri, runIri]),
+        'items': [
+          { 'id': 'duplicate', runIri },
+          { 'id': 'duplicate', runIri },
+        ],
+      },
+    }), true);
   });
 });
 
@@ -306,12 +411,16 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
       'variant': 'result',
       'response': {
         'correlationId': 'req-1',
-        'graphState': emptyInlineTransfer(['req-1']),
-        'items': [{ 'id': 'req-1', 'runIri': 'req-1', 'terminalOutcome': 'completed' }],
-        'errors': [],
-        'intermediates': [
-          { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },
-        ],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:req-1']),
+        'items': [{
+          'id': 'req-1',
+          'runIri': 'urn:dagonizer:run:req-1',
+          'terminalOutcome': 'completed',
+          'errors': [],
+          'intermediates': [
+            { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },
+          ],
+        }],
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);

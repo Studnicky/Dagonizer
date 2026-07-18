@@ -14,10 +14,9 @@
  * un-acked for resume (the `TransportErrorCode.isInfrastructureFailure` path).
  *
  * `RunResultType` is the per-item result returned by `DagContainerBase.runDag`.
- * Each entry carries the item `id` alongside the full `DagOutcomeType` for
- * that item, including its `terminalOutput`, `errors`, graph state, and
- * `intermediates`. Every `runDag` call is a batch call — a single item is a
- * batch of one through the identical path, so this is the only result shape.
+ * Each entry carries the item `id` alongside its terminal output, errors,
+ * intermediates, and optional run IRI. Graph-state transfer is owned by the
+ * batch transport response and never appears on a per-item outcome.
  */
 
 import type { DagOutcomeType, RunResultType } from '../contracts/DagOutcomeType.js';

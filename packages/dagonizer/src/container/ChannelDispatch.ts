@@ -8,8 +8,9 @@
  * Protocol responsibilities:
  *   init()    — send init, await ready; rejects on version mismatch or error.
  *   request() — send execute for N items (N=1 is a batch of one through the
- *               identical path), await result, and return one `RunResultType`
- *               per item. Forwards abort + observer relay hook calls per request.
+ *               identical path), await one batch result, and return its item
+ *               outcomes plus its single graph transfer. Forwards abort +
+ *               observer relay hook calls per request.
  *
  * Transport-error contract: request() never throws. A closed channel, send
  * failure, or unroutable error message produces transport-error result(s),
@@ -20,15 +21,12 @@
  */
 
 
-import {
-  DEFAULT_GRAPH_STATE_TRANSFER_FORMATS,
-  type GraphStateTransferFormatType,
-} from '../contracts/GraphStateTransferFormat.js';
+import type { GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import type { NodeErrorWireType } from '../entities/node/NodeError.js';
+import type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
 
 import { DagOutcome } from './DagOutcome.js';
 import type { RunResultType } from './DagOutcome.js';
@@ -46,10 +44,15 @@ import type { RunResultType } from './DagOutcome.js';
  */
 export type InitMessageShapeType = Omit<BridgeMessageType & { variant: 'init' }, 'variant'>;
 
+type BatchDispatchResult = {
+  readonly results: RunResultType[];
+  readonly graphState?: GraphStateTransferType;
+}
+
 /** Per-request correlation entry. Every request carries one or more item ids. */
 type PendingEntry = {
   correlationId: string;
-  settle: (results: RunResultType[]) => void;
+  settle: (result: BatchDispatchResult) => void;
   relay: ObserverRelayInterface | null;
   /** The parent's own signal for this container-node dispatch — see `ObserverRelayInterface`. */
   signal: AbortSignal;
@@ -86,7 +89,7 @@ export class ChannelDispatch {
     this.#pending = new Map<string, PendingEntry>();
     this.#initWaiter = null;
     this.#capabilities = [];
-    this.#graphStateTransferFormats = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
+    this.#graphStateTransferFormats = [];
     this.#onMessage = (msg: BridgeMessageType): void => { this.#route(msg); };
 
     // EXACTLY ONE onMessage registration for the channel's lifetime.
@@ -139,22 +142,20 @@ export class ChannelDispatch {
   }
 
   /**
-   * Send execute for every item in the request, await the correlated result, and
-   * return one `RunResultType` per item (N=1 is a batch of one through the
-   * identical path). `signal` is a required positional arg; `relay` receives
-   * forwarded worker hook events (nodeStart, nodeEnd, etc.) and may be null when
-   * no observer is bound. Never throws — transport failures resolve to
-   * transport-error `RunResultType` entries, one per item.
+   * Send execute for every item in the request and await one correlated batch
+   * result. The batch owns its graph transfer; item results contain only
+   * per-item fields. Never throws: transport failures resolve to per-item
+   * transport errors with no graph transfer.
    */
   request(
     request: ExecutionRequestType,
     signal: AbortSignal,
     relay: ObserverRelayInterface | null,
-  ): Promise<RunResultType[]> {
+  ): Promise<BatchDispatchResult> {
     const { correlationId } = request;
     const itemIds = request.items.map((item) => item.id);
 
-    return new Promise<RunResultType[]>((resolve) => {
+    return new Promise<BatchDispatchResult>((resolve) => {
       const entry: PendingEntry = {
         'correlationId': correlationId,
         'settle': resolve,
@@ -168,8 +169,8 @@ export class ChannelDispatch {
 
       const onAbort = this.#withAbortHandler(signal, correlationId);
 
-      const settleOnce = (results: RunResultType[]): void => {
-        this.#settle(entry, signal, onAbort, resolve, results);
+      const settleOnce = (result: BatchDispatchResult): void => {
+        this.#settle(entry, signal, onAbort, resolve, result);
       };
 
       entry.settle = settleOnce;
@@ -178,9 +179,9 @@ export class ChannelDispatch {
         this.#channel.send({ 'variant': 'execute', 'request': request });
       } catch {
         // Send failure: return transport-error results for all items.
-        settleOnce(itemIds.map((id: string) =>
-          DagOutcome.transportError(id, correlationId),
-        ));
+        settleOnce({
+          'results': itemIds.map((id: string) => DagOutcome.transportError(id, correlationId)),
+        });
       }
     });
   }
@@ -218,20 +219,20 @@ export class ChannelDispatch {
   /**
    * Settle a pending entry exactly once: flip the `settled` latch, remove the
    * abort listener, drop the correlation entry, then resolve the request's
-   * promise with `results`.
+   * promise with the batch result.
    */
   #settle(
     entry: PendingEntry,
     signal: AbortSignal,
     onAbort: () => void,
-    resolve: (results: RunResultType[]) => void,
-    results: RunResultType[],
+    resolve: (result: BatchDispatchResult) => void,
+    result: BatchDispatchResult,
   ): void {
     if (entry.settled) return;
     entry.settled = true;
     signal.removeEventListener('abort', onAbort);
     this.#pending.delete(entry.correlationId);
-    resolve(results);
+    resolve(result);
   }
 
   /**
@@ -256,11 +257,11 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      entry.settle(
-        entry.itemIds.map((id) =>
+      entry.settle({
+        'results': entry.itemIds.map((id) =>
           DagOutcome.transportError(id, entry.correlationId, { code, message }),
         ),
-      );
+      });
     }
     // settleOnce removes each entry; ensure the map is empty regardless.
     this.#pending.clear();
@@ -295,21 +296,17 @@ export class ChannelDispatch {
         const correlationId = m.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
-        const errors: readonly NodeErrorWireType[] = m.response.errors;
 
-        // One RunResultType per item. Every result carries the SAME combined
-        // graphState (shared reference) plus its own runIri; the container
-        // does ONE split/restore over the shared payload.
-        const graphState = m.response.graphState;
+        // Item outcomes remain item-scoped; the response retains sole ownership
+        // of the combined graph transfer for one container restore operation.
         const results: RunResultType[] = m.response.items.map((item) => ({
           'id': item.id,
           'terminalOutput': item.terminalOutcome,
-          'errors': errors,
-          'intermediates': m.response.intermediates,
-          'graphState': graphState,
+          'errors': item.errors,
+          'intermediates': item.intermediates,
           'runIri': item.runIri,
         }));
-        entry.settle(results);
+        entry.settle({ 'results': results, 'graphState': m.response.graphState });
       },
 
       'instrumentation': (m) => {
@@ -331,11 +328,11 @@ export class ChannelDispatch {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            entry.settle(
-              entry.itemIds.map((id) =>
+            entry.settle({
+              'results': entry.itemIds.map((id) =>
                 DagOutcome.transportError(id, correlationId, { 'code': m.code, 'message': m.message }),
               ),
-            );
+            });
           }
         } else {
           // Channel-scoped error (null correlationId): the host is in a bad state.

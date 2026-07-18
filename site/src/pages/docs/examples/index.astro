@@ -5,11 +5,13 @@ import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('examples')), 301);
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/examples'), label: 'Examples' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/examples'), label: 'Examples' }
 ] as const;
 
 const runnableExamples = [
@@ -17,29 +19,29 @@ const runnableExamples = [
     eyebrow: 'Runnable',
     title: 'The Archivist',
     body: 'Tool-assisted bibliographic research, retries, memory, and response composition in one observable DAG.',
-    href: siteHref('/docs/examples/the-archivist')
+    href: SiteLinks.site('/docs/examples/the-archivist')
   },
   {
     eyebrow: 'Runnable',
     title: 'The Dispatcher',
     body: 'Routing, pause-and-resume, and human-in-the-loop checkpoint continuity across a support workflow.',
-    href: siteHref('/docs/examples/the-dispatcher')
+    href: SiteLinks.site('/docs/examples/the-dispatcher')
   },
   {
     eyebrow: 'Runnable',
     title: 'The Cartographer',
     body: 'Deterministic intake, enrichment, geo-resolution, and insight fan-in across a data pipeline.',
-    href: siteHref('/docs/examples/the-cartographer')
+    href: SiteLinks.site('/docs/examples/the-cartographer')
   }
 ] as const;
 
 const docExampleLinks = [
-  { href: siteHref('/docs/examples/01-linear'), label: 'Example 01: Linear DAG' },
-  { href: siteHref('/docs/examples/02-builder'), label: 'Example 02: DAGBuilder' },
-  { href: siteHref('/docs/examples/04-scatter'), label: 'Example 04: Scatter Scout' },
-  { href: siteHref('/docs/examples/08-checkpoint'), label: 'Example 08: Checkpoint and Resume' },
-  { href: siteHref('/docs/examples/18-observability'), label: 'Example 18: Observability' },
-  { href: siteHref('/docs/examples/35-stream-fanin-resume'), label: 'Example 35: Stream fan-in resume' }
+  { href: SiteLinks.site('/docs/examples/01-linear'), label: 'Example 01: Linear DAG' },
+  { href: SiteLinks.site('/docs/examples/02-builder'), label: 'Example 02: DAGBuilder' },
+  { href: SiteLinks.site('/docs/examples/04-scatter'), label: 'Example 04: Scatter Scout' },
+  { href: SiteLinks.site('/docs/examples/08-checkpoint'), label: 'Example 08: Checkpoint and Resume' },
+  { href: SiteLinks.site('/docs/examples/18-observability'), label: 'Example 18: Observability' },
+  { href: SiteLinks.site('/docs/examples/35-stream-fanin-resume'), label: 'Example 35: Stream fan-in resume' }
 ] as const;
 ---
 

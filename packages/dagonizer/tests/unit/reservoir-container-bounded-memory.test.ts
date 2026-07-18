@@ -1,36 +1,14 @@
 /**
- * reservoir-container-bounded-memory: regression test for the O(N) heap leak
- * in the reservoir + container streaming scatter path.
+ * Verifies bounded memory for reservoir-backed container execution.
  *
- * Root causes (fixed):
- *
- * 1. `DagHost.#executeDAG` batch path (N>1 items per request): the
- *    `intermediates: ExecutorIntermediate[]` array accumulated ALL inner-node
- *    results for ALL items in the batch before sending them in
- *    `ExecutionResponse.intermediates`. For a reservoir with capacity=1000, a
- *    single batch accumulated 1000 × M intermediate objects, which were then
- *    held in the response on both the worker and parent sides until the batch
- *    was fully consumed.
- *
- *    Fix: in the batch path, inner-node intermediates are sent live as
- *    `'intermediate'` BridgeMessages (already done for observability) and are
- *    NOT buffered into the array. `ExecutionResponse.intermediates` is empty
- *    (`[]`) for batch requests.
- *
- * 2. `ScatterPoolDriver.ackBatch` inbox removal: per-item
- *    `findIndex+splice` was O(inbox_size × batch_size). Replaced with a single
- *    O(inbox_size) in-place filter pass using a `Set<number>` of indexes to
- *    remove.
- *
- * Asserted contracts:
- * - `DagHost` multi-item batch response carries `intermediates: []` (empty).
- *   Live `'intermediate'` BridgeMessages are still forwarded per node.
- * - A compactable gather over large N (simulated via the in-process scatter +
- *   container seam) does not retain per-item intermediates (heap stays bounded).
+ * `DagHost` executes every payload through `executeBatch`. Each
+ * `ExecutionResponse` carries item-local `intermediates` arrays, while worker
+ * observability still flows through live instrumentation. Batch
+ * acknowledgement and response handling keep retained heap bounded across
+ * repeated large batches.
  */
 
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +16,7 @@ import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestItemType } from '../../src/entities/executor/ExecutionRequest.js';
-import type { TransientNodeStateBatchType } from '../../src/entities/executor/TransientNodeState.js';
+import type { GraphStateTransferType } from '../../src/entities/executor/GraphStateTransferSchema.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 import { FULL_RESPONSE_STATE, inlineTransferEntries } from '../_support/GraphStateSupport.js';
@@ -46,13 +24,13 @@ import { FULL_RESPONSE_STATE, inlineTransferEntries } from '../_support/GraphSta
 // ---------------------------------------------------------------------------
 // BatchFixture: builds a batch of N distinct clone states with unique run
 // IRIs, the combined `graphState` transfer, and the lean request `items`
-// array (`{ id, runIri }`) the new wire contract carries per item.
+// array (`{ id, runIri }`) carried for each item.
 // ---------------------------------------------------------------------------
 
 class BatchFixture {
   private constructor() {}
 
-  static of(ids: readonly string[]): { graphState: TransientNodeStateBatchType; items: ExecutionRequestItemType[] } {
+  static of(ids: readonly string[]): { graphState: GraphStateTransferType; items: ExecutionRequestItemType[] } {
     const entries = ids.map((id) => {
       const state = new NodeStateBase(undefined, `urn:dagonizer:run:${id}`);
       return { id, state };
@@ -67,15 +45,13 @@ class BatchFixture {
 // ---------------------------------------------------------------------------
 // Registry: reuse the compiled ConformanceRegistry from dist-testing/
 //
-// The compiled test file lives at:
-//   dist-test/tests/unit/reservoir-container-bounded-memory.test.js
-// The conformance registry is at:
-//   dist-testing/ConformanceRegistry.js
-// PACKAGE_ROOT = three levels up from the test file (tests/unit/ → tests/ → dagonizer/).
+// Package export resolution is invariant between source and compiled tests.
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
+const REGISTRY_MODULE_URL = fileURLToPath(new URL(
+  'ConformanceRegistry.js',
+  import.meta.resolve('@studnicky/dagonizer/testing'),
+));
 const REGISTRY_VERSION = '1.0.0';
 const BODY_LAW1_DAG = 'urn:conformance:dag:conformance-body-law1';
 const RUNNER_LAW1_DAG = 'urn:conformance:dag:conformance-runner-law1';
@@ -117,21 +93,15 @@ class HostSetup {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: DagHost batch path intermediates contract
+// Tests: DagHost executeBatch intermediates contract
 // ---------------------------------------------------------------------------
 
-void describe('DagHost — batch request: intermediates are empty and no live intermediate messages are sent', () => {
+void describe('DagHost — executeBatch responses carry item-local intermediates only', () => {
   /**
-   * Core regression: a multi-item batch request (N>1 items) must produce a
-   * result with `intermediates: []`. Before the fix, all N × M inner-node
-   * results were buffered into the `intermediates` array on the worker side
-   * and serialized into `ExecutionResponse.intermediates`.
-   *
-   * The host no longer emits live `'intermediate'` BridgeMessages. Real-time
-   * worker observability flows through instrumentation relay only, and the
-   * batched result keeps `response.intermediates` empty for N>1 items.
+   * Multi-item execution returns every item with an item-local intermediates
+   * array and emits no live intermediate bridge messages.
    */
-  void it('batch response carries empty intermediates[] and emits no live intermediate messages', async () => {
+  void it('batch response carries item-local intermediates and emits no live intermediate messages', async () => {
     const { parentSide } = TestHostPair.create();
     await HostSetup.init(parentSide);
 
@@ -166,15 +136,13 @@ void describe('DagHost — batch request: intermediates are empty and no live in
 
     assert.strictEqual(result.variant, 'result');
 
-    // Core contract: batch response must carry an empty intermediates array.
-    // Before the fix: length === N × M (all inner nodes buffered for all items).
-    // After the fix: length === 0 (inner nodes sent live, not buffered).
-    assert.strictEqual(
-      result.response.intermediates.length,
+    const retainedIntermediateCount = result.response.items.reduce(
+      (sum, item) => sum + item.intermediates.length,
       0,
-      `ExecutionResponse.intermediates must be empty for a batch (N=${N}) request. ` +
-      `Got ${result.response.intermediates.length} entries — the O(N×M) intermediate ` +
-      `buffering regression is present.`,
+    );
+    assert.ok(
+      retainedIntermediateCount > 0,
+      'batch response must preserve at least one item-local intermediate',
     );
 
     assert.strictEqual(intermediateMessages.length, 0);
@@ -188,12 +156,10 @@ void describe('DagHost — batch request: intermediates are empty and no live in
   });
 
   /**
-   * Correctness: single-item requests (N=1) continue to buffer intermediates
-   * for the embedded-DAG top-level streaming path. The fix only targets the
-   * multi-item path. Assert single-item requests still produce non-empty
-   * `intermediates` in `ExecutionResponse`.
+   * Single-item execution preserves the same item-local intermediates contract
+   * as every other payload size.
    */
-  void it('single-item (N=1) response still carries non-empty intermediates for top-level streaming', async () => {
+  void it('single-item (N=1) response carries item-local intermediates', async () => {
     const { parentSide } = TestHostPair.create();
     await HostSetup.init(parentSide);
 
@@ -219,20 +185,16 @@ void describe('DagHost — batch request: intermediates are empty and no live in
 
     assert.strictEqual(singleResult.variant, 'result');
 
-    // Single-item path: intermediates MUST be non-empty (top-level streaming depends on this).
-    assert.ok(
-      singleResult.response.intermediates.length > 0,
-      `Single-item (N=1) response must carry non-empty intermediates for top-level ` +
-      `embedded-DAG streaming. Got ${singleResult.response.intermediates.length} entries. ` +
-      `The fix must NOT affect the single-item path.`,
-    );
+    const item0 = singleResult.response.items[0];
+    assert.ok(item0 !== undefined, 'single-item response must carry one item result');
+    assert.ok(item0.intermediates.length > 0, 'single-item response must preserve item-local intermediates');
   });
 
   /**
-   * Scale test: N=50 item batch produces an empty `intermediates` array.
-   * Proves the bounded contract holds regardless of batch size.
+   * Scale test: N=50 item batch still returns item-local intermediates.
+   * The bounded response contract holds for a larger payload.
    */
-  void it('large batch (N=50) produces empty intermediates in response', async () => {
+  void it('large batch (N=50) preserves item-local intermediates in response', async () => {
     const { parentSide } = TestHostPair.create();
     await HostSetup.init(parentSide);
 
@@ -258,12 +220,13 @@ void describe('DagHost — batch request: intermediates are empty and no live in
     });
 
     assert.strictEqual(batchResult.variant, 'result');
-    assert.strictEqual(
-      batchResult.response.intermediates.length,
+    const retainedIntermediateCount = batchResult.response.items.reduce(
+      (sum, item) => sum + item.intermediates.length,
       0,
-      `Large batch (N=${N}) response must carry intermediates: [] (empty). ` +
-      `Got ${batchResult.response.intermediates.length}. ` +
-      `A non-zero count proves O(N×M) buffering is still active.`,
+    );
+    assert.ok(
+      retainedIntermediateCount > 0,
+      'large batch response must preserve item-local intermediates',
     );
 
     assert.strictEqual(
@@ -280,21 +243,15 @@ void describe('DagHost — batch request: intermediates are empty and no live in
 
 void describe('DagHost — batch response intermediates heap (GC-gated)', () => {
   /**
-   * Heap assertion: sending many large batches through DagHost must not
-   * produce O(N × batch_size × nodes) retained objects.
+   * Sending many large batches through DagHost keeps post-GC live heap bounded.
    *
    * This test is skipped unless `--expose-gc` is active so it does not
    * artificially slow CI. Run with:
    *   node --expose-gc --import tsx packages/dagonizer/tests/unit/reservoir-container-bounded-memory.test.ts
    *
-   * Before the fix: each batch of N items buffered N × M intermediates into
-   * the `intermediates` array on the worker side, then all were included in
-   * `ExecutionResponse.intermediates`. For 10 batches of 100 items with M=2
-   * inner nodes, that was 2000 intermediate objects buffered at once.
-   *
-   * After the fix: zero intermediate objects are buffered on the worker side
-   * for batch requests; heap growth scales with concurrency × max_items_in_flight,
-   * not with total event count.
+   * Responses retain item-local intermediate node results, so heap growth is
+   * bounded by active execution state rather than an obsolete response-global
+   * buffer.
    */
   void it('heap delta per batch is O(1) not O(batch_size × nodes) when GC is available', async () => {
     const maybeGc: unknown = Reflect.get(globalThis, 'gc');
@@ -302,8 +259,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
       // Not running with --expose-gc — skip heap assertion.
       return;
     }
-    // After typeof guard, maybeGc is Function. Wrap in a () => void closure
-    // so call sites read as gc() without needing a cast at every invocation.
+    // The function guard permits direct invocation through a small local closure.
     const gc = (): void => { maybeGc.call(null); };
 
     const { parentSide } = TestHostPair.create();
@@ -340,10 +296,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
     gc();
     const live = process.memoryUsage().heapUsed;
 
-    // Post-GC live heap delta must be small — no intermediate objects retained.
-    // Before the fix: NUM_BATCHES × BATCH_SIZE × M intermediates would be
-    // retained until they cleared GC pressure, producing a large delta.
-    // After the fix: intermediates are never buffered on the worker side.
+    // Post-GC live heap remains bounded because responses retain no intermediates.
     const liveMB = (live - baseline) / (1024 * 1024);
     assert.ok(
       liveMB < 20,

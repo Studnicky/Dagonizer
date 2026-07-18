@@ -33,11 +33,11 @@
  */
 
 import { Scheduler } from '../runtime/Scheduler.js';
-import { createCameraDpadMachine } from './CameraControls.js';
-import type { CameraControlSurfaceType } from './CameraControls.js';
+
+import { CameraControls, type CameraControlSurfaceType } from './CameraControls.js';
 import type { DpadMachine } from './DpadMachine.js';
 import { ModalController } from './ModalController.js';
-import { createViewportStatus } from './ViewportStatus.js';
+import { ViewportStatus } from './ViewportStatus.js';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM surface declarations (no DOM lib in this package tsconfig)
@@ -109,6 +109,8 @@ type DomElementType = {
   'dataset':     Record<string, string | undefined>;
   'classList': {
     add(name: string): void;
+    remove(name: string): void;
+    contains(name: string): boolean;
   };
   'getBoundingClientRect': () => ClientRectType;
   'getAttribute':          (name: string) => string | null;
@@ -710,7 +712,7 @@ export class MermaidExplorer {
     const wrap = document.createElement('div');
     wrap.className = 'dag-mermaid-dpad-wrap dagonizer-dpad-wrap dagonizer-dpad-anchor dagonizer-dpad-anchor--hover';
     wrap.setAttribute('aria-label', 'Diagram navigation controls');
-    const machine = createCameraDpadMachine(MermaidExplorer.#cameraControls(frame, svg, camera, options), 'inline');
+    const machine = CameraControls.dpadMachine(MermaidExplorer.#cameraControls(frame, svg, camera, options), 'inline');
     const grid = MermaidExplorer.#renderDpad(machine);
     MermaidExplorer.#themed(wrap, options.theme);
     wrap.appendChild(grid);
@@ -760,7 +762,7 @@ export class MermaidExplorer {
   ): CameraControlSurfaceType {
     const controls: CameraControlSurfaceType = {
       'can': (action) => action !== 'expand' || options.expand,
-      'getHint': () => createViewportStatus(camera.scale, 'inline', 'drag · wheel').hint,
+      'getHint': () => ViewportStatus.current(camera.scale, 'inline', 'drag · wheel').hint,
       'zoomIn': () => {
         const stageRect = frame.getBoundingClientRect();
         MermaidExplorer.#zoomAbout(svg, camera, ZOOM_STEP, stageRect.width / 2, stageRect.height / 2);
@@ -870,7 +872,7 @@ export class MermaidExplorer {
 
     const hint = document.createElement('div');
     hint.className   = 'dag-mermaid-modal-hint dagonizer-modal-hint';
-    hint.textContent = createViewportStatus(1, 'modal', 'drag · wheel · esc to close').hint ?? '';
+    hint.textContent = ViewportStatus.current(1, 'modal', 'drag · wheel · esc to close').hint ?? '';
     hint.setAttribute('aria-hidden', 'true');
 
     const dpadWrap = document.createElement('div');
@@ -939,7 +941,7 @@ export class MermaidExplorer {
     };
     if (baseControls.can !== undefined) modalControls.can = baseControls.can;
     if (baseControls.getZoomLevel !== undefined) modalControls.getZoomLevel = baseControls.getZoomLevel;
-    const machine = createCameraDpadMachine(modalControls, 'modal');
+    const machine = CameraControls.dpadMachine(modalControls, 'modal');
     const grid = MermaidExplorer.#renderDpad(machine);
 
     MermaidExplorer.#themed(dpadWrap, options.theme);
@@ -982,20 +984,18 @@ export class MermaidExplorer {
     }
   }
 
+  /**
+   * `classList.add`/`.remove`, not `className` string parsing: Mermaid
+   * renders selectable nodes as SVG `<g>` elements, whose `className` is an
+   * `SVGAnimatedString` (no `.trim()`/`.split()`), not a plain string like an
+   * HTML element's `className`. `classList` is the one mutation surface both
+   * element families share.
+   */
   static #ensureClassPresent(node: DomElementType, className: string): void {
-    const current = node.className.trim();
-    const classes = current.length === 0 ? [] : current.split(/\s+/u);
-    if (classes.includes(className)) return;
-    classes.push(className);
-    node.className = classes.join(' ');
+    node.classList.add(className);
   }
 
   static #ensureClassAbsent(node: DomElementType, className: string): void {
-    const current = node.className.trim();
-    if (current.length === 0) return;
-    node.className = current
-      .split(/\s+/u)
-      .filter((name) => name !== className)
-      .join(' ');
+    node.classList.remove(className);
   }
 }

@@ -8,9 +8,9 @@ import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
 import UiActionLink from '@/components/islands/UiActionLink.vue';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
-type UseCase = {
+interface UseCase {
   readonly key: string;
   readonly label: string;
   readonly title: string;
@@ -20,7 +20,7 @@ type UseCase = {
   readonly primaryLabel: string;
   readonly secondaryHref: string;
   readonly secondaryLabel: string;
-};
+}
 
 const useCases: readonly UseCase[] = [
   {
@@ -34,9 +34,9 @@ const useCases: readonly UseCase[] = [
       'Checkpoint resume preserves execution context for long-running or interrupted runs.',
       'Visualization surfaces expose the same workflow operators execute.'
     ],
-    primaryHref: siteHref('/docs/examples/the-archivist'),
+    primaryHref: SiteLinks.site('/docs/examples/the-archivist'),
     primaryLabel: 'Open Archivist example',
-    secondaryHref: siteHref('/docs/guide/checkpoint'),
+    secondaryHref: SiteLinks.site('/docs/guide/checkpoint'),
     secondaryLabel: 'Read checkpoint guide'
   },
   {
@@ -50,9 +50,9 @@ const useCases: readonly UseCase[] = [
       'Hosts can release workers instead of simulating suspension.',
       'The resumed run continues the same DAG rather than rebuilding context ad hoc.'
     ],
-    primaryHref: siteHref('/docs/examples/the-dispatcher'),
+    primaryHref: SiteLinks.site('/docs/examples/the-dispatcher'),
     primaryLabel: 'Open Dispatcher example',
-    secondaryHref: siteHref('/docs/guide/hitl'),
+    secondaryHref: SiteLinks.site('/docs/guide/hitl'),
     secondaryLabel: 'Read HITL guide'
   },
   {
@@ -66,12 +66,12 @@ const useCases: readonly UseCase[] = [
       'Scatter and gather stay graph-native instead of hidden queue glue.',
       'Teams can document, inspect, and tune the same workflow artifact.'
     ],
-    primaryHref: siteHref('/docs/examples/the-cartographer'),
+    primaryHref: SiteLinks.site('/docs/examples/the-cartographer'),
     primaryLabel: 'Open Cartographer example',
-    secondaryHref: siteHref('/docs/guide/streaming-producers'),
+    secondaryHref: SiteLinks.site('/docs/guide/streaming-producers'),
     secondaryLabel: 'Read streaming guide'
   }
-] as const;
+];
 </script>
 
 <template>

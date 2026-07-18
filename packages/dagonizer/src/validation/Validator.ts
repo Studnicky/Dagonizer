@@ -28,6 +28,7 @@ import { TextChannelToolCallEnvelopeSchema } from '../entities/adapter/TextChann
 import type { TextChannelToolCallEnvelopeType } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
+import { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import { GatherStrategySchema } from '../entities/constants/GatherStrategy.js';
 import type { GatherStrategyNameType } from '../entities/constants/GatherStrategy.js';
 import { MetadataKeySchema } from '../entities/constants/MetadataKey.js';
@@ -70,6 +71,8 @@ import { ExecutorIntermediateSchema } from '../entities/executor/ExecutorInterme
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
 import { RecommendedWorkerCountConfigSchema } from '../entities/executor/RecommendedWorkerCountConfig.js';
 import type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import { TransientNodeStateSchema } from '../entities/executor/TransientNodeState.js';
+import type { TransientNodeStateType } from '../entities/executor/TransientNodeState.js';
 import type {
   GatherProgressType,
   GatherRecordProgressType,
@@ -97,13 +100,11 @@ import type { NodeWarningType } from '../entities/node/NodeWarning.js';
 import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 import { BackoffStrategySchema } from '../entities/runtime/BackoffStrategy.js';
 import type {
-  ScatterAckedResultType,
   ScatterInboxItemType,
   ScatterProgressType,
   StoredScatterProgressType,
 } from '../entities/scatter/ScatterProgress.js';
 import {
-  ScatterAckedResultSchema,
   ScatterInboxItemSchema,
   ScatterProgressSchema,
   StoredScatterProgressSchema,
@@ -223,6 +224,7 @@ export class Validator {
   static readonly bridgeMessage: EntityValidatorInterface<BridgeMessageType> = Validator.compileNamed('BridgeMessage', BridgeMessageSchema);
 
   // DAG: top-level definition
+  static readonly dagConfiguration: EntityValidatorInterface<DagConfiguration.InputType> = Validator.compileNamed('DagConfiguration', DagConfiguration.Schema);
   static readonly dag:             EntityValidatorInterface<DAGType>             = Validator.compileNamed('DAG',             DAGSchema);
   static readonly singleNode:      EntityValidatorInterface<SingleNodeType>      = Validator.compileNamed('SingleNode',      SingleNodeSchema);
   static readonly scatterNode:     EntityValidatorInterface<ScatterNodeType>     = Validator.compileNamed('ScatterNode',     ScatterNodeSchema);
@@ -258,6 +260,7 @@ export class Validator {
   static readonly executionResponse:      EntityValidatorInterface<ExecutionResponseType>       = Validator.compileNamed('ExecutionResponse',       ExecutionResponseSchema);
   static readonly executorIntermediate:   EntityValidatorInterface<ExecutorIntermediateType>    = Validator.compileNamed('ExecutorIntermediate',    ExecutorIntermediateSchema);
   static readonly recommendedWorkerCount: EntityValidatorInterface<RecommendedWorkerCountConfigType> = Validator.compileNamed('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
+  static readonly transientNodeState:     EntityValidatorInterface<TransientNodeStateType>       = Validator.compileNamed('TransientNodeState',      TransientNodeStateSchema);
 
   // DAG sub-entities
   static readonly gatherConfig: EntityValidatorInterface<GatherConfigType> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
@@ -280,7 +283,6 @@ export class Validator {
 
   // Scatter progress checkpoint wire shapes
   static readonly scatterInboxItem:       EntityValidatorInterface<ScatterInboxItemType>       = Validator.compileNamed('ScatterInboxItem',       ScatterInboxItemSchema);
-  static readonly scatterAckedResult:     EntityValidatorInterface<ScatterAckedResultType>     = Validator.compileNamed('ScatterAckedResult',     ScatterAckedResultSchema);
   static readonly scatterProgress:        EntityValidatorInterface<ScatterProgressType>        = Validator.compileNamed('ScatterProgress',        ScatterProgressSchema);
   static readonly storedScatterProgress:  EntityValidatorInterface<StoredScatterProgressType>  = Validator.compileNamed('StoredScatterProgress',  StoredScatterProgressSchema);
 

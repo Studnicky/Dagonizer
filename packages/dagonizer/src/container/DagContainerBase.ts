@@ -20,18 +20,19 @@
 import { CircularBuffer } from '@studnicky/circular-buffer';
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
-import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
 import type { ExecutionRequestType, ExecutionRequestItemType } from '../entities/executor/ExecutionRequest.js';
-import type { TransientNodeStateBatchType } from '../entities/executor/TransientNodeState.js';
+import type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
+import type { DagTaskType } from '../types/DagTask.js';
 
 import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShapeType } from './ChannelDispatch.js';
@@ -73,8 +74,8 @@ export const DAG_CONTAINER_DEFAULTS = {
 export type DagContainerOptionsType = {
   /** Maximum number of pool entries (workers) to maintain. */
   poolSize: number;
-  /** Init shape forwarded to each DagHost on first channel use. */
-  init: InitMessageShapeType;
+  /** Init identity forwarded to each DagHost on first channel use. */
+  init: Omit<InitMessageShapeType, 'graphStateTransferFormats' | 'coalesceInstrumentation' | 'instrumentationPlacementPathDepth'>;
   /**
    * Grace period (ms) before a shutting-down worker is force-terminated.
    * Defaults to `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms). Override by passing
@@ -133,6 +134,15 @@ export abstract class DagContainerBase<TWorker = unknown>
 
   constructor(options: DagContainerOptionsType) {
     const graphStateTransferFormats = options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
+    if (
+      graphStateTransferFormats.length === 0
+      || new Set(graphStateTransferFormats).size !== graphStateTransferFormats.length
+      || !graphStateTransferFormats.every((format) => GRAPH_STATE_TRANSFER_FORMATS.includes(format))
+    ) {
+      throw new DAGError('DagContainer requires a non-empty, duplicate-free graph-state transfer format enum array', {
+        'code': 'CONFIGURATION_ERROR',
+      });
+    }
     const { shutdownGraceMs } = { ...DAG_CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>();
@@ -262,12 +272,12 @@ export abstract class DagContainerBase<TWorker = unknown>
    * abort signal and task identity; items come from `batch`.
    *
    * Never throws — transport failures resolve to transport-error `RunResultType`
-   * entries, one per item. The transient state of every item is combined into
-   * ONE plain batch payload on send and restored from that shared payload on
+   * entries, one per item. The selected state of every item is combined into
+   * ONE N-Quads batch payload on send and restored from that shared payload on
    * receipt.
    */
   async runDag(
-    task: DagTaskInterface,
+    task: DagTaskType,
     batch: Batch<NodeStateInterface>,
     options?: { readonly relay?: ObserverRelayInterface },
   ): Promise<RunResultType[]> {
@@ -281,24 +291,34 @@ export abstract class DagContainerBase<TWorker = unknown>
         const request = await this.#composeRequest(task, entries);
 
         DagContainerBase.requireGraphCapability(dispatch, request);
-        const results = await dispatch.request(request, task.context.signal, relay);
+        const response = await dispatch.request(request, task.context.signal, relay);
         // Index item states by id once (O(N)); a per-result find would be
         // O(N²) — at reservoir capacity C over T total events that is C×T
         // comparisons on the dispatcher thread (1000×1_000_000 at defaults).
         const stateById = new Map(batch.items().map((item) => [item.id, item.state]));
-        // ONE shared transient-state batch payload for the whole batch, then
-        // restore each clone by id. A transport-error batch carries no
-        // graphState and skips restore.
-        const carrier = results.find((result) => result.graphState !== undefined);
-        if (carrier?.graphState !== undefined) {
-          const clones: { id: string; runIri: string; state: NodeStateInterface }[] = [];
-          for (const result of results) {
-            if (result.runIri === undefined) continue;
-            clones.push({ 'id': result.id, 'runIri': result.runIri, 'state': stateById.get(result.id) ?? task.state });
+        // The batch response owns one N-Quads transfer. Decode it once and
+        // restore every item clone before exposing the per-item outcomes.
+        if (response.graphState !== undefined) {
+          const responseItems: { id: string; runIri: string }[] = [];
+          for (const result of response.results) {
+            if (result.runIri === undefined) {
+              throw new DAGError(`Graph transfer response item '${result.id}' has no run IRI`, { 'code': 'VALIDATION_ERROR' });
+            }
+            responseItems.push({ 'id': result.id, 'runIri': result.runIri });
           }
-          await this.#restoreClones(carrier.graphState, clones);
+          GraphStateTransferCodec.validateIdentity(response.graphState, responseItems, request.items);
+
+          const clones: { id: string; runIri: string; state: NodeStateInterface }[] = [];
+          for (const responseItem of responseItems) {
+            const state = stateById.get(responseItem.id);
+            if (state === undefined) {
+              throw new DAGError(`Graph transfer returned unknown item '${responseItem.id}'`, { 'code': 'VALIDATION_ERROR' });
+            }
+            clones.push({ 'id': responseItem.id, 'runIri': responseItem.runIri, state });
+          }
+          await this.#restoreClones(response.graphState, clones);
         }
-        return results;
+        return response.results;
       },
       (err) => {
         const message = err instanceof Error ? err.message : String(err);
@@ -311,46 +331,54 @@ export abstract class DagContainerBase<TWorker = unknown>
   }
 
   /**
-   * Restore a batch of clones from ONE shared transient-state batch payload.
+   * Restore a batch of clones from ONE shared N-Quads transfer.
    */
   async #restoreClones(
-    graphState: TransientNodeStateBatchType,
+    graphState: GraphStateTransferType,
     clones: readonly { readonly id: string; readonly runIri: string; readonly state: NodeStateInterface }[],
   ): Promise<void> {
     if (clones.length === 0) return;
-    const snapshotById = new Map(graphState.states.map((entry) => [entry.id, entry.state]));
-    await Promise.all(clones.map((clone) => {
-      const snapshot = snapshotById.get(clone.id);
-      if (snapshot === undefined) return Promise.resolve();
-      return clone.state.restoreTransientState(clone.runIri, snapshot);
+    const restored = await GraphStateTransferCodec.restoreTransient(graphState, clones, null);
+    const stateById = new Map(clones.map((clone) => [clone.id, clone.state]));
+    await Promise.all(restored.map((entry) => {
+      const state = stateById.get(entry.id);
+      if (state === undefined) throw new DAGError(`Graph transfer returned unknown item '${entry.id}'`, { 'code': 'VALIDATION_ERROR' });
+      return state.restoreTransientState(entry.runIri, entry.state);
     }));
   }
 
   private static requireGraphCapability(dispatch: ChannelDispatch, request: ExecutionRequestType): void {
-    void dispatch;
-    void request;
+    if (!dispatch.supportsGraphStateTransferFormat(request.graphState.format)) {
+      throw new DAGError(`DagHost does not support graph-state format '${request.graphState.format}'`, { 'code': 'VALIDATION_ERROR' });
+    }
   }
 
   /**
-   * Build a wire `ExecutionRequest` for a batch of entries: `task.toRequest()`
-   * supplies the identity fields (dagName, placementPath, timeout, correlationId)
-   * and the batch's combined `graphState` + `items` are computed here, each
-   * entry snapshotted through `task.inputState`. A single `runDag` task is a
-   * batch of one through the identical path.
+   * Build one wire `ExecutionRequest` directly from the task identity and batch.
+   * Every entry is snapshotted through `task.inputState`; a single `runDag`
+   * task is a batch of one through the identical path.
    */
   async #composeRequest(
-    task: DagTaskInterface,
+    task: DagTaskType,
     entries: readonly { readonly id: string; readonly state: NodeStateInterface }[],
   ): Promise<ExecutionRequestType> {
-    const base = task.toRequest();
-    const graphStates: TransientNodeStateBatchType['states'] = [];
+    const graphStates: { runIri: string; state: ReturnType<NodeStateInterface['snapshotTransientStateSelection']> }[] = [];
     const items: ExecutionRequestItemType[] = [];
     for (const entry of entries) {
       items.push({ 'id': entry.id, 'runIri': entry.state.runIri });
-      graphStates.push({ 'id': entry.id, 'state': entry.state.snapshotTransientStateSelection(task.inputState) });
+      graphStates.push({ 'runIri': entry.state.runIri, 'state': entry.state.snapshotTransientStateSelection(task.inputState) });
     }
-    const graphState = { 'states': graphStates };
-    return { ...base, 'graphState': graphState, 'items': items };
+    const graphState = GraphStateTransferCodec.inlineTransient(graphStates);
+    GraphStateTransferCodec.validateIdentity(graphState, items);
+    return {
+      'dagName': task.dagName,
+      'placementPath': [...task.placementPath],
+      graphState,
+      items,
+      'timeoutMs': task.timeout.toWire(),
+      'correlationId': task.correlationId,
+      'responseState': task.responseState,
+    };
   }
 
   /**
@@ -432,11 +460,8 @@ export abstract class DagContainerBase<TWorker = unknown>
    * Creates the ChannelDispatch for the channel (one onMessage handler) if
    * it does not yet exist.
    */
-  protected initializeChannel(
-    channel: MessageChannelInterface,
-    init: InitMessageShapeType,
-  ): Promise<void> {
-    return this.#dispatchFor(channel).init(init);
+  protected initializeChannel(channel: MessageChannelInterface): Promise<void> {
+    return this.#dispatchFor(channel).init(this.#init);
   }
 
   /**
@@ -465,7 +490,7 @@ export abstract class DagContainerBase<TWorker = unknown>
   /** Send init to the entry's channel if it has not been initialized yet. */
   async #ensureInitialized(entry: PoolEntryType<TWorker>): Promise<void> {
     if (!entry.initialized) {
-      await this.initializeChannel(entry.channel, this.#init);
+      await this.initializeChannel(entry.channel);
       entry.initialized = true;
     }
   }

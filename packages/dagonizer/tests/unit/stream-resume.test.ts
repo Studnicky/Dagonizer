@@ -169,18 +169,11 @@ void describe('StreamCursor.resumeAfter: bounded checkpoint', () => {
 
     // Compute expected value the same way the engine does.
     const stored = ScatterCheckpoint.read(state, scatterIri);
-    const expected = ScatterCheckpoint.restoreRunState(stored, true).nextIndex;
+    const expected = ScatterCheckpoint.restoreRunState(stored).nextIndex;
     assert.strictEqual(expected, 5);
 
     const actual = StreamCursor.resumeAfter(state, scatterIri);
     assert.strictEqual(actual, expected);
-  });
-
-  void it('returns 0 with compactable:false when no retained checkpoint exists', () => {
-    const state = new NodeStateBase();
-    const scatterIri = 'urn:noocodec:dag:stream-cursor-retained/node/scatter-b';
-    const result = StreamCursor.resumeAfter(state, scatterIri, { 'compactable': false });
-    assert.strictEqual(result, 0);
   });
 
 });

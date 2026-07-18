@@ -8,9 +8,9 @@
  * The `execute` branch carries a dag-only request: no `variant` discriminant
  * on the request, no `nodeName`. A DagHost runs only whole DAGs.
  * The `result` branch carries a dag-only response using per-item `items`
- * (not a top-level `terminalOutput`). The inline shapes are structural copies
- * of the canonical ExecutionRequest / ExecutionResponse schemas to avoid
- * $ref resolution at compile time.
+ * (not a top-level `terminalOutput`). The inline shapes structurally reuse
+ * the canonical ExecutionRequest / ExecutionResponse schema members without
+ * embedding their root metadata or requiring $ref resolution.
  *
  * Parent → host: init, execute, abort, shutdown
  * Host → parent: ready, result, intermediate, instrumentation, error, log
@@ -20,105 +20,39 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
+import { GRAPH_STATE_TRANSFER_FORMATS } from '../../contracts/GraphStateTransferFormat.js';
 
-import type { ExecutionRequestType } from './ExecutionRequest.js';
-import type { ExecutionResponseType } from './ExecutionResponse.js';
-import { TransientNodeStateBatchSchema, TransientNodeStateResponseStateSchema } from './TransientNodeState.js';
+import { ExecutionRequestSchema, type ExecutionRequestType } from './ExecutionRequest.js';
+import { ExecutionResponseSchema, type ExecutionResponseType } from './ExecutionResponse.js';
 
 // ---------------------------------------------------------------------------
-// Inline shape copies
+// Inline structural shapes
 // ---------------------------------------------------------------------------
-
-const InlineNodeErrorShape = {
-  'type': 'object',
-  'required': NodeErrorSchema.required,
-  'properties': NodeErrorProperties,
-  'additionalProperties': false,
-} as const;
 
 /**
- * Inline copy of the dag-only ExecutionRequest shape.
- * See ExecutionRequest.ts for the canonical schema.
+ * Root-metadata-free dag-only ExecutionRequest shape.
  * No `variant` discriminant; no `nodeName`. DagHost runs only whole DAGs.
- * `graphState` is the batch-level plain transient-state payload; `items`
+ * `graphState` is the batch-level N-Quads transfer; `items`
  * carries one `{ id, runIri }` entry per batch item.
  */
 const InlineExecutionRequestShape = {
-  'type': 'object',
-  'required': ['dagName', 'placementPath', 'graphState', 'items', 'timeoutMs', 'correlationId', 'responseState'],
-  'properties': {
-    'dagName':       { 'type': 'string', 'minLength': 1 },
-    'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-    'graphState':    TransientNodeStateBatchSchema,
-    'items': {
-      'type': 'array',
-      'minItems': 1,
-      'items': {
-        'type': 'object',
-        'required': ['id', 'runIri'],
-        'properties': {
-          'id':     { 'type': 'string', 'minLength': 1 },
-          'runIri': { 'type': 'string', 'minLength': 1 },
-        },
-        'additionalProperties': false,
-      },
-    },
-    'timeoutMs':     { 'type': ['number', 'null'] },
-    'correlationId': { 'type': 'string', 'minLength': 1 },
-    'responseState': TransientNodeStateResponseStateSchema,
-  },
-  'additionalProperties': false,
+  'type': ExecutionRequestSchema.type,
+  'required': ExecutionRequestSchema.required,
+  'properties': ExecutionRequestSchema.properties,
+  'additionalProperties': ExecutionRequestSchema.additionalProperties,
 } as const;
 
 /**
- * Inline copy of the dag-only ExecutionResponse shape.
- * See ExecutionResponse.ts for the canonical schema.
- * `graphState` is the batch-level plain transient-state payload; per-item
- * results live in `items[*].{ id, runIri, terminalOutcome }`.
- * The ExecutorIntermediate items shape (output, skipped, nodeName) is an
- * inline copy of ExecutorIntermediate.ts — intentionally duplicated to
- * avoid $ref resolution at compile time.
+ * Root-metadata-free dag-only ExecutionResponse shape.
+ * `graphState` is the batch-level N-Quads transfer; per-item
+ * results live in
+ * `items[*].{ id, runIri, terminalOutcome, errors, intermediates }`.
  */
 const InlineExecutionResponseShape = {
-  'type': 'object',
-  'required': ['correlationId', 'graphState', 'items', 'errors', 'intermediates'],
-  'properties': {
-    'correlationId': { 'type': 'string', 'minLength': 1 },
-    'graphState':    TransientNodeStateBatchSchema,
-    'items': {
-      'type': 'array',
-      'minItems': 1,
-      'items': {
-        'type': 'object',
-        'required': ['id', 'runIri', 'terminalOutcome'],
-        'properties': {
-          'id':              { 'type': 'string', 'minLength': 1 },
-          'runIri':          { 'type': 'string', 'minLength': 1 },
-          'terminalOutcome': { 'type': 'string' },
-        },
-        'additionalProperties': false,
-      },
-    },
-    'errors': {
-      'type': 'array',
-      'items': InlineNodeErrorShape,
-    },
-    'intermediates': {
-      'type': 'array',
-      'items': {
-        'type': 'object',
-        'required': ['output', 'skipped', 'nodeName'],
-        'properties': {
-          'output':   { 'type': ['string', 'null'] },
-          'skipped':  { 'type': 'boolean' },
-          'nodeName': { 'type': 'string' },
-        },
-        'additionalProperties': false,
-      },
-    },
-  },
-  'additionalProperties': false,
+  'type': ExecutionResponseSchema.type,
+  'required': ExecutionResponseSchema.required,
+  'properties': ExecutionResponseSchema.properties,
+  'additionalProperties': ExecutionResponseSchema.additionalProperties,
 } as const;
 
 const InstrumentationEventShape = {
@@ -156,9 +90,11 @@ export const BridgeMessageSchema = {
         'servicesConfig':  { 'type': 'object' },
         'graphStateTransferFormats': {
           'type': 'array',
+          'minItems': 1,
+          'uniqueItems': true,
           'items': {
             'type': 'string',
-            'enum': ['application/n-quads'],
+            'enum': GRAPH_STATE_TRANSFER_FORMATS,
           },
         },
         // R2: opt-out for WorkerObserver's per-flush instrumentation-event
@@ -212,9 +148,11 @@ export const BridgeMessageSchema = {
         'capabilities':    { 'type': 'array', 'items': { 'type': 'string' } },
         'graphStateTransferFormats': {
           'type': 'array',
+          'minItems': 1,
+          'uniqueItems': true,
           'items': {
             'type': 'string',
-            'enum': ['application/n-quads'],
+            'enum': GRAPH_STATE_TRANSFER_FORMATS,
           },
         },
       },

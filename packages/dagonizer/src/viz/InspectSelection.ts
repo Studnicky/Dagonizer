@@ -18,14 +18,18 @@ export type InspectSelectionType =
   | IriSelectionType
   | LiteralSelectionType;
 
-export function dagNodeSelection(name: string): DagNodeSelectionType {
-  return { 'variant': 'dag-node', name };
-}
+export class InspectSelection {
+  private constructor() { /* static-only */ }
 
-export function iriSelection(iri: string): IriSelectionType {
-  return { 'variant': 'iri', iri };
-}
+  static dagNode(name: string): DagNodeSelectionType {
+    return { 'variant': 'dag-node', name };
+  }
 
-export function literalSelection(value: string): LiteralSelectionType {
-  return { 'variant': 'literal', value };
+  static iri(iri: string): IriSelectionType {
+    return { 'variant': 'iri', iri };
+  }
+
+  static literal(value: string): LiteralSelectionType {
+    return { 'variant': 'literal', value };
+  }
 }

@@ -12,7 +12,6 @@
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
-import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { dag, squareItemDag, SquareNode, SumNode, sumResultsDag, MultiBackendState } from './13-multibackend.js';
@@ -25,7 +24,7 @@ const registry: RegistryModuleInterface = {
         "dags":  [squareItemDag, sumResultsDag, dag],
       },
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapter.wrap(() => new MultiBackendState()),
+      "restoreState":    (dataset, runIri) => new MultiBackendState(dataset, runIri),
     };
   },
 };

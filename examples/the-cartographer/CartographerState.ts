@@ -3,7 +3,6 @@
  *
  * Top-level (cartographer DAG):
  *   - `sourceFeed`      – producer-local stream opened by one feed node
- *   - `sources`         – source-intake helper mirror of the gathered payloads
  *   - `source-payload`  – open-gather result consumed by process-stream
  *   - `eventCount`  – display/run scale hint for host tooling
  *   - `records`     – gathered from scatter clones via the 'append' gather strategy
@@ -21,8 +20,8 @@
  *   - `enriched`         – compact EnrichedShipment written by aggregate-event;
  *                          the parent gather appends this to state.records
  *
- * Checkpoint/resume: transient snapshots and durable checkpoints carry the
- * durable state only.
+ * Checkpoint/resume: the canonical full transient snapshot carries the durable
+ * state only. Worker boundaries use placement-specific selections instead.
  * Durable: eventCount, eventConfig, useStreamingSource, streamCount,
  * records, sampleRecords, enriched, insights,
  * journeyAccumulators, errorRollup.
@@ -30,8 +29,8 @@
  * mappedRecords, ingestedEvents, canonical, canonicalVariant, raw, normalized,
  * currentEvent, geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
  * coldChainBreach, customsDwellHours,
- * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
- * recompute it from the source-payload metadata on each dispatch.
+ * ipCandidate, routing, gdprResult, resolvedGeo) is excluded from durable
+ * checkpoints; worker selections may carry the fields required by a gather.
  * AsyncIterable feed fields are not checkpointable. `source-payload` itself
  * is one: SourceIntakeGather.reduce() sets it to a round-robin AsyncIterable
  * (CartographerSourceIntake.mergeRecords), not a materialized array — the
@@ -46,6 +45,52 @@
  * skip the acked prefix before resuming, which CartographerResumableScenario
  * does not currently do. Known gap; see
  * plans/streaming-durability-and-state-redesign.md §9.
+ *
+ * Field ownership (plans/streaming-wire-state-audit.md §6.C): every field
+ * on this class plays exactly one of four primary roles — a field can be
+ * BOTH fold accumulator and browser presentation (that pairing is expected,
+ * not an ownership conflict), but never durable-checkpoint-and-scratch or
+ * scratch-and-presentation.
+ *   - execution scratch: per-event/per-clone working fields reset on every
+ *     clone() and excluded from durable snapshots — currentSource,
+ *     decodedText, parsedRecords, mappedRecords, ingestedEvents, canonical,
+ *     canonicalVariant, raw, normalized, currentEvent, geoContext,
+ *     pricedOrder, shippingQuote, deliveryEstimate, legKm, coldChainBreach,
+ *     customsDwellHours, capturedErrors, ipCandidate, resolvedGeo,
+ *     geoSignal, geoResolution, geoSignals, candidate, geoCandidates,
+ *     gdprResult, routing, sourceFeed.
+ *   - fold accumulator: parent-side aggregates the gather writes
+ *     incrementally as scatter clones complete, reset to defaults in every
+ *     clone (see the clone() comment on this) — records, processedCountExact,
+ *     sampleRecords/sampleRecordsCursor/sampleRecordsWrapped, insights,
+ *     journeys, journeyAccumulators, errorRollup.
+ *   - durable checkpoint: survives snapshotTransientState()/restore, listed
+ *     in `transientDomainKeys` — eventCount, eventConfig,
+ *     useStreamingSource, streamCount, records, processedCountExact,
+ *     sampleRecords/sampleRecordsCursor/sampleRecordsWrapped, insights,
+ *     journeys, journeyAccumulators, errorRollup, routing, capturedErrors,
+ *     enriched. `records` is durable-by-declaration but MODE-DEPENDENT in
+ *     practice: it stays empty for the whole run in streaming mode (see the
+ *     `sampleRecords` field comment) — a resume of a streaming run recovers
+ *     the sample/insights/journey surface, not a full `records` array. `routing`
+ *     and `capturedErrors` are per-clone scratch that is ALSO durable-listed
+ *     because a worker selection may need to carry them to a gather; they
+ *     are not parent-level accumulators.
+ *   - browser presentation: the bounded live/finished view CartographerRunner.vue
+ *     reads — processedCountExact, sampleRecords, sampleRecordsCursor,
+ *     sampleRecordsWrapped, insights, journeys, errorRollup. Every one of
+ *     these is also a fold-accumulator field; there is no presentation-only
+ *     field on this class. See app/CartographerPresentation.ts for the
+ *     narrow projection type the UI actually consumes instead of reading
+ *     `state.*` directly.
+ *   - `enriched` plays two roles that are easy to conflate: it is per-clone
+ *     execution scratch (reset every clone(), NOT a parent accumulator —
+ *     each clone owns exactly one) written by aggregate-event, AND it is the
+ *     unit the parent gather reads to append into `state.records` /
+ *     `state.sampleRecords` in non-streaming mode. It is durable-listed
+ *     because a retained (non-contribution) gather replay path may need to
+ *     carry the last-written clone's `enriched` value across a resume
+ *     boundary, not because the parent itself accumulates `enriched` values.
  */
 
 import { CanonicalEventVariantBuilder } from './entities/CanonicalEvent.ts';
@@ -62,6 +107,7 @@ import { type GeoResolution, DEFAULT_GEO_RESOLUTION } from './entities/GeoResolu
 import type { GeoSignalDescriptor } from './entities/GeoSignalDescriptor.ts';
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
+import { Continent } from './entities/Continent.ts';
 import type { GdprResult } from './entities/GdprResult.ts';
 import type { GeoContext } from './entities/GeoContext.ts';
 import type { NormalizedShipment } from './entities/NormalizedShipment.ts';
@@ -151,7 +197,6 @@ export class CartographerState extends NodeStateBase {
     'eventConfig',
     'useStreamingSource',
     'streamCount',
-    'streamChannelCapacity',
     'records',
     'processedCountExact',
     'sampleRecords',
@@ -196,24 +241,9 @@ export class CartographerState extends NodeStateBase {
   streamCount: number = 0;
 
   /**
-   * Reserved stream-channel capacity knob for compatibility source helpers.
-   * The current producer feed DAGs use pull-based AsyncIterable streams.
-   */
-  streamChannelCapacity: number = 0;
-
-  /**
    * Producer-local source stream emitted by one concrete feed node.
    */
   sourceFeed: SourcePayload[] | AsyncIterable<SourcePayload> = [];
-
-  /**
-   * Compatibility source stream assembled by SourceIntakeGather. Each item is a
-   * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
-   * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
-   *
-   * Snapshot/restore serialises the array path only.
-   */
-  sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
   /** The source payload currently being ingested from the producer feed scatter. */
@@ -244,7 +274,16 @@ export class CartographerState extends NodeStateBase {
   /** The discriminated per-type variant under enrichment (typed path; set by parseVariant). The old fat path uses `canonical`. */
   canonicalVariant: CanonicalEventVariant = CanonicalEventVariantBuilder.from({});
 
-  /** Enriched shipment records gathered from scatter clones. */
+  /**
+   * Enriched shipment records gathered from scatter clones. Fold accumulator,
+   * durable-checkpoint-listed — but MODE-DEPENDENT: in the streaming path
+   * (`useStreamingSource`) this stays empty for the entire run; the gather
+   * writes only to the bounded `sampleRecords` ring instead (see that field's
+   * comment). Only the non-streaming path actually accumulates into `records`.
+   * A reader relying on `records` to observe run progress must account for
+   * this — it is not "always populated durable state", it is "durable when
+   * populated, and empty-by-design in streaming mode".
+   */
   records: EnrichedShipment[] = [];
 
   /** Exact processed enriched-record count, maintained incrementally by the fold gather. */
@@ -280,8 +319,12 @@ export class CartographerState extends NodeStateBase {
   /**
    * Parent-side bounded rollup of captured exceptions, folded by the
    * insights-fold gather from each clone's `state.capturedErrors`. Errors flow
-   * scatter→gather as first-class data; the run prints this distribution for
-   * analysis. Reset per execution by the gather's `initial`.
+   * scatter→gather as first-class data; the CLI run prints this distribution
+   * for analysis (`CartographerCli.printErrorAnalysis`) and the browser demo
+   * displays the same ranked groups via `CartographerPresentation` /
+   * `ErrorRollup.ranked()`. Reset per execution by the gather's `initial`.
+   * Fold accumulator AND browser presentation field — see the class-level
+   * field-ownership comment above.
    */
   errorRollup: ErrorRollupType = ErrorRollup.empty();
 
@@ -540,7 +583,16 @@ export class CartographerState extends NodeStateBase {
     'coordsCoarsened':     false,
   };
 
-  /** Compact enriched per-scan record written by aggregate-event; parent gather appends it. */
+  /**
+   * Compact enriched per-scan record written by aggregate-event. Dual role:
+   * this field itself is per-clone EXECUTION SCRATCH (reset to defaults on
+   * every clone() — never a parent accumulator; each clone owns exactly one
+   * in-flight `enriched` value), but it is also the unit the parent gather
+   * reads and appends into the `records`/`sampleRecords` fold accumulators
+   * in non-streaming mode. It is durable-listed (see the class-level
+   * field-ownership comment) so a retained gather replay path can carry the
+   * last-written clone's value across a resume boundary.
+   */
   enriched: EnrichedShipment = {
     'shipmentId':       '',
     'scanSeq':          0,
@@ -585,17 +637,15 @@ export class CartographerState extends NodeStateBase {
     // read the scattered item from metadata, not from the gathered source arrays.
     // Copying these arrays into every clone scales linearly with event count and
     // explodes container-return memory for the browser demo.
-    copy.sources = [];
     copy.sourceFeed = [];
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
-    copy.streamChannelCapacity = this.streamChannelCapacity;
     // Parent-level accumulators: reset to defaults in child clones.
     //
     // records, sampleRecords, insights, and
     // journeys are scatter-gather accumulators written by the parent DAG's
     // gather strategy (InsightsFoldGather) or by post-scatter summary nodes.
-    // Scatter body clones (event-pipeline-typed, ingestion) never read these
+    // Scatter body clones never read these
     // fields — they only read the item placed on metadata by the engine. Copying them
     // into clones would send up to 200 EnrichedShipment JSON objects per clone
     // over the worker channel (60 KB × 16,000 in-flight clones = ~960 MB at
@@ -685,7 +735,7 @@ export class CartographerState extends NodeStateBase {
   // #region snapshot-restore
   override snapshotTransientState(): TransientNodeStateType {
     const snapshot = super.snapshotTransientState();
-    const domain: Record<string, JsonObjectType[keyof JsonObjectType] | unknown> = {};
+    const domain: TransientNodeStateType['domain'] = {};
     for (const [key, value] of Object.entries(snapshot.domain)) {
       if (!CartographerState.transientDomainKeys.has(key)) continue;
       domain[key] = value;
@@ -693,10 +743,9 @@ export class CartographerState extends NodeStateBase {
 
     return {
       ...snapshot,
-      domain: domain as TransientNodeStateType['domain'],
-      // Transient worker hops do not need the duplicate graph-backed mirror for
-      // the cartographer demo. Domain fields above are the only values the
-      // demo restores across isolate boundaries.
+      domain,
+      // Durable restore reads the canonical domain fields above; retaining the
+      // graph-backed mirror would duplicate the same checkpoint payload.
       'graphDomain': {},
     };
   }
@@ -1273,7 +1322,7 @@ export class CartographerState extends NodeStateBase {
       'utcOffset': CartographerState.str(o['utcOffset']),
       'timezone': CartographerState.str(o['timezone'], 'UTC'),
       'jurisdiction': CartographerState.jurisdiction(o['jurisdiction']),
-      'continent': CartographerState.str(o['continent'], 'Unmapped'),
+      'continent': Continent.require(CartographerState.str(o['continent'])),
       'region': CartographerState.str(o['region']),
       'country': CartographerState.str(o['country']),
       'hub': CartographerState.str(o['hub']),

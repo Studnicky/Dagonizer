@@ -1,8 +1,9 @@
 import { posix } from 'node:path';
 import { getCollection } from 'astro:content';
-import { getLeadingMarkdownTitle, renderDocPage } from '@/lib/render-doc-page';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
 
-export interface DocEntry {
+interface DocEntry {
   readonly slug: string;
   readonly url: string;
   readonly section: string;
@@ -12,7 +13,7 @@ export interface DocEntry {
   readonly headings: readonly string[];
 }
 
-function normalizeInline(text: string): string {
+function inlineText(text: string): string {
   return text
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -23,16 +24,19 @@ function normalizeInline(text: string): string {
 }
 
 function toTitleFromSlug(slug: string): string {
-  return slug
-    .split('/')
-    .at(-1)!
+  const lastSegment = slug.split('/').at(-1);
+  if (lastSegment === undefined) {
+    throw new Error(`Documentation slug has no title segment: ${slug}`);
+  }
+
+  return lastSegment
     .replace(/^\d+-/, '')
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function toDisplayTitle(entry: Awaited<ReturnType<typeof getCollection<'docs'>>>[number]): string {
-  return entry.data.title ?? getLeadingMarkdownTitle(entry.body) ?? toTitleFromSlug(entry.id);
+  return entry.data.title ?? DocPageRenderer.leadingTitle(entry.body) ?? toTitleFromSlug(entry.id);
 }
 
 function toSectionFromSlug(slug: string): string {
@@ -61,21 +65,17 @@ function extractExcerpt(body: string): string {
       continue;
     }
 
-    const normalized = normalizeInline(line.replace(/^[-*]\s+/, ''));
-    if (normalized.length > 40) {
-      paragraphs.push(normalized);
+    const excerptLine = inlineText(line.replace(/^[-*]\s+/, ''));
+    if (excerptLine.length > 40) {
+      paragraphs.push(excerptLine);
     }
   }
 
   return paragraphs[0] ?? '';
 }
 
-function slugToSourcePath(slug: string): string {
-  return slug === 'index' ? 'index.md' : `${slug}.md`;
-}
-
 async function toDocEntry(entry: Awaited<ReturnType<typeof getCollection<'docs'>>>[number]): Promise<DocEntry> {
-  const rendered = await renderDocPage(entry.body, {
+  const rendered = await DocPageRenderer.render(entry.body, {
     title: toDisplayTitle(entry),
     slug: entry.id
   });
@@ -84,7 +84,7 @@ async function toDocEntry(entry: Awaited<ReturnType<typeof getCollection<'docs'>
 
   return {
     slug: entry.id,
-    url: `/docs/${entry.id === 'index' ? '' : entry.id}`.replace(/\/$/, '') || '/docs',
+    url: SiteLinks.route(entry.id),
     section: toSectionFromSlug(entry.id),
     title: toDisplayTitle(entry),
     description: entry.data.description ?? excerpt,
@@ -93,34 +93,36 @@ async function toDocEntry(entry: Awaited<ReturnType<typeof getCollection<'docs'>
   };
 }
 
-export async function getDocsCatalog(): Promise<readonly DocEntry[]> {
-  const entries = await getCollection('docs');
-  return Promise.all(entries.sort((left, right) => left.id.localeCompare(right.id)).map(toDocEntry));
-}
+export const SiteDocs = {
+  async catalog(): Promise<readonly DocEntry[]> {
+    const entries = await getCollection('docs');
+    return Promise.all(entries.sort((left, right) => left.id.localeCompare(right.id)).map(toDocEntry));
+  },
 
-export async function getDocBySlug(slug: string): Promise<DocEntry | undefined> {
-  const normalizedSlug = slug.replace(/^\/+|\/+$/g, '') || 'index';
-  const entries = await getDocsCatalog();
-  return entries.find((entry) => entry.slug === normalizedSlug);
-}
+  async bySlug(slug: string): Promise<DocEntry | undefined> {
+    SiteLinks.route(slug);
+    const entries = await SiteDocs.catalog();
+    return entries.find((entry) => entry.slug === slug);
+  },
 
-export async function getDocSections(): Promise<readonly { readonly name: string; readonly entries: readonly DocEntry[] }[]> {
-  const docsCatalog = await getDocsCatalog();
-  const grouped = new Map<string, DocEntry[]>();
+  async sections(): Promise<readonly { readonly name: string; readonly entries: readonly DocEntry[] }[]> {
+    const docsCatalog = await SiteDocs.catalog();
+    const grouped = new Map<string, DocEntry[]>();
 
-  for (const entry of docsCatalog) {
-    const entries = grouped.get(entry.section) ?? [];
-    entries.push(entry);
-    grouped.set(entry.section, entries);
+    for (const entry of docsCatalog) {
+      const entries = grouped.get(entry.section) ?? [];
+      entries.push(entry);
+      grouped.set(entry.section, entries);
+    }
+
+    return Array.from(grouped.entries())
+      .map(([name, entries]) => ({ name: toTitleFromSlug(name), entries }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  },
+
+  edit(slug: string): string {
+    SiteLinks.route(slug);
+    const sourcePath = slug === 'index' ? 'index.md' : `${slug}.md`;
+    return SiteLinks.repository(posix.join('docs', sourcePath));
   }
-
-  return Array.from(grouped.entries())
-    .map(([name, entries]) => ({ name: toTitleFromSlug(name), entries }))
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-export function toEditUrl(source: string): string {
-  const normalizedSource = source.endsWith('.md') ? source : slugToSourcePath(source.replace(/^\/+|\/+$/g, '') || 'index');
-  const repositoryRelativePath = posix.join('docs', normalizedSource.split('\\').join('/'));
-  return `https://github.com/Studnicky/Dagonizer/blob/main/${repositoryRelativePath}`;
-}
+};

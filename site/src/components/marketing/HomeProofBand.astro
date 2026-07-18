@@ -3,7 +3,7 @@ import UiActionLink from '@/components/marketing/UiActionLink.astro';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
 import UiProofGrid from '@/components/islands/UiProofGrid.vue';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
 const proofItems = [
   {
@@ -30,8 +30,8 @@ const proofItems = [
   >
     <Fragment slot="actions">
     <UiCtaRow>
-      <UiActionLink href={siteHref('/docs')} variant="secondary">Read the docs</UiActionLink>
-      <UiActionLink href={siteHref('/architecture')} variant="secondary">See architecture</UiActionLink>
+      <UiActionLink href={SiteLinks.site('/docs')} variant="secondary">Read the docs</UiActionLink>
+      <UiActionLink href={SiteLinks.site('/architecture')} variant="secondary">See architecture</UiActionLink>
     </UiCtaRow>
     </Fragment>
   </UiSectionIntro>

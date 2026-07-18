@@ -59,13 +59,13 @@ export interface NodeStateInterface {
   /** Bind the graph scope identifying this state's run/dag/placement position. */
   bindGraphScope(scope: GraphScopeType): void;
 
-  /** Export the transient isolate-transfer payload as plain JSON data. */
+  /** Export the transient envelope consumed by the graph transfer codec. */
   snapshotTransientState(): TransientNodeStateType;
 
-  /** Export only the selected transient isolate-transfer surface as plain JSON data. */
+  /** Export only the selected surface consumed by the graph transfer codec. */
   snapshotTransientStateSelection(selection: TransientNodeStateSelectionType): TransientNodeStateType;
 
-  /** Restore this state from the plain transient isolate-transfer payload. */
+  /** Restore this state from a codec-decoded transient envelope. */
   restoreTransientState(runIri: string, snapshot: TransientNodeStateType): Promise<void>;
 
   /** Export the run graph as quads for explicit graph/codecs consumers. */
@@ -237,7 +237,11 @@ export interface NodeStateInterface {
 }
 
 export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInterface, GraphStateLifecycleInterface, GraphStateDeltaInterface {
-    declare ['constructor']: new () => this;
+    declare ['constructor']: new (
+        dataset: GraphDatasetInterface,
+        runIri: string,
+        graphDatasetProvider: GraphDatasetProviderInterface,
+    ) => this;
     #dataset: GraphDatasetInterface;
     #graphDatasetProvider: GraphDatasetProviderInterface;
     #runIri: string;
@@ -427,12 +431,9 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         // Instantiate the actual (sub)class so declared domain fields start at
         // their normal defaults. State mapping applies domain data explicitly
         // after cloning; clone itself carries only shared metadata.
-        const cloned = new this.constructor();
-        cloned.#graphDatasetProvider = this.#graphDatasetProvider;
-        cloned.#dataset = this.#graphDatasetProvider.child(this.#scope, childScope);
+        const childDataset = this.#graphDatasetProvider.child(this.#scope, childScope);
+        const cloned = new this.constructor(childDataset, childScope.runIri, this.#graphDatasetProvider);
         cloned.#scope = childScope;
-        cloned.#runIri = childScope.runIri;
-        cloned.#ensureRunFact();
         for (const [key, value] of this.#values(CHILD_EXCLUDED_STATE_KEYS)) {
             if (key.startsWith('metadata.'))
                 cloned.#write(key, value);

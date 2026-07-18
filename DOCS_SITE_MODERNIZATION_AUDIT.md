@@ -2,6 +2,100 @@
 
 ## Decision summary
 
+### Current implementation status
+
+This document began as a migration audit while the published site was still the
+VitePress implementation. The repository state is now materially different:
+
+- the Astro site exists under `site/` and builds successfully;
+- the Astro route tree covers the product landing pages, docs index routes, and
+  runnable example shells;
+- the Astro content pipeline renders the documentation corpus directly from
+  `docs/`;
+- generic interaction surfaces have been moved onto PrimeVue-backed Vue islands;
+- repeated marketing/docs shells have been consolidated into shared Astro and
+  Vue primitives.
+
+So this is no longer only a proposal document. It now serves two purposes:
+
+1. explain why the migration was necessary; and
+2. record what remains before the cut-over can be considered fully verified.
+
+### Remaining blocker
+
+Rendered browser QA has run against the Astro site and found and fixed three
+real defects that static build checks did not catch:
+
+- **Top-nav layout collapse**: the desktop `Menubar`'s `rootlist` had no
+  passthrough class in `site/src/primevue-app.ts`, so it fell back to default
+  browser `<ul>`/`<li>` block styling. Nav links rendered as a vertical stack
+  that overlapped the hero and, while sticky, overlapped page content on
+  scroll at every route. Fixed by adding `rootList`/`item`/`submenu`
+  passthrough classes.
+- **Duplicate hero visual panel**: `UiHeroShell.vue` rendered the `#visual`
+  slot twice — once in an `md:block` absolute wrapper and once in an
+  `xl:block` grid wrapper, intended as responsive alternates. The `md:block`
+  wrapper had no `xl:hidden` upper bound, so both copies rendered
+  simultaneously at desktop widths ≥1280px, producing visibly duplicated
+  "Inspect" cards. Fixed by adding `xl:hidden` to the `md:block` wrapper.
+- **Hero text/visual overlap at tablet width**: with the duplicate-panel fix
+  in place, the remaining single `md:block` visual panel (absolutely
+  positioned, `right-0 w-[44%]`) overlapped the hero headline at `md`–`lg`
+  widths because the text column didn't reserve space for it. Fixed by adding
+  `md:pr-[48%] xl:pr-0` to the text column.
+
+Browser QA also found that the production build (`pnpm site:build`) was
+currently broken, unrelated to the above: a same-branch WIP refactor of
+`packages/dagonizer/src/viz/*` (CameraControls, InspectSelection,
+InspectorTarget, SelectionController, ViewerActions, ViewportStatus) to the
+project's `noun.verb()` static-class convention had not propagated to every
+consumer. `examples/the-archivist/app/ArchivistRunner.vue`,
+`docs/.vitepress/theme/components/DagGraph.vue`, `MemoryGraph.vue`, and
+`DiagramFrame.vue` still imported the old freestanding function names
+(`selectedInspectTarget`, `selectedToolName`, `createCameraDpadMachine`,
+`createViewportStatus`, `dagNodeSelection`, `iriSelection`,
+`literalSelection`, `viewerAction`). Fixed by updating every consumer to the
+new static-class call sites (`SelectionTargets.inspect()`,
+`CameraControls.dpadMachine()`, `ViewportStatus.current()`,
+`InspectSelection.dagNode()/iri()/literal()`, `ViewerActions.action()`), and
+renaming the colliding local `ViewerActions.vue` component import to
+`ViewerActionsBar` in `DiagramFrame.vue` and `MemoryGraph.vue` where it
+collided with the newly-imported `ViewerActions` class.
+
+Browser QA also found the production build blocked a second time by three
+`docs/examples/*.md` pages (`the-cartographer.md`, `34-stream-channel.md`,
+`35-stream-fanin-resume.md`, plus a stale mention in
+`17-scatter-async-source.md`) snippet-including
+`examples/the-cartographer/core/CanonicalFeedGather.ts`, deleted on this
+branch as part of an in-progress Cartographer core redesign. The redesign
+replaces the `canonical-feed` gather/`canonicalEvents` array with a
+`source-intake` gather merging into `state['source-payload']`, and replaces
+the direct `event-pipeline-typed` scatter target with a `stream-event` DAG
+(`decode-payload → route-event-type-variant → 5 typed pipeline embeds`);
+`event-pipeline-typed` remains registered only as a compatibility path. Fixed
+by retargeting the snippet includes to `SourceIntakeGather.ts`, rewriting the
+affected architecture diagram/prose to match the current topology, and
+correcting `examples/the-cartographer/dag.ts`'s own top-of-file JSDoc, which
+was itself stale relative to its implementation. Verified by running the live
+Cartographer demo end-to-end in a production preview build (100 synthetic
+events, GDPR redaction visible in the stream, zero console errors).
+
+`pnpm site:build` now completes clean at 112 pages, and all of the above is
+verified against both the Astro dev server and a production `astro preview`
+build.
+
+Not yet covered by this pass and still open:
+
+- keyboard-only navigation through the shell;
+- local docs search interaction;
+- a live demo route boot with worker/model asset network verification;
+- reduced-motion behavior;
+- a systemic, non-visual PrimeVue SSR/CSR icon-size hydration mismatch
+  (`width`/`height` 14 vs 20 across `Chevron*`/`Bars` icons site-wide) —
+  Vue reports this as check-only and does not rectify the DOM in production,
+  so it carries no observed visual or functional impact, but the root cause
+  is unresolved.
+
 The current site uses VitePress because it began as a documentation-first static site: Markdown pages, Vue-enhanced examples, local search, Mermaid, and GitHub Pages output. It now does three jobs at once:
 
 1. documentation and API reference;
@@ -12,9 +106,45 @@ That explains why modernization feels difficult. VitePress supplies the content 
 
 ### Recommendation
 
-Build a separate Astro site as an experiment. Use Astro for marketing pages and static composition, use Starlight for documentation, and keep the existing Vue demos as explicit client islands or separate application routes. Do not replace the current site in place yet.
+Use the Astro site under `site/` as the product/docs shell and continue keeping
+generic controls on PrimeVue-backed Vue islands while preserving
+Dagonizer-specific runtime and visualization surfaces as repository-owned
+components.
 
-Use PrimeVue selectively for application-grade controls and data views. Build the marketing shell from repository-owned Astro/CSS primitives. Use the MIT-licensed Sakai Vue template only as a source of proven shell patterns, not as the site itself.
+Use PrimeVue selectively for application-grade controls and data views. Keep
+the marketing shell in repository-owned Astro/CSS primitives. Use external
+templates only as references for proven patterns, not as the site itself.
+
+### What is complete in the repository
+
+- Astro product shell routes exist for `/`, `/getting-started`, `/concepts`,
+  `/architecture`, and `/docs`.
+- Astro docs routes exist for guide, reference, internal, experiments, and
+  examples indexes.
+- Runnable example pages for Archivist, Dispatcher, and Cartographer use a
+  shared Astro shell instead of duplicated page chrome.
+- Docs/example/guide/reference landing pages use shared page-header, link-list,
+  section-intro, and aside-card primitives.
+- PrimeVue-backed surfaces now cover the shared generic controls: buttons,
+  menubar, mobile drawer/menu, tags, cards, tabs, selects, inputs, textarea,
+  breadcrumb.
+- Source-level VitePress coupling has been removed from the Astro docs content
+  path and neutralized behind `docs/exampleDags.ts`.
+- Current Astro builds emit 112 static pages with clean route/fragment audits.
+
+### What still remains before the cut-over can be called complete
+
+- Top bar/nav rendering, the hero duplicate-panel overlap, and the
+  tablet-width text/visual overlap are verified fixed against both the Astro
+  dev server and a production `astro preview` build.
+- Keyboard-only navigation, local docs search interaction, a live demo route
+  boot with worker/model asset verification, and reduced-motion behavior
+  still need a browser QA pass.
+- A systemic, non-visual PrimeVue SSR/CSR icon-size hydration mismatch
+  remains unresolved (see "Remaining blocker" above); it currently carries no
+  observed visual or functional impact.
+- Only after the remaining browser checks above should the old VitePress site
+  be treated as fully superseded.
 
 ## Why VitePress is in the repository
 

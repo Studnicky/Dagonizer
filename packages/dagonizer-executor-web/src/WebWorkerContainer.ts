@@ -112,8 +112,6 @@ export class WebWorkerContainer extends DagContainerBase<WebWorkerLikeInterface>
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,
         'servicesConfig': servicesConfig,
-        'graphStateTransferFormats': [...graphStateTransferFormats],
-        ...(instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': instrumentationPlacementPathDepth }),
       },
     });
   }

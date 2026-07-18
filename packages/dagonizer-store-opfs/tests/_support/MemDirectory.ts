@@ -1,7 +1,4 @@
-/**
- * In-memory `DirectoryHandleLikeInterface` double backed by `Map<string, string>`.
- * Shared across OPFS store unit tests; no subdirectory support needed.
- */
+/** In-memory `DirectoryHandleLikeInterface` double with shared file and directory state. */
 
 import type {
   DirectoryHandleLikeInterface,
@@ -12,7 +9,7 @@ import type {
 
 class NotFoundError extends Error {
   constructor(name: string) {
-    super(`File not found: ${name}`);
+    super(`Entry not found: ${name}`);
     this.name = 'NotFoundError';
   }
 }
@@ -67,7 +64,21 @@ class MemFileHandle implements FileHandleLikeInterface {
 }
 
 export class MemDirectory implements DirectoryHandleLikeInterface {
-  readonly #files = new Map<string, string>();
+  readonly #files: Map<string, string>;
+  readonly #directories: Map<string, MemDirectory>;
+
+  constructor(files: Map<string, string> = new Map(), directories: Map<string, MemDirectory> = new Map()) {
+    this.#files = files;
+    this.#directories = directories;
+  }
+
+  alias(): MemDirectory {
+    return new MemDirectory(this.#files, this.#directories);
+  }
+
+  async isSameEntry(other: DirectoryHandleLikeInterface): Promise<boolean> {
+    return other instanceof MemDirectory && this.#files === other.#files;
+  }
 
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<FileHandleLikeInterface> {
     if (!this.#files.has(name)) {
@@ -78,15 +89,22 @@ export class MemDirectory implements DirectoryHandleLikeInterface {
   }
 
   async removeEntry(name: string): Promise<void> {
-    if (!this.#files.has(name)) throw new NotFoundError(name);
-    this.#files.delete(name);
+    if (this.#files.delete(name)) return;
+    if (this.#directories.delete(name)) return;
+    throw new NotFoundError(name);
   }
 
-  async getDirectoryHandle(): Promise<DirectoryHandleLikeInterface> {
-    throw new Error('MemDirectory does not support subdirectories');
+  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MemDirectory> {
+    const directory = this.#directories.get(name);
+    if (directory !== undefined) return directory;
+    if (options?.create !== true) throw new NotFoundError(name);
+
+    const created = new MemDirectory();
+    this.#directories.set(name, created);
+    return created;
   }
 
   async *entries(): AsyncIterableIterator<readonly [string, FileHandleLikeInterface]> {
-    for (const [name] of this.#files) yield [name, new MemFileHandle(name, this.#files)] as const;
+    for (const [name] of this.#files) yield [name, new MemFileHandle(name, this.#files)];
   }
 }

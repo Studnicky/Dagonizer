@@ -19,7 +19,6 @@ import { Signal } from '@studnicky/signal';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import type { RunResultType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
@@ -37,6 +36,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -145,7 +145,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
           'body': { 'node': 'urn:noocodec:node:noop-bundle' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:warn-test', 'end'),
             'partial': placementIri('urn:noocodec:dag:warn-test', 'end'),
@@ -167,7 +167,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // Bind one role so the dispatcher is in container-dispatch mode; the DAG
     // below declares a DIFFERENT, unbound role, which is the misalignment.
     const fakeContainer: DagContainerInterface = {
-      async runDag(_task: DagTaskInterface, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+      async runDag(_task: DagTaskType, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
         return [];
       },
     };
@@ -214,7 +214,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
           'body': { 'dag': 'urn:noocodec:dag:inner-worker' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'container': 'unbound-worker-role',
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
@@ -441,7 +441,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
           'body': { 'dag': bodyDagIri },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri(parentDagIri, 'end'),
             'partial': placementIri(parentDagIri, 'end'),
@@ -482,9 +482,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     const progress: StoredScatterProgressType = Validator.storedScatterProgress.validate(rawProgress);
     assert.ok(progress[fanIri] !== undefined, `progress must have an entry for placement "${fanIri}"`);
     const entry = Validator.scatterProgress.validate(progress[fanIri]);
-    const ackedCount = entry.mode === 'bounded'
-      ? entry.watermark + entry.aheadAcked.length
-      : entry.ackedResults.length;
+    const ackedCount = entry.watermark + entry.aheadAcked.length;
     assert.ok(
       ackedCount < state.items.length,
       `fewer than ${state.items.length} items must be acked after mid-scatter abort; ` +

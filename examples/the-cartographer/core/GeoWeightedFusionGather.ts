@@ -69,12 +69,18 @@ export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
   readonly '@id' = 'urn:noocodec:node:geo-weighted-fusion';
 
+  // `reduce()` below can fall back to `record.result` for the 'candidate'
+  // domain path, but `finalize()`'s `mergeCapturedErrors` reads
+  // `record.cloneState` for 'capturedErrors' directly — a `GatherRecord.result`
+  // carries at most ONE projected field (`gather.sources[source].resultField`
+  // is a single string), so no wiring of that config can carry BOTH
+  // 'candidate' and 'capturedErrors' through `record.result` at once. A
+  // result-only compacted replay would silently drop every restored record's
+  // captured errors on resume. `mode: 'full'` is the honest declaration: this
+  // gather's finalize pass genuinely needs the retained clone state, not just
+  // the resultField projection.
   override transientResultSelection(): TransientNodeStateSelectionType {
-    return {
-      'mode': 'selection',
-      'domainPaths': ['candidate', 'capturedErrors'],
-      'metadataKeys': [],
-    };
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
   }
 
   // ── initial: reset geoCandidates accumulator in parent state ─────────────

@@ -4,10 +4,10 @@ import TopNav from '@/components/marketing/TopNav.astro';
 import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
 import SectionShell from '@/components/marketing/SectionShell.astro';
 import DocsBrowser from '@/components/islands/DocsBrowser.vue';
-import { getDocsCatalog, getDocSections } from '@/lib/docs';
+import { SiteDocs } from '@/lib/docs';
 
-const allDocs = getDocsCatalog();
-const groupedSections = getDocSections();
+const allDocs = SiteDocs.catalog();
+const groupedSections = SiteDocs.sections();
 ---
 
 <BaseLayout title="Docs">

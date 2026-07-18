@@ -1,31 +1,22 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue';
 import Spinner from './Spinner.vue';
 import UiBadge from './ui/UiBadge.vue';
 import UiButton from './ui/UiButton.vue';
+import UiSelect from './ui/UiSelect.vue';
 import UiTextarea from './ui/UiTextarea.vue';
 import { terminalBadgeTone } from './ui/theme';
 
-/**
- * SendForm: textarea + action button side-by-side.
- *
- *   ┌──────────────────────────────────────────────────────────┬──────────┐
- *   │ textarea                                                 │ ▶ / ✕   │
- *   └──────────────────────────────────────────────────────────┴──────────┘
- *
- * While idle the action button sends the query (▶). While a run is
- * in-progress it flips to a Cancel button (✕, red styling) and emits
- * `cancel` instead of `ask`. Enter (without Shift) sends; Shift-Enter
- * inserts a newline.
- *
- * The reset action lives in the footer to keep the primary affordance
- * unambiguous.
- */
-
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   query: string;
   running: boolean;
   terminalVariant: 'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
-}>();
+  sampleQueries?: readonly string[];
+  placeholder?: string;
+}>(), {
+  'sampleQueries': () => [],
+  'placeholder': 'Describe a book, ask for a recommendation, or search by title…',
+});
 
 const emit = defineEmits<{
   (event: 'update:query', value: string): void;
@@ -34,8 +25,14 @@ const emit = defineEmits<{
   (event: 'reset'): void;
 }>();
 
-function onInput(value: string): void {
+const selectedSample = ref('');
+
+async function onSampleSelect(value: string): Promise<void> {
+  if (value.length === 0) return;
+  selectedSample.value = value;
   emit('update:query', value);
+  await nextTick();
+  selectedSample.value = '';
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -48,14 +45,6 @@ function onKey(event: KeyboardEvent): void {
     }
   }
 }
-
-function onActionClick(): void {
-  if (props.running) {
-    emit('cancel');
-  } else {
-    emit('ask');
-  }
-}
 </script>
 
 <template>
@@ -64,22 +53,37 @@ function onActionClick(): void {
       <UiTextarea
         :model-value="query"
         :disabled="running"
-        placeholder="Describe a book, ask for a recommendation, or search by title…"
+        :placeholder="placeholder"
         :rows="2"
         textarea-class="send-input"
-        @update:model-value="onInput"
+        @update:model-value="emit('update:query', $event)"
         @keydown="onKey"
       />
-      <UiButton
-        :variant="running ? 'danger' : 'primary'"
-        size="icon"
-        :class="[{ 'send-btn-running': running }]"
-        :disabled="!running && query.trim().length === 0"
-        @click="onActionClick"
-      >
-        <template #leading><Spinner v-if="running" /></template>
-        <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
-      </UiButton>
+      <div class="send-actions">
+        <label v-if="sampleQueries.length > 0" class="send-samples">
+          <span class="send-samples-label">Sample query</span>
+          <UiSelect
+            :model-value="selectedSample"
+            :disabled="running"
+            select-class="send-samples-select"
+            @update:model-value="onSampleSelect"
+          >
+            <option value="" disabled>Choose a sample…</option>
+            <option v-for="sample in sampleQueries" :key="sample" :value="sample">{{ sample }}</option>
+          </UiSelect>
+        </label>
+        <UiButton
+          :variant="running ? 'danger' : 'primary'"
+          size="icon"
+          :class="[{ 'send-btn-running': running }]"
+          :disabled="!running && query.trim().length === 0"
+          :aria-label="running ? 'Cancel request' : 'Send message'"
+          @click="running ? emit('cancel') : emit('ask')"
+        >
+          <template #leading><Spinner v-if="running" /></template>
+          <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
+        </UiButton>
+      </div>
     </div>
 
     <div class="send-footer">
@@ -114,6 +118,31 @@ function onActionClick(): void {
 }
 
 .send-input { min-height: 64px; }
+
+.send-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+.send-samples {
+  display: flex;
+  width: clamp(11rem, 24vw, 18rem);
+}
+
+.send-samples-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.send-samples-select { height: 100%; }
 
 /* Running state: pulsing cyan glow around the textarea so it's clearly
    active rather than just disabled. */
@@ -152,4 +181,10 @@ function onActionClick(): void {
 .send-reset { margin-left: auto; }
 
 .send-status { display: inline-flex; }
+
+@media (max-width: 640px) {
+  .send-row { grid-template-columns: 1fr; }
+  .send-actions { justify-content: flex-end; }
+  .send-samples { flex: 1 1 auto; width: auto; }
+}
 </style>

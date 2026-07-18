@@ -6,6 +6,8 @@ export interface CartographerBrowserHarnessConfigType {
   readonly totalEvents: number | null;
   readonly poolSize: number | null;
   readonly batchCapacity: number | null;
+  readonly reservoirIdleMs: number | null;
+  readonly liveFlushMs: number | null;
 }
 
 export interface LiveStreamLineType {
@@ -76,6 +78,8 @@ export function parseCartographerBrowserHarness(search: string): CartographerBro
     'totalEvents': parseClampedInt(params, 'totalEvents', 1, 1_000_000),
     'poolSize': parseClampedInt(params, 'poolSize', 1, 32),
     'batchCapacity': parseClampedInt(params, 'batchCapacity', 1, 10_000),
+    'reservoirIdleMs': parseClampedInt(params, 'reservoirIdleMs', 0, 60_000),
+    'liveFlushMs': parseClampedInt(params, 'liveFlushMs', 16, 5_000),
   };
 }
 

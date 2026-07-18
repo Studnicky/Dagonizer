@@ -91,7 +91,7 @@ await SmokeRunner.check('cartographer intake is fed by source-specific feed DAGs
   const entrypoints = Object.entries(cartographerDAG.entrypoints);
   assert.equal(entrypoints.length, 5, `Expected five data-type entrypoints, got ${entrypoints.length}`);
   assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'Cartographer DAG must not use a seed pre-phase');
-  assert.deepEqual(cartographerDAG.writePoints, ['NodeEdges', 'WatermarkCommit']);
+  assert.deepEqual(cartographerDAG.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
 
   for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
     const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, source);
@@ -130,7 +130,7 @@ await SmokeRunner.check('cartographer intake is fed by source-specific feed DAGs
   assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
   assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
   assert.equal(scatter.itemKey, 'source-payload');
-  assert.deepEqual(scatter.writePoints, []);
+  assert.deepEqual(scatter.configuration?.durability?.writePoints, []);
 });
 
 await SmokeRunner.check('source streams fan in from all event kinds', async () => {

@@ -8,8 +8,10 @@ import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
 import HomeHeroSection from '@/components/islands/HomeHeroSection.vue';
 import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
-import { toEditUrl } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+import { SiteDocs } from '@/lib/docs';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments/modern-home')), 301);
 
 const doc = await getEntry('docs', 'experiments/modern-home');
 
@@ -23,9 +25,9 @@ const pageDescription =
   'Typed orchestration for agent workflows, resumable pipelines, and inspectable DAG execution.';
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/experiments'), label: 'Experiments' },
-  { href: siteHref('/docs/experiments/modern-home'), label: pageTitle }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/experiments'), label: 'Experiments' },
+  { href: SiteLinks.site('/docs/experiments/modern-home'), label: pageTitle }
 ] as const;
 
 const featureCards = [
@@ -47,9 +49,9 @@ const featureCards = [
 ] as const;
 
 const relatedLinks = [
-  { href: siteHref('/'), label: 'Current Astro home' },
-  { href: siteHref('/docs/architecture'), label: 'Architecture' },
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site('/'), label: 'Current Astro home' },
+  { href: SiteLinks.site('/docs/architecture'), label: 'Architecture' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 ---
 
@@ -61,8 +63,8 @@ const relatedLinks = [
       <div class="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/50">
         <HomeHeroSection
           client:visible
-          gettingStartedHref={siteHref('/getting-started')}
-          visualizeHref={siteHref('/#visualize')}
+          gettingStartedHref={SiteLinks.site('/getting-started')}
+          visualizeHref={SiteLinks.site('/#visualize')}
         />
       </div>
 
@@ -87,7 +89,7 @@ const relatedLinks = [
       <UiAsideCard title="Source file">
         <p class="mt-3 break-all text-sm text-slate-300">experiments/modern-home.md</p>
         <UiActionLink
-          href={toEditUrl('experiments/modern-home')}
+          href={SiteDocs.edit('experiments/modern-home')}
           target="_blank"
           rel="noreferrer"
           variant="text"

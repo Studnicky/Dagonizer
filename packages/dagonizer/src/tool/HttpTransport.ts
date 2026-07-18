@@ -64,6 +64,14 @@ const DEFAULT_TIMEOUT_MS  = 30_000;
 const DEFAULT_MAX_RETRIES = 2;
 const BASE_BACKOFF_MS     = 400;
 const MAX_BACKOFF_MS      = 5_000;
+/**
+ * Ceiling for a server-requested `Retry-After` delay. Higher than
+ * `MAX_BACKOFF_MS` (the blind exponential-backoff ceiling) because honoring
+ * an explicit server request is the point — real rate limiters (Google
+ * Books, etc.) legitimately ask for tens of seconds — but still bounded so a
+ * misbehaving or hostile server cannot hang a retry loop indefinitely.
+ */
+const MAX_RETRY_AFTER_MS  = 60_000;
 
 /** Canonical defaults for defaultable fields of `HttpRequestOptionsType`. */
 const HTTP_REQUEST_DEFAULTS = {
@@ -156,10 +164,24 @@ class HttpRetryPolicy extends Retry {
   }
 
   protected override async onRetryScheduled(context: RetryContextType): Promise<void> {
-    const strategy = BackoffStrategy.withCeiling(BackoffStrategy.exponential, this.#maxBackoffMs);
-    const delayMs = strategy(context.attemptNumber, this.#baseBackoffMs);
+    const delayMs = HttpRetryPolicy.delayFor(context, this.#baseBackoffMs, this.#maxBackoffMs);
     context.delayMs = 0;
     await HttpAbortSignals.waitForRetryDelay(delayMs, this.#signal);
+  }
+
+  /**
+   * Prefer the server's own `Retry-After` request (captured on the
+   * triggering `ToolError` as `retryAfterMs`) over blind exponential
+   * backoff — the server knows its own rate-limit window, we're guessing.
+   * Falls back to exponential backoff when the error carried no
+   * `Retry-After` header (network errors, 5xx without the header, etc.).
+   */
+  private static delayFor(context: RetryContextType, baseBackoffMs: number, maxBackoffMs: number): number {
+    if (context.error instanceof ToolError && context.error.retryAfterMs !== null) {
+      return Math.min(context.error.retryAfterMs, MAX_RETRY_AFTER_MS);
+    }
+    const strategy = BackoffStrategy.withCeiling(BackoffStrategy.exponential, maxBackoffMs);
+    return strategy(context.attemptNumber, baseBackoffMs);
   }
 
   private static unwrap(error: unknown): Error {
@@ -300,11 +322,36 @@ export class HttpTransport {
       const classification = HttpTransport.classifyStatus(response.status);
       throw new ToolError(
         `HTTP ${String(response.status)} ${response.statusText} on ${url}`,
-        { 'reason': classification.reason, 'retryable': classification.retryable, 'status': response.status },
+        {
+          'reason': classification.reason,
+          'retryable': classification.retryable,
+          'status': response.status,
+          'retryAfterMs': HttpTransport.decodeRetryAfterMs(response.headers.get('retry-after')),
+        },
       );
     } catch (err) {
       throw HttpTransport.transportError(url, err, signal, callerSignal);
     }
+  }
+
+  /**
+   * Parse a `Retry-After` header into milliseconds. The header is either
+   * delta-seconds (a non-negative integer) or an HTTP-date; either form
+   * returns null when absent or unparseable, so callers fall back to blind
+   * backoff rather than misreading garbage as "retry immediately".
+   */
+  private static decodeRetryAfterMs(headerValue: string | null): number | null {
+    if (headerValue === null) return null;
+    const trimmed = headerValue.trim();
+    if (trimmed.length === 0) return null;
+
+    if (/^\d+$/.test(trimmed)) {
+      return Number(trimmed) * 1000;
+    }
+
+    const dateMs = Date.parse(trimmed);
+    if (Number.isNaN(dateMs)) return null;
+    return Math.max(0, dateMs - Date.now());
   }
 
   private static headersFor(initHeaders: RequestInit['headers'], optionHeaders: Record<string, string> | undefined): Record<string, string> {

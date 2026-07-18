@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue';
-
-const CartographerRunner = defineAsyncComponent(
-  () => import('../../../../examples/the-cartographer/app/CartographerRunner.vue')
-);
+import CartographerRunner from '../../../../examples/the-cartographer/app/CartographerRunner.vue';
 </script>
 
 <template>

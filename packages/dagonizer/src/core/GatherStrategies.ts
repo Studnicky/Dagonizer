@@ -72,10 +72,10 @@ export abstract class GatherStrategy {
 
   /**
    * When true, `finalize` consumes the full per-clone record set; the engine
-   * retains every acked record across resume (retained checkpoint). When false
-   * (default), `finalize`'s result is fully in state during `reduce`, so the
-   * engine keeps only bounded bookkeeping (watermark + ahead-acked + tally)
-   * and the checkpoint is O(1) with respect to item count.
+   * retains every record for the current bounded execution. Such a gather does
+   * not persist scatter progress and replays its complete input after resume.
+   * When false (default), `finalize`'s result is fully represented in state by
+   * `reduce`, so the engine persists bounded watermark bookkeeping.
    */
   readonly retainsRecordsForFinalize: boolean = false;
 
@@ -116,6 +116,12 @@ export abstract class GatherStrategy {
    * contained scatter replay. `mode: 'full'` means the strategy requires the
    * whole clone state; `mode: 'selection'` lists the exact clone domain paths
    * and metadata keys it consumes.
+   *
+   * The default is `mode: 'full'` — the conservative, correctness-preserving
+   * choice for a strategy that has not declared a narrower surface. Every
+   * built-in strategy below overrides this with its exact selection; a custom
+   * strategy that reads only specific fields should override it too, since a
+   * narrower selection shrinks the worker wire payload.
    */
   transientResultSelection(_config: GatherConfigType): TransientNodeStateSelectionType {
     return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
@@ -214,8 +220,7 @@ class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
   readonly '@id' = 'urn:noocodec:node:custom';
 
-  // Custom finalize reads the full per-clone record set, so the engine must
-  // retain every acked record across resume (retained checkpoint).
+  // Custom finalize reads the full per-clone record set for this execution.
   override readonly retainsRecordsForFinalize = true;
 
   // Custom strategy accumulates nothing per-clone — all work is in finalize.

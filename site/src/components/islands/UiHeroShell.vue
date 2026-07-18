@@ -12,12 +12,12 @@ defineProps<{
   <Card class="relative overflow-hidden rounded-[2rem]">
     <template #content>
       <section class="relative px-6 py-8 md:px-10 md:py-10">
-        <div class="absolute inset-y-0 right-0 hidden w-[44%] md:block">
+        <div class="absolute inset-y-0 right-0 hidden w-[44%] md:block xl:hidden">
           <slot name="visual" />
         </div>
 
         <div class="relative grid gap-8 xl:grid-cols-[minmax(0,1.05fr)_minmax(20rem,0.95fr)] xl:items-start">
-          <div class="max-w-2xl space-y-6">
+          <div class="max-w-2xl space-y-6 md:max-w-none md:pr-[48%] xl:max-w-2xl xl:pr-0">
             <div v-if="eyebrow || $slots.eyebrow" class="flex flex-wrap items-center gap-3">
               <slot name="eyebrow">
                 <span class="text-xs uppercase tracking-[0.28em] text-slate-500">{{ eyebrow }}</span>

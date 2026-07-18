@@ -1,6 +1,6 @@
-import type { InspectSelectionType } from './InspectSelection.js';
+import { InspectorTarget } from './InspectorTarget.js';
 import type { InspectorTargetType, ToolInspectorTargetType } from './InspectorTarget.js';
-import { isInspectSelectionTarget, isToolInspectorTarget, toolInspectorTarget } from './InspectorTarget.js';
+import type { InspectSelectionType } from './InspectSelection.js';
 
 export type SelectionControllerHooksType = {
   'onSelectionChange'?: (target: InspectorTargetType | null) => void;
@@ -28,7 +28,7 @@ export class SelectionController {
   }
 
   selectTool(name: string): void {
-    this.select(toolInspectorTarget(name));
+    this.select(InspectorTarget.tool(name));
   }
 
   selectInspect(selection: InspectSelectionType | null): void {
@@ -36,15 +36,15 @@ export class SelectionController {
   }
 
   selectedTool(): string | null {
-    return isToolInspectorTarget(this.#target) ? this.#target.name : null;
+    return InspectorTarget.isTool(this.#target) ? this.#target.name : null;
   }
 
   selectedInspect(): InspectSelectionType | null {
-    return isInspectSelectionTarget(this.#target) ? this.#target : null;
+    return InspectorTarget.isInspectSelection(this.#target) ? this.#target : null;
   }
 
   isToolSelected(name: string): boolean {
-    return isToolInspectorTarget(this.#target) && this.#target.name === name;
+    return InspectorTarget.isTool(this.#target) && this.#target.name === name;
   }
 
   isInspectSelected(target: InspectSelectionType): boolean {
@@ -65,17 +65,21 @@ function inspectSelectionKey(target: InspectSelectionType): string {
   }
 }
 
-export function selectedToolName(target: InspectorTargetType | null): string | null {
-  return isToolInspectorTarget(target) ? target.name : null;
-}
+export class SelectionTargets {
+  private constructor() { /* static-only */ }
 
-export function selectedInspectTarget(target: InspectorTargetType | null): InspectSelectionType | null {
-  return isInspectSelectionTarget(target) ? target : null;
-}
+  static toolName(target: InspectorTargetType | null): string | null {
+    return InspectorTarget.isTool(target) ? target.name : null;
+  }
 
-export function isSameToolTarget(
-  target: InspectorTargetType | ToolInspectorTargetType | null,
-  name: string,
-): boolean {
-  return target !== null && target.variant === 'tool' && target.name === name;
+  static inspect(target: InspectorTargetType | null): InspectSelectionType | null {
+    return InspectorTarget.isInspectSelection(target) ? target : null;
+  }
+
+  static sameTool(
+    target: InspectorTargetType | ToolInspectorTargetType | null,
+    name: string,
+  ): boolean {
+    return target !== null && target.variant === 'tool' && target.name === name;
+  }
 }

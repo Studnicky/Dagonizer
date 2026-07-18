@@ -29,7 +29,7 @@ class NodeContainerBaseProbe extends NodeContainerBase<never> {
 }
 
 void describe('NodeContainerBase graph-state transfer contract', () => {
-  void it('forwards explicit graphStateTransferFormats into container init', () => {
+  void it('exposes one explicit graphStateTransferFormats configuration path', () => {
     const options = NodeContainerBaseProbe.resolve({
       'registryModule': 'file:///registry.js',
       'registryVersion': '1.0.0',
@@ -37,6 +37,6 @@ void describe('NodeContainerBase graph-state transfer contract', () => {
     });
 
     assert.deepEqual(options.graphStateTransferFormats, ['application/n-quads']);
-    assert.deepEqual(options.init.graphStateTransferFormats, ['application/n-quads']);
+    assert.equal('graphStateTransferFormats' in options.init, false);
   });
 });

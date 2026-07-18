@@ -5,43 +5,51 @@
 "@studnicky/dagonizer-store-sqlite": minor
 ---
 
-De-RDF the transient scatter-clone transfer path and add a configurable
-write-point policy for post-completion durability/query projection.
+Add a codec-backed batched N-Quads worker contract and configurable
+post-completion durability/query projection.
 
 **Breaking:**
 
-- Transient state crossing the worker/container boundary is now always plain
-  JSON (`TransientNodeStateType`), never RDF. `NodeStateBase.restoreJsonLd`
-  is removed; use `restoreTransientState(runIri, snapshot)` (paired with the
-  existing `snapshotTransientState()`) for the transient path, or
-  `snapshotGraph`/`restoreGraph` for the durable RDF graph, which is now a
-  post-completion, host-side projection rather than part of the transfer
-  codec.
+- Worker/container requests and responses carry one negotiated
+  `GraphStateTransferType` for the entire item batch. The required format is
+  `application/n-quads`; each item contributes one selected transient-state
+  `rdf:JSON` literal in its named run graph. `GraphStateTransferCodec` performs
+  one encode, integrity hash, decode, and partition operation per batch.
+  `NodeStateBase.restoreJsonLd` is removed; graph restore uses the codec-backed
+  transfer contract and `restoreTransientState(runIri, snapshot)` applies the
+  decoded selected state.
 - `CheckpointDataType.graph` (`{ runIri, graphIri, nquads, hash, jsonLd }`) is
   replaced by `CheckpointDataType.state` (`{ runIri, transient }`), where
   `transient` is a `TransientNodeStateType`. `Checkpoint.capture`/`restoreState`
-  use the new shape; checkpoints captured before this change are not
-  forward-compatible.
+  use the required state shape. Graph-shaped checkpoint payloads fail schema
+  validation; there is no alternate checkpoint parser.
 - `DagOutcome.transportError` now takes `(id, correlationId, options?)`
   instead of `(correlationId, options?)` — a transport-error outcome is keyed
   to the failing item id, not only the request correlation id.
-- `DagTaskInterface` requires `inputState: TransientNodeStateSelectionType`,
+- `DagTaskType` requires `inputState: TransientNodeStateSelectionType`,
   and the `DagTask` constructor accepts it immediately before `responseState`.
-  Container requests snapshot every batch item through this selection.
+  `DagContainerBase` owns the only wire-request composition path and snapshots
+  every batch item through this selection. Task request composition is
+  removed.
   Embedded placements select the child-side keys in `stateMapping.input`;
   scatter DAG bodies add the configured item metadata key and `itemIndex`.
-- `InitMessageShapeType` (and the container/worker init handshake) requires
-  `graphStateTransferFormats`. `DagContainerBase` resolves it from
-  `options.graphStateTransferFormats` or `DEFAULT_GRAPH_STATE_TRANSFER_FORMATS`
-  (now re-exported from `@studnicky/dagonizer/container`).
-- `DAGType` gains an optional `writePoints` array (`WritePointType[]`);
-  `ScatterNode` gains the same at the placement level. Both cascade from a
-  runtime-level `DEFAULT_WRITE_POINTS` default (`['NodeEdges',
-  'WatermarkCommit']`), override-not-merge — a DAG or placement-level array
-  fully replaces the inherited one, it does not union with it.
-  `WritePointPolicy.resolveDag`/`resolvePlacement` resolve the effective set
-  at registration time and reject `FoldDeltaJournal` without
-  `WatermarkCommit` (structurally unreplayable).
+- `InitMessageShapeType` and the container/worker handshake require a
+  non-empty, duplicate-free `graphStateTransferFormats` enum array. The host
+  stores and advertises exactly the configured values; unsupported requested
+  formats fail before execution. Container configuration exposes the array
+  once at `DagContainerOptionsType.graphStateTransferFormats`; the internal
+  init identity does not duplicate it.
+- Dispatcher, DAG, and scatter placement policy use one namespaced
+  `configuration` shape. `configuration.execution.batching` controls item or
+  reservoir execution. `configuration.durability` controls write points and
+  fold-journal binding. Omitted fields inherit from placement to DAG to
+  dispatcher to canonical defaults. A present `writePoints` array fully
+  replaces the inherited array, including `[]`.
+- `DagContainerInterface.runDag(task, batch, options?)` returns one
+  `RunResultType` per input item. Completed, failed, and awaiting-input siblings
+  retain independent outcomes, errors, intermediates, and restored state across
+  the host/channel seam. The batch graph transfer remains internal to the
+  container and is absent from item outcomes.
 
 **New:**
 
@@ -57,13 +65,15 @@ write-point policy for post-completion durability/query projection.
   appends each commit before publishing its fold or watermark, deduplicates
   replay by gather/source/index, and records scatter completion before clearing
   live progress.
+- Canonical durability defaults are `writePoints: ['NodeEdges',
+  'WatermarkCommit']` and `foldJournalStoreKey: null`. `FoldDeltaJournal`
+  requires `WatermarkCommit`, an explicit key bound in the dispatcher's
+  `foldJournalStores`, and one replayable gather bound to the originating
+  scatter source.
 - SQLite, IndexedDB, and OPFS packages provide durable fold-journal stores with
   idempotent commit IDs, append ordering, restart recovery, and canonical
   commit validation at their storage boundaries.
 
-This is the redesign recorded in
-`plans/streaming-durability-and-state-redesign.md` (§4–§7): transient
-per-clone state is a plain-object hot path with no RDF projection, indexing,
-or journal; the graph is a durability/query layer, opted into per DAG or
-scatter placement via write points, not the default per-clone transfer
-format.
+The worker boundary uses the N-Quads transfer contract independently from
+durability policy. Full domain-state graph projection remains a host-side,
+post-completion write point and is not implied by worker transfer.

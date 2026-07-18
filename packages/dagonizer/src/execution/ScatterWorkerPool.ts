@@ -31,7 +31,7 @@ import { Semaphore } from '@studnicky/concurrency/semaphore';
 import { Throttle } from '@studnicky/throttle';
 
 import type { ScatterPoolDriverInterface, ScatterItemResultType } from '../contracts/ScatterPoolDriver.js';
-import type { ScatterThrottleOptionsType } from '../entities/dag/ScatterNode.js';
+import type { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { DAGError } from '../errors/index.js';
 /**
@@ -59,7 +59,7 @@ export type ScatterWorkerPoolOptionsType = {
    * `null` means no throttle: only the `concurrencyLimit` semaphore gates
    * dispatch (unchanged from the pre-throttle behavior).
    */
-  throttle: ScatterThrottleOptionsType;
+  throttle: DagConfiguration.ResolvedThrottleType | null;
 };
 
 /**
@@ -129,11 +129,11 @@ export class ScatterWorkerPool {
     return this.#poolErrors;
   }
 
-  static #throttleFor(options: ScatterThrottleOptionsType): Throttle | null {
+  static #throttleFor(options: DagConfiguration.ResolvedThrottleType | null): Throttle | null {
     if (options === null) return null;
     return Throttle.create({
       'concurrencyLimit': options.concurrencyLimit,
-      ...(options.adaptive !== undefined ? { 'adaptive': options.adaptive } : {}),
+      ...(options.adaptive !== null ? { 'adaptive': options.adaptive } : {}),
     });
   }
 

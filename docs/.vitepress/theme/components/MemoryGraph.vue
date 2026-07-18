@@ -28,16 +28,16 @@ import { RealTimeScheduler } from '@studnicky/scheduler';
 import type { SchedulerProviderType } from '@studnicky/scheduler';
 
 import { DEFAULT_VISUALIZER_ANIMATION_POLICY } from '../../../../packages/dagonizer/src/viz/AnimationPolicy.ts';
-import { createCameraDpadMachine } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
-import { iriSelection, literalSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import { CameraControls } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
+import { InspectSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import { LegendMachine } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
-import { createViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
-import { viewerAction } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
+import { ViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
+import { ViewerActions } from '../../../../packages/dagonizer/src/viz/ViewerActions.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
 import GraphLegend from './graph/GraphLegend.vue';
-import ViewerActions from './graph/ViewerActions.vue';
+import ViewerActionsBar from './graph/ViewerActions.vue';
 import ViewerOverlay from './graph/ViewerOverlay.vue';
 import type { IriSelectionType, LiteralSelectionType } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import type { LegendItemType, LegendSectionType } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
@@ -107,7 +107,7 @@ const legendMachine = new LegendMachine({
   'toggle': onLayerToggle,
 });
 const overlayActions = computed(() => [
-  viewerAction('clear', {
+  ViewerActions.action('clear', {
     'title': 'Clear all triples (irreversible)',
   }),
 ]);
@@ -144,7 +144,7 @@ let labelMeta: PointMeta[] = [];
 let labelRaf: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const fitScheduler: SchedulerProviderType = RealTimeScheduler.create();
-const dpadMachine = createCameraDpadMachine({
+const dpadMachine = CameraControls.dpadMachine({
   'can': (action) => {
     if (graph.value === null) return false;
     if (!PAN_ENABLED && (
@@ -156,7 +156,7 @@ const dpadMachine = createCameraDpadMachine({
     return true;
   },
   'getZoomLevel': () => zoomLevel.value,
-  'getHint': () => createViewportStatus(zoomLevel.value, 'inline', 'drag · wheel').hint,
+  'getHint': () => ViewportStatus.current(zoomLevel.value, 'inline', 'drag · wheel').hint,
   'zoomIn': mgZoomIn,
   'zoomOut': mgZoomOut,
   'pan': (direction) => {
@@ -287,9 +287,9 @@ function initCosmos(container: HTMLDivElement): void {
         const meta = labelMeta[index];
         if (meta === undefined) return;
         if (meta.variant === 'literal') {
-          emit('select', literalSelection(meta.value));
+          emit('select', InspectSelection.literal(meta.value));
         } else {
-          emit('select', iriSelection(meta.value));
+          emit('select', InspectSelection.iri(meta.value));
         }
       },
     });
@@ -810,7 +810,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
            button, because this frame renders `frameless` (no header is drawn,
            so a `#controls` slot button would never appear). Wipes the whole
            store and, in persisted mode, the localStorage dump. -->
-      <ViewerActions
+      <ViewerActionsBar
         v-if="!loading && !loadError"
         :actions="overlayActions"
         variant="overlay"

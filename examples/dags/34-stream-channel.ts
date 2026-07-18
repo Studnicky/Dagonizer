@@ -88,7 +88,7 @@ export const dag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:process' },
       'source':      'source',
       'itemKey':     'stream-item',
-      'execution': { 'mode': 'item', 'concurrency': 3 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 3 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',
         'partial': 'urn:noocodec:dag:stream-channel/node/collect-stream-items',

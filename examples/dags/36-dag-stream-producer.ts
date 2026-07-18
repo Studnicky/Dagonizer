@@ -162,7 +162,7 @@ export const outerDag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:record' },
       'source':      'source',
       'itemKey':     'label-item',
-      'execution': { 'mode': 'item', 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:label-stream/node/collect-labels',
         'partial': 'urn:noocodec:dag:label-stream/node/collect-labels',

@@ -1,17 +1,17 @@
 ---
-import type { DocEntry } from '@/lib/docs';
-import { siteHref } from '@/lib/links';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
 import UiLinkCard from '@/components/islands/UiLinkCard.vue';
 
 interface Props {
-  entry: DocEntry;
+  entry: Awaited<ReturnType<typeof SiteDocs.catalog>>[number];
 }
 
 const { entry } = Astro.props;
 ---
 
 <UiLinkCard
-  href={siteHref(entry.url)}
+  href={SiteLinks.site(entry.url)}
   eyebrow={entry.section}
   meta={entry.slug}
   title={entry.title}

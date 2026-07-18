@@ -35,12 +35,12 @@ const { title, description, pageDescription, crumbs, proofPoints, relatedLinks }
     <section class="rounded-[2rem] border border-white/10 bg-slate-950/72 px-6 py-8 shadow-[0_30px_120px_-48px_rgba(15,23,42,1)] backdrop-blur md:px-8 md:py-10">
       <UiPageHeader title={title} description={pageDescription} crumbs={crumbs} />
 
-      <div class="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+      <div class="mt-8 flex flex-col gap-8">
         <div class="space-y-8">
           <slot />
         </div>
 
-        <aside class="space-y-5">
+        <aside class="grid gap-5 md:grid-cols-2">
           <UiAsideCard title="What this proves">
             <div class="space-y-3 text-sm leading-6 text-slate-300">
               {proofPoints.map((point) => <p>{point}</p>)}

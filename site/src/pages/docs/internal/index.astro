@@ -4,17 +4,19 @@ import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
 import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('internal')), 301);
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/internal'), label: 'Internal' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/internal'), label: 'Internal' }
 ] as const;
 
 const internalLinks = [
-  { href: siteHref('/docs/internal/graph-state-transfer'), label: 'Graph state transfer' },
-  { href: siteHref('/docs/reference/runtime'), label: 'Runtime reference' },
-  { href: siteHref('/docs/guide/checkpoint'), label: 'Checkpoint guide' }
+  { href: SiteLinks.site('/docs/internal/graph-state-transfer'), label: 'Graph state transfer' },
+  { href: SiteLinks.site('/docs/reference/runtime'), label: 'Runtime reference' },
+  { href: SiteLinks.site('/docs/guide/checkpoint'), label: 'Checkpoint guide' }
 ] as const;
 ---
 

@@ -18,12 +18,17 @@ export class SourceIntakeGather extends GatherStrategy {
   readonly name = 'source-intake';
   readonly '@id' = 'urn:noocodec:node:source-intake';
 
+  // `record.result` for this gather is `state.sourceFeed`: a live
+  // `AsyncIterable<SourcePayload>` handle (see
+  // `CartographerSourceIntake.mergeRecords`/`requireRecordFeed`), not
+  // JSON-serialisable data. Compacting it into a durable `GatherRecordProgress`
+  // (a JSON checkpoint payload) cannot survive a serialize/restore round trip —
+  // there is no way to reconstruct a live async generator from its JSON
+  // projection. `mode: 'full'` is the honest declaration: this gather cannot
+  // participate in result-only durable replay, regardless of how narrow its
+  // in-process clone-state read is.
   override transientResultSelection(): TransientNodeStateSelectionType {
-    return {
-      'mode': 'selection',
-      'domainPaths': ['sourceFeed'],
-      'metadataKeys': [],
-    };
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
   }
 
   override initial(
@@ -32,7 +37,6 @@ export class SourceIntakeGather extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     accessor.set(state, 'source-payload', []);
-    accessor.set(state, 'sources', []);
   }
 
   override reduce(
@@ -43,9 +47,8 @@ export class SourceIntakeGather extends GatherStrategy {
   ): void {
     const records: GatherRecordType[] = [];
     for (const item of batch) records.push(item.state);
-    const mergedPayload = CartographerSourceIntake.mergeRecords(records, state);
+    const mergedPayload = CartographerSourceIntake.mergeRecords(records);
     accessor.set(state, 'source-payload', mergedPayload);
-    accessor.set(state, 'sources', mergedPayload);
   }
 }
 

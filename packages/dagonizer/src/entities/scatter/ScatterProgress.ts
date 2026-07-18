@@ -4,9 +4,7 @@
  *
  * Shape summary:
  *   ScatterInboxItem      — one item pulled from the source but not yet acked.
- *   ScatterAckedResult    — one successfully completed item; discriminated on `variant`.
- *   ScatterProgress       — per-placement resume bookkeeping; discriminated on `mode`:
- *                           'retained' (full acked results) or 'bounded' (watermark).
+ *   ScatterProgress       — bounded per-placement resume bookkeeping.
  *   StoredScatterProgress — map keyed by placement name stored in metadata.
  */
 
@@ -43,69 +41,7 @@ export const ScatterInboxItemSchema = {
 export type ScatterInboxItemType = FromSchema<typeof ScatterInboxItemSchema>;
 
 // ---------------------------------------------------------------------------
-// ScatterAckedResult
-// ---------------------------------------------------------------------------
-
-export const ScatterAckedResultSchema = {
-  '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterAckedResult',
-  '$schema': 'https://json-schema.org/draft/2020-12/schema',
-  'oneOf': [
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output', 'mappingValues'],
-      'properties': {
-        'variant':       { 'type': 'string', 'const': 'map' },
-        'index':         { 'type': 'integer', 'minimum': 0 },
-        'item':          {},
-        'output':        { 'type': 'string' },
-        'mappingValues': { 'type': 'object' },
-        'result':        {},
-        'selectedDag':   { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output', 'fieldValue'],
-      'properties': {
-        'variant':    { 'type': 'string', 'const': 'field' },
-        'index':      { 'type': 'integer', 'minimum': 0 },
-        'item':       {},
-        'output':     { 'type': 'string' },
-        'fieldValue': {},
-        'result':     {},
-        'selectedDag': { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output'],
-      'properties': {
-        'variant': { 'type': 'string', 'const': 'plain' },
-        'index':   { 'type': 'integer', 'minimum': 0 },
-        'item':    {},
-        'output':  { 'type': 'string' },
-        'result':  {},
-        'selectedDag': { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-  ],
-} as const;
-
-/**
- * One successfully completed scatter item.
- * Discriminated on `variant`:
- *   `map`:   carries `mappingValues`, the resolved clone-field-to-parent-path mapping values.
- *   `field`: carries `fieldValue`, the value of `gather.field` read from the clone state.
- *   `plain`: carries only the routing `output`; used by `collect`, `discard`, and `partition` strategies.
- *   `result`: optional resultField projection for non-compactable finalize resume.
- */
-export type ScatterAckedResultType = FromSchema<typeof ScatterAckedResultSchema>;
-
-// ---------------------------------------------------------------------------
-// ScatterProgress (discriminated union: 'retained' | 'bounded')
+// ScatterProgress
 // ---------------------------------------------------------------------------
 
 /** Inline inbox-item shape for use inside ScatterProgressSchema oneOf branches. */
@@ -120,106 +56,39 @@ const inboxItemInline = {
   'additionalProperties': false,
 } as const;
 
-/** Inline acked-result shape for use inside the retained branch. */
-const ackedResultInline = {
-  'oneOf': [
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output', 'mappingValues'],
-      'properties': {
-        'variant':       { 'type': 'string', 'const': 'map' },
-        'index':         { 'type': 'integer', 'minimum': 0 },
-        'item':          {},
-        'output':        { 'type': 'string' },
-        'mappingValues': { 'type': 'object' },
-        'result':        {},
-        'selectedDag':   { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output', 'fieldValue'],
-      'properties': {
-        'variant':    { 'type': 'string', 'const': 'field' },
-        'index':      { 'type': 'integer', 'minimum': 0 },
-        'item':       {},
-        'output':     { 'type': 'string' },
-        'fieldValue': {},
-        'result':     {},
-        'selectedDag': { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['variant', 'index', 'item', 'output'],
-      'properties': {
-        'variant': { 'type': 'string', 'const': 'plain' },
-        'index':   { 'type': 'integer', 'minimum': 0 },
-        'item':    {},
-        'output':  { 'type': 'string' },
-        'result':  {},
-        'selectedDag': { 'type': 'string', 'minLength': 1 },
-      },
-      'additionalProperties': false,
-    },
-  ],
-} as const;
-
 export const ScatterProgressSchema = {
   '$id': 'https://noocodec.dev/schemas/dagonizer/ScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
-  'oneOf': [
-    {
-      'type': 'object',
-      'required': ['mode', 'placementName', 'inbox', 'ackedResults'],
-      'properties': {
-        'mode':          { 'type': 'string', 'const': 'retained' },
-        'placementName': { 'type': 'string', 'minLength': 1 },
-        'inbox':         { 'type': 'array', 'items': inboxItemInline },
-        'ackedResults':  { 'type': 'array', 'items': ackedResultInline },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['mode', 'placementName', 'inbox', 'watermark', 'aheadAcked', 'outcomeTally'],
-      'properties': {
-        'mode':          { 'type': 'string', 'const': 'bounded' },
-        'placementName': { 'type': 'string', 'minLength': 1 },
-        'inbox':         { 'type': 'array', 'items': inboxItemInline },
-        'watermark':     { 'type': 'integer', 'minimum': 0 },
-        'aheadAcked':    {
-          'type': 'array',
-          'items': {
-            'type': 'object',
-            'required': ['index', 'output'],
-            'properties': {
-              'index':  { 'type': 'integer', 'minimum': 0 },
-              'output': { 'type': 'string' },
-            },
-            'additionalProperties': false,
-          },
+  'type': 'object',
+  'required': ['mode', 'placementName', 'inbox', 'watermark', 'aheadAcked', 'outcomeTally'],
+  'properties': {
+    'mode':          { 'type': 'string', 'const': 'bounded' },
+    'placementName': { 'type': 'string', 'minLength': 1 },
+    'inbox':         { 'type': 'array', 'items': inboxItemInline },
+    'watermark':     { 'type': 'integer', 'minimum': 0 },
+    'aheadAcked':    {
+      'type': 'array',
+      'items': {
+        'type': 'object',
+        'required': ['index', 'output'],
+        'properties': {
+          'index':  { 'type': 'integer', 'minimum': 0 },
+          'output': { 'type': 'string' },
         },
-        'outcomeTally':  {
-          'type': 'object',
-          'additionalProperties': { 'type': 'integer', 'minimum': 0 },
-        },
+        'additionalProperties': false,
       },
-      'additionalProperties': false,
     },
-  ],
+    'outcomeTally':  {
+      'type': 'object',
+      'additionalProperties': { 'type': 'integer', 'minimum': 0 },
+    },
+  },
+  'additionalProperties': false,
 } as const;
 
 /**
- * Per-placement resume bookkeeping persisted under `SCATTER_PROGRESS_KEY`.
- * Discriminated on `mode`:
- *   `retained`: full acked results are stored (used by strategies that need
- *               per-clone data on gather, e.g. `map`, `append`, `collect`).
- *   `bounded`:  only a watermark + ahead-acked indices are stored; used by
- *               memory-bounded strategies (`collect` with large source arrays,
- *               `partition`, `discard`) where retaining all results is not needed.
+ * Bounded per-placement resume bookkeeping persisted under
+ * `SCATTER_PROGRESS_KEY`.
  */
 export type ScatterProgressType = FromSchema<typeof ScatterProgressSchema>;
 

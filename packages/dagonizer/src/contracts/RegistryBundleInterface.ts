@@ -10,8 +10,8 @@
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { CheckpointRestoreAdapterInterface } from './CheckpointRestoreAdapterInterface.js';
 import type { DispatcherBundleType } from './DispatcherBundle.js';
+import type { GraphDatasetInterface } from './GraphDatasetInterface.js';
 
 /**
  * Returned by `RegistryModuleInterface.instantiate`. Bundles the DAG/node
@@ -26,10 +26,9 @@ export interface RegistryBundleInterface {
   /** Semantic version used for the init ↔ ready version handshake. */
   registryVersion: string;
   /**
-   * Factory that constructs the graph-backed state instance used by the host.
-   * The host restores its graph after construction.
+   * Construct the worker state directly on the request dataset and run identity.
    */
-  restoreState: CheckpointRestoreAdapterInterface<NodeStateInterface>;
+  restoreState(dataset: GraphDatasetInterface, runIri: string): NodeStateInterface;
   /**
    * Optional teardown hook. Called by `DagHost` on shutdown before the host
    * process/thread exits, so node resources (DB connections, file handles, etc.)

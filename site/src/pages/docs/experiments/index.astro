@@ -4,17 +4,19 @@ import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
 import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
 import UiLinkList from '@/components/marketing/UiLinkList.astro';
 import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments')), 301);
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/experiments'), label: 'Experiments' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/experiments'), label: 'Experiments' }
 ] as const;
 
 const experimentLinks = [
-  { href: siteHref('/docs/experiments/modern-home'), label: 'Modern home experiment' },
-  { href: siteHref('/docs/examples/the-archivist'), label: 'Runnable Archivist surface' },
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site('/docs/experiments/modern-home'), label: 'Modern home experiment' },
+  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'Runnable Archivist surface' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 ---
 

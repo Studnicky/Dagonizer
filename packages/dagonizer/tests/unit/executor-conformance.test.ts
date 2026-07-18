@@ -17,7 +17,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, it, afterEach } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +37,7 @@ import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 import type {
   Batch,
   DagContainerOptionsType,
-  DagTaskInterface,
+  DagTaskType,
   DagContainerInterface,
   DispatcherBundleType,
   StoredScatterProgressType,
@@ -55,10 +54,10 @@ import { Validator } from '@studnicky/dagonizer/validation';
 // Registry module URL
 // ---------------------------------------------------------------------------
 
-// The compiled test file is at: dist-test/tests/unit/executor-conformance.test.js
-// The conformance registry is at: dist-testing/ConformanceRegistry.js (package root)
-const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
+const REGISTRY_MODULE_URL = fileURLToPath(new URL(
+  'ConformanceRegistry.js',
+  import.meta.resolve('@studnicky/dagonizer/testing'),
+));
 
 // ---------------------------------------------------------------------------
 // LoopbackWorker: the "worker" value held in PoolEntryType for test containers.
@@ -83,7 +82,6 @@ class LoopbackContainer extends DagContainerBase<LoopbackWorker> {
         'registryModule': registryModuleUrl,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {} satisfies JsonObjectType,
-        'graphStateTransferFormats': ['application/n-quads'],
       },
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });
@@ -172,13 +170,8 @@ type LazyLoopbackContainer = LoopbackContainer;
 
 let sentinelContainer: LazyLoopbackContainer | null = null;
 
-// The harness is passed to DagConformance.laws(). DagConformanceHarnessInterface
-// lives in testing/ which compiles against dist/ types. The src/ Dagonizer class
-// and the dist/ DagonizerInterface are structurally identical at runtime but are
-// distinct type identities in the dual-compilation build: private fields from the
-// Execution<T> class create a brand divergence that prevents direct structural
-// assignment. The single `as unknown` + `as` here bridges the two compilation
-// units without changing the harness surface in testing/.
+// The harness is passed directly to DagConformance.laws() so the conformance
+// package exercises the same source-level dispatcher contract as this suite.
 const harnessRaw = {
   'containerRole': CONFORMANCE_CONTAINER_ROLE,
 
@@ -295,7 +288,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface, batch: Batch<NodeStateInterface>, options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+  async runDag(task: DagTaskType, batch: Batch<NodeStateInterface>, options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
@@ -370,9 +363,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
     const fan = progress[fanIri];
     assert.ok(fan !== undefined, 'checkpoint must survive — ScatterCheckpoint.clear must NOT run on infra failure');
-    const ackedCount = fan.mode === 'bounded'
-      ? fan.watermark + fan.aheadAcked.length
-      : fan.ackedResults.length;
+    const ackedCount = fan.watermark + fan.aheadAcked.length;
     assert.strictEqual(ackedCount, 1, `exactly one item must have acked before the transport error, got ${ackedCount}`);
     assert.ok(ackedCount < 3, 'the transport-failed item must NOT be acked (no silent loss)');
 

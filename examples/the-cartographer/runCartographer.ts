@@ -594,17 +594,8 @@ for (const r of sampleProcessed) {
 // encodes the lane name, not the wire format; use sampleRecords directly
 // as a representative distribution indicator).
 const distinctFormats = new Set<string>();
-if (Array.isArray(state.sources)) {
-  for (const item of state.sources) {
-    distinctFormats.add(item.format);
-  }
-}
-// Fall back to eventConfig format mix labels when no compatibility source array
-// is present.
-if (distinctFormats.size === 0) {
-  for (const cfg of state.eventConfig) {
-    for (const mix of cfg.formatMix) distinctFormats.add(mix.format);
-  }
+for (const cfg of state.eventConfig) {
+  for (const mix of cfg.formatMix) distinctFormats.add(mix.format);
 }
 
 logger.result(`  Total scans folded (exact, from insights accumulator): ${totalScans.toLocaleString()}`);
@@ -758,7 +749,7 @@ logger.result(`    • ip   (gateway IP only):         ${String(modelIp).padStar
 logger.result(`    • none (no signal):               ${String(modelNone).padStart(5)}`);
 logger.result('');
 logger.result(`  coords+IP enriched (dual modality): ${coordsPlusIp}`);
-logger.result(`  CoordTimezone secondary lookup fired: ${secondaryLookupFired}`);
+logger.result(`  Secondary geo lookup fired: ${secondaryLookupFired}`);
 logger.result('');
 logger.result(`  geo-lookup:  RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG avoided)`);
 logger.result(`  ip-geolocate (freeipapi.com): RAN ${ipgeoRun}  ·  SKIPPED ${ipgeoSkip}`);

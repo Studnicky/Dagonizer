@@ -169,7 +169,7 @@ export const dag: DAGType = {
       "body":         { "dag": 'urn:noocodec:dag:square-item-mb' },
       "source":       'tasks',
       "itemKey":      'task',
-      "execution": { "mode": "item", "concurrency": 2 },
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },
       "container":    'cpu',                  // routes per-item body to the WorkerThreadContainer
       "outputs": {
         'all-success': 'urn:noocodec:dag:multibackend/node/collect-results',

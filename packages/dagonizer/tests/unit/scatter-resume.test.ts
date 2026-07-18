@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import type { FoldJournalStoreInterface } from '../../src/contracts/FoldJournalStoreInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { GATHER_PROGRESS_KEY, SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 import { stateSnapshot } from '../_support/GraphStateSupport.js';
 import { MemoryFoldJournalStore } from '../_support/MemoryFoldJournalStore.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
@@ -17,7 +20,7 @@ import { TestNode } from '../_support/TestNode.js';
 const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
 
 /** State carrying a typed items / processed array plus an optional second
- *  scatter source, and a `results` array for the map-gather fix scenario.
+ *  scatter source, and a `results` array for map-gather replay.
  *  Round-trips through snapshot/restore. */
 class ScatterState extends NodeStateBase {
   items: number[] = [];
@@ -30,7 +33,270 @@ class ScatterState extends NodeStateBase {
 
 }
 
+const journalReplayDag = (dagIri: string, gather: GatherConfigType): DAGType => {
+  const fanIri = placementIri(dagIri, 'fan');
+  const joinIri = placementIri(dagIri, 'join');
+  const endIri = placementIri(dagIri, 'end');
+  return {
+    '@context': DAG_CONTEXT,
+    '@id': dagIri,
+    '@type': 'DAG',
+    'name': dagIri,
+    'version': '1',
+    'entrypoints': { 'main': fanIri },
+    'nodes': [
+      {
+        '@id': fanIri,
+        '@type': 'ScatterNode',
+        'name': 'fan',
+        'body': { 'node': 'urn:noocodec:node:journal-replay-worker' },
+        'source': 'items',
+        'itemKey': 'item',
+        'configuration': {
+          'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } },
+          'durability': { 'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'], 'foldJournalStoreKey': 'journal' },
+        },
+        'outputs': { 'all-success': joinIri, 'partial': joinIri, 'all-error': joinIri, 'empty': endIri },
+      },
+      {
+        '@id': joinIri,
+        '@type': 'GatherNode',
+        'name': 'join',
+        'sources': { [fanIri]: {} },
+        gather,
+        'outputs': { 'success': endIri, 'error': endIri, 'empty': endIri },
+      },
+      { '@id': endIri, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+    ],
+  };
+};
+
+const journalCommit = (
+  commitId: string,
+  scatterIri: string,
+  watermark: number,
+  completed: boolean,
+): FoldJournalStoreInterface.CommitType => ({
+  commitId,
+  scatterIri,
+  completed,
+  'progress': {
+    'mode': 'bounded',
+    'placementName': scatterIri,
+    'inbox': [],
+    watermark,
+    'aheadAcked': [],
+    'outcomeTally': watermark === 0 ? {} : { 'success': watermark },
+  },
+  'entries': [],
+});
+
+async function assertMalformedContributionReplay(
+  dagIri: string,
+  gather: GatherConfigType,
+  contribution: unknown,
+): Promise<void> {
+  const journal = new MemoryFoldJournalStore();
+  const fanIri = placementIri(dagIri, 'fan');
+  const joinIri = placementIri(dagIri, 'join');
+  const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
+  dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:journal-replay-worker', ['success']));
+  dispatcher.registerDAG(journalReplayDag(dagIri, gather));
+  const state = new ScatterState();
+  state.items = [1];
+  state.processed = [101];
+  state.processed2 = [202];
+  state.results = [303];
+  await journal.append(state.runIri, {
+    ...journalCommit(`${dagIri}:malformed`, fanIri, 1, false),
+    'entries': [{
+      'gatherKey': `${joinIri}/execution/replay`,
+      'record': {
+        'source': fanIri,
+        'index': 0,
+        'item': 1,
+        'output': 'success',
+        'terminalOutcome': 'completed',
+        contribution,
+      },
+    }],
+  });
+
+  await assert.rejects(
+    async () => dispatcher.resume(dagIri, state, fanIri),
+    DAGErrorPredicate.isValidationError,
+  );
+  assert.deepEqual(state.processed, [101]);
+  assert.deepEqual(state.processed2, [202]);
+  assert.deepEqual(state.results, [303]);
+}
+
 void describe('Dagonizer scatter per-item resume bookkeeping', () => {
+  void it('rejects malformed commits yielded by a custom fold journal store', async () => {
+    class MalformedFoldJournalStore implements FoldJournalStoreInterface {
+      async append(): Promise<void> { /* no-op */ }
+
+      async *read(): AsyncIterable<FoldJournalStoreInterface.CommitType> {
+        const commit = journalCommit('malformed', 'urn:noocodec:dag:malformed-journal/node/fan', 0, false);
+        Object.defineProperty(commit.progress, 'watermark', { 'value': 'invalid' });
+        yield commit;
+      }
+    }
+
+    const dagIri = 'urn:noocodec:dag:malformed-journal';
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { 'journal': new MalformedFoldJournalStore() } });
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:journal-replay-worker', ['success']));
+    dispatcher.registerDAG(journalReplayDag(dagIri, { 'strategy': 'append', 'target': 'processed' }));
+    const state = new ScatterState();
+    state.items = [1];
+
+    await assert.rejects(
+      async () => dispatcher.resume(dagIri, state, placementIri(dagIri, 'fan')),
+      DAGErrorPredicate.isValidationError,
+    );
+  });
+
+  void it('rejects malformed append fold-journal contributions', async () => {
+    await assertMalformedContributionReplay(
+      'urn:noocodec:dag:malformed-append-contribution',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'values': {} },
+    );
+  });
+
+  void it('rejects a fold-journal entry with an undefined contribution', async () => {
+    await assertMalformedContributionReplay(
+      'urn:noocodec:dag:undefined-append-contribution',
+      { 'strategy': 'append', 'target': 'processed' },
+      undefined,
+    );
+  });
+
+  void it('rejects malformed collect fold-journal contributions', async () => {
+    await assertMalformedContributionReplay(
+      'urn:noocodec:dag:malformed-collect-contribution',
+      { 'strategy': 'collect', 'target': 'processed' },
+      { 'target': 'processed', 'value': 1 },
+    );
+  });
+
+  void it('rejects malformed map fold-journal contributions', async () => {
+    await assertMalformedContributionReplay(
+      'urn:noocodec:dag:malformed-map-contribution',
+      { 'strategy': 'map', 'mapping': { 'produced': 'results' } },
+      { 'values': { 'unexpected': 1 } },
+    );
+  });
+
+  void it('rejects malformed partition fold-journal contributions', async () => {
+    await assertMalformedContributionReplay(
+      'urn:noocodec:dag:malformed-partition-contribution',
+      { 'strategy': 'partition', 'partitions': { 'success': 'processed' } },
+      { 'target': 'processed2', 'value': 1 },
+    );
+  });
+
+  void it('does not apply an earlier valid contribution when a later record in the same gatherKey is malformed', async () => {
+    const dagIri = 'urn:noocodec:dag:malformed-contribution-atomicity';
+    const journal = new MemoryFoldJournalStore();
+    const fanIri = placementIri(dagIri, 'fan');
+    const joinIri = placementIri(dagIri, 'join');
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:journal-replay-worker', ['success']));
+    dispatcher.registerDAG(journalReplayDag(dagIri, { 'strategy': 'append', 'target': 'processed' }));
+    const state = new ScatterState();
+    state.items = [1, 2];
+    await journal.append(state.runIri, {
+      ...journalCommit(`${dagIri}:atomicity`, fanIri, 2, false),
+      'entries': [
+        {
+          'gatherKey': `${joinIri}/execution/replay`,
+          'record': {
+            'source': fanIri,
+            'index': 0,
+            'item': 1,
+            'output': 'success',
+            'terminalOutcome': 'completed',
+            'contribution': { 'value': 1 },
+          },
+        },
+        {
+          'gatherKey': `${joinIri}/execution/replay`,
+          'record': {
+            'source': fanIri,
+            'index': 1,
+            'item': 2,
+            'output': 'success',
+            'terminalOutcome': 'completed',
+            'contribution': { 'values': {} },
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      async () => dispatcher.resume(dagIri, state, fanIri),
+      DAGErrorPredicate.isValidationError,
+    );
+    assert.deepEqual(
+      state.processed,
+      [],
+      'the valid index-0 record must not be committed when the sibling index-1 record in the same gatherKey fails validation',
+    );
+  });
+
+  void it('completion replay clears stale scatter progress', async () => {
+    const journal = new MemoryFoldJournalStore();
+    const dagIri = 'urn:noocodec:dag:completion-clears-progress';
+    const fanIri = placementIri(dagIri, 'fan');
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
+    let calls = 0;
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:journal-replay-worker', ['success'], () => { calls++; return 'success'; }));
+    dispatcher.registerDAG(journalReplayDag(dagIri, { 'strategy': 'append', 'target': 'processed' }));
+    const state = new ScatterState();
+    state.items = [1, 2, 3];
+    state.setMetadata(SCATTER_PROGRESS_KEY, {
+      [fanIri]: journalCommit('seed', fanIri, 2, false).progress,
+    });
+    await journal.append(state.runIri, journalCommit('complete', fanIri, 2, true));
+
+    const result = await dispatcher.resume(dagIri, state, fanIri);
+
+    assert.equal(calls, 3, 'completion removes the stale watermark before scatter replay');
+    assert.equal(result.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
+  });
+
+  void it('ignores progress committed after scatter completion', async () => {
+    const journal = new MemoryFoldJournalStore();
+    const dagIri = 'urn:noocodec:dag:completion-ignores-later-progress';
+    const fanIri = placementIri(dagIri, 'fan');
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
+    let calls = 0;
+    dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:journal-replay-worker', ['success'], () => { calls++; return 'success'; }));
+    dispatcher.registerDAG(journalReplayDag(dagIri, { 'strategy': 'append', 'target': 'processed' }));
+    const state = new ScatterState();
+    state.items = [1, 2, 3];
+    await journal.append(state.runIri, journalCommit('complete', fanIri, 0, true));
+    await journal.append(state.runIri, {
+      ...journalCommit('later-progress', fanIri, 2, false),
+      'entries': [{
+        'gatherKey': `${placementIri(dagIri, 'join')}/execution/later`,
+        'record': {
+          'source': fanIri,
+          'index': 99,
+          'item': 1,
+          'output': 'success',
+          'terminalOutcome': 'completed',
+          'contribution': { 'value': 1 },
+        },
+      }],
+    });
+
+    const result = await dispatcher.resume(dagIri, state, fanIri);
+
+    assert.equal(calls, 3, 'post-completion progress must not suppress replayed inputs');
+    assert.deepEqual(result.state.processed, [1, 2, 3], 'later fold contributions must not duplicate completed scatter data');
+  });
   void it('clean run executes every item and leaves no progress entry', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
@@ -80,7 +346,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(stored, undefined, 'progress key should be deleted after clean completion');
   });
 
-  void it('records ackedResults on interruption mid-flight', async () => {
+  void it('records bounded watermark progress on interruption mid-flight', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let completedCount = 0;
     // Concurrency 1 to make per-item ack writes deterministic.
@@ -101,7 +367,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-interrupt/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-interrupt', 'end'),
             'partial': placementIri('urn:noocodec:dag:scatter-interrupt', 'end'),
@@ -125,16 +391,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
     const entry = stored[placementIri('urn:noocodec:dag:scatter-interrupt', 'fan')];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
-    // append is a compactable strategy (retainsRecordsForFinalize=false), so the
-    // checkpoint is bounded mode — acked items are tracked as watermark + aheadAcked.
-    // Items 0 and 1 completed before item 2 threw; watermark should be 2.
-    assert.equal(entry.mode, 'bounded', 'expected bounded checkpoint for append strategy');
-    if (entry.mode === 'bounded') {
-      // With concurrency=1 items complete in order: watermark should advance to 2.
-      const totalAcked = entry.watermark + entry.aheadAcked.length;
-      assert.equal(totalAcked, 2, `expected 2 acked items; got watermark=${entry.watermark} aheadAcked.length=${entry.aheadAcked.length}`);
-      assert.equal(entry.outcomeTally['success'] ?? 0, 2, 'expected 2 success acked');
-    }
+    // Items 0 and 1 complete in order, so the watermark advances to 2.
+    const totalAcked = entry.watermark + entry.aheadAcked.length;
+    assert.equal(totalAcked, 2, `expected 2 acked items; got watermark=${entry.watermark} aheadAcked.length=${entry.aheadAcked.length}`);
+    assert.equal(entry.outcomeTally['success'] ?? 0, 2, 'expected 2 success acked');
   });
 
   void it('resume skips already-acked indices and re-executes only the rest', async () => {
@@ -152,7 +412,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-resume/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-resume', 'end'),
             'partial': placementIri('urn:noocodec:dag:scatter-resume', 'end'),
@@ -165,13 +425,13 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     dispatcher.registerDAG(dag);
 
     // Pre-seed progress for items 0 and 1 using bounded checkpoint mode.
-    // Append is compactable → bounded shape; result assertions are unchanged.
+    // Append uses bounded watermark progress.
     const state = new ScatterState();
     state.items = [10, 20, 30, 40, 50];
     const fanIri = placementIri('urn:noocodec:dag:scatter-resume', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanIri,
         'inbox': [],
         'watermark': 2,
@@ -201,7 +461,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-aggregate/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-aggregate', 'join'),
             'partial': placementIri('urn:noocodec:dag:scatter-aggregate', 'join'),
@@ -227,10 +487,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // during the prior run. Their gather contributions (append: item values)
     // are already in state.processed as they would be in a real state snapshot.
     state.processed = [11, 22];
-    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
+    // Append uses bounded watermark progress.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanIri,
         'inbox': [],
         'watermark': 2,
@@ -248,7 +508,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('FoldDeltaJournal rebuilds the accumulator on same-state resume without preseeded parent data', async () => {
     const journal = new MemoryFoldJournalStore();
-    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     let calls = 0;
     dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal', ['success'], () => {
       calls++;
@@ -265,8 +525,11 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-fold-journal/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker-fold-journal' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
-          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'source': 'items', 'itemKey': 'item',
+          'configuration': {
+            'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } },
+            'durability': { 'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'], 'foldJournalStoreKey': 'journal' },
+          },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-fold-journal', 'join'),
             'partial': placementIri('urn:noocodec:dag:scatter-fold-journal', 'join'),
@@ -317,7 +580,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('FoldDeltaJournal journals one acked reservoir batch and replays it exactly once on resume', async () => {
     const journal = new MemoryFoldJournalStore();
-    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     let batchCalls = 0;
     dispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
       'urn:noocodec:node:worker-fold-journal-reservoir',
@@ -350,8 +613,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'body': { 'node': 'urn:noocodec:node:worker-fold-journal-reservoir' },
           'source': 'items',
           'itemKey': 'item',
-          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
-          'execution': { 'mode': 'reservoir', 'concurrency': 1, 'reservoir': { 'keyField': 'bucket', 'capacity': 2 } },
+          'configuration': {
+            'execution': { 'batching': { 'mode': 'reservoir', 'concurrency': 1, 'reservoir': { 'keyField': 'bucket', 'capacity': 2 } } },
+            'durability': { 'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'], 'foldJournalStoreKey': 'journal' },
+          },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -403,12 +668,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const scatterProgress = Validator.storedScatterProgress.validate(storedProgress);
     const fanProgress = scatterProgress[fanIri];
     assert.ok(fanProgress !== undefined);
-    assert.equal(fanProgress.mode, 'bounded');
-    if (fanProgress.mode === 'bounded') {
-      assert.equal(fanProgress.watermark, 2, 'first capacity-2 reservoir batch should advance watermark to 2');
-      assert.deepEqual(fanProgress.aheadAcked, []);
-      assert.deepEqual(fanProgress.outcomeTally, { 'success': 2 });
-    }
+    assert.equal(fanProgress.watermark, 2, 'first capacity-2 reservoir batch should advance watermark to 2');
+    assert.deepEqual(fanProgress.aheadAcked, []);
+    assert.deepEqual(fanProgress.outcomeTally, { 'success': 2 });
 
     const commits = [];
     for await (const commit of journal.read(interrupted.state.runIri)) commits.push(commit);
@@ -426,7 +688,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     });
     interrupted.state.processed = [];
 
-    const resumeDispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    const resumeDispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     resumeDispatcher.registerNode(TestBatchNode.of<ScatterState, 'success'>(
       'urn:noocodec:node:worker-fold-journal-reservoir',
       ['success'],
@@ -445,7 +707,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('does not publish a fold or watermark when the atomic journal append fails', async () => {
     const journal = new MemoryFoldJournalStore();
-    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal-failure', ['success'], () => 'success'));
 
     const dagIri = 'urn:noocodec:dag:scatter-fold-journal-failure';
@@ -467,8 +729,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'body': { 'node': 'urn:noocodec:node:worker-fold-journal-failure' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
-          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'configuration': {
+            'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } },
+            'durability': { 'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'], 'foldJournalStoreKey': 'journal' },
+          },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -510,7 +774,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('serializes concurrent item commits against the latest durable watermark', async () => {
     const journal = new MemoryFoldJournalStore();
-    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStore': journal });
+    const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal-concurrent', ['success'], async (state) => {
       const item = state.getter.number('item');
       await new Promise((resolve) => setTimeout(resolve, 50 - item));
@@ -536,8 +800,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'body': { 'node': 'urn:noocodec:node:worker-fold-journal-concurrent' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 4 },
-          'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'],
+          'configuration': {
+            'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } },
+            'durability': { 'writePoints': ['FoldDeltaJournal', 'WatermarkCommit'], 'foldJournalStoreKey': 'journal' },
+          },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -621,7 +887,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'nodes': [
           { '@id': fanIri, '@type': 'ScatterNode',
             'name': 'fan', 'body': { 'node': 'urn:noocodec:node:producer' },
-            'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+            'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
             'outputs': {
               'all-success': joinIri,
               'partial': joinIri,
@@ -653,14 +919,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const persisted: StoredScatterProgressType = Validator.storedScatterProgress.validate(persistedRaw);
     const persistedEntry = persisted[placementIri('urn:noocodec:dag:scatter-map-interrupt', 'fan')];
     assert.ok(persistedEntry !== undefined);
-    // map is a compactable strategy (retainsRecordsForFinalize=false), so the
-    // checkpoint is bounded mode — mapping values are already folded into parent
-    // state via reduce; no per-acked-result mapping values are persisted.
-    assert.equal(persistedEntry.mode, 'bounded', 'expected bounded checkpoint for map strategy');
-    if (persistedEntry.mode === 'bounded') {
-      const totalAcked = persistedEntry.watermark + persistedEntry.aheadAcked.length;
-      assert.equal(totalAcked, 2, 'expected 2 acked items in bounded checkpoint');
-    }
+    // Mapping values are folded into parent state; progress stores only cursor data.
+    const persistedAckedCount = persistedEntry.watermark + persistedEntry.aheadAcked.length;
+    assert.equal(persistedAckedCount, 2, 'expected 2 acked items in bounded checkpoint');
     // The parent results array holds the two folded values (reduce fires per-ack,
     // so map strategy appends as each item lands).
     // After interruption at item 2, results must contain 2 entries (items 0 and 1).
@@ -722,7 +983,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': fanAIri, '@type': 'ScatterNode',
           'name': 'fanA', 'body': { 'node': 'urn:noocodec:node:workerA' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': fanAJoinIri,
             'partial': fanAJoinIri,
@@ -740,7 +1001,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           } },
         { '@id': fanBIri, '@type': 'ScatterNode',
           'name': 'fanB', 'body': { 'node': 'urn:noocodec:node:workerB' },
-          'source': 'items2', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items2', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': fanBJoinIri,
             'partial': fanBJoinIri,
@@ -769,13 +1030,13 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     state.items2 = [1, 2, 3, 4];
     state.processed = [100];        // fanA: index 0 already gathered
     state.processed2 = [1, 3];      // fanB: indices 0 and 2 already gathered
-    // Append is compactable → bounded checkpoint shape for both placements.
+    // Append uses bounded watermark progress for both placements.
     // fanA: index 0 acked (watermark=1). fanB: indices 0 and 2 acked (non-contiguous:
     // watermark=1 because index 1 is missing; aheadAcked=[{index:2}]).
     // Result assertions (aCalls/bCalls/processed lengths) are unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanAIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanAIri,
         'inbox': [],
         'watermark': 1,
@@ -783,7 +1044,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'outcomeTally': { 'success': 1 },
       },
       [fanBIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanBIri,
         'inbox': [],
         'watermark': 1,
@@ -831,7 +1092,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-batched/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 3 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 3 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-batched', 'end'),
             'partial': placementIri('urn:noocodec:dag:scatter-batched', 'end'),
@@ -868,7 +1129,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'nodes': [
         { '@id': fanIri, '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -898,11 +1159,11 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const state = new ScatterState();
     state.items = [7, 14, 21, 28];
     state.processed = [7, 14]; // items 0 and 1 already gathered
-    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
+    // Append uses bounded watermark progress.
     // Items 0 and 1 acked contiguously → watermark=2, aheadAcked empty.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanIri,
         'inbox': [],
         'watermark': 2,
@@ -918,11 +1179,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const storedRestored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRestoredRaw);
     const fanEntry = storedRestored[fanIri];
     assert.ok(fanEntry !== undefined);
-    // Bounded checkpoint survives snapshot/restore; shape changed from retained.
-    assert.equal(fanEntry.mode, 'bounded');
-    if (fanEntry.mode === 'bounded') {
-      assert.equal(fanEntry.watermark, 2);
-    }
+    // Bounded checkpoint survives snapshot/restore with its watermark intact.
+    assert.equal(fanEntry.watermark, 2);
 
     const result = await dispatcher.resume('urn:noocodec:dag:scatter-ckpt', restored, fanIri);
     // fan ran 2 fresh items + tail node = 3 calls.
@@ -952,7 +1210,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'nodes': [
         { '@id': 'urn:noocodec:dag:scatter-e2e/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'urn:noocodec:node:worker' },
-          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
+          'source': 'items', 'itemKey': 'item', 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:scatter-e2e', 'end'),
             'partial': placementIri('urn:noocodec:dag:scatter-e2e', 'end'),
@@ -967,10 +1225,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const state = new ScatterState();
     state.items = [1, 2, 3, 4];
     const fanIri = placementIri('urn:noocodec:dag:scatter-e2e', 'fan');
-    // Pre-seed one acked index. Append is compactable → bounded checkpoint shape.
+    // Pre-seed one acknowledged index in bounded progress.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode': 'bounded' as const,
+        'mode': 'bounded',
         'placementName': fanIri,
         'inbox': [],
         'watermark': 1,
@@ -999,9 +1257,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw2);
     const fanStored = stored[fanIri];
     assert.ok(fanStored !== undefined, 'expected progress entry for fan scatter');
-    const ackedCount = fanStored.mode === 'bounded'
-      ? fanStored.watermark + fanStored.aheadAcked.length
-      : fanStored.ackedResults.length;
+    const ackedCount = fanStored.watermark + fanStored.aheadAcked.length;
     assert.ok(ackedCount >= 1, 'at least one item should be acked after partial run');
 
     // Sanity: the checkpoint carries the DAG IRI used by the resume path.

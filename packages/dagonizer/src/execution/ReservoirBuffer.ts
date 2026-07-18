@@ -185,17 +185,22 @@ export class ReservoirBuffer {
   }
 
   /**
-   * On resume: rebuild buffers from inbox items that have `bufferKey` set.
+   * On resume: rebuild buffers from persisted inbox grouping.
    * Release any group already at capacity immediately.
    */
   replayBuffers(): void {
-    const { keyField, capacity } = this.#reservoir;
+    const { capacity } = this.#reservoir;
     for (const inboxItem of this.#inbox) {
-      // A reservoir run always stamps `bufferKey` when it buffers an item, so a
-      // resumed inbox carries it. The default path recomputes the key from the item
-      // (defense-in-depth: a checkpoint written by a prior non-reservoir run, or
-      // any future pre-scan path) so an inbox item is never silently dropped.
-      const key = inboxItem.bufferKey ?? String(this.#resolveKey(inboxItem.item, keyField) ?? '');
+      if (inboxItem.bufferKey === undefined) {
+        throw new DAGError(
+          `Reservoir restore requires persisted bufferKey for inbox item at index ${inboxItem.index}`,
+          {
+            'code': 'VALIDATION_ERROR',
+            'context': { 'index': inboxItem.index },
+          },
+        );
+      }
+      const key = inboxItem.bufferKey;
       const buf = this.#activeBuffers.get(key);
       const buffered: BufferedItem = { 'index': inboxItem.index, 'item': inboxItem.item, 'bufferKey': key };
       if (buf !== undefined) {

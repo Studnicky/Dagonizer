@@ -1,7 +1,6 @@
 import { Semaphore } from '@studnicky/concurrency/semaphore';
 
 import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
-import { DagContainerBase } from '../container/DagContainerBase.js';
 import type { RunResultType } from '../container/DagOutcome.js';
 import { DagTask } from '../container/DagTask.js';
 import { TransportErrorCode } from '../container/TransportErrorCode.js';
@@ -12,7 +11,6 @@ import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInt
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
-import type { GraphStateSnapshotInterface } from '../contracts/GraphStateSnapshotInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../contracts/ReservoirDriver.js';
@@ -22,6 +20,7 @@ import type { WritePointType } from '../contracts/WritePoint.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
@@ -50,6 +49,7 @@ export type RunNodeResultType = {
 
 export type GatherRecordSinkType = {
   readonly journalsFoldDeltas: boolean;
+  readonly retainsRecordsForFinalize: boolean;
   prepare(records: readonly GatherRecordType[]): Promise<readonly FoldJournalStoreInterface.EntryType[]>;
   commit(records: readonly GatherRecordType[]): Promise<void>;
 };
@@ -91,7 +91,6 @@ export interface ScatterDispatchAdapterInterface {
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
-  readonly foldJournalStore: FoldJournalStoreInterface | null;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -129,7 +128,7 @@ export interface ScatterDispatchSourceInterface {
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
-  readonly foldJournalStore: FoldJournalStoreInterface | null;
+  readonly foldJournalStores: Readonly<Record<string, FoldJournalStoreInterface>>;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -148,6 +147,7 @@ export interface ScatterDispatchSourceInterface {
   ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<NodeStateInterface>, void>;
   resolveContainer(role: string | undefined): DagContainerInterface | null;
   resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined;
+  resolvedPlacementConfiguration(placementIri: string): DagConfiguration.ResolvedType | undefined;
   nextCorrelationId(dagName: string): string;
   relayFor(state: NodeStateInterface): ObserverRelayInterface;
 }
@@ -173,7 +173,6 @@ export class ScatterDispatchAdapter
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly executionTopologyStore: GraphDatasetInterface;
-  readonly foldJournalStore: FoldJournalStoreInterface | null;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   readonly #source: ScatterDispatchSourceInterface;
 
@@ -185,14 +184,8 @@ export class ScatterDispatchAdapter
     this.accessor = source.accessor;
     this.stateFactories = source.stateFactories;
     this.executionTopologyStore = source.executionTopologyStore;
-    this.foldJournalStore = source.foldJournalStore;
     this.outputSchemaValidator = source.outputSchemaValidator;
     this.#source = source;
-  }
-
-  static isGraphState(state: NodeStateInterface): state is NodeStateInterface & GraphStateSnapshotInterface {
-    return 'snapshotGraph' in state && typeof state.snapshotGraph === 'function'
-      && 'restoreGraph' in state && typeof state.restoreGraph === 'function';
   }
 
   withNodeTimeout<TResult>(
@@ -259,6 +252,7 @@ export type ScatterRunContextType = {
   readonly gatherRecordSink: GatherRecordSinkType | null;
   readonly responseState: TransientNodeStateResponseStateType;
   readonly writePoints: ReadonlySet<WritePointType>;
+  readonly foldJournalStore: FoldJournalStoreInterface | null;
 }
 
 /**
@@ -340,7 +334,7 @@ export class ScatterPoolDriver
   }
 
   persistCheckpoint(): void {
-    if (!this.#ctx.writePoints.has('WatermarkCommit')) return;
+    if (!this.#ctx.writePoints.has('WatermarkCommit') || this.#ctx.gatherRecordSink?.retainsRecordsForFinalize === true) return;
     const { scatter, state, inbox, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
     ScatterCheckpoint.writeBounded(
       state,
@@ -516,9 +510,9 @@ export class ScatterPoolDriver
     completed = false,
   ): Promise<void> {
     if (entries.length === 0 && !completed) return;
-    const store = this.#adapter.foldJournalStore;
+    const store = this.#ctx.foldJournalStore;
     if (store === null) {
-      throw new DAGError('FoldDeltaJournal requires DagonizerOptionsType.foldJournalStore', {
+      throw new DAGError('FoldDeltaJournal requires a bound durability.foldJournalStoreKey', {
         'code': 'CONFIGURATION_ERROR',
       });
     }
@@ -584,7 +578,7 @@ export class ScatterPoolDriver
       for (const [index, ackOutput] of nextAheadAcked) aheadAcked.set(index, ackOutput);
       outcomeTally.clear();
       for (const [key, count] of nextOutcomeTally) outcomeTally.set(key, count);
-      if (this.#ctx.writePoints.has('WatermarkCommit')) {
+      if (this.#ctx.writePoints.has('WatermarkCommit') && gatherRecordSink?.retainsRecordsForFinalize !== true) {
         ScatterCheckpoint.writeBounded(
           state, scatter['@id'], progress.inbox, progress.watermark,
           progress.aheadAcked, progress.outcomeTally,
@@ -603,10 +597,8 @@ export class ScatterPoolDriver
    * - **Branch B (DAG body, in-process):** runs the released batch through the
    *   sub-DAG in a single batch-native `runNodes` call (the `inputBatch` +
    *   `terminalByItemId` seam), deriving each item's `terminalOutcome` from the map.
-   * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDag`
-   *   when the container is a `DagContainerBase` instance (one transport round-trip
-   *   for all items); uses per-item `container.runDag` for plain
-   *   `DagContainerInterface` implementations.
+   * - **Branch C (DAG body, container):** calls the bound
+   *   `DagContainerInterface.runDag` once with the complete released batch.
    *
    * Errors and warnings from each clone are collected into the parent state.
    */
@@ -791,44 +783,21 @@ export class ScatterPoolDriver
       const correlationId = this.#adapter.nextCorrelationId(selectedDagIri);
       const context = this.#adapter.context(selectedDagIri, scatter.name, signal);
       const scatterRelay = this.#adapter.relayFor(state);
-      let outcomes: RunResultType[];
-
-      if (container instanceof DagContainerBase) {
-        const repCloneForTask: NodeStateInterface = partition.clones[0] ?? state;
-        const task = new DagTask(
-          selectedDagIri,
-          innerPath,
-          correlationId,
-          Timeout.none(),
-          repCloneForTask,
-          this.#inputState,
-          this.#ctx.responseState,
-          context,
-        );
-        outcomes = await container.runDag(task, batch, { 'relay': scatterRelay });
-      } else {
-        outcomes = [];
-        for (let i = 0; i < partition.items.length; i++) {
-          const clone: NodeStateInterface = partition.clones[i] ?? state;
-          const buffered = partition.items[i];
-          if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-          const itemCorrelationId = this.#adapter.nextCorrelationId(selectedDagIri);
-          const itemContext = this.#adapter.context(selectedDagIri, scatter.name, signal);
-          const task = new DagTask(
-            selectedDagIri,
-            innerPath,
-            itemCorrelationId,
-            Timeout.none(),
-            clone,
-            this.#inputState,
-            this.#ctx.responseState,
-            itemContext,
-          );
-          const singleBatch = Batch.from([{ 'id': String(buffered.index), 'state': clone }]);
-          const results = await container.runDag(task, singleBatch, { 'relay': scatterRelay });
-          outcomes.push(...results);
-        }
+      const representative = partition.clones[0];
+      if (representative === undefined) {
+        throw new DAGError('ScatterDispatch cannot dispatch an empty container batch', { 'code': 'EXECUTION_ERROR' });
       }
+      const task = new DagTask(
+        selectedDagIri,
+        innerPath,
+        correlationId,
+        Timeout.none(),
+        representative,
+        this.#inputState,
+        this.#ctx.responseState,
+        context,
+      );
+      const outcomes: RunResultType[] = await container.runDag(task, batch, { 'relay': scatterRelay });
 
       for (const outcome of outcomes) {
         if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
@@ -868,7 +837,12 @@ export class ScatterPoolDriver
         // returning, so `clone` already carries its terminal domain state here.
         for (const err of outcome.errors) clone.collectError(err);
 
-        const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
+        const terminalOutcome: 'completed' | 'failed' | null =
+          outcome.terminalOutput === 'failed'
+            ? 'failed'
+            : outcome.terminalOutput === 'awaiting-input'
+              ? null
+              : 'completed';
         const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
         const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
 
@@ -942,7 +916,7 @@ export class ScatterPoolDriver
       outcomeTally.clear();
       for (const [key, count] of nextOutcomeTally) outcomeTally.set(key, count);
 
-      if (this.#ctx.writePoints.has('WatermarkCommit')) {
+      if (this.#ctx.writePoints.has('WatermarkCommit') && gatherRecordSink?.retainsRecordsForFinalize !== true) {
         ScatterCheckpoint.writeBounded(
           state, scatter['@id'], progress.inbox, progress.watermark,
           progress.aheadAcked, progress.outcomeTally,

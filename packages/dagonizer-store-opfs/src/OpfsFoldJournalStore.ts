@@ -12,21 +12,67 @@ const COMMIT_SEQ_PATTERN = /\.(\d+)\.json$/u;
 /** Per-run recovery state cached after the one-time intact-record scan. */
 type RunStateType = { maxSeq: number; commitIds: Set<string> };
 
+type DirectoryStateType = {
+  directory: DirectoryHandleLikeInterface;
+  runState: Map<string, RunStateType>;
+  appendSemaphore: ReturnType<typeof Semaphore.create>;
+};
+
+type EntryIdentifiableDirectoryType = DirectoryHandleLikeInterface & {
+  isSameEntry(other: DirectoryHandleLikeInterface): Promise<boolean>;
+};
+
+const DIRECTORY_STATE_BY_HANDLE = new WeakMap<DirectoryHandleLikeInterface, Promise<DirectoryStateType>>();
+const DIRECTORY_STATES: DirectoryStateType[] = [];
+const DIRECTORY_IDENTITY_SEMAPHORE = Semaphore.create({ 'permits': 1 });
+
+function hasEntryIdentity(directory: DirectoryHandleLikeInterface): directory is EntryIdentifiableDirectoryType {
+  return 'isSameEntry' in directory && typeof directory.isSameEntry === 'function';
+}
+
+async function isSameDirectory(left: DirectoryHandleLikeInterface, right: DirectoryHandleLikeInterface): Promise<boolean> {
+  if (left === right) return true;
+  if (hasEntryIdentity(left)) return left.isSameEntry(right);
+  if (hasEntryIdentity(right)) return right.isSameEntry(left);
+  return false;
+}
+
+function resolveDirectoryState(directory: DirectoryHandleLikeInterface): Promise<DirectoryStateType> {
+  const cached = DIRECTORY_STATE_BY_HANDLE.get(directory);
+  if (cached !== undefined) return cached;
+
+  const pending = DIRECTORY_IDENTITY_SEMAPHORE.withPermit(async () => {
+    for (const state of DIRECTORY_STATES) {
+      if (await isSameDirectory(directory, state.directory)) return state;
+    }
+
+    const state: DirectoryStateType = {
+      'directory': directory,
+      'runState': new Map(),
+      'appendSemaphore': Semaphore.create({ 'permits': 1 }),
+    };
+    DIRECTORY_STATES.push(state);
+    return state;
+  });
+  DIRECTORY_STATE_BY_HANDLE.set(directory, pending);
+  return pending;
+}
+
 /**
  * FoldJournalStore backed directly by OPFS: one immutable file per committed
  * fold batch (so `append` writes a brand-new file and never touches any
- * existing record). The first `append`/`read` for a run pays a one-time scan
- * of intact files to recover the max sequence and the set of committed IDs;
- * every subsequent `append` for that run is O(1) — a duplicate `commitId` is
- * resolved from the cached set without touching the directory, and a new
- * commit writes exactly one new file.
+ * existing record). The first `append` for a run scans intact files to recover
+ * the max sequence and the set of committed IDs; every subsequent `append`
+ * for that run is O(1) — a duplicate `commitId` is
+ * resolved from the realm-shared cached set without touching the directory,
+ * and a new commit writes exactly one new file.
  */
 export class OpfsFoldJournalStore implements FoldJournalStoreInterface {
-  readonly #directory: DirectoryHandleLikeInterface;
-  readonly #runState = new Map<string, RunStateType>();
-  readonly #appendSemaphore = Semaphore.create({ 'permits': 1 });
+  readonly #directoryState: Promise<DirectoryStateType>;
 
-  constructor(directory: DirectoryHandleLikeInterface) { this.#directory = directory; }
+  constructor(directory: DirectoryHandleLikeInterface) {
+    this.#directoryState = resolveDirectoryState(directory);
+  }
 
   /** Resolves the OPFS root, then gets (or creates) a subdirectory named `dirName`. */
   static async rooted(dirName: string): Promise<OpfsFoldJournalStore> {
@@ -37,17 +83,17 @@ export class OpfsFoldJournalStore implements FoldJournalStoreInterface {
 
   /**
    * Idempotent by `commitId`. Creates a brand-new per-record file — O(1) once
-   * the run's state is recovered. Serialized by a single-permit semaphore so
-   * concurrent `append` calls (same or different runs) never race on
-   * sequence-number assignment.
+   * the run's state is recovered. A realm-shared single-permit semaphore per
+   * directory prevents adapter instances from racing on sequence assignment.
    */
   async append(runIri: string, commit: FoldJournalStoreInterface.CommitType): Promise<void> {
-    await this.#appendSemaphore.withPermit(async () => {
-      const state = await this.#stateOf(runIri);
+    const directoryState = await this.#directoryState;
+    await directoryState.appendSemaphore.withPermit(async () => {
+      const state = await this.#stateOf(directoryState, runIri);
       if (state.commitIds.has(commit.commitId)) return;
 
       const seq = state.maxSeq + 1;
-      const handle = await this.#directory.getFileHandle(OpfsFoldJournalStore.#commitFileName(runIri, seq), { 'create': true });
+      const handle = await directoryState.directory.getFileHandle(OpfsFoldJournalStore.#commitFileName(runIri, seq), { 'create': true });
       const writable = await handle.createWritable();
       await writable.write(JSON.stringify(commit));
       await writable.close();
@@ -59,29 +105,30 @@ export class OpfsFoldJournalStore implements FoldJournalStoreInterface {
 
   /** Yields structurally validated intact commits in sequence order; a torn write is skipped, not thrown. */
   async *read(runIri: string): AsyncIterable<FoldJournalStoreInterface.CommitType> {
-    const records = await this.#scan(runIri);
+    const directoryState = await this.#directoryState;
+    const records = await this.#scan(directoryState.directory, runIri);
     for (const record of records) yield record.commit;
   }
 
   /** Recovers (or returns the cached) sequence/commitId state for a run — the one-time scan happens at most once per run. */
-  async #stateOf(runIri: string): Promise<RunStateType> {
-    const cached = this.#runState.get(runIri);
+  async #stateOf(directoryState: DirectoryStateType, runIri: string): Promise<RunStateType> {
+    const cached = directoryState.runState.get(runIri);
     if (cached !== undefined) return cached;
 
-    const records = await this.#scan(runIri);
+    const records = await this.#scan(directoryState.directory, runIri);
     const state: RunStateType = {
       'maxSeq': records.reduce((max, record) => Math.max(max, record.seq), 0),
       'commitIds': new Set(records.map((record) => record.commit.commitId)),
     };
-    this.#runState.set(runIri, state);
+    directoryState.runState.set(runIri, state);
     return state;
   }
 
   /** Scans every intact record for a run, sorted by sequence. A shape-invalid intact record throws. */
-  async #scan(runIri: string): Promise<{ seq: number; commit: FoldJournalStoreInterface.CommitType }[]> {
+  async #scan(directory: DirectoryHandleLikeInterface, runIri: string): Promise<{ seq: number; commit: FoldJournalStoreInterface.CommitType }[]> {
     const prefix = OpfsFoldJournalStore.#commitPrefix(runIri);
     const records: { seq: number; commit: FoldJournalStoreInterface.CommitType }[] = [];
-    for await (const [name, handle] of this.#directory.entries()) {
+    for await (const [name, handle] of directory.entries()) {
       if (!name.startsWith(prefix)) continue;
       const seq = OpfsFoldJournalStore.#seqOfCommitFileName(name);
       if (seq === undefined) continue;

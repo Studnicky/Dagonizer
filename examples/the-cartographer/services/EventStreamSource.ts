@@ -7,9 +7,8 @@
  * record is encoded per-format via Sources.buildPayloadFromScan and yielded as a
  * SourcePayload, so peak memory is O(numTypes) regardless of total count.
  *
- * Producer feed nodes use streamProducer to open one event-type source stream;
- * compatibility flows can still use streamTyped for the merged SourcePayload
- * stream shape.
+ * Producer feed nodes use streamProducer to open one event-type source stream.
+ * Direct SourcePayload workloads use streamTyped for the merged stream shape.
  *
  * Format distribution: each EventTypeConfig entry's formatMix weights determine
  * the proportional threshold split for that entry's scan budget. Because scans are
@@ -97,6 +96,8 @@ class FormatThresholds {
    * {format, compression}.
    */
   static forMix(mix: EventTypeConfig[number]['formatMix'], count: number): FormatThreshold[] {
+    if (mix.length === 0) throw new TypeError('Source payload format mix must not be empty');
+
     const totalWeight = mix.reduce((sum, m) => sum + m.weight, 0);
     const thresholds: FormatThreshold[] = [];
     let allocated = 0;
@@ -115,6 +116,14 @@ class FormatThresholds {
       }
     }
     return thresholds;
+  }
+
+  static select(thresholds: readonly FormatThreshold[], localIndex: number): FormatThreshold {
+    const threshold = thresholds.find((candidate) => localIndex < candidate.limit);
+    if (threshold === undefined) {
+      throw new RangeError(`No source payload format threshold contains local index ${localIndex}`);
+    }
+    return threshold;
   }
 }
 
@@ -189,31 +198,30 @@ class ScaledCycleIterator implements AsyncIterator<SourcePayload, undefined> {
     const scan = step.value;
 
     // Resolve config entry by the scan's eventType (interleaved order).
-    const cycleConfigIdx = this.#cycleEventTypeToIdx.get(scan.eventType) ?? 0;
-    const currentEntry = this.#cycleConfig[cycleConfigIdx] ?? this.#cycleConfig[0];
-    if (currentEntry === undefined) return { value: undefined, done: true };
-    const localIdx = this.#cycleLocalIndices[cycleConfigIdx] ?? 0;
-    const thresholds = this.#cycleEntryThresholds[cycleConfigIdx] ?? [];
+    const cycleConfigIdx = this.#cycleEventTypeToIdx.get(scan.eventType);
+    if (cycleConfigIdx === undefined) throw new TypeError(`Missing source payload configuration for '${scan.eventType}'`);
+    const currentEntry = this.#cycleConfig[cycleConfigIdx];
+    if (currentEntry === undefined) throw new RangeError(`Missing source payload configuration at index ${cycleConfigIdx}`);
+    const localIdx = this.#cycleLocalIndices[cycleConfigIdx];
+    if (localIdx === undefined) throw new RangeError(`Missing source payload cursor at index ${cycleConfigIdx}`);
+    const thresholds = this.#cycleEntryThresholds[cycleConfigIdx];
+    if (thresholds === undefined) throw new RangeError(`Missing source payload thresholds at index ${cycleConfigIdx}`);
+    const selected = FormatThresholds.select(thresholds, localIdx);
 
-    let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
-    let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
-    for (const threshold of thresholds) {
-      if (localIdx < threshold.limit) {
-        format = threshold.format;
-        compression = threshold.compression;
-        break;
-      }
-    }
-
-    const payload = await Sources.buildPayloadFromScan(scan, format, compression, this.#globalIndex, currentEntry.eventType);
-    const sourceId = `${currentEntry.eventType}-${format}-${compression}-${this.#globalIndex}`;
+    const payload = await Sources.buildPayloadFromScan(
+      scan,
+      selected.format,
+      selected.compression,
+      this.#globalIndex,
+      currentEntry.eventType,
+    );
 
     this.#cycleLocalIndices[cycleConfigIdx] = localIdx + 1;
     this.#cycleYielded++;
     this.#globalIndex++;
 
     return {
-      value: { ...payload, 'sourceId': sourceId, 'eventType': currentEntry.eventType },
+      value: payload,
       done: false,
     };
   }
@@ -329,30 +337,29 @@ export class EventStreamSource {
               const scan = step.value;
 
               // Resolve config entry by the scan's eventType (interleaved order).
-              const configIdx = eventTypeToConfigIdx.get(scan.eventType) ?? 0;
-              const currentEntry = config[configIdx] ?? config[0];
-              if (currentEntry === undefined) return { value: undefined, done: true };
-              const localIdx = localIndices[configIdx] ?? 0;
-              const thresholds = entryThresholds[configIdx] ?? [];
+              const configIdx = eventTypeToConfigIdx.get(scan.eventType);
+              if (configIdx === undefined) throw new TypeError(`Missing source payload configuration for '${scan.eventType}'`);
+              const currentEntry = config[configIdx];
+              if (currentEntry === undefined) throw new RangeError(`Missing source payload configuration at index ${configIdx}`);
+              const localIdx = localIndices[configIdx];
+              if (localIdx === undefined) throw new RangeError(`Missing source payload cursor at index ${configIdx}`);
+              const thresholds = entryThresholds[configIdx];
+              if (thresholds === undefined) throw new RangeError(`Missing source payload thresholds at index ${configIdx}`);
+              const selected = FormatThresholds.select(thresholds, localIdx);
 
-              let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
-              let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
-              for (const threshold of thresholds) {
-                if (localIdx < threshold.limit) {
-                  format = threshold.format;
-                  compression = threshold.compression;
-                  break;
-                }
-              }
-
-              const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, currentEntry.eventType);
-              const sourceId = `${currentEntry.eventType}-${format}-${compression}-${globalIndex}`;
+              const payload = await Sources.buildPayloadFromScan(
+                scan,
+                selected.format,
+                selected.compression,
+                globalIndex,
+                currentEntry.eventType,
+              );
 
               localIndices[configIdx] = localIdx + 1;
               globalIndex++;
 
               return {
-                value: { ...payload, 'sourceId': sourceId, 'eventType': currentEntry.eventType },
+                value: payload,
                 done: false,
               };
             },

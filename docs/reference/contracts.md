@@ -87,12 +87,13 @@ import type {
   SystemInfoInterface,
 } from '@studnicky/dagonizer/contracts';
 
-// DagOutcomeType and DagTaskInterface ship through the root barrel
+// DagOutcomeType ships through the root barrel
 import type {
   DagOutcomeType,
-  DagTaskInterface,
 } from '@studnicky/dagonizer';
 ```
+
+`DagTaskType` (the engine-side task descriptor for a contained DAG execution) is an entity-narrowing type, not a `contracts/`-tier adapter contract — see [Reference: Container](./container#class-dagtask) for its shape and the `DagTask` value class that implements it.
 
 ### NodeInterface
 
@@ -276,18 +277,30 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 ### DagContainerInterface
 
 ```ts twoslash
-import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
+import type { DagTaskType } from '@studnicky/dagonizer/types';
+import type { Batch, NodeStateInterface } from '@studnicky/dagonizer';
+import type { RunResultType } from '@studnicky/dagonizer/container';
 import type { ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface DagContainerInterface {
-  runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(
+    task: DagTaskType,
+    batch: Batch<NodeStateInterface>,
+    options?: { readonly relay?: ObserverRelayInterface },
+  ): Promise<RunResultType[]>;
   destroy?(): Promise<void>;
 }
 ```
 
 Adapter contract for running an embedded DAG or DAG-body scatter in an isolate (worker thread, forked child, spawned process, Web Worker, or remote host). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must preserve the child DAG boundary: the task carries the selected DAG IRI, placement path, state snapshot, timeout, and execution context; the outcome returns terminal output, terminal state snapshot, collected errors, and intermediates. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`.
+`runDag` preserves the child DAG boundary and item order. `task` carries the
+selected DAG IRI, placement path, timeout, state-selection policy, and execution
+context; `batch` carries the live item states. One request and one response each
+own one combined graph transfer. The container restores that response transfer
+before returning one item-scoped outcome per input. `RunResultType` never carries
+`graphState`. Transport failures, host crashes, and serialization errors produce
+one result per item with an unrecoverable error.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
@@ -321,14 +334,13 @@ Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is f
 ### RegistryModuleInterface / RegistryBundleInterface
 
 ```ts twoslash
-import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
-import type { DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DispatcherBundleType, GraphDatasetInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface RegistryBundleInterface {
   readonly bundle:          DispatcherBundleType<NodeStateInterface>;
   readonly registryVersion: string;
-  readonly restoreState:    CheckpointRestoreAdapterInterface<NodeStateInterface>;
+  restoreState(dataset: GraphDatasetInterface, runIri: string): NodeStateInterface;
   destroy?():               Promise<void>;
 }
 
@@ -344,36 +356,35 @@ interface RegistryModuleInterface {
 ### DagOutcomeType
 
 ```ts twoslash
-import type { NodeErrorWireType, ExecutorIntermediateType, GraphStateTransferType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
+import type { NodeErrorWireType, ExecutorIntermediateType } from '@studnicky/dagonizer';
 // ---cut---
 interface DagOutcomeType {
   readonly terminalOutput: string;
   readonly errors:         readonly NodeErrorWireType[];
-  readonly graphState:  GraphStateTransferType;
+  readonly runIri?:         string;
   readonly intermediates:  readonly ExecutorIntermediateType[];
 }
 ```
 
-Result returned by `DagContainerInterface.runDag()` after a child DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `graphState` is the terminal child graph transfer restored through the shared graph-state port. `intermediates` are per-node results forwarded to the parent execution stream.
+Item outcome returned by `DagContainerInterface.runDag()` after the container
+restores the child state. The host emits `completed`, `failed`, or
+`awaiting-input`; custom implementations may use another routing token.
+`errors` and `intermediates` belong only to this item. `RunResultType` extends
+this shape with the required item `id`. The transport's batch-level
+`graphState` is deliberately absent.
 
-### DagTaskInterface
+The worker wire format is explicitly `application/n-quads`. A request or
+response carries one `GraphStateTransferType` envelope for the entire batch:
+`inline-nquads`, `graph-ref`, `shared-endpoint`, `inline-delta-nquads`, or
+`delta-ref`. Host/container format negotiation uses a non-empty,
+duplicate-free `graphStateTransferFormats` array; the canonical and default
+array is `['application/n-quads']`.
 
-```ts twoslash
-import type { NodeStateInterface, NodeContextType, ExecutionRequestType, Timeout } from '@studnicky/dagonizer';
-// ---cut---
-interface DagTaskInterface {
-  dagName:        string;
-  placementPath:  string[];
-  correlationId:  string;
-  timeout:        Timeout;
-  state:          NodeStateInterface;
-  context:        NodeContextType;
-  toRequest(): ExecutionRequestType;
-}
-```
+### DagTaskType
 
-Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`, typed at the `NodeStateInterface` contract because the engine is heterogeneous-state) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeout` is a `Timeout`; `Timeout.none()` means no per-task budget applies.
+`DagTaskType` is an entity-narrowing type, not a `contracts/`-tier adapter contract — it pairs with the `DagTask` value class in `@studnicky/dagonizer/container`. See [Reference: Container](./container#class-dagtask) for its full field table and the constructor contract.
+
+Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`, typed at the `NodeStateInterface` contract because the engine is heterogeneous-state) for the in-process path, plus `inputState` and `responseState` for the transient state carried across the container boundary. `correlationId` is a dispatcher-monotonic id (no randomness). `timeout` is a `Timeout`; `Timeout.none()` means no per-task budget applies.
 
 ### SystemInfoInterface
 

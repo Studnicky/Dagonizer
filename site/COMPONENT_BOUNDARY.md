@@ -121,6 +121,29 @@ When touching a component:
 
 ### Current next candidates
 
-- continue moving generic form and disclosure surfaces onto PrimeVue first
-- keep visualization controls repository-owned, but continue replacing raw generic controls inside them with PrimeVue controls where it improves consistency
-- avoid creating new hand-rolled generic button, card, tag, tab, or menu abstractions unless the wrapper adds real Dagonizer semantics
+Most of the obvious source-level migration work is now complete:
+
+- desktop nav uses PrimeVue `Menubar`
+- mobile nav uses PrimeVue `Drawer` + `Menu`
+- CTA/link treatment is unified through shared `UiActionLink`
+- docs/example/guide/reference landing pages use shared section-intro and
+  link-list primitives
+- runnable example pages use a shared Astro shell
+
+### Remaining work
+
+The remaining work is no longer broad component migration. It is mostly final
+verification and browser-driven polish:
+
+- rendered QA of the top bar, nav spacing, and responsive behavior
+- rendered QA of landing-page and docs-shell spacing/alignment
+- hydration/layout checks on the PrimeVue-backed islands
+
+### Practical rule from this point
+
+- do not introduce new hand-rolled generic button, card, tag, tab, menu, or
+  breadcrumb treatments
+- keep visualization/runtime controls repository-owned unless the control is
+  plainly generic
+- prefer browser-evidenced fixes over additional speculative source-only
+  refactors

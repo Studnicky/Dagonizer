@@ -2,7 +2,6 @@ import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 import { OutcomeReducers } from '../core/OutcomeReducers.js';
-import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import { DAGError } from '../errors/index.js';
@@ -56,11 +55,15 @@ export class ScatterExecutor {
     // the outcome-reducer step — no repeated `?? default` at each site.
     const reducerName = scatter.reducer ?? 'aggregate';
     const itemKey = scatter.itemKey ?? 'currentItem';
-    // Unified concurrency-limiting policy: one discriminated `mode` structure
-    // instead of three uncoordinated sibling knobs (see ScatterNode.ts doc
-    // comment). `concurrency` gates item dispatch in 'item' mode and batch
-    // dispatch in 'reservoir' mode; `throttle` is only meaningful in 'item' mode.
-    const executionPolicy = ScatterNodeDefaults.executionPolicy(scatter);
+    // Registration resolves the configuration cascade to one discriminated
+    // batching policy. Concurrency gates items or released batches by mode.
+    const configuration = this.#scatterSource.resolvedPlacementConfiguration(scatter['@id']);
+    if (configuration === undefined) {
+      throw new DAGError(`ScatterNode '${scatter.name}' has no registered configuration`, {
+        'code': 'CONFIGURATION_ERROR',
+      });
+    }
+    const batching = configuration.execution.batching;
     const writePoints = this.#scatterSource.resolvedPlacementWritePoints(scatter['@id']);
     if (writePoints === undefined) {
       throw new DAGError(`ScatterNode '${scatter.name}' has no registered write-point contract`, {
@@ -91,7 +94,8 @@ export class ScatterExecutor {
     // so corrupt or migrated checkpoints throw a DAGError (code
     // VALIDATION_ERROR) here rather than causing silent type mismatches
     // deep in the scatter loop.
-    const storedProgress = writePoints.has('WatermarkCommit')
+    const retainsRecordsForFinalize = gatherRecordSink?.retainsRecordsForFinalize === true;
+    const storedProgress = writePoints.has('WatermarkCommit') && !retainsRecordsForFinalize
       ? ScatterCheckpoint.read(state, scatter['@id'])
       : undefined;
 
@@ -100,7 +104,7 @@ export class ScatterExecutor {
     // set, and next-index cursor are reconstructed so resume reprocesses inbox
     // gaps and continues sequential index assignment. `nextIndex` advances as
     // fresh items are pulled, so it is read off the mutable bundle.
-    const runState = ScatterCheckpoint.restoreRunState(storedProgress, true);
+    const runState = ScatterCheckpoint.restoreRunState(storedProgress);
     const { inbox, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
     let nextIndex = runState.nextIndex;
 
@@ -177,25 +181,26 @@ export class ScatterExecutor {
       gatherRecordSink,
       'responseState': TransientResultSelection.scatterResponseState(scatter, scatterAdapter.nodeIndex),
       writePoints,
+      'foldJournalStore': configuration.durability.foldJournalStoreKey === null
+        ? null
+        : this.#scatterSource.foldJournalStores[configuration.durability.foldJournalStoreKey] ?? null,
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
     const driver = new ScatterPoolDriver(scatterAdapter, scatterCtx, this.#bodyExecutor);
 
-    if (executionPolicy.mode === 'reservoir') {
+    if (batching.mode === 'reservoir') {
       // Reservoir mode: buffer-then-release loop keyed by item field.
       // `concurrency` gates batch dispatch here (same Semaphore concept as
-      // item mode, at batch instead of item granularity) — there is no
-      // `throttle` field in this mode; the schema structurally prevents it
-      // (see ScatterNode.ts doc comment for why a per-item Throttle does not
-      // compose with variable-size batch dispatch).
+      // item mode, at batch instead of item granularity). The resolved policy
+      // omits throttle because per-item pacing does not compose with batches.
       const reservoirBuf = new ReservoirBuffer(driver, {
-        'concurrencyLimit': executionPolicy.concurrency,
+        'concurrencyLimit': batching.concurrency,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
-        'reservoir': executionPolicy.reservoir,
+        'reservoir': batching.reservoir,
         'accessor': this.#scatterSource.accessor,
       });
       // drain() throws on abort or batch error; checkpoint is preserved on throw.
@@ -203,12 +208,12 @@ export class ScatterExecutor {
     } else {
       // Item mode: per-item worker pool, optionally throttled.
       const pool = new ScatterWorkerPool(driver, {
-        'concurrencyLimit': executionPolicy.concurrency,
+        'concurrencyLimit': batching.concurrency,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
-        'throttle': executionPolicy.throttle,
+        'throttle': batching.throttle,
       });
       // drain() throws on abort or worker error; checkpoint is preserved on throw.
       await pool.drain();
@@ -216,7 +221,7 @@ export class ScatterExecutor {
 
     // ── 7. Commit completion, then clear checkpoint after clean completion ──
     await driver.complete();
-    if (writePoints.has('WatermarkCommit')) {
+    if (writePoints.has('WatermarkCommit') && !retainsRecordsForFinalize) {
       ScatterCheckpoint.clear(state, scatter['@id']);
     }
 

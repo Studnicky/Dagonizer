@@ -21,8 +21,8 @@
  *      `wasInformedBy` chain derived from `item.ordinal - 1`. Because the
  *      chain is derived from the item's own ordinal rather than threaded
  *      through node-instance state, the chain is correct at ANY scatter
- *      concurrency, including out-of-order recording — `execution: { mode: 'item',
- *      concurrency: 1 }` below is a default, not a correctness requirement.
+ *      concurrency, including out-of-order recording — `configuration.execution.batching:
+ *      { mode: 'item', concurrency: 1 }` below is a default, not a correctness requirement.
  *
  * The bridge between them: `ReActTraceProducer` (an `AgentTraceProducer`, a
  * `DagStreamProducer`) wraps the agent loop's `Execution` (its
@@ -765,7 +765,7 @@ export const traceDag: DAGType = {
       // A free performance choice, not a correctness requirement:
       // RecordReasoningStepNode derives the wasInformedBy chain from each
       // item's own `ordinal` field, so raising this is safe at any value.
-      'execution': { 'mode': 'item', 'concurrency': 1 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',
         'partial': 'urn:noocodec:dag:react-agent-memory-trace/node/collect-steps',

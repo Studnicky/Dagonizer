@@ -1,8 +1,8 @@
 import { posix } from 'node:path';
 import { marked } from 'marked';
-import { repositoryHref, siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
-export interface DocHeading {
+interface DocHeading {
   readonly depth: number;
   readonly slug: string;
   readonly text: string;
@@ -20,7 +20,7 @@ const DOC_ROOT_SEGMENTS = new Set([
   'reference'
 ]);
 
-function normalizeInline(text: string): string {
+function inlineText(text: string): string {
   return decodeHtmlEntities(text)
     .replace(/<[^>]+>/g, '')
     .replace(/`([^`]+)`/g, '$1')
@@ -48,13 +48,13 @@ function extractExplicitHeadingSlug(text: string): {
   const explicitMatch = /\s+\{#([A-Za-z0-9_-]+)\}$/.exec(rawText);
   if (explicitMatch === null) {
     return {
-      displayText: normalizeInline(text),
+      displayText: inlineText(text),
       slug: undefined
     };
   }
 
   return {
-    displayText: normalizeInline(rawText.slice(0, explicitMatch.index).trimEnd()),
+    displayText: inlineText(rawText.slice(0, explicitMatch.index).trimEnd()),
     slug: explicitMatch[1]
   };
 }
@@ -73,124 +73,11 @@ function slugifyHeading(text: string): string {
     .replace(/\s+/g, '-');
 }
 
-function slugifyIdentifier(text: string): string {
-  return text
-    .replace(/<[^>]+>/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 function stripGenericSegments(text: string): string {
   return text.replace(/<[^>]+>/g, '');
 }
 
-function slugifyHeadingLegacy(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/&[a-z]+;/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-');
-}
-
-function buildHeadingAliases(displayText: string, slug: string): readonly string[] {
-  const aliases = new Set<string>();
-  const legacySlug = slugifyHeadingLegacy(displayText);
-  if (legacySlug.length > 0 && legacySlug !== slug) {
-    aliases.add(legacySlug);
-  }
-
-  const classMatch = /^Class:\s+([A-Za-z0-9_]+)/.exec(displayText);
-  if (classMatch !== null) {
-    aliases.add(`class-${slugifyIdentifier(classMatch[1])}`);
-  }
-
-  const abstractClassMatch = /^Abstract class:\s+([A-Za-z0-9_]+)/.exec(displayText);
-  if (abstractClassMatch !== null) {
-    aliases.add(`abstract-class-${slugifyIdentifier(abstractClassMatch[1])}`);
-  }
-
-  const interfaceMatch = /^Interface:\s+([A-Za-z0-9_]+)/.exec(displayText);
-  if (interfaceMatch !== null) {
-    aliases.add(`interface-${slugifyIdentifier(interfaceMatch[1].replace(/Interface$/, ''))}`);
-  }
-
-  const typeMatch = /^Type:\s+([A-Za-z0-9_]+)/.exec(displayText);
-  if (typeMatch !== null) {
-    aliases.add(slugifyIdentifier(typeMatch[1]));
-  }
-
-  if (displayText === '.terminal(name, options?)') {
-    aliases.add('terminal-name-outcome');
-  }
-
-  if (displayText === 'Scatter and workset progress') {
-    aliases.add('scatter-resume-per-item-progress');
-  }
-
-  if (displayText === 'Distributed execution: RemoteStore') {
-    aliases.add('distributed-execution--remotestore');
-  }
-
-  if (displayText === 'DAGDocument.load(json, options?)') {
-    aliases.add('dagdocumentloadjson-options');
-  }
-
-  if (displayText === 'DAGDocument.serialize(dag)') {
-    aliases.add('dagdocumentserializedag');
-  }
-
-  if (displayText === 'RetryPolicy.run(task, options?)') {
-    aliases.add('retrypolicyruntask-options');
-  }
-
-  if (displayText === 'Checkpoint.load(raw)') {
-    aliases.add('checkpointloadraw');
-  }
-
-  if (displayText === 'Checkpoint.recall(store, key)') {
-    aliases.add('checkpointrecallstore-key');
-  }
-
-  if (displayText === 'ckpt.toJson()') {
-    aliases.add('ckpttojson');
-  }
-
-  if (displayText === 'ckpt.persist(store, key)') {
-    aliases.add('ckptpersiststore-key');
-  }
-
-  if (displayText === 'ckpt.restoreState(adapter)') {
-    aliases.add('ckptrestorestateadapter');
-  }
-
-  if (displayText === 'ckpt.data') {
-    aliases.add('ckptdata');
-  }
-
-  if (displayText === 'SchedulerProviderInterface interface') {
-    aliases.add('schedulerproviderinterface-interface');
-  }
-
-  if (displayText === 'Combining with the dispatcher\'s read accessors') {
-    aliases.add('combining-with-the-dispatchers-read-accessors');
-  }
-
-  if (displayText === 'async mount(): Promise<cytoscape.Core>') {
-    aliases.add('async-mount-promise');
-  }
-
-  return Array.from(aliases).filter((alias) => alias.length > 0 && alias !== slug);
-}
-
-function renderHeadingAliases(aliases: readonly string[]): string {
-  return aliases
-    .map((alias) => `<a id="${alias}" aria-hidden="true" tabindex="-1" class="doc-anchor-alias"></a>`)
-    .join('');
-}
-
-export function getLeadingMarkdownTitle(body: string): string | undefined {
+function getLeadingMarkdownTitle(body: string): string | undefined {
   const lines = body.split('\n');
   let inCodeFence = false;
 
@@ -211,7 +98,7 @@ export function getLeadingMarkdownTitle(body: string): string | undefined {
       return undefined;
     }
 
-    return normalizeInline(match[1]);
+    return inlineText(match[1]);
   }
 
   return undefined;
@@ -268,7 +155,7 @@ function stripUnsupportedDocTags(body: string): string {
 }
 
 function stripLeadingTitleHeading(body: string, title: string): string {
-  const normalizedTitle = normalizeInline(title).toLowerCase();
+  const expectedTitle = inlineText(title).toLowerCase();
   const lines = body.split('\n');
   let inCodeFence = false;
 
@@ -289,7 +176,7 @@ function stripLeadingTitleHeading(body: string, title: string): string {
       return body;
     }
 
-    if (normalizeInline(match[1]).toLowerCase() !== normalizedTitle) {
+    if (inlineText(match[1]).toLowerCase() !== expectedTitle) {
       return body;
     }
 
@@ -341,28 +228,8 @@ function isExternalHref(href: string): boolean {
   return /^(?:[a-z]+:)?\/\//i.test(href) || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:');
 }
 
-function normalizeDocTargetPath(path: string): string {
-  const normalized = path.replace(/\\/g, '/').replace(/\/+/g, '/');
-  const withoutExtension = normalized.replace(/\.md$/i, '');
-  const withoutIndex = withoutExtension.replace(/\/index$/i, '');
-  return withoutIndex === '' ? 'index' : withoutIndex.replace(/^\/+|\/+$/g, '') || 'index';
-}
-
 function isRepositorySourcePath(path: string): boolean {
-  const normalized = path.replace(/\\/g, '/');
-  return normalized.endsWith('.ts') || normalized.endsWith('.tsx') || normalized.endsWith('.js') || normalized.endsWith('.jsx') || normalized.endsWith('.json');
-}
-
-function resolveRepositoryHref(currentSlug: string | undefined, pathPart: string): string | undefined {
-  if (!isRepositorySourcePath(pathPart)) {
-    return undefined;
-  }
-
-  const currentDir = currentSlug === undefined || currentSlug === 'index' ? '.' : posix.dirname(currentSlug);
-  const docsRelativePath = posix.normalize(posix.join('docs', currentDir, pathPart));
-  const repositoryRelativePath = posix.normalize(posix.join(posix.dirname(docsRelativePath), pathPart));
-  const withoutLeadingTraversal = repositoryRelativePath.replace(/^(\.\.\/)+/g, '');
-  return repositoryHref(withoutLeadingTraversal);
+  return /\.(?:tsx?|jsx?|json)$/.test(path);
 }
 
 function resolveDocHref(currentSlug: string | undefined, href: string): string {
@@ -370,70 +237,93 @@ function resolveDocHref(currentSlug: string | undefined, href: string): string {
     return href;
   }
 
-  const [rawPath, rawHash = ''] = href.split('#', 2);
-  const hashSuffix = rawHash.length > 0 ? `#${rawHash}` : '';
-  const [pathPart, rawQuery = ''] = rawPath.split('?', 2);
-  const querySuffix = rawQuery.length > 0 ? `?${rawQuery}` : '';
+  const hashIndex = href.indexOf('#');
+  const hrefWithoutHash = hashIndex === -1 ? href : href.slice(0, hashIndex);
+  const hashSuffix = hashIndex === -1 ? '' : href.slice(hashIndex);
+  const queryIndex = hrefWithoutHash.indexOf('?');
+  const pathPart = queryIndex === -1 ? hrefWithoutHash : hrefWithoutHash.slice(0, queryIndex);
+  const querySuffix = queryIndex === -1 ? '' : hrefWithoutHash.slice(queryIndex);
 
   if (pathPart === '' || pathPart === '.') {
-    return `${siteHref(`/docs/${currentSlug === undefined || currentSlug === 'index' ? '' : currentSlug}`)}${querySuffix}${hashSuffix}`;
+    const currentRoute = SiteLinks.route(currentSlug ?? 'index');
+    return `${SiteLinks.site(currentRoute)}${querySuffix}${hashSuffix}`;
   }
 
   if (pathPart === '/') {
-    return `${siteHref('/')}${querySuffix}${hashSuffix}`;
-  }
-
-  const repositorySourceHref = resolveRepositoryHref(currentSlug, pathPart);
-  if (repositorySourceHref !== undefined) {
-    return `${repositorySourceHref}${querySuffix}${hashSuffix}`;
-  }
-
-  if (pathPart.startsWith('/')) {
-    const normalizedAbsolute = normalizeDocTargetPath(pathPart);
-    const firstSegment = normalizedAbsolute.split('/')[0];
-    const targetPath = DOC_ROOT_SEGMENTS.has(firstSegment)
-      ? siteHref(`/docs/${normalizedAbsolute === 'index' ? '' : normalizedAbsolute}`)
-      : siteHref(pathPart);
-    return `${targetPath}${querySuffix}${hashSuffix}`;
+    return `${SiteLinks.site('/')}${querySuffix}${hashSuffix}`;
   }
 
   const currentDir = currentSlug === undefined || currentSlug === 'index' ? '.' : posix.dirname(currentSlug);
-  const resolvedRelative = normalizeDocTargetPath(posix.normalize(posix.join(currentDir, pathPart)));
-  return `${siteHref(`/docs/${resolvedRelative === 'index' ? '' : resolvedRelative}`)}${querySuffix}${hashSuffix}`;
+  if (isRepositorySourcePath(pathPart)) {
+    const repositoryPath = posix.join('docs', currentDir, pathPart);
+    return `${SiteLinks.repository(repositoryPath)}${querySuffix}${hashSuffix}`;
+  }
+
+  if (pathPart.startsWith('/')) {
+    if (pathPart === '/docs') {
+      return `${SiteLinks.site('/docs')}${querySuffix}${hashSuffix}`;
+    }
+
+    const withoutExtension = pathPart.endsWith('.md') ? pathPart.slice(0, -'.md'.length) : pathPart;
+    const withoutIndex = withoutExtension.endsWith('/index')
+      ? withoutExtension.slice(0, -'/index'.length)
+      : withoutExtension;
+    const routePath = withoutIndex.startsWith('/docs/') ? withoutIndex.slice('/docs'.length) : withoutIndex;
+    const absoluteSlug = routePath.length === 0 ? 'index' : routePath.slice(1);
+    const firstSeparator = absoluteSlug.indexOf('/');
+    const firstSegment = firstSeparator === -1 ? absoluteSlug : absoluteSlug.slice(0, firstSeparator);
+    const targetPath = DOC_ROOT_SEGMENTS.has(firstSegment)
+      ? SiteLinks.site(SiteLinks.route(absoluteSlug))
+      : SiteLinks.site(pathPart);
+    return `${targetPath}${querySuffix}${hashSuffix}`;
+  }
+
+  const relativePath = posix.join(currentDir, pathPart);
+  const withoutExtension = relativePath.endsWith('.md') ? relativePath.slice(0, -'.md'.length) : relativePath;
+  const withoutIndex = withoutExtension.endsWith('/index')
+    ? withoutExtension.slice(0, -'/index'.length)
+    : withoutExtension;
+  const resolvedSlug = withoutIndex.length === 0 ? 'index' : withoutIndex;
+  return `${SiteLinks.site(SiteLinks.route(resolvedSlug))}${querySuffix}${hashSuffix}`;
 }
 
-export async function renderDocPage(body: string, options?: {
-  readonly title?: string;
-  readonly slug?: string;
-}): Promise<{
-  readonly html: string;
-  readonly headings: readonly DocHeading[];
-}> {
-  const transformedBody = stripUnsupportedDocTags(transformSpecialEmbeds(body));
-  const normalizedBody = options?.title ? stripLeadingTitleHeading(transformedBody, options.title) : transformedBody;
-  const headings = collectHeadings(normalizedBody);
-  const renderer = new marked.Renderer();
+export const DocPageRenderer = {
+  leadingTitle(body: string): string | undefined {
+    return getLeadingMarkdownTitle(body);
+  },
 
-  renderer.heading = ({ tokens, depth }) => {
-    const renderedText = renderer.parser.parseInline(tokens);
-    const { displayText, slug } = extractExplicitHeadingSlug(renderedText);
-    const headingSlug = slug ?? slugifyHeading(displayText);
-    const aliases = renderHeadingAliases(buildHeadingAliases(displayText, headingSlug));
-    return `${aliases}<h${depth} id="${headingSlug}">${displayText}</h${depth}>`;
-  };
+  async render(body: string, options?: {
+    readonly title?: string;
+    readonly slug?: string;
+  }): Promise<{
+    readonly html: string;
+    readonly headings: readonly DocHeading[];
+  }> {
+    const transformedBody = stripUnsupportedDocTags(transformSpecialEmbeds(body));
+    const renderBody = options?.title ? stripLeadingTitleHeading(transformedBody, options.title) : transformedBody;
+    const headings = collectHeadings(renderBody);
+    const renderer = new marked.Renderer();
 
-  renderer.link = ({ href, title, tokens }) => {
-    const text = renderer.parser.parseInline(tokens);
-    const resolvedHref = resolveDocHref(options?.slug, href ?? '');
-    const titleAttribute = title ? ` title="${title}"` : '';
-    return `<a href="${resolvedHref}"${titleAttribute}>${text}</a>`;
-  };
+    renderer.heading = ({ tokens, depth }) => {
+      const renderedText = renderer.parser.parseInline(tokens);
+      const { displayText, slug } = extractExplicitHeadingSlug(renderedText);
+      const headingSlug = slug ?? slugifyHeading(displayText);
+      return `<h${depth} id="${headingSlug}">${displayText}</h${depth}>`;
+    };
 
-  return {
-    html: await marked.parse(normalizedBody, {
-      gfm: true,
-      renderer
-    }),
-    headings
-  };
-}
+    renderer.link = ({ href, title, tokens }) => {
+      const text = renderer.parser.parseInline(tokens);
+      const resolvedHref = resolveDocHref(options?.slug, href ?? '');
+      const titleAttribute = title ? ` title="${title}"` : '';
+      return `<a href="${resolvedHref}"${titleAttribute}>${text}</a>`;
+    };
+
+    return {
+      html: await marked.parse(renderBody, {
+        gfm: true,
+        renderer
+      }),
+      headings
+    };
+  }
+};

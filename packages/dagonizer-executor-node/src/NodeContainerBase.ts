@@ -120,9 +120,6 @@ export abstract class NodeContainerBase<TWorker>
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,
         'servicesConfig': options.servicesConfig ?? DEFAULT_SERVICES_CONFIG,
-        'graphStateTransferFormats': [...graphStateTransferFormats],
-        ...(options.coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': options.coalesceInstrumentation }),
-        ...(options.instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': options.instrumentationPlacementPathDepth }),
       },
     };
   }

@@ -1,0 +1,76 @@
+---
+import { getCollection, getEntry } from 'astro:content';
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
+
+function toCrumbLabel(segment: string): string {
+  return segment
+    .replace(/^\d+-/, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export async function getStaticPaths() {
+  const dedicatedRoutes = new Set(
+    [
+      'index',
+      'architecture',
+      'concepts',
+      'getting-started',
+      'examples/the-archivist',
+      'examples/the-cartographer',
+      'examples/the-dispatcher'
+    ].map(SiteLinks.route)
+  );
+
+  return (await getCollection('docs'))
+    .filter((entry) => !dedicatedRoutes.has(SiteLinks.route(entry.id)))
+    .map((entry) => ({
+      params: {
+        slug: SiteLinks.route(entry.id).slice(1)
+      }
+    }));
+}
+
+const slugParam = Array.isArray(Astro.params.slug) ? Astro.params.slug.join('/') : Astro.params.slug;
+if (slugParam === undefined) {
+  throw new Error('Canonical documentation route requires a slug.');
+}
+
+const doc = await getEntry('docs', slugParam);
+if (doc === undefined) {
+  throw new Error(`Missing documentation entry for canonical route: ${slugParam}`);
+}
+
+const pageTitle = doc.data.title ?? DocPageRenderer.leadingTitle(doc.body) ?? doc.id;
+const rendered = await DocPageRenderer.render(doc.body, { title: pageTitle, slug: doc.id });
+const slugParts = doc.id.split('/');
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  ...slugParts.slice(0, -1).map((_, index) => {
+    const partial = slugParts.slice(0, index + 1).join('/');
+    return {
+      href: SiteLinks.site(SiteLinks.route(partial)),
+      label: toCrumbLabel(slugParts[index])
+    };
+  }),
+  {
+    href: SiteLinks.site(SiteLinks.route(doc.id)),
+    label: pageTitle
+  }
+];
+---
+
+<DocPageShell
+  title={pageTitle}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings}
+  sections={[]}
+  sourceLabel={`${doc.id}.md`}
+  sourceHref={SiteDocs.edit(doc.id)}
+  crumbs={crumbs}
+>
+  <Fragment set:html={rendered.html} />
+</DocPageShell>

@@ -125,11 +125,15 @@ void describe('ExecutionRequest schema', () => {
 const validResponse = {
   'correlationId': 'child:1',
   'graphState': emptyInlineTransfer(['child:1']),
-  'items': [{ 'id': 'child:1', 'runIri': 'child:1', 'terminalOutcome': 'success' }],
-  'errors': [],
-  'intermediates': [
-    { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
-  ],
+  'items': [{
+    'id': 'child:1',
+    'runIri': 'child:1',
+    'terminalOutcome': 'success',
+    'errors': [],
+    'intermediates': [
+      { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
+    ],
+  }],
 };
 
 void describe('ExecutionResponse schema', () => {
@@ -144,13 +148,16 @@ void describe('ExecutionResponse schema', () => {
   void it('accepts an error item in errors array', () => {
     const withError = {
       ...validResponse,
-      'errors': [{
-        'code': 'ERR_TRANSPORT',
-        'context': {},
-        'message': 'timeout',
-        'operation': 'runDag',
-        'recoverable': false,
-        'timestamp': new Date().toISOString(),
+      'items': [{
+        ...validResponse.items[0],
+        'errors': [{
+          'code': 'ERR_TRANSPORT',
+          'context': {},
+          'message': 'timeout',
+          'operation': 'runDag',
+          'recoverable': false,
+          'timestamp': new Date().toISOString(),
+        }],
       }],
     };
     assert.equal(responseValidator(withError), true);

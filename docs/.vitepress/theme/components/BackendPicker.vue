@@ -10,8 +10,7 @@
  * model selector whose value is emitted as a preference via
  * `update:preferredModels`.
  *
- * On mobile, gemini-nano and web-llm rows show a "Desktop only" chip
- * and are disabled in the dropdown.
+ * On mobile, browser-local and loopback-only backends are omitted.
  */
 
 import { computed, ref } from 'vue';
@@ -22,23 +21,13 @@ import UiFormRow from './ui/UiFormRow.vue';
 import UiInput from './ui/UiInput.vue';
 import UiSelect from './ui/UiSelect.vue';
 
-import { BackendMatrix } from '../../../../examples/the-archivist/providers/index.ts';
-
-interface BackendOption {
-  readonly id: string;
-  readonly displayName: string;
-  readonly models?: readonly { readonly name: string }[];
-  readonly runnable: boolean;
-  readonly resolvedModel?: string;
-  readonly needsAction?: 'download' | 'api-key' | null;
-  readonly hint?: string;
-}
+import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 
 /** Backends that use a paste-in API key (need key input UI). */
 const KEY_BACKENDS = new Set(['gemini-api', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter']);
 
 /** Backends only available on desktop (not mobile). */
-const DESKTOP_ONLY = new Set(['gemini-nano', 'web-llm']);
+const DESKTOP_ONLY = new Set(['gemini-nano', 'web-llm', 'ollama']);
 
 /** On-device web models, pinned to the top of the dropdown. */
 const WEB_MODELS = new Set(['gemini-nano', 'web-llm']);
@@ -84,28 +73,32 @@ const KEY_META: Record<string, { label: string; placeholder: string; helpText: s
 };
 
 const props = defineProps<{
-  backends: readonly BackendOption[];
-  activeId: string;
-  apiKeys: Partial<Record<string, string>>;
-  preferredModels: Partial<Record<string, string>>;
+  backends: readonly BackendAvailability[];
+  activeId: ProviderId | null | '';
+  apiKeys: Partial<Record<ProviderId, string>>;
+  preferredModels: Partial<Record<ProviderId, string>>;
   isMobile?: boolean;
   disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (event: 'update:activeId', value: string): void;
-  (event: 'update:apiKeys', value: Partial<Record<string, string>>): void;
-  (event: 'update:preferredModels', value: Partial<Record<string, string>>): void;
+  (event: 'update:activeId', value: ProviderId): void;
+  (event: 'update:apiKeys', value: Partial<Record<ProviderId, string>>): void;
+  (event: 'update:preferredModels', value: Partial<Record<ProviderId, string>>): void;
 }>();
 
 /** Per-backend reveal state for password inputs. */
 const revealMap = ref<Record<string, boolean>>({});
 
 /** Visible backend IDs for the current device context. */
-const visibleIds = computed(() => new Set<string>(BackendMatrix.browserVisible(props.isMobile ?? false)));
+const visibleIds = computed(() => new Set(
+  props.backends
+    .filter((backend) => props.isMobile !== true || !DESKTOP_ONLY.has(backend.id))
+    .map((backend) => backend.id),
+));
 
 /** On-device web models first, then every other backend alphabetical by displayName. */
-const sortedBackends = computed<readonly BackendOption[]>(() => {
+const sortedBackends = computed<readonly BackendAvailability[]>(() => {
   const list = props.backends.filter((b) => visibleIds.value.has(b.id));
   list.sort((a, b) => {
     const aWeb = WEB_MODELS.has(a.id);
@@ -121,50 +114,47 @@ const keyBackends = computed(() =>
   props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
 
-function isDesktopOnly(id: string): boolean {
+function isDesktopOnly(id: ProviderId): boolean {
   return props.isMobile === true && DESKTOP_ONLY.has(id);
 }
 
 function onSelect(value: string): void {
-  emit('update:activeId', value);
+  const selected = sortedBackends.value.find((backend) => backend.id === value)?.id;
+  if (selected !== undefined) emit('update:activeId', selected);
 }
 
-function onKey(id: string, value: string): void {
+function onKey(id: ProviderId, value: string): void {
   emit('update:apiKeys', { ...props.apiKeys, [id]: value });
 }
 
-function onModelSelect(id: string, value: string): void {
+function onModelSelect(id: ProviderId, value: string): void {
   updatePreferredModel(id, value);
 }
 
-function onModelInput(id: string, value: string): void {
+function onModelInput(id: ProviderId, value: string): void {
   updatePreferredModel(id, value);
 }
 
-function updatePreferredModel(id: string, value: string): void {
-  const next: Partial<Record<string, string>> = {};
-  for (const [key, current] of Object.entries(props.preferredModels)) {
-    if (key !== id && typeof current === 'string' && current.trim().length > 0) {
-      next[key] = current.trim();
-    }
-  }
+function updatePreferredModel(id: ProviderId, value: string): void {
+  const next: Partial<Record<ProviderId, string>> = { ...props.preferredModels };
+  delete next[id];
   if (value.trim().length > 0) next[id] = value.trim();
   emit('update:preferredModels', next);
 }
 
-function toggleReveal(id: string): void {
+function toggleReveal(id: ProviderId): void {
   revealMap.value = { ...revealMap.value, [id]: !(revealMap.value[id] ?? false) };
 }
 
-function keyFor(id: string): string {
+function keyFor(id: ProviderId): string {
   return props.apiKeys[id] ?? '';
 }
 
-function preferredModelFor(id: string): string {
+function preferredModelFor(id: ProviderId): string {
   return props.preferredModels[id] ?? '';
 }
 
-function modelHelp(backend: BackendOption): string {
+function modelHelp(backend: BackendAvailability): string {
   if (backend.resolvedModel !== undefined && backend.resolvedModel.length > 0) {
     return `Auto selects ${backend.resolvedModel}`;
   }
@@ -178,7 +168,7 @@ function modelHelp(backend: BackendOption): string {
       <label class="backend-field">
         <span class="backend-prefix">backend</span>
         <UiSelect
-          :model-value="activeId"
+          :model-value="activeId ?? ''"
           :disabled="disabled === true"
           select-class="backend-select"
           @update:model-value="onSelect"

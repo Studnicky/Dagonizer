@@ -9,8 +9,10 @@ import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { TransientNodeStateSelectionType } from '../../src/entities/executor/TransientNodeState.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonValueType } from '../../src/entities/json.js';
+import { GatherBuffers } from '../../src/execution/GatherBuffers.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -88,7 +90,7 @@ class TestGatherInitialDag {
           'body':  { 'node': 'urn:noocodec:node:worker' },
           'source':  'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -191,5 +193,130 @@ void describe('GatherStrategy.initial() lifecycle hook', () => {
     // Only the 3 remaining items (indices 2, 3, 4) should have triggered reduce.
     const reduceCount = markers.filter((m) => m === 'reduce').length;
     assert.equal(reduceCount, 3, `expected 3 'reduce' calls on resume, got ${reduceCount}`);
+  });
+});
+
+/** Gather strategy registered under a non-built-in name, declaring a narrow selection. */
+class NarrowSelectionGatherStrategy extends GatherStrategy {
+  override readonly name: string;
+
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+
+  reduce(): void { /* no-op: this suite exercises progress compaction only */ }
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'selection', 'domainPaths': ['resultValue'], 'metadataKeys': [] };
+  }
+}
+
+/** Gather strategy registered under a non-built-in name, with no declared selection (defaults to full). */
+class FullSelectionGatherStrategy extends GatherStrategy {
+  override readonly name: string;
+
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+
+  reduce(): void { /* no-op: this suite exercises progress compaction only */ }
+}
+
+/** Minimal state used as a scatter clone's `cloneState` for GatherBuffers compaction tests. */
+class CompactionCloneState extends NodeStateBase {
+  value = 0;
+}
+
+const NARROW_STRATEGY_NAME = 'test-narrow-selection-gather';
+const FULL_STRATEGY_NAME = 'test-full-selection-gather';
+
+void describe('GatherBuffers progress compaction via transientResultSelection()', () => {
+  afterEach(() => {
+    GatherStrategies.unregister(NARROW_STRATEGY_NAME);
+    GatherStrategies.unregister(FULL_STRATEGY_NAME);
+  });
+
+  void it('compacts a custom-named strategy with a narrow transientResultSelection() and a result to `result`, dropping graphState', () => {
+    GatherStrategies.register(new NarrowSelectionGatherStrategy(NARROW_STRATEGY_NAME));
+
+    const gatherKey = 'urn:noocodec:dag:compaction-narrow/node/join/execution/0';
+    const gather: GatherConfigType = { 'strategy': NARROW_STRATEGY_NAME };
+    const record: GatherRecordType = {
+      'source': 'urn:noocodec:dag:compaction-narrow/node/fan',
+      'index': 0,
+      'item': { 'n': 1 },
+      'output': 'success',
+      'terminalOutcome': 'completed',
+      'result': { 'resultValue': 42 },
+      'cloneState': new CompactionCloneState(),
+    };
+
+    const buffers = new GatherBuffers();
+    buffers.add(gatherKey, record);
+    const progress = buffers.toProgress(() => gather, () => undefined);
+
+    const entries = progress.entries[gatherKey];
+    assert.ok(entries !== undefined, 'expected a progress entry for the gather key');
+    assert.equal(entries.length, 1);
+    const progressRecord = entries[0];
+    assert.ok(progressRecord !== undefined, 'expected a progress record');
+    assert.deepEqual(progressRecord.result, { 'resultValue': 42 });
+    assert.equal('graphState' in progressRecord, false, 'expected compaction to drop graphState');
+  });
+
+  void it('retains full graphState for a custom-named strategy with no declared selection (defaults to full) even when a result is present', () => {
+    GatherStrategies.register(new FullSelectionGatherStrategy(FULL_STRATEGY_NAME));
+
+    const gatherKey = 'urn:noocodec:dag:compaction-full/node/join/execution/0';
+    const gather: GatherConfigType = { 'strategy': FULL_STRATEGY_NAME };
+    const record: GatherRecordType = {
+      'source': 'urn:noocodec:dag:compaction-full/node/fan',
+      'index': 0,
+      'item': { 'n': 1 },
+      'output': 'success',
+      'terminalOutcome': 'completed',
+      'result': { 'resultValue': 42 },
+      'cloneState': new CompactionCloneState(),
+    };
+
+    const buffers = new GatherBuffers();
+    buffers.add(gatherKey, record);
+    const progress = buffers.toProgress(() => gather, () => undefined);
+
+    const entries = progress.entries[gatherKey];
+    assert.ok(entries !== undefined, 'expected a progress entry for the gather key');
+    assert.equal(entries.length, 1);
+    const progressRecord = entries[0];
+    assert.ok(progressRecord !== undefined, 'expected a progress record');
+    assert.ok('graphState' in progressRecord, 'expected full-clone retention when no narrow selection is declared');
+  });
+
+  void it('retains full graphState when a strategy declares a narrow selection but produced no result (no data loss)', () => {
+    GatherStrategies.register(new NarrowSelectionGatherStrategy(NARROW_STRATEGY_NAME));
+
+    const gatherKey = 'urn:noocodec:dag:compaction-no-result/node/join/execution/0';
+    const gather: GatherConfigType = { 'strategy': NARROW_STRATEGY_NAME };
+    const record: GatherRecordType = {
+      'source': 'urn:noocodec:dag:compaction-no-result/node/fan',
+      'index': 0,
+      'item': { 'n': 1 },
+      'output': 'success',
+      'terminalOutcome': 'completed',
+      'result': undefined,
+      'cloneState': new CompactionCloneState(),
+    };
+
+    const buffers = new GatherBuffers();
+    buffers.add(gatherKey, record);
+    const progress = buffers.toProgress(() => gather, () => undefined);
+
+    const entries = progress.entries[gatherKey];
+    assert.ok(entries !== undefined, 'expected a progress entry for the gather key');
+    assert.equal(entries.length, 1);
+    const progressRecord = entries[0];
+    assert.ok(progressRecord !== undefined, 'expected a progress record');
+    assert.ok('graphState' in progressRecord, 'expected full-clone retention when no result was produced');
   });
 });

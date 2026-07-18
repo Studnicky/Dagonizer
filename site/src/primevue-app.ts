@@ -35,8 +35,11 @@ export default (app: Parameters<NonNullable<import('@astrojs/vue').AstroVueOptio
       menubar: {
         root: 'flex items-center rounded-2xl border border-white/10 bg-slate-950/78 px-2 py-2 shadow-[0_18px_64px_-36px_rgba(15,23,42,0.9)] backdrop-blur',
         start: 'flex items-center gap-3',
+        rootList: 'flex list-none items-center gap-1',
+        item: 'relative',
         itemContent: 'rounded-lg transition hover:bg-white/6',
         itemLink: 'flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:text-white',
+        submenu: 'absolute left-0 top-full z-50 mt-1 flex min-w-48 list-none flex-col gap-1 rounded-xl border border-white/10 bg-slate-950/95 p-2 shadow-[0_18px_64px_-36px_rgba(15,23,42,0.9)] backdrop-blur',
         submenuIcon: 'ml-2 text-slate-500',
         mobileButton: 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-200'
       },

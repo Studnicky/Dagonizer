@@ -5,7 +5,7 @@ import Card from 'primevue/card';
 import Select from 'primevue/select';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 
 const roleOptions = [
   { label: 'LLM agent orchestration', value: 'agents' },
@@ -38,7 +38,7 @@ const problem = ref('We need deterministic orchestration, live diagram feedback,
         </label>
         <div class="md:col-span-2 flex flex-wrap gap-3">
           <Button label="Review workflow fit" />
-          <Button as="a" :href="siteHref('/docs/examples/the-archivist')" label="Open examples" variant="outlined" severity="contrast" />
+          <Button as="a" :href="SiteLinks.site('/docs/examples/the-archivist')" label="Open examples" variant="outlined" severity="contrast" />
         </div>
       </div>
     </template>

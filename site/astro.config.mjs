@@ -3,6 +3,7 @@ import vue from '@astrojs/vue';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
+import { transformersEmbedderAssets } from '../examples/the-archivist/tooling/transformersEmbedderAssets.ts';
 
 export default defineConfig({
   site: 'https://studnicky.github.io',
@@ -15,7 +16,11 @@ export default defineConfig({
     sitemap()
   ],
   vite: {
-    plugins: [tailwindcss()],
+    // Serve (dev) / emit (build) the transformers embedder's vendored model +
+    // onnxruntime WASM from the app bundle, so the Archivist demo's in-browser
+    // vector intent classifier runs fully offline. Exposes
+    // `virtual:transformers-embedder-assets`, which EmbedderProvisioner.ts imports.
+    plugins: [tailwindcss(), transformersEmbedderAssets()],
     resolve: {
       mainFields: ['module', 'browser', 'main']
     },

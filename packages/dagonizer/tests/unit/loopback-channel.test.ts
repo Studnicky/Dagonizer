@@ -27,15 +27,14 @@ import { describe, it } from 'node:test';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import type { RunResultType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
@@ -205,23 +204,13 @@ class CountingChannel implements MessageChannelInterface {
 class MinimalState extends NodeStateBase {}
 
 // ---------------------------------------------------------------------------
-// MinimalDagTask: minimal DagTaskInterface implementation
+// MinimalDagTask: minimal DagTaskType implementation
 // ---------------------------------------------------------------------------
 
 class LoopbackTask {
   private constructor() {}
 
-  static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
-    const runIri = `urn:dagonizer:run:${correlationId}`;
-    const request: ExecutionRequestType = {
-      'dagName': 'test-dag',
-      'placementPath': ['urn:dagonizer:placement:test'],
-      'graphState': emptyInlineTransfer([runIri]),
-      'items': [{ 'id': correlationId, 'runIri': runIri }],
-      'timeoutMs': null,
-      'correlationId': correlationId,
-      'responseState': FULL_RESPONSE_STATE,
-    };
+  static of(correlationId: string, signal: AbortSignal): DagTaskType {
     return {
       'dagName': 'test-dag',
       'placementPath': ['urn:dagonizer:placement:test'],
@@ -231,9 +220,6 @@ class LoopbackTask {
       'inputState': FULL_INPUT_STATE,
       'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
-      toRequest(): ExecutionRequestType {
-        return request;
-      },
     };
   }
 }
@@ -252,11 +238,11 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
-  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
+  #initPromise: Promise<void> | null;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {
     super({
@@ -265,18 +251,21 @@ class SingleChannelContainer extends DagContainerBase<null> {
       'init': NOOP_INIT,
     });
     this.#channel = channel;
+    this.#initPromise = null;
   }
 
   // Override acquireChannel to bypass the pool and always return the same channel.
-  protected override acquireChannel(): Promise<MessageChannelInterface> {
-    return Promise.resolve(this.#channel);
+  protected override async acquireChannel(): Promise<MessageChannelInterface> {
+    this.#initPromise ??= this.initializeChannel(this.#channel);
+    await this.#initPromise;
+    return this.#channel;
   }
 
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
   protected override composeEntry(): PoolEntryType<null> {
-    return { 'worker': null, 'channel': this.#channel, 'initialized': true };
+    return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 
   protected override attachDeathListeners(_entry: PoolEntryType<null>): void {
@@ -297,7 +286,7 @@ class SingleChannelContainer extends DagContainerBase<null> {
 //
 // Receives 'init' → sends 'ready'.
 // Receives 'execute' → sends 'result' with the matching correlationId and
-//   terminalOutput = 'done-' + correlationId (deterministic per-request value).
+//   terminalOutcome = 'done-' + correlationId (deterministic per-request value).
 // ---------------------------------------------------------------------------
 
 class LoopbackFakeHost {
@@ -315,16 +304,19 @@ class LoopbackFakeHost {
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         const requestItem = msg.request.items[0];
-        const itemId = requestItem?.id ?? correlationId;
-        const runIri = requestItem?.runIri ?? `urn:dagonizer:run:${correlationId}`;
+        assert.ok(requestItem !== undefined);
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'graphState': emptyInlineTransfer([runIri]),
-            'items': [{ 'id': itemId, 'runIri': runIri, 'terminalOutcome': `done-${correlationId}` }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([requestItem.runIri]),
+            'items': [{
+              'id': requestItem.id,
+              'runIri': requestItem.runIri,
+              'terminalOutcome': `done-${correlationId}`,
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -405,7 +397,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
-    const pending: Array<{ correlationId: string }> = [];
+    const pending: Array<{ correlationId: string; id: string; runIri: string }> = [];
     hostSide.onMessage((msg: BridgeMessageType) => {
       if (msg.variant === 'init') {
         hostSide.send({
@@ -415,34 +407,47 @@ void describe('channel-correlation: single subscription + correlationId demux', 
           'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        pending.push({ 'correlationId': msg.request.correlationId });
+        const requestItem = msg.request.items[0];
+        assert.ok(requestItem !== undefined);
+        pending.push({
+          'correlationId': msg.request.correlationId,
+          'id': requestItem.id,
+          'runIri': requestItem.runIri,
+        });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
-          const secondId = pending[1]?.correlationId ?? '';
-          const firstId = pending[0]?.correlationId ?? '';
+          const second = pending[1];
+          const first = pending[0];
+          assert.ok(first !== undefined && second !== undefined);
           // Respond to second first, then first.
           setImmediate(() => {
-            const secondRunIri = `urn:dagonizer:run:${secondId}`;
             hostSide.send({
               'variant': 'result',
               'response': {
-                'correlationId': secondId,
-                'graphState': emptyInlineTransfer([secondRunIri]),
-                'items': [{ 'id': secondId, 'runIri': secondRunIri, 'terminalOutcome': `done-${secondId}` }],
-                'errors': [],
-                'intermediates': [],
+                'correlationId': second.correlationId,
+                'graphState': emptyInlineTransfer([second.runIri]),
+                'items': [{
+                  'id': second.id,
+                  'runIri': second.runIri,
+                  'terminalOutcome': `done-${second.correlationId}`,
+                  'errors': [],
+                  'intermediates': [],
+                }],
               },
             });
             setImmediate(() => {
-              const firstRunIri = `urn:dagonizer:run:${firstId}`;
               hostSide.send({
                 'variant': 'result',
                 'response': {
-                  'correlationId': firstId,
-                  'graphState': emptyInlineTransfer([firstRunIri]),
-                  'items': [{ 'id': firstId, 'runIri': firstRunIri, 'terminalOutcome': `done-${firstId}` }],
-                  'errors': [],
-                  'intermediates': [],
+                  'correlationId': first.correlationId,
+                  'graphState': emptyInlineTransfer([first.runIri]),
+                  'items': [{
+                    'id': first.id,
+                    'runIri': first.runIri,
+                    'terminalOutcome': `done-${first.correlationId}`,
+                    'errors': [],
+                    'intermediates': [],
+                  }],
                 },
               });
             });
@@ -493,6 +498,8 @@ void describe('worker observability: forwarded node events reach the parent obse
         hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
+        const requestItem = msg.request.items[0];
+        assert.ok(requestItem !== undefined);
         hostSide.send({
           'variant': 'instrumentationBatch',
           'correlationId': correlationId,
@@ -507,15 +514,18 @@ void describe('worker observability: forwarded node events reach the parent obse
             'placementPath': ['scatter-placement', 'inner-step'],
           }],
         });
-        const runIri = `urn:dagonizer:run:${correlationId}`;
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'graphState': emptyInlineTransfer([runIri]),
-            'items': [{ 'id': correlationId, 'runIri': runIri, 'terminalOutcome': 'done' }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([requestItem.runIri]),
+            'items': [{
+              'id': requestItem.id,
+              'runIri': requestItem.runIri,
+              'terminalOutcome': 'done',
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }

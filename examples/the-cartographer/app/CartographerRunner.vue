@@ -18,14 +18,17 @@
  * SSR-safe: all browser-only work is guarded to onMounted / click handlers.
  */
 
-import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 
 import { CartographerBrowserRuntime } from '../CartographerBrowserRuntime.ts';
 import { CartographerState } from '../CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../CartographerState.ts';
+import { CartographerPresentation } from './CartographerPresentation.ts';
 import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import { streamProducerFeedBundle } from '../embedded-dags/ProducerFeedDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
+import { ErrorRollup } from '../errors/ErrorRollup.ts';
+import type { ErrorGroupType, ErrorRollupType } from '../errors/ErrorRollup.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { FormatMix } from '../services.ts';
 import type { CytoscapeGraphOptionsType } from '../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
@@ -45,11 +48,10 @@ import { ConsoleLogger } from '../../the-archivist/logger/ConsoleLogger.ts';
 import { WebWorkerContainer } from '@studnicky/dagonizer-executor-web';
 import type { WebWorkerLikeInterface } from '@studnicky/dagonizer-executor-web';
 import type { AboxEntity } from '../../../docs/.vitepress/theme/components/AboxAccordion.vue';
-
-const DagGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/DagGraph.vue'));
-const PanesTabs = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/PanesTabs.vue'));
-const AboxAccordion = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/AboxAccordion.vue'));
-const Spinner = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/Spinner.vue'));
+import AboxAccordion from '../../../docs/.vitepress/theme/components/AboxAccordion.vue';
+import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
+import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
+import Spinner from '../../../docs/.vitepress/theme/components/Spinner.vue';
 
 // ── Web-worker container ───────────────────────────────────────────────────────
 // Runs the CPU-heavy typed event pipeline off the main thread. `spawnWorker` is
@@ -60,7 +62,7 @@ class CartographerWorkerContainer extends WebWorkerContainer {
     return new Worker(
       new URL('./cartographerWorkerEntry.ts', import.meta.url),
       { 'type': 'module' },
-    ) as unknown as WebWorkerLikeInterface;
+    );
   }
 }
 
@@ -79,6 +81,14 @@ interface MainThreadStats {
   lastFlushMs: number;
   maxFlushMs: number;
   totalFlushMs: number;
+}
+
+interface DagGraphExpose {
+  setActive(node: string): void;
+  setCompleted(node: string): void;
+  setErrored(node: string): void;
+  markEdgeTraversed(source: string, route: string): void;
+  reset(): Promise<void>;
 }
 
 type BrowserWindowWithCartographerTelemetry = Window & typeof globalThis & {
@@ -116,8 +126,9 @@ const feedContainerRef = ref<HTMLElement | null>(null);
 const records = ref<EnrichedShipment[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
+const errorRollupState = ref<ErrorRollupType>(ErrorRollup.empty());
 
-const dagGraph = ref<any>(null);
+const dagGraph = ref<DagGraphExpose | null>(null);
 const cartographerDag = ref<DAGType | null>(null);
 const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 const embeddedTopologyLoaded = ref(false);
@@ -263,18 +274,25 @@ const typeRows = ref<TypeRow[]>([
   { eventType: 'delivery-confirmation', pct: 5  },
 ]);
 
+const defaultBatching = CartographerBrowserRuntime.configuration.execution.batching;
+if (defaultBatching.mode !== 'reservoir') {
+  throw new TypeError('Cartographer UI requires reservoir batching');
+}
+
 /** Total events to stream this run; clamped to [1, 1,000,000] at run time. */
 const totalEventsInput = ref(100);
 
 /** Worker pool size; clamped to [1, 32] at run time. */
-const poolSizeInput = ref(
-  typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0
-    ? Math.max(2, navigator.hardwareConcurrency - 2)
-    : 4,
-);
+const poolSizeInput = ref(defaultBatching.concurrency);
 
 /** Reservoir capacity (events per worker dispatch batch); clamped to [1, 10000] at run time. */
-const batchCapacityInput = ref(1000);
+const batchCapacityInput = ref(defaultBatching.reservoir.capacity);
+
+/** Reservoir partial-batch release timeout; zero disables idle release. */
+const reservoirIdleMsInput = ref(defaultBatching.reservoir.idleMs ?? 0);
+
+/** Main-thread presentation update cadence. */
+const liveFlushMsInput = ref(100);
 
 /** Sum of the per-type shares — normalises the spread into absolute counts. */
 const sumPct = computed(() =>
@@ -297,6 +315,16 @@ const clampedPoolSize = computed(() => {
 const clampedBatchCapacity = computed(() => {
   const v = Math.floor(batchCapacityInput.value);
   return Math.min(10_000, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+const clampedReservoirIdleMs = computed(() => {
+  const v = Math.floor(reservoirIdleMsInput.value);
+  return Math.min(60_000, Math.max(0, Number.isNaN(v) ? 0 : v));
+});
+
+const clampedLiveFlushMs = computed(() => {
+  const v = Math.floor(liveFlushMsInput.value);
+  return Math.min(5_000, Math.max(16, Number.isNaN(v) ? 100 : v));
 });
 
 /**
@@ -388,6 +416,9 @@ const sampleJourneys = computed<JourneyInsights[]>(() => {
   jlist.sort((a, b) => b.scanCount - a.scanCount);
   return jlist.slice(0, 3);
 });
+
+/** Captured-error groups ranked by count, from the bounded error rollup. */
+const errorGroups = computed<ErrorGroupType[]>(() => ErrorRollup.ranked(errorRollupState.value));
 
 /** Flow-state hint displayed in the left column header. */
 const flowHint = computed<string>(() => {
@@ -506,7 +537,7 @@ function publishTelemetry(): void {
 // CartographerBrowserObserver subclasses ObservedDag<CartographerState> to add
 // Vue-reactive DOM updates on top of the base leveled logging. The buffered
 // cadence below decouples DOM mutation frequency from event throughput and the
-// browser's display refresh rate.
+// component's presentation cadence.
 const _cartographerLogger = new ConsoleLogger();
 
 class CartographerBrowserObserver extends ObservedDag<CartographerState> {
@@ -520,7 +551,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     // skipped for inner nodes: a streaming scatter fires this hook once per
     // event × sub-DAG node, and the base work is O(1) allocation + a log call
     // per firing. Top-level nodes keep full logging/timing/trace behavior;
-    // inner-node animation still runs via the frame-Set updates below.
+    // inner-node animation still runs via the bounded presentation sets below.
     if (placementPath.length === 0) {
       super.onNodeStart(nodeName, state, placementPath, signal);
     }
@@ -584,12 +615,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     flushHandle = 0;
     flushScheduled = false;
     latestRunState = state;
-    flushLiveState();
-    records.value = [...state.sampleRecords];
-    insightsMap.value = new Map(state.insights);
-    journeysMap.value = new Map(state.journeys);
-    progressPct.value = 100;
-    publishTelemetry();
+    flushLiveState(state);
   }
 }
 
@@ -602,8 +628,6 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
 // of event throughput. Node-id and edge sets are bounded by the static sub-DAG
 // (~dozens), never by event count.
 const MAX_TRACE = 60;
-const LIVE_FLUSH_INTERVAL_MS = 100;
-
 let latestRunState: CartographerState | null = null;
 let traceBuffer: TraceEvent[] = [];
 const frameActiveNodes = new Set<string>();
@@ -613,6 +637,7 @@ let frameErroredNode: string | null = null;
 let flushScheduled = false;
 let flushHandle = 0;
 let lastRenderedProcessed = -1;
+let presentationFlush: Promise<void> = Promise.resolve();
 
 function pushTrace(entry: TraceEvent): void {
   traceBuffer.push(entry);
@@ -623,69 +648,83 @@ function pushTrace(entry: TraceEvent): void {
 
 /** Exact processed-event count from the bounded region rollup. */
 /** Push progress, feed, and processed-count from a state snapshot. */
-function applyLiveState(state: CartographerState): boolean {
-  const processed = state.processedCountExact;
-  if (processed === lastRenderedProcessed) return false;
+function applyLiveState(state: CartographerState, force: boolean = false): boolean {
+  const presentation = CartographerPresentation.of(state);
+  const processed = presentation.processedCountExact;
+  if (!force && processed === lastRenderedProcessed) return false;
   lastRenderedProcessed = processed;
   processedCount.value = processed;
   if (totalEvents > 0) {
     progressPct.value = Math.min(100, Math.round((processed / totalEvents) * 100));
   }
   streamFeed.value = [...buildLiveStreamFeed(
-    state.sampleRecords,
-    state.sampleRecordsCursor,
-    state.sampleRecordsWrapped,
+    presentation.sampleRecords,
+    presentation.sampleRecordsCursor,
+    presentation.sampleRecordsWrapped,
     MAX_VISIBLE_FEED,
   )];
   return true;
 }
 
-/** Apply all buffered observer state to the DOM. Runs at most once per frame. */
-function flushLiveState(): void {
-  const startedAt = performance.now();
-  flushScheduled = false;
-  flushHandle = 0;
-  const graphMutations =
-    frameCompletedNodes.size
-    + frameActiveNodes.size
-    + frameTraversedEdges.size
-    + (frameErroredNode === null ? 0 : 1);
-  for (const id of frameCompletedNodes) dagGraph.value?.setCompleted(id);
-  frameCompletedNodes.clear();
-  for (const id of frameActiveNodes) dagGraph.value?.setActive(id);
-  frameActiveNodes.clear();
-  for (const edge of frameTraversedEdges) {
-    const sep = edge.lastIndexOf('|');
-    dagGraph.value?.markEdgeTraversed(edge.slice(0, sep), edge.slice(sep + 1));
-  }
-  frameTraversedEdges.clear();
-  if (frameErroredNode !== null) { dagGraph.value?.setErrored(frameErroredNode); frameErroredNode = null; }
-
-  trace.value = traceBuffer.slice(-MAX_TRACE);
-  let stateRefreshed = false;
-  if (latestRunState !== null) {
-    stateRefreshed = applyLiveState(latestRunState);
-    if (stateRefreshed) {
-      void nextTick(scrollFeedToBottom);
+/** Apply buffered observer state through one serialized presentation queue. */
+function flushLiveState(finalState: CartographerState | null = null): Promise<void> {
+  presentationFlush = presentationFlush.then(async () => {
+    const startedAt = performance.now();
+    const graphMutations =
+      frameCompletedNodes.size
+      + frameActiveNodes.size
+      + frameTraversedEdges.size
+      + (frameErroredNode === null ? 0 : 1);
+    for (const id of frameCompletedNodes) dagGraph.value?.setCompleted(id);
+    frameCompletedNodes.clear();
+    for (const id of frameActiveNodes) dagGraph.value?.setActive(id);
+    frameActiveNodes.clear();
+    for (const edge of frameTraversedEdges) {
+      const sep = edge.lastIndexOf('|');
+      dagGraph.value?.markEdgeTraversed(edge.slice(0, sep), edge.slice(sep + 1));
     }
-  }
+    frameTraversedEdges.clear();
+    if (frameErroredNode !== null) { dagGraph.value?.setErrored(frameErroredNode); frameErroredNode = null; }
 
-  const elapsedMs = performance.now() - startedAt;
-  const stats = mainThreadStats.value;
-  stats.flushCount++;
-  stats.graphMutationCount += graphMutations;
-  stats.lastFlushMs = elapsedMs;
-  stats.totalFlushMs += elapsedMs;
-  if (elapsedMs > stats.maxFlushMs) stats.maxFlushMs = elapsedMs;
-  if (stateRefreshed) stats.stateRefreshCount++;
-  else stats.skippedStateRefreshCount++;
-  publishTelemetry();
+    trace.value = traceBuffer.slice(-MAX_TRACE);
+    const state = finalState ?? latestRunState;
+    const stateRefreshed = state === null ? false : applyLiveState(state, finalState !== null);
+    if (finalState !== null) {
+      const finalPresentation = CartographerPresentation.of(finalState);
+      records.value = [...finalPresentation.sampleRecords];
+      insightsMap.value = new Map(finalPresentation.insights);
+      journeysMap.value = new Map(finalPresentation.journeys);
+      errorRollupState.value = finalPresentation.errorRollup;
+      progressPct.value = 100;
+    }
+
+    await nextTick();
+
+    const elapsedMs = performance.now() - startedAt;
+    const stats = mainThreadStats.value;
+    stats.flushCount++;
+    stats.graphMutationCount += graphMutations;
+    stats.lastFlushMs = elapsedMs;
+    stats.totalFlushMs += elapsedMs;
+    if (elapsedMs > stats.maxFlushMs) stats.maxFlushMs = elapsedMs;
+    if (stateRefreshed) stats.stateRefreshCount++;
+    else stats.skippedStateRefreshCount++;
+    if (stateRefreshed) scrollFeedToBottom();
+    publishTelemetry();
+  });
+  return presentationFlush;
+}
+
+function runScheduledFlush(): void {
+  flushHandle = 0;
+  flushScheduled = false;
+  flushLiveState();
 }
 
 function scheduleFlush(): void {
   if (flushScheduled) return;
   flushScheduled = true;
-  flushHandle = window.setTimeout(flushLiveState, LIVE_FLUSH_INTERVAL_MS);
+  flushHandle = window.setTimeout(runScheduledFlush, clampedLiveFlushMs.value);
 }
 
 /** Reset throttle buffers between runs. */
@@ -700,6 +739,8 @@ function resetLiveBuffers(): void {
   frameCompletedNodes.clear();
   frameTraversedEdges.clear();
   frameErroredNode = null;
+  presentationFlush = Promise.resolve();
+  errorRollupState.value = ErrorRollup.empty();
   mainThreadStats.value = {
     'flushCount': 0,
     'stateRefreshCount': 0,
@@ -768,10 +809,19 @@ async function run(): Promise<void> {
     });
     // #endregion cartographer-browser-containers
 
-    dispatcher.registerBundle(CartographerBrowserRuntime.bundle(
-      clampedBatchCapacity.value,
-      clampedPoolSize.value,
-    ));
+    dispatcher.registerBundle(CartographerBrowserRuntime.bundle({
+      'execution': {
+        'batching': {
+          'mode': 'reservoir',
+          'concurrency': clampedPoolSize.value,
+          'reservoir': {
+            'keyField': 'eventType',
+            'capacity': clampedBatchCapacity.value,
+            'idleMs': clampedReservoirIdleMs.value === 0 ? null : clampedReservoirIdleMs.value,
+          },
+        },
+      },
+    }));
 
     const state = new CartographerState();
 
@@ -798,6 +848,7 @@ async function run(): Promise<void> {
     await dispatcher.execute(CARTOGRAPHER_IRIS.dag.cartographer, state, {
       'signal': activeAbortController.signal,
     });
+    await presentationFlush;
     // #endregion cartographer-streaming-execution
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -838,6 +889,8 @@ onMounted(() => {
     if (harness.totalEvents !== null) totalEventsInput.value = harness.totalEvents;
     if (harness.poolSize !== null) poolSizeInput.value = harness.poolSize;
     if (harness.batchCapacity !== null) batchCapacityInput.value = harness.batchCapacity;
+    if (harness.reservoirIdleMs !== null) reservoirIdleMsInput.value = harness.reservoirIdleMs;
+    if (harness.liveFlushMs !== null) liveFlushMsInput.value = harness.liveFlushMs;
     publishTelemetry();
     if (harness.loadEmbeddedTopology) await loadEmbeddedTopology();
     if (harness.autorun) await nextTick(run);
@@ -990,6 +1043,23 @@ onMounted(() => {
                     {{ j.timezones.length }} tz · {{ j.jurisdictions.join(', ') }}
                   </div>
                 </div>
+              </template>
+
+              <template v-if="isDone && errorGroups.length > 0">
+                <h5 class="cr-section-head">Captured errors</h5>
+                <table class="cr-table cr-table--compact">
+                  <thead>
+                    <tr><th>Source</th><th>Variant</th><th>Count</th><th>Sample</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="group in errorGroups" :key="`${group.source}::${group.variant}`">
+                      <td class="mono">{{ group.source }}</td>
+                      <td>{{ group.variant }}</td>
+                      <td>{{ group.count }}</td>
+                      <td class="cr-error-sample">{{ group.samples[0] ?? '' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </template>
 
               <template v-if="!isDone">
@@ -1198,6 +1268,36 @@ onMounted(() => {
                       </td>
                       <td class="cr-feed-fmt">events per worker dispatch (1–10 000)</td>
                     </tr>
+                    <tr>
+                      <td>Reservoir idle release</td>
+                      <td>
+                        <input
+                          id="cartographer-reservoir-idle-ms"
+                          name="cartographer-reservoir-idle-ms"
+                          type="number"
+                          min="0"
+                          max="60000"
+                          class="cr-count-input"
+                          v-model.number="reservoirIdleMsInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">ms (0 disables)</td>
+                    </tr>
+                    <tr>
+                      <td>Live UI flush</td>
+                      <td>
+                        <input
+                          id="cartographer-live-flush-ms"
+                          name="cartographer-live-flush-ms"
+                          type="number"
+                          min="16"
+                          max="5000"
+                          class="cr-count-input"
+                          v-model.number="liveFlushMsInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">ms (16–5000)</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1207,7 +1307,8 @@ onMounted(() => {
                 Always streaming: <span class="cr-config-count">{{ clampedTotal.toLocaleString() }}</span>
                 events across {{ typeRows.filter(r => r.pct > 0).length }} payload type(s),
                 {{ clampedPoolSize }} worker{{ clampedPoolSize !== 1 ? 's' : '' }},
-                batch size {{ clampedBatchCapacity.toLocaleString() }}
+                batch size {{ clampedBatchCapacity.toLocaleString() }},
+                UI flush {{ clampedLiveFlushMs }} ms
               </div>
 
               <div class="cr-config-section">
@@ -1217,7 +1318,7 @@ onMounted(() => {
                     <tr>
                       <td>Flushes</td>
                       <td class="cr-feed-fmt mono">{{ mainThreadStats.flushCount.toLocaleString() }}</td>
-                      <td class="cr-feed-fmt">requestAnimationFrame commits</td>
+                      <td class="cr-feed-fmt">configured presentation commits</td>
                     </tr>
                     <tr>
                       <td>Avg flush</td>
@@ -1227,7 +1328,7 @@ onMounted(() => {
                     <tr>
                       <td>Max flush</td>
                       <td class="cr-feed-fmt mono">{{ mainThreadStats.maxFlushMs.toFixed(2) }} ms</td>
-                      <td class="cr-feed-fmt">worst observed frame flush</td>
+                      <td class="cr-feed-fmt">worst observed presentation commit</td>
                     </tr>
                     <tr>
                       <td>State refreshes</td>
@@ -1251,7 +1352,7 @@ onMounted(() => {
               <div class="cr-config-note">
                 The generative streamer yields events lazily — heap stays flat regardless of total.
                 The live feed is virtualized to the most recent {{ MAX_VISIBLE_FEED }} lines and the
-                DAG/trace updates are frame-throttled. The telemetry above shows the browser-side
+                DAG/trace updates follow the timer-based presentation cadence. The telemetry above shows the browser-side
                 flush cost the demo is actually paying on this device; the Stream badge shows the
                 true processed count.
               </div>
@@ -1844,6 +1945,14 @@ onMounted(() => {
 .cr-table--compact td,
 .cr-table--compact th {
   padding: 0.26rem 0.5rem;
+}
+
+.cr-error-sample {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vp-c-text-3);
 }
 
 /* ── Panels pane (Compare tab) ──────────────────────────────────────── */

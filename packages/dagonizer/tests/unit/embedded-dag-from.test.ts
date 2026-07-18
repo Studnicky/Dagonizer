@@ -44,8 +44,8 @@ const MULTI_ENTRY_CHILD_A_DAG_IRI = 'urn:noocodec:dag:multi-entry-child-a';
 const MULTI_ENTRY_CHILD_B_DAG_IRI = 'urn:noocodec:dag:multi-entry-child-b';
 const SCATTER_CHILD_DAG_IRI = 'urn:noocodec:dag:scatter-child';
 const SCATTER_EXPANDED_CHILD_DAG_IRI = 'https://noocodec.dev/dag/default#scatter-expanded-child';
-const RETAINED_SELECTED_CHILD_A_DAG_IRI = 'urn:noocodec:dag:retained-selected-child-a';
-const RETAINED_SELECTED_CHILD_B_DAG_IRI = 'urn:noocodec:dag:retained-selected-child-b';
+const BOUNDED_SELECTED_CHILD_A_DAG_IRI = 'urn:noocodec:dag:bounded-selected-child-a';
+const BOUNDED_SELECTED_CHILD_B_DAG_IRI = 'urn:noocodec:dag:bounded-selected-child-b';
 const SELECTED_CHILD_DAG_IRI = 'https://noocodec.dev/dag/default#selected-child';
 const SOME_CHILD_DAG_IRI = 'urn:noocodec:dag:some-child';
 const VALID_CHILD_LITERAL_DAG_IRI = 'urn:noocodec:dag:valid-child-literal';
@@ -59,7 +59,7 @@ const PARENT_MISSING_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent-missing';
 const PARENT_EMPTY_DAG_IRI = 'urn:noocodec:dag:embedded-from-parent-empty';
 const SCATTER_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-parent';
 const SCATTER_EXPANDED_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-expanded-parent';
-const RETAINED_SELECTED_PARENT_DAG_IRI = 'urn:noocodec:dag:retained-selected-parent';
+const BOUNDED_SELECTED_PARENT_DAG_IRI = 'urn:noocodec:dag:bounded-selected-parent';
 const SCATTER_BAD_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-bad';
 const SCATTER_SCALE_PARENT_DAG_IRI = 'urn:noocodec:dag:embedded-from-scatter-scale-parent';
 const VALID_LITERAL_DAG_IRI = 'urn:noocodec:dag:valid-literal';
@@ -448,53 +448,52 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     assert.deepEqual(DagGraphQueries.selectedDagIris(store), [selectedDagIri]);
   });
 
-  void it('retained scatter resume rebinds selected DAGs from checkpointed acked items', async () => {
+  void it('bounded scatter resume skips acknowledged indices and resolves remaining DAGs from current input', async () => {
     const controller = new AbortController();
     const firstProbe = new ExecutionProbe();
     const resumeProbe = new ExecutionProbe();
-    const childADag = TestDag.child(RETAINED_SELECTED_CHILD_A_DAG_IRI, 'retained-selected-child-a');
-    const childBDag = TestDag.child(RETAINED_SELECTED_CHILD_B_DAG_IRI, 'retained-selected-child-b');
-    const parentDag = new DAGBuilder(RETAINED_SELECTED_PARENT_DAG_IRI, '1', { 'name': 'retained-selected-parent' })
-      .scatter(placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [RETAINED_SELECTED_CHILD_A_DAG_IRI, RETAINED_SELECTED_CHILD_B_DAG_IRI] } }, {
-        'all-success': placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
-        'partial':     placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
-        'all-error':   placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
-        'empty':       placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'),
+    const childADag = TestDag.child(BOUNDED_SELECTED_CHILD_A_DAG_IRI, 'bounded-selected-child-a');
+    const childBDag = TestDag.child(BOUNDED_SELECTED_CHILD_B_DAG_IRI, 'bounded-selected-child-b');
+    const parentDag = new DAGBuilder(BOUNDED_SELECTED_PARENT_DAG_IRI, '1', { 'name': 'bounded-selected-parent' })
+      .scatter(placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'scatter'), 'items', { 'dag': { 'from': 'item', 'path': 'dagIri', 'candidates': [BOUNDED_SELECTED_CHILD_A_DAG_IRI, BOUNDED_SELECTED_CHILD_B_DAG_IRI] } }, {
+        'all-success': placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'partial':     placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'all-error':   placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'end'),
+        'empty':       placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'end'),
       }, {
-        'execution': { 'mode': 'item', 'concurrency': 1 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
         'name': 'scatter',
       })
-      .terminal(placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'end'), { 'name': 'end' })
       .build();
 
     const childAIri = DagGraphProjector.dagIri(childADag);
     const childBIri = DagGraphProjector.dagIri(childBDag);
     const firstDispatcher = new Dagonizer<RoutingState>();
     firstDispatcher.registerNode(new AbortOnFirstItemNode('incr', firstProbe, controller));
-    firstDispatcher.registerNode(new IncrNode('merge-retained-selected', new ExecutionProbe()));
+    firstDispatcher.registerNode(new IncrNode('merge-bounded-selected', new ExecutionProbe()));
     firstDispatcher.registerDAG(childADag);
     firstDispatcher.registerDAG(childBDag);
     firstDispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
     state.items = [{ 'dagIri': childAIri }, { 'dagIri': childBIri }];
-    const partial = await firstDispatcher.execute(RETAINED_SELECTED_PARENT_DAG_IRI, state, {
+    const partial = await firstDispatcher.execute(BOUNDED_SELECTED_PARENT_DAG_IRI, state, {
       'signal': controller.signal,
     });
 
-    assert.equal(partial.cursor, placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'));
+    assert.equal(partial.cursor, placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'scatter'));
     assert.equal(firstProbe.count, 1);
     const rawProgress = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
-    assert.ok(rawProgress !== undefined, 'retained scatter checkpoint should be present');
+    assert.ok(rawProgress !== undefined, 'bounded scatter progress should be present');
     const progress = Validator.storedScatterProgress.validate(rawProgress);
-    const scatterProgress = progress[placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter')];
+    const scatterProgress = progress[placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'scatter')];
     assert.ok(scatterProgress !== undefined, 'scatter checkpoint should include the scatter placement');
-    if (scatterProgress.mode === 'bounded') {
-      assert.equal(scatterProgress.watermark, 1);
-      assert.equal(scatterProgress.aheadAcked.length, 0);
-    } else {
-      assert.equal(scatterProgress.ackedResults[0]?.selectedDag, childAIri);
-    }
+    assert.equal(scatterProgress.watermark, 1);
+    assert.deepEqual(scatterProgress.aheadAcked, []);
+    assert.deepEqual(Object.keys(scatterProgress).sort(), [
+      'aheadAcked', 'inbox', 'mode', 'outcomeTally', 'placementName', 'watermark',
+    ]);
 
     partial.state.items = [{ 'dagIri': childBIri }, { 'dagIri': childBIri }];
     const resumeStore = new InMemoryTopologyStore();
@@ -502,12 +501,12 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
       'executionTopologyStore': resumeStore,
     });
     resumeDispatcher.registerNode(new AbortOnFirstItemNode('incr', resumeProbe, null));
-    resumeDispatcher.registerNode(new IncrNode('merge-retained-selected', new ExecutionProbe()));
+    resumeDispatcher.registerNode(new IncrNode('merge-bounded-selected', new ExecutionProbe()));
     resumeDispatcher.registerDAG(childADag);
     resumeDispatcher.registerDAG(childBDag);
     resumeDispatcher.registerDAG(parentDag);
 
-    const resumed = await resumeDispatcher.resume(RETAINED_SELECTED_PARENT_DAG_IRI, partial.state, placementIri(RETAINED_SELECTED_PARENT_DAG_IRI, 'scatter'));
+    const resumed = await resumeDispatcher.resume(BOUNDED_SELECTED_PARENT_DAG_IRI, partial.state, placementIri(BOUNDED_SELECTED_PARENT_DAG_IRI, 'scatter'));
 
     assert.equal(resumed.terminalOutcome, 'completed');
     assert.equal(resumeProbe.count, 1, 'resume should not re-run the already-acked first item');
@@ -563,7 +562,7 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
         'all-error':   placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
         'empty':       placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'),
       }, {
-        'execution': { 'mode': 'item', 'concurrency': 128 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 128 } } },
         'name': 'scatter',
       })
       .terminal(placementIri(SCATTER_SCALE_PARENT_DAG_IRI, 'end'), { 'name': 'end' })

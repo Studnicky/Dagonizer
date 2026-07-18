@@ -35,7 +35,6 @@ export type { RegistryModuleInterface } from './RegistryModuleInterface.js';
 export type { SystemInfoInterface } from './SystemInfoInterface.js';
 export type { DagContainerInterface } from './DagContainerInterface.js';
 export type { DagOutcomeType } from './DagOutcomeType.js';
-export type { DagTaskInterface } from './DagTaskInterface.js';
 export type { DispatcherBundleType } from './DispatcherBundle.js';
 export type { EmbedderInterface } from './EmbedderInterface.js';
 

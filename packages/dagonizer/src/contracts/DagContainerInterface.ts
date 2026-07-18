@@ -13,9 +13,9 @@
 
 import type { Batch } from '../entities/batch/Batch.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { DagTaskType } from '../types/DagTask.js';
 
 import type { RunResultType } from './DagOutcomeType.js';
-import type { DagTaskInterface } from './DagTaskInterface.js';
 import type { ObserverRelayInterface } from './ObserverRelayInterface.js';
 
 export interface DagContainerInterface {
@@ -26,7 +26,7 @@ export interface DagContainerInterface {
    *
    * `task` supplies the DAG IRI, placement path, timeout, and abort signal
    * (`task.context.signal`). `batch` carries the per-item states. Isolating
-   * containers call `task.toRequest()` to snapshot the batch for transport;
+   * containers snapshot the complete batch into one transport request;
    * in-process containers may use the batch states directly.
    *
    * The optional `options.relay` is an internal observer provided by the parent
@@ -39,7 +39,7 @@ export interface DagContainerInterface {
    * with `recoverable: false`, one entry per item.
    */
   runDag(
-    task: DagTaskInterface,
+    task: DagTaskType,
     batch: Batch<NodeStateInterface>,
     options?: { readonly relay?: ObserverRelayInterface },
   ): Promise<RunResultType[]>;

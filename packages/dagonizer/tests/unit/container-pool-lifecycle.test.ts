@@ -17,7 +17,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -33,12 +32,12 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { FULL_INPUT_STATE, FULL_RESPONSE_STATE, inlineTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 import { Batch, Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
   DagContainerOptionsType,
-  DagTaskInterface,
+  DagTaskType,
   DagContainerInterface,
   NodeContextType,
   NodeStateInterface,
@@ -52,8 +51,10 @@ import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // Registry module URL
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
+const REGISTRY_MODULE_URL = fileURLToPath(new URL(
+  'ConformanceRegistry.js',
+  import.meta.resolve('@studnicky/dagonizer/testing'),
+));
 
 // ---------------------------------------------------------------------------
 // TestWorker / TestLoopbackContainer
@@ -75,7 +76,6 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
         'registryModule': REGISTRY_MODULE_URL,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {},
-        'graphStateTransferFormats': ['application/n-quads'],
       },
       ...options,
     });
@@ -121,10 +121,10 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal DagTaskInterface implementation for direct runDag() calls
+// Minimal DagTaskType implementation for direct runDag() calls
 // ---------------------------------------------------------------------------
 
-class MinimalTask implements DagTaskInterface {
+class MinimalTask implements DagTaskType {
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
@@ -141,18 +141,6 @@ class MinimalTask implements DagTaskInterface {
     this.timeout = Timeout.none();
     this.state = new NodeStateBase();
     this.context = NodeContext.create(CONFORMANCE_DAG.law1, '', new AbortController().signal);
-  }
-
-  toRequest() {
-    return {
-      'dagName': this.dagName,
-      'placementPath': this.placementPath,
-      'graphState': inlineTransfer([this.state]),
-      'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
-      'timeoutMs': this.timeout.toWire(),
-      'correlationId': this.correlationId,
-      'responseState': this.responseState,
-    };
   }
 }
 
@@ -332,7 +320,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
 
       // Create a task whose signal we can fire.
       class AbortableTask extends NodeStateBase {}
-      const abortTask: DagTaskInterface = {
+      const abortTask: DagTaskType = {
         'dagName': CONFORMANCE_DAG.law1,
         'placementPath': ['urn:dagonizer:placement:test'],
         'correlationId': 'con1-abort',
@@ -341,17 +329,6 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'inputState': FULL_INPUT_STATE,
         'responseState': FULL_RESPONSE_STATE,
         'context': NodeContext.create(CONFORMANCE_DAG.law1, '', controller.signal),
-        toRequest() {
-          return {
-            'dagName': this.dagName,
-            'placementPath': this.placementPath,
-            'graphState': inlineTransfer([this.state]),
-            'items': [{ 'id': this.correlationId, 'runIri': this.state.runIri }],
-            'timeoutMs': this.timeout.toWire(),
-            'correlationId': this.correlationId,
-            'responseState': this.responseState,
-          };
-        },
       };
 
       const abortBatch = Batch.from([{ 'id': 'con1-abort', 'state': abortTask.state }]);

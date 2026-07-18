@@ -236,8 +236,14 @@ export class BodyExecutor {
     // cardinality-1, Law 3 — no throw).
     const infrastructureError = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code)) ?? null;
 
-    // Derive terminalOutcome from terminalOutput.
-    const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
+    // Canonical host/container outcomes use 'completed' | 'failed' |
+    // 'awaiting-input'. Legacy/custom containers may still return 'success'.
+    const terminalOutcome: 'completed' | 'failed' | null =
+      outcome.terminalOutput === 'failed'
+        ? 'failed'
+        : outcome.terminalOutput === 'awaiting-input'
+          ? null
+          : 'completed';
 
     return { terminalOutcome, intermediates, infrastructureError };
   }

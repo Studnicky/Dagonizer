@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import Tabs from 'primevue/tabs';
@@ -8,38 +8,32 @@ import Tab from 'primevue/tab';
 import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
 import UiDocResultCard from '@/components/islands/UiDocResultCard.vue';
-import { siteHref } from '@/lib/links';
+import { SiteDocs } from '@/lib/docs';
 import UiControlPanel from '@/components/islands/UiControlPanel.vue';
 import UiProofStrip from '@/components/islands/UiProofStrip.vue';
 
-interface DocSection {
-  readonly name: string;
-  readonly entries: readonly DocEntry[];
-}
-
-interface DocEntry {
-  readonly slug: string;
-  readonly url: string;
-  readonly section: string;
-  readonly title: string;
-  readonly description: string;
-  readonly excerpt: string;
-  readonly headings: readonly string[];
-}
-
 const props = defineProps<{
-  docs: readonly DocEntry[];
-  sections: readonly DocSection[];
+  docs: Awaited<ReturnType<typeof SiteDocs.catalog>>;
+  sections: Awaited<ReturnType<typeof SiteDocs.sections>>;
 }>();
 
 const query = ref('');
 const sortOption = ref<'title' | 'density'>('title');
 const activeSection = ref<string>(props.sections[0]?.name ?? 'all');
 
+// Global nav search submits here as `?q=<term>`, so the query box arrives
+// pre-filled for a visitor coming from any other page's search field.
+onMounted(() => {
+  const fromUrl = new URLSearchParams(window.location.search).get('q');
+  if (fromUrl !== null && fromUrl.trim().length > 0) {
+    query.value = fromUrl;
+  }
+});
+
 const sortOptions = [
   { label: 'Sort: title', value: 'title' },
   { label: 'Sort: densest pages', value: 'density' }
-] as const;
+];
 
 const filteredSections = computed(() => {
   const normalizedQuery = query.value.trim().toLowerCase();

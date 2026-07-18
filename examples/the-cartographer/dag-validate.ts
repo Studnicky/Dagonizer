@@ -8,7 +8,7 @@
 // #region well-formed-validate
 import { WellFormedValidator } from '@studnicky/dagonizer/validation';
 
-import { cartographerDAG, eventPipelineTypedDAG } from './dag.ts';
+import { cartographerDAG } from './dag.ts';
 import { gdprComplianceDAG } from './embedded-dags/GdprComplianceDAG.ts';
 import { GeoSourceResolveDAG } from './embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceDAG } from './embedded-dags/IngestSourceDAG.ts';
@@ -35,7 +35,6 @@ const dags = [
   { 'label': 'order-enrichment',  'dag': orderEnrichmentDAG },
   { 'label': 'gdpr-compliance',   'dag': gdprComplianceDAG },
   // Wave 4-5: per-type processing layer.
-  { 'label': 'event-pipeline-typed',            'dag': eventPipelineTypedDAG },
   { 'label': 'geo-pipeline',                    'dag': geoPipelineDAG },
   { 'label': 'pipeline-position-ping',          'dag': pipelinePositionPingDAG },
   { 'label': 'pipeline-sensor-reading',         'dag': pipelineSensorReadingDAG },

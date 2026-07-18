@@ -30,21 +30,25 @@ export type ViewerActionType = {
   readonly 'shortcut'?: string;
 };
 
-export function viewerAction(
-  id: ViewerActionIdType,
-  overrides: Partial<Omit<ViewerActionType, 'id'>> = {},
-): ViewerActionType {
-  const base = VIEWER_ACTIONS[id];
-  return {
-    'id': id,
-    'label': overrides.label ?? base.label,
-    'title': overrides.title ?? base.title,
-    ...(overrides.ariaLabel !== undefined ? { 'ariaLabel': overrides.ariaLabel } : base.ariaLabel !== undefined ? { 'ariaLabel': base.ariaLabel } : {}),
-    ...(overrides.pressed !== undefined ? { 'pressed': overrides.pressed } : {}),
-    ...(overrides.disabled !== undefined ? { 'disabled': overrides.disabled } : {}),
-    ...(overrides.tone !== undefined ? { 'tone': overrides.tone } : base.tone !== undefined ? { 'tone': base.tone } : {}),
-    ...(overrides.shortcut !== undefined ? { 'shortcut': overrides.shortcut } : base.shortcut !== undefined ? { 'shortcut': base.shortcut } : {}),
-  };
+export class ViewerActions {
+  private constructor() { /* static-only */ }
+
+  static action(
+    id: ViewerActionIdType,
+    overrides: Partial<Omit<ViewerActionType, 'id'>> = {},
+  ): ViewerActionType {
+    const base = VIEWER_ACTIONS[id];
+    return {
+      'id': id,
+      'label': overrides.label ?? base.label,
+      'title': overrides.title ?? base.title,
+      ...(overrides.ariaLabel !== undefined ? { 'ariaLabel': overrides.ariaLabel } : base.ariaLabel !== undefined ? { 'ariaLabel': base.ariaLabel } : {}),
+      ...(overrides.pressed !== undefined ? { 'pressed': overrides.pressed } : {}),
+      ...(overrides.disabled !== undefined ? { 'disabled': overrides.disabled } : {}),
+      ...(overrides.tone !== undefined ? { 'tone': overrides.tone } : base.tone !== undefined ? { 'tone': base.tone } : {}),
+      ...(overrides.shortcut !== undefined ? { 'shortcut': overrides.shortcut } : base.shortcut !== undefined ? { 'shortcut': base.shortcut } : {}),
+    };
+  }
 }
 
 const VIEWER_ACTIONS: Record<ViewerActionIdType, Omit<ViewerActionType, 'id'>> = {

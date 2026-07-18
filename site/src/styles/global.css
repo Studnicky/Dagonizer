@@ -246,7 +246,7 @@ body {
 
 .doc-diagram-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .doc-diagram-panel,
@@ -261,7 +261,7 @@ body {
 }
 
 .doc-diagram-figure {
-  border-right: 1px solid var(--vp-c-divider);
+  border-bottom: 1px solid var(--vp-c-divider);
 }
 
 .doc-diagram-title {
@@ -282,9 +282,17 @@ body {
 
 .doc-diagram-frame {
   min-height: 23rem;
-  padding: 1rem;
-  overflow: auto;
 }
+
+/*
+ * Once MermaidExplorer.enhance() mounts, it adds `.dag-mermaid-frame`
+ * (explorer.css) alongside this class on the same element. That rule sets
+ * the bounded, clipped viewport the transform-based zoom/pan camera and
+ * D-pad require (`position: relative`, `overflow: hidden`, a fixed
+ * `height`); `.doc-diagram-frame` must not fight it with its own overflow,
+ * height, or padding, or the camera math and the D-pad's anchor position
+ * both break.
+ */
 
 .doc-diagram-frame svg {
   display: block;
@@ -302,17 +310,6 @@ body {
   border: 0;
   border-radius: 0;
   background: rgba(2, 6, 23, 0.76);
-}
-
-@media (max-width: 960px) {
-  .doc-diagram-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .doc-diagram-figure {
-    border-right: 0;
-    border-bottom: 1px solid var(--vp-c-divider);
-  }
 }
 
 @keyframes hero-orbit {

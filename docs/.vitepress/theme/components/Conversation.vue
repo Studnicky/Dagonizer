@@ -1,62 +1,38 @@
 <script setup lang="ts">
-/**
- * Conversation: visitor/archivist turn history.
- *
- * Pure presentational. Renders the chronological transcript; styling
- * differentiates the visitor (gold-ochre) from the Archivist (teal).
- *
- * Auto-scroll: when a new turn arrives, the list scrolls its newest row
- * into view. We watch `turns.length` (cheap signal) rather than the
- * array contents, and we only auto-scroll when the visitor was already
- * looking at the bottom (or close to it). If they have scrolled UP to
- * re-read an earlier turn, we respect that and leave the camera alone;
- * the same "user gesture" principle that pauses the DAG auto-follow.
- */
-
 import { nextTick, ref, watch } from 'vue';
 import PanelHeader from './ui/PanelHeader.vue';
 import StateSurface from './ui/StateSurface.vue';
 import UiMetaText from './ui/UiMetaText.vue';
 import UiPaneSurface from './ui/UiPaneSurface.vue';
 
-interface Turn {
-  readonly role: 'visitor' | 'archivist';
-  readonly text: string;
-  readonly ts: number;
-}
-
-const props = defineProps<{
-  turns: readonly Turn[];
+const props = withDefaults(defineProps<{
+  turns: readonly {
+    readonly role: string;
+    readonly text: string;
+    readonly ts: number;
+  }[];
+  roleLabels?: Readonly<Record<string, string>>;
+  rightAlignedRoles?: readonly string[];
+  title?: string;
   emptyHint?: string;
-}>();
+}>(), {
+  'roleLabels': () => ({
+    'visitor': 'You',
+    'archivist': 'The Archivist',
+  }),
+  'rightAlignedRoles': () => ['visitor'],
+  'title': 'Conversation',
+  'emptyHint': 'Ask the Archivist something to begin.',
+});
 
 const listRef = ref<HTMLOListElement | null>(null);
-/** Pixels from the bottom within which we consider the user "at the bottom". */
 const STICK_THRESHOLD_PX = 80;
-
-function cleanTurnText(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.length < 2) return trimmed;
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  if (
-    (first === '"' && last === '"') ||
-    (first === "'" && last === "'") ||
-    (first === '\u201c' && last === '\u201d') ||
-    (first === '\u2018' && last === '\u2019')
-  ) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
 
 watch(
   () => props.turns.length,
   async () => {
     const el = listRef.value;
     if (el === null) return;
-    // Was the user near the bottom before the new turn rendered? If so,
-    // stick to the bottom. Otherwise leave them where they are.
     const wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < STICK_THRESHOLD_PX;
     await nextTick();
     if (wasAtBottom) {
@@ -68,7 +44,7 @@ watch(
 
 <template>
   <UiPaneSurface class="conversation" fill-height padding="lg">
-    <PanelHeader title="Conversation">
+    <PanelHeader :title="title">
       <template #meta>
         <UiMetaText v-if="turns.length > 0">
           {{ turns.length }} {{ turns.length === 1 ? 'turn' : 'turns' }}
@@ -80,15 +56,18 @@ watch(
       <li
         v-for="turn in turns"
         :key="turn.ts"
-        :class="['turn', `turn-${turn.role}`]"
+        :class="[
+          'turn',
+          rightAlignedRoles.includes(turn.role) ? 'turn--right' : 'turn--left',
+        ]"
       >
-        <span class="turn-role">{{ turn.role === 'visitor' ? 'You' : 'The Archivist' }}</span>
-        <p class="turn-text">{{ cleanTurnText(turn.text) }}</p>
+        <span class="turn-role">{{ roleLabels[turn.role] ?? turn.role }}</span>
+        <p class="turn-text">{{ turn.text }}</p>
       </li>
     </ol>
 
     <StateSurface v-else kind="empty">
-      {{ emptyHint ?? 'Ask the Archivist something to begin.' }}
+      {{ emptyHint }}
     </StateSurface>
   </UiPaneSurface>
 </template>
@@ -123,14 +102,14 @@ watch(
   animation: turn-in 0.25s ease-out;
 }
 
-.turn-visitor {
+.turn--right {
   align-self: flex-end;
   border-left-color: transparent;
   border-right-color: var(--dagonizer-brand3);
   text-align: right;
 }
 
-.turn-archivist {
+.turn--left {
   align-self: flex-start;
   border-left-color: var(--dagonizer-brand);
   text-align: left;
@@ -144,8 +123,8 @@ watch(
   margin-bottom: 0.2rem;
 }
 
-.turn-visitor   .turn-role { color: var(--dagonizer-brand3); }
-.turn-archivist .turn-role { color: var(--dagonizer-brand); }
+.turn--right .turn-role { color: var(--dagonizer-brand3); }
+.turn--left  .turn-role { color: var(--dagonizer-brand); }
 
 .turn-text {
   margin: 0;

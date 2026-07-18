@@ -14,9 +14,8 @@ const TransientLifecycleSchema = {
 /**
  * Plain transient worker-transfer snapshot of one node state.
  *
- * This is the container wire shape for isolate execution only. It carries the
- * runtime domain fields plus the graph-backed control state as ordinary JSON so
- * transient scatter clones do not pay RDF projection/indexing costs.
+ * This is the selected runtime state encoded by `GraphStateTransferCodec` for
+ * isolate execution. It avoids full state-graph projection and indexing.
  */
 export const TransientNodeStateSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -99,28 +98,3 @@ export type TransientNodeStateResponseStateType = Omit<TransientNodeStateRespons
   defaultSelection: TransientNodeStateSelectionType;
   outputSelections: Record<string, TransientNodeStateSelectionType>;
 };
-
-/** Batch-native transient worker-transfer payload. */
-export const TransientNodeStateBatchSchema = {
-  '$schema': 'https://json-schema.org/draft/2020-12/schema',
-  'type': 'object',
-  'required': ['states'],
-  'properties': {
-    'states': {
-      'type': 'array',
-      'minItems': 1,
-      'items': {
-        'type': 'object',
-        'required': ['id', 'state'],
-        'properties': {
-          'id': { 'type': 'string', 'minLength': 1 },
-          'state': TransientNodeStateSchema,
-        },
-        'additionalProperties': false,
-      },
-    },
-  },
-  'additionalProperties': false,
-} as const;
-
-export type TransientNodeStateBatchType = FromSchema<typeof TransientNodeStateBatchSchema>;

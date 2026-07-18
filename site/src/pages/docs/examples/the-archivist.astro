@@ -1,18 +1,20 @@
 ---
 import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
 import LazyArchivistRunner from '@/components/islands/LazyArchivistRunner.vue';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('examples/the-archivist')), 301);
 
 const relatedLinks = [
-  { href: siteHref('/docs/guide/visualization'), label: 'Visualization guide' },
-  { href: siteHref('/docs/architecture'), label: 'Architecture' },
-  { href: siteHref('/docs/concepts'), label: 'Concepts' }
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' },
+  { href: SiteLinks.site('/docs/architecture'), label: 'Architecture' },
+  { href: SiteLinks.site('/docs/concepts'), label: 'Concepts' }
 ] as const;
 
 const crumbs = [
-  { href: siteHref('/docs'), label: 'Docs' },
-  { href: siteHref('/docs/examples'), label: 'Examples' },
-  { href: siteHref('/docs/examples/the-archivist'), label: 'The Archivist' }
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
+  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'The Archivist' }
 ] as const;
 
 const proofPoints = [

@@ -1,22 +1,23 @@
 ---
 import { siteConfig } from '@/config/site';
-import { siteHref } from '@/lib/links';
+import { SiteLinks } from '@/lib/links';
 import MarketingTopNav from '@/components/islands/MarketingTopNav.vue';
 
 const links = [
-  { label: 'Overview', href: siteHref('/') },
-  { label: 'Docs', href: siteHref('/docs') },
-  { label: 'Features', href: siteHref('/#features') },
-  { label: 'Visualize', href: siteHref('/#visualize') },
-  { label: 'Examples', href: siteHref('/#examples') }
+  { label: 'Overview', href: SiteLinks.site('/') },
+  { label: 'Docs', href: SiteLinks.site('/docs') },
+  { label: 'Features', href: SiteLinks.site('/#features') },
+  { label: 'Visualize', href: SiteLinks.site('/#visualize') },
+  { label: 'Examples', href: SiteLinks.site('/#examples') }
 ];
 ---
 
 <MarketingTopNav
   client:load
   links={links}
-  homeHref={siteHref('/')}
-  iconHref={siteHref('/dagonizer-icon.svg')}
-  ctaHref={siteHref('/getting-started')}
+  homeHref={SiteLinks.site('/')}
+  iconHref={SiteLinks.site('/dagonizer-icon.svg')}
+  ctaHref={SiteLinks.site('/getting-started')}
   repoUrl={siteConfig.repoUrl}
+  docsHref={SiteLinks.site('/docs')}
 />

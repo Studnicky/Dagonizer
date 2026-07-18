@@ -13,8 +13,7 @@
  * Configuration tab and clicks Run.
  */
 
-import { createApp } from 'vue';
-
+import { createApp, h } from 'vue';
 import CartographerRunner from './app/CartographerRunner.vue';
 
-createApp(CartographerRunner).mount('#app');
+createApp({ 'render': () => h(CartographerRunner) }).mount('#app');

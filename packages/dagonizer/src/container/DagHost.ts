@@ -7,13 +7,12 @@
  *
  * Lifecycle:
  *   init     → dynamic-import registry module; instantiate; reply ready
- *   execute  → restore state(s); run whole DAG per item; reply result + stream intermediates
+ *   execute  → restore one state batch; run one scheduler batch; reply with one graph transfer
  *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
  *
- * For single-item requests (N=1), the existing `dagonizer.execute()` path is
- * used unchanged. For multi-item batch requests (N>1), `executeBatch()` runs
- * all items through the same DAG in one round-trip.
+ * Every request runs through the batch scheduler. A single item is a batch of
+ * one through the identical path.
  *
  * Init captures the registry bundle once. Each execute request constructs an
  * isolated WorkerObserver with immutable correlation and placement-path state,
@@ -26,7 +25,7 @@
  */
 
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
-import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
+import { DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from '../contracts/GraphStateTransferFormat.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
@@ -34,12 +33,14 @@ import { Batch } from '../entities/batch/Batch.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponseType, ExecutionResponseItemType } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
-import type { TransientNodeStateBatchType } from '../entities/executor/TransientNodeState.js';
+import type { GraphStateTransferType } from '../entities/executor/GraphStateTransferSchema.js';
 import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { NodeError } from '../entities/node/NodeError.js';
 import { DAGError } from '../errors/DAGError.js';
 import { PlacementRouter } from '../execution/PlacementRouter.js';
+import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
+import { InMemoryGraphDataset } from '../graph/InMemoryGraphDataset.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 import { Validator } from '../validation/Validator.js';
@@ -53,10 +54,13 @@ import { WorkerObserver } from './WorkerObserver.js';
 /**
  * DagHost construction options. `registry` statically injects the isolate
  * registry: when set, init uses it directly instead of importing
- * `registryModule` by URL. Omit it for the URL-import path.
+ * `registryModule` by URL. `graphStateTransferFormats` declares the exact
+ * formats this host can decode and return.
  */
 export type DagHostOptionsType = {
   registry?: RegistryModuleInterface;
+  /** Formats this host can decode and return. */
+  graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
 }
 
 // ---------------------------------------------------------------------------
@@ -70,7 +74,7 @@ export class DagHost {
   /** Statically-injected registry, or null when init imports by URL. */
   readonly #registry: RegistryModuleInterface | null;
   readonly #capabilities: string[];
-  #graphStateTransferFormats: readonly GraphStateTransferFormatType[];
+  readonly #graphStateTransferFormats: readonly GraphStateTransferFormatType[];
   /** Whether WorkerObserver dedups identical instrumentation events per flush window. Defaults to `true`. */
   #coalesceInstrumentation: boolean;
   /** Optional cap on composed worker instrumentation placement-path depth. */
@@ -80,10 +84,20 @@ export class DagHost {
   #dispatcherBundle: DispatcherBundleType<NodeStateInterface> | null;
 
   constructor(channel: MessageChannelInterface, options: DagHostOptionsType = {}) {
+    const graphStateTransferFormats = options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
+    if (
+      graphStateTransferFormats.length === 0
+      || new Set(graphStateTransferFormats).size !== graphStateTransferFormats.length
+      || !graphStateTransferFormats.every((format) => GRAPH_STATE_TRANSFER_FORMATS.includes(format))
+    ) {
+      throw new DAGError('DagHost requires a non-empty, duplicate-free graph-state transfer format enum array', {
+        'code': 'CONFIGURATION_ERROR',
+      });
+    }
     this.#channel = channel;
     this.#inflight = new Map();
     this.#registry = options.registry ?? null;
-    this.#graphStateTransferFormats = DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
+    this.#graphStateTransferFormats = [...graphStateTransferFormats];
     this.#coalesceInstrumentation = true;
     this.#instrumentationPlacementPathDepth = undefined;
     this.#capabilities = [];
@@ -213,9 +227,18 @@ export class DagHost {
     coalesceInstrumentation?: boolean,
     instrumentationPlacementPathDepth?: number,
   ): Promise<void> {
-    this.#graphStateTransferFormats = [...graphStateTransferFormats];
     this.#coalesceInstrumentation = coalesceInstrumentation ?? true;
     this.#instrumentationPlacementPathDepth = instrumentationPlacementPathDepth;
+    if (!graphStateTransferFormats.some((format) => this.#graphStateTransferFormats.includes(format))) {
+      this.#channel.send({
+        'variant': 'error',
+        'correlationId': null,
+        'code': 'GRAPH_STATE_FORMAT_MISMATCH',
+        'message': 'DagHost and container do not share a graph-state transfer format',
+        'recoverable': false,
+      });
+      return;
+    }
     try {
       let registry: RegistryModuleInterface;
       if (this.#registry !== null) {
@@ -298,6 +321,17 @@ export class DagHost {
       return;
     }
 
+    if (!this.#graphStateTransferFormats.includes(request.graphState.format)) {
+      this.#channel.send({
+        'variant': 'error',
+        'correlationId': correlationId,
+        'code': 'GRAPH_STATE_FORMAT_MISMATCH',
+        'message': `DagHost does not support graph-state transfer format '${request.graphState.format}'`,
+        'recoverable': false,
+      });
+      return;
+    }
+
     const controller = new AbortController();
     this.#inflight.set(correlationId, controller);
     const bundle = this.#bundle;
@@ -331,9 +365,11 @@ export class DagHost {
     dagonizer: WorkerObserver<NodeStateInterface>,
   ): Promise<void> {
     const requestItems = request.items;
-    const stateById = new Map(request.graphState.states.map((entry) => [entry.id, entry.state]));
+    const transferredStates = await GraphStateTransferCodec.restoreTransient(request.graphState, requestItems, null);
+    const stateById = new Map(transferredStates.map((entry) => [entry.id, entry.state]));
     const restoredItems = await Promise.all(requestItems.map(async (requestItem) => {
-      const state = bundle.restoreState.restore();
+      const dataset = new InMemoryGraphDataset();
+      const state = bundle.restoreState(dataset, requestItem.runIri);
       const snapshot = stateById.get(requestItem.id);
       if (snapshot !== undefined) await state.restoreTransientState(requestItem.runIri, snapshot);
       return { 'id': requestItem.id, 'runIri': requestItem.runIri, state };
@@ -357,106 +393,55 @@ export class DagHost {
       }, { 'once': true });
     }
 
+    const itemIdByState = new Map(restoredItems.map((item) => [item.state, item.id]));
+    const intermediatesByItemId = new Map<string, ExecutorIntermediateType[]>();
+    for (const item of restoredItems) intermediatesByItemId.set(item.id, []);
+    let response: ExecutionResponseType;
+
     try {
-      // Single-item (batch of one) buffers intermediates for the parent's
-      // embedded-body stream; the multi-item batch path sends live only (relay
-      // delivers per-node observability), so buffering N×M results is pure
-      // retention with no consumer — `intermediates` stays empty for batches.
-      const intermediates: ExecutorIntermediateType[] = [];
-      const terminalByItemId = new Map<string, string>();
-      const errors: ReturnType<typeof NodeError.create>[] = [];
-
-      if (restoredItems.length === 1) {
-        const item = restoredItems[0];
-        if (item === undefined) throw new DAGError('DagHost received an empty restored batch', { 'code': 'VALIDATION_ERROR' });
-        const execution = dagonizer.execute(request.dagName, item.state, {
-          'signal': controller.signal,
-          'runIri': item.runIri,
-        });
-
-        const generator = execution[Symbol.asyncIterator]();
-        let terminalOutcome: string | null = null;
-
-        while (true) {
-          const next = await generator.next();
-          if (next.done === true) {
-            terminalOutcome = next.value.terminalOutcome ?? null;
-            break;
-          }
-          const nodeResult = next.value;
-          intermediates.push({ 'output': nodeResult.output, 'skipped': nodeResult.skipped, 'nodeName': nodeResult.nodeName });
-        }
-
-        const lifecycle = item.state.lifecycle;
-        terminalByItemId.set(item.id, terminalOutcome !== null
-          ? terminalOutcome
-          : lifecycle.variant === 'completed' ? 'completed' : 'failed');
-
-        errors.push(...item.state.errors);
-        if (terminalOutcome === null && lifecycle.variant !== 'completed') {
-          errors.push(NodeError.create(
-            'DAG_EXECUTION_FAILED',
-            `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.variant})`,
-            request.dagName,
-            false,
-            new Date().toISOString(),
-          ));
-        }
-      } else {
+      const batchTerminalByItemId = new Map<string, 'completed' | 'failed'>();
+      let itemOutcomes: Array<{
+        readonly id: string;
+        readonly runIri: string;
+        readonly state: NodeStateInterface;
+        readonly terminalOutcome: 'completed' | 'failed' | 'awaiting-input';
+        readonly errors: ReturnType<typeof NodeError.create>[];
+        readonly intermediates: ExecutorIntermediateType[];
+      }>;
+      try {
         const batch = Batch.from(restoredItems.map((item) => ({ 'id': item.id, 'state': item.state })));
-        const batchTerminalByItemId = new Map<string, 'completed' | 'failed'>();
         const execution = dagonizer.executeBatch(
           request.dagName,
           batch,
           batchTerminalByItemId,
           { 'signal': controller.signal },
         );
-        const generator = execution[Symbol.asyncIterator]();
-        while (!(await generator.next()).done) {
-          // Multi-item observability is delivered by instrumentation events.
+        for await (const yielded of execution) {
+          this.#recordIntermediate(yielded, itemIdByState, intermediatesByItemId);
         }
-        for (const [itemId, terminalOutcome] of batchTerminalByItemId) {
-          terminalByItemId.set(itemId, terminalOutcome);
-        }
-        for (const item of restoredItems) {
-          errors.push(...item.state.errors);
-          if (!terminalByItemId.has(item.id)) {
-            terminalByItemId.set(item.id, item.state.lifecycle.variant === 'completed' ? 'completed' : 'failed');
-          }
-        }
+        itemOutcomes = this.#composeResponseItems(
+          restoredItems,
+          request.dagName,
+          batchTerminalByItemId,
+          intermediatesByItemId,
+          null,
+        );
+      } catch (error) {
+        itemOutcomes = this.#composeResponseItems(
+          restoredItems,
+          request.dagName,
+          batchTerminalByItemId,
+          intermediatesByItemId,
+          DAGError.messageOf(error),
+        );
       }
 
-      const { graphState, items } = await this.#composeResponseGraph(restoredItems, request, terminalByItemId);
-      const response: ExecutionResponseType = {
+      const { graphState, items } = await this.#composeResponseGraph(itemOutcomes, request);
+      response = {
         'correlationId': correlationId,
         graphState,
         items,
-        errors,
-        intermediates,
       };
-
-      this.#channel.send({ 'variant': 'result', 'response': response });
-    } catch (error) {
-      const message = DAGError.messageOf(error);
-      // On unhandled exception, return every item as failed with the current
-      // terminal state combined into one batch transfer.
-      const failedTerminals = new Map(restoredItems.map((item) => [item.id, 'failed']));
-      const { graphState, items } = await this.#composeResponseGraph(restoredItems, request, failedTerminals);
-      const response: ExecutionResponseType = {
-        'correlationId': correlationId,
-        graphState,
-        items,
-        'errors': [NodeError.create(
-          'DAG_EXECUTION_FAILED',
-          message,
-          request.dagName,
-          false,
-          new Date().toISOString(),
-        )],
-        'intermediates': [],
-      };
-
-      this.#channel.send({ 'variant': 'result', 'response': response });
     } finally {
       if (timeoutAbortController !== null) {
         timeoutAbortController.abort(new DAGError('dag-host-timeout-cleanup', { 'code': 'EXECUTION_ERROR' }));
@@ -465,35 +450,114 @@ export class DagHost {
         await timeoutPromise;
       }
     }
+
+    this.#channel.send({ 'variant': 'result', response });
   }
 
-  /** Snapshot every item's terminal state into ONE plain transient-state batch payload. */
-  async #composeResponseGraph(
+  #recordIntermediate(
+    yielded: {
+      readonly output: string | null;
+      readonly skipped: boolean;
+      readonly nodeName: string;
+      readonly state: NodeStateInterface;
+    },
+    itemIdByState: ReadonlyMap<NodeStateInterface, string>,
+    intermediatesByItemId: ReadonlyMap<string, ExecutorIntermediateType[]>,
+  ): void {
+    const itemId = itemIdByState.get(yielded.state);
+    if (itemId === undefined) return;
+    const intermediates = intermediatesByItemId.get(itemId);
+    if (intermediates === undefined) return;
+    intermediates.push({
+      'output': yielded.output,
+      'skipped': yielded.skipped,
+      'nodeName': yielded.nodeName,
+    });
+  }
+
+  #composeResponseItems(
     restoredItems: readonly { readonly id: string; readonly runIri: string; readonly state: NodeStateInterface }[],
+    dagName: string,
+    terminalByItemId: ReadonlyMap<string, 'completed' | 'failed'>,
+    intermediatesByItemId: ReadonlyMap<string, ExecutorIntermediateType[]>,
+    executionFailureMessage: string | null,
+  ): Array<{
+    readonly id: string;
+    readonly runIri: string;
+    readonly state: NodeStateInterface;
+    readonly terminalOutcome: 'completed' | 'failed' | 'awaiting-input';
+    readonly errors: ReturnType<typeof NodeError.create>[];
+    readonly intermediates: ExecutorIntermediateType[];
+  }> {
+    const timestamp = new Date().toISOString();
+
+    return restoredItems.map((item) => {
+      const errors = [...item.state.errors];
+      let terminalOutcome: 'completed' | 'failed' | 'awaiting-input';
+
+      const terminal = terminalByItemId.get(item.id);
+      if (terminal !== undefined) {
+        terminalOutcome = terminal;
+      } else if (item.state.lifecycle.variant === 'completed') {
+        terminalOutcome = 'completed';
+      } else if (item.state.lifecycle.variant === 'awaiting-input') {
+        terminalOutcome = 'awaiting-input';
+      } else {
+        terminalOutcome = 'failed';
+        if (errors.length === 0) {
+          errors.push(NodeError.create(
+            'DAG_EXECUTION_FAILED',
+            executionFailureMessage
+              ?? `DAG '${dagName}' did not complete normally (lifecycle: ${item.state.lifecycle.variant})`,
+            dagName,
+            false,
+            timestamp,
+          ));
+        }
+      }
+
+      return {
+        'id': item.id,
+        'runIri': item.runIri,
+        'state': item.state,
+        terminalOutcome,
+        errors,
+        'intermediates': [...(intermediatesByItemId.get(item.id) ?? [])],
+      };
+    });
+  }
+
+  /** Snapshot every item's selected terminal state into ONE N-Quads batch. */
+  async #composeResponseGraph(
+    restoredItems: readonly {
+      readonly id: string;
+      readonly runIri: string;
+      readonly state: NodeStateInterface;
+      readonly terminalOutcome: 'completed' | 'failed' | 'awaiting-input';
+      readonly errors: readonly ReturnType<typeof NodeError.create>[];
+      readonly intermediates: readonly ExecutorIntermediateType[];
+    }[],
     request: ExecutionRequestType,
-    terminalByItemId: ReadonlyMap<string, string>,
-  ): Promise<{ graphState: TransientNodeStateBatchType; items: ExecutionResponseItemType[] }> {
-    const states: TransientNodeStateBatchType['states'] = [];
+  ): Promise<{ graphState: GraphStateTransferType; items: ExecutionResponseItemType[] }> {
+    const states: { runIri: string; state: ReturnType<NodeStateInterface['snapshotTransientStateSelection']> }[] = [];
     const items: ExecutionResponseItemType[] = [];
     for (const item of restoredItems) {
-      const terminalOutcome = terminalByItemId.get(item.id) ?? 'failed';
       items.push({
         'id': item.id,
         'runIri': item.runIri,
-        'terminalOutcome': terminalOutcome,
+        'terminalOutcome': item.terminalOutcome,
+        'errors': [...item.errors],
+        'intermediates': [...item.intermediates],
       });
-      const hasUnrecoverable = item.state.errors.some((error) => error.recoverable === false);
-      const routeOutput = PlacementRouter.route(
-        terminalOutcome === 'completed' || terminalOutcome === 'failed'
-          ? terminalOutcome
-          : null,
-        hasUnrecoverable,
-      );
-      const selection = request.responseState.outputSelections[routeOutput]
-        ?? request.responseState.defaultSelection;
-      states.push({ 'id': item.id, 'state': item.state.snapshotTransientStateSelection(selection) });
+      const selection = item.terminalOutcome === 'awaiting-input'
+        ? request.responseState.defaultSelection
+        : request.responseState.outputSelections[PlacementRouter.route(
+          item.terminalOutcome,
+          item.errors.some((error) => error.recoverable === false),
+        )] ?? request.responseState.defaultSelection;
+      states.push({ 'runIri': item.runIri, 'state': item.state.snapshotTransientStateSelection(selection) });
     }
-    return { 'graphState': { states }, items };
+    return { 'graphState': GraphStateTransferCodec.inlineTransient(states), items };
   }
 
   // ---------------------------------------------------------------------------

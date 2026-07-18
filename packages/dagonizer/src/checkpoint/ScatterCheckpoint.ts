@@ -1,22 +1,16 @@
 import { SCATTER_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
-import type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from '../entities/scatter/ScatterProgress.js';
+import type { ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from '../entities/scatter/ScatterProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
  * Restored scatter run accumulators materialised from a stored checkpoint.
  *
- * One bundle holds every accumulator the scatter loop reads or writes. The
- * compactable path drives `watermarkRef`/`aheadAcked`/`outcomeTally`; the
- * retained path drives `ackedResults`/`ackedByIndex`/`itemOutputs`. Both share
- * `inbox`, `seenIndices`, and `nextIndex`. All are initialised in a fixed order
- * regardless of branch so the bundle's shape is consistent across constructions.
+ * The bundle holds the bounded checkpoint accumulators and derived resume
+ * indices used by the scatter loop.
  */
 export type ScatterRunStateType = {
   readonly inbox: ScatterInboxItemType[];
-  readonly ackedResults: ScatterAckedResultType[];
-  readonly ackedByIndex: Map<number, ScatterAckedResultType>;
-  readonly itemOutputs: Map<number, string>;
   readonly watermarkRef: { value: number };
   readonly aheadAcked: Map<number, string>;
   readonly outcomeTally: Map<string, number>;
@@ -28,10 +22,10 @@ export class ScatterCheckpoint {
   private constructor() { /* static class */ }
 
   /**
-   * Fold an acked item into the bounded-mode accounting: record its output in
+   * Fold an acked item into bounded accounting: record its output in
    * `outcomeTally`, place its index in the ahead window, then drain consecutive
    * indices into the watermark so the watermark always equals the highest
-   * contiguous completed prefix. Bounded-mode bookkeeping is checkpoint state,
+   * contiguous completed prefix. Bounded bookkeeping is checkpoint state,
    * so it lives here beside the read/write/restore surface.
    */
   static advanceWatermark(
@@ -55,92 +49,48 @@ export class ScatterCheckpoint {
   /**
    * Materialise the scatter run accumulators from a stored checkpoint.
    *
-   * Seeds the inbox from the stored entry, then reconstructs the mode-specific
-   * accumulators: bounded restores watermark/ahead-window/tally directly (and
-   * translates a defensive retained-on-disk checkpoint into bounded in-memory
-   * form via {@link advanceWatermark}); retained restores the full acked-result
-   * set. `seenIndices` and `nextIndex` are derived so resume reprocesses inbox
-   * gaps and assigns fresh indices past every prior item.
-   *
-   * `compactable` selects the accumulator family; both families are always
-   * allocated so the bundle's shape is branch-independent (V8 stability).
+   * Restores the inbox, watermark, ahead window, and outcome tally.
+   * `seenIndices` and `nextIndex` are derived so resume reprocesses inbox gaps
+   * and assigns fresh indices past every prior item.
    */
   static restoreRunState(
     storedProgress: ScatterProgressType | undefined,
-    compactable: boolean,
   ): ScatterRunStateType {
     const inbox: ScatterInboxItemType[] = [...(storedProgress?.inbox ?? [])];
-    const ackedResults: ScatterAckedResultType[] = [];
-    const ackedByIndex = new Map<number, ScatterAckedResultType>();
-    const itemOutputs = new Map<number, string>();
     const watermarkRef: { value: number } = { 'value': 0 };
     const aheadAcked = new Map<number, string>();
     const outcomeTally = new Map<string, number>();
     const seenIndices = new Set<number>();
     let nextIndex = 0;
 
-    if (compactable) {
-      if (storedProgress?.mode === 'bounded') {
-        // Restore bounded checkpoint.
-        watermarkRef.value = storedProgress.watermark;
-        for (const entry of storedProgress.aheadAcked) aheadAcked.set(entry.index, entry.output);
-        for (const [output, count] of Object.entries(storedProgress.outcomeTally)) outcomeTally.set(output, count);
-        // seenIndices = {0..watermark-1} ∪ aheadAcked.keys() ∪ inbox.indices
-        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
-        for (const k of aheadAcked.keys()) seenIndices.add(k);
-        for (const entry of inbox) seenIndices.add(entry.index);
-        // nextIndex = max(watermark, max(aheadAcked.keys)+1, max(inbox.index)+1, 0)
-        nextIndex = watermarkRef.value;
-        if (aheadAcked.size > 0) {
-          const maxAhead = Math.max(...aheadAcked.keys());
-          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
-        }
-        if (inbox.length > 0) {
-          const maxInbox = Math.max(...inbox.map((e) => e.index));
-          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
-        }
-      } else if (storedProgress?.mode === 'retained') {
-        // Defensive: translate retained checkpoint into bounded in-memory form.
-        for (const r of storedProgress.ackedResults) {
-          ScatterCheckpoint.advanceWatermark(watermarkRef, aheadAcked, outcomeTally, r.index, r.output);
-        }
-        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
-        for (const k of aheadAcked.keys()) seenIndices.add(k);
-        for (const entry of inbox) seenIndices.add(entry.index);
-        nextIndex = watermarkRef.value;
-        if (aheadAcked.size > 0) {
-          const maxAhead = Math.max(...aheadAcked.keys());
-          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
-        }
-        if (inbox.length > 0) {
-          const maxInbox = Math.max(...inbox.map((e) => e.index));
-          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
-        }
-      }
-    } else {
-      // Non-compactable (retained mode): restore full ackedResults.
-      if (storedProgress?.mode === 'retained') {
-        for (const r of storedProgress.ackedResults) {
-          ackedResults.push(r);
-          ackedByIndex.set(r.index, r);
-          itemOutputs.set(r.index, r.output);
-          seenIndices.add(r.index);
-        }
-      }
+    if (storedProgress !== undefined) {
+      watermarkRef.value = storedProgress.watermark;
+      for (const entry of storedProgress.aheadAcked) aheadAcked.set(entry.index, entry.output);
+      for (const [output, count] of Object.entries(storedProgress.outcomeTally)) outcomeTally.set(output, count);
+      // seenIndices = {0..watermark-1} ∪ aheadAcked.keys() ∪ inbox.indices
+      for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
+      for (const k of aheadAcked.keys()) seenIndices.add(k);
       for (const entry of inbox) seenIndices.add(entry.index);
-      for (const item of [...inbox, ...ackedResults]) {
-        if (item.index >= nextIndex) nextIndex = item.index + 1;
+      // nextIndex = max(watermark, max(aheadAcked.keys)+1, max(inbox.index)+1, 0)
+      nextIndex = watermarkRef.value;
+      if (aheadAcked.size > 0) {
+        const maxAhead = Math.max(...aheadAcked.keys());
+        if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
+      }
+      if (inbox.length > 0) {
+        const maxInbox = Math.max(...inbox.map((e) => e.index));
+        if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
       }
     }
 
-    return { inbox, ackedResults, ackedByIndex, itemOutputs, watermarkRef, aheadAcked, outcomeTally, seenIndices, nextIndex };
+    return { inbox, watermarkRef, aheadAcked, outcomeTally, seenIndices, nextIndex };
   }
 
   /**
    * Read and validate the stored scatter progress map from state metadata.
    *
    * Validates the raw metadata value with `Validator.storedScatterProgress`
-   * at the read boundary so a corrupt or migrated checkpoint fails here —
+   * at the read boundary so a corrupt checkpoint fails here —
    * close to the ingest point — rather than deep in the scatter loop where
    * the error would be harder to trace. Returns `undefined` when no
    * checkpoint entry exists for this placement.
@@ -154,32 +104,15 @@ export class ScatterCheckpoint {
   ): ScatterProgressType | undefined {
     const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
     if (raw === undefined) return undefined;
-    // Validate at the read boundary so corrupt/migrated checkpoints surface
+    // Validate at the read boundary so corrupt checkpoints surface
     // here rather than causing silent type mismatches in the scatter loop.
     const stored = Validator.storedScatterProgress.validate(raw);
     return stored[placementName];
   }
 
   /**
-   * Persist a retained-mode scatter checkpoint (full per-item acked results)
-   * for non-compactable gather strategies.
-   */
-  static writeRetained(
-    state: NodeStateInterface,
-    placementName: string,
-    inbox: readonly ScatterInboxItemType[],
-    ackedResults: readonly ScatterAckedResultType[],
-  ): void {
-    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
-    const current: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
-    const next: Record<string, ScatterProgressType> = { ...current };
-    next[placementName] = { 'mode': 'retained', placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
-    state.setMetadata(SCATTER_PROGRESS_KEY, next);
-  }
-
-  /**
-   * Persist a bounded-mode scatter checkpoint (watermark + ahead-acked window
-   * + outcome tally) for compactable gather strategies.
+   * Persist a bounded scatter checkpoint with its watermark, ahead-acked
+   * window, and outcome tally.
    */
   static writeBounded(
     state: NodeStateInterface,

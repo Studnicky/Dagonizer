@@ -16,16 +16,13 @@
  *
  * Three fields are intentionally left optional:
  *
- *   ⦿ `execution`  — defaults to `{ mode: 'item', concurrency: 1 }` at
- *                     runtime (`ScatterNodeDefaults.executionPolicy`); there
- *                     is no meaningful static default to materialise at build time.
+ *   ⦿ `configuration` — absence means the placement inherits the DAG and
+ *                       dispatcher policy tiers.
  *   ⦿ `inputs`     — absence is semantically meaningful ("no clone seeding");
  *                     materialising an empty `stateMapping` object changes the
  *                     wire shape without adding information.
  *   ⦿ `container`  — absence means "run in-process"; a present string is a
  *                     role name; there is no meaningful static default.
- *   ⦿ `writePoints` — absence means "inherit the DAG-level policy"; a present
- *                     array fully replaces it.
  *
  * Callers: `DAGBuilder.scatter` calls `ScatterOptions.resolve(options)` before
  * constructing the `ScatterNode` so every builder-produced placement carries
@@ -79,7 +76,7 @@ export class ScatterOptions {
     partial: ScatterOptionsType<TState>,
   ): ResolvedScatterOptionsType<TState> {
     // Resolve only the statically-defaultable fields via spread; all other
-    // fields (execution, inputs, container, writePoints) pass through from partial.
+    // fields pass through from the caller's placement declaration.
     const { itemKey, reducer } = {
       ...SCATTER_OPTION_DEFAULTS,
       ...(partial.itemKey !== undefined ? { 'itemKey': partial.itemKey } : {}),

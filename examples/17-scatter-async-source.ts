@@ -21,11 +21,11 @@
  *
  * Note on resumability: an `AsyncIterable` on state is NOT captured by
  * `Checkpoint.capture()` (generators are not JSON-serialisable). If you
- * abort a scatter with an async source, the resume call must re-provide
- * the generator at the continuation position — the engine will pull from
- * it starting at the first item, but acked items are skipped via the
- * `ackedResults` index (no re-execution). For fully durable sources,
- * use an array and rely on the checkpoint's acked-index tracking.
+ * abort a scatter with an async source, resume must recreate the producer
+ * from `StreamCursor.resumeAfter(...)`. The bounded checkpoint retries inbox
+ * items and records completed indices through its watermark and ahead-acked
+ * window. For fully durable sources, use a resumable producer whose offset is
+ * derived from that cursor.
  *
  * DAG definitions: examples/dags/17-scatter-async-source.ts
  *

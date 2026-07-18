@@ -24,6 +24,8 @@
  * value in a sibling `jt.ts`. The schema bodies and `$id`s do not change.
  */
 
+export { DagConfiguration } from './configuration/index.js';
+
 // ---------------------------------------------------------------------------
 // dag
 // ---------------------------------------------------------------------------
@@ -47,7 +49,7 @@ export { GatherNodeDefaults, GatherNodeSchema } from './dag/GatherNode.js';
 export type { GatherNodeType, GatherPolicyType } from './dag/GatherNode.js';
 
 export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
-export type { ScatterNodeType, ScatterThrottleOptionsType, ScatterExecutionOptionsType, ScatterExecutionPolicyType } from './dag/ScatterNode.js';
+export type { ScatterNodeType } from './dag/ScatterNode.js';
 
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNodeType } from './dag/EmbeddedDAGNode.js';
@@ -162,13 +164,11 @@ export type { ExecutorIntermediateType } from './executor/ExecutorIntermediate.j
 
 export {
   TransientNodeStateSchema,
-  TransientNodeStateBatchSchema,
   TransientNodeStateResponseStateSchema,
   TransientNodeStateSelectionSchema,
 } from './executor/TransientNodeState.js';
 export type {
   TransientNodeStateType,
-  TransientNodeStateBatchType,
   TransientNodeStateResponseStateType,
   TransientNodeStateSelectionType,
 } from './executor/TransientNodeState.js';
@@ -210,13 +210,11 @@ export type { DAGHandoffType } from './handoff/DAGHandoff.js';
 
 export {
   ScatterInboxItemSchema,
-  ScatterAckedResultSchema,
   ScatterProgressSchema,
   StoredScatterProgressSchema,
 } from './scatter/ScatterProgress.js';
 export type {
   ScatterInboxItemType,
-  ScatterAckedResultType,
   ScatterProgressType,
   StoredScatterProgressType,
 } from './scatter/ScatterProgress.js';

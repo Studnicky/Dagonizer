@@ -63,7 +63,7 @@ import type { NodeContextType } from '../dist/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapter, MonadicNode, NodeStateBase, Timeout, Validator } from '@studnicky/dagonizer';
+import { MonadicNode, NodeStateBase, Timeout, Validator } from '@studnicky/dagonizer';
 import type { Batch } from '@studnicky/dagonizer';
 
 
@@ -103,8 +103,8 @@ export class ConformanceState extends NodeStateBase {
   scatterItems: number[];
   gatheredItems: number[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.value = 0;
     this.executedNodes = [];
     this.began = false;
@@ -398,7 +398,9 @@ class ConformanceDags {
           'body': { 'dag': SCATTER_ITEM_BODY_DAG },
           'source': 'scatterItems',
           'itemKey': 'currentItem',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': {
+            'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } },
+          },
           'container': CONFORMANCE_CONTAINER_ROLE,
           'outputs': {
             'all-success': joinIri,
@@ -549,7 +551,7 @@ export class ConformanceRegistry {
         'dags': [...CONFORMANCE_DAGS],
       },
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapter.wrap(() => new ConformanceState()),
+      'restoreState': (dataset, runIri) => new ConformanceState(dataset, runIri),
     };
   }
 }

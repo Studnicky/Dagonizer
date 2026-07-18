@@ -1,5 +1,6 @@
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
+import { GatherStrategies } from '../core/GatherStrategies.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { GatherNodeDefaults } from '../entities/dag/GatherNode.js';
@@ -22,7 +23,11 @@ type GatherReducedSummaryType = {
 };
 
 type GatherProgressRestoreOptionsType = {
-  readonly applyContribution: (gatherKey: string, record: GatherRecordProgressType) => void;
+  // Validates a contribution record and returns a commit thunk. The thunk
+  // must be the only part of restore() that mutates parent state, so every
+  // record across the whole restore() call can be validated before any of
+  // them are applied.
+  readonly deriveContribution: (gatherKey: string, record: GatherRecordProgressType) => () => void;
 };
 
 export class GatherBuffers {
@@ -37,25 +42,6 @@ export class GatherBuffers {
       this.#records.set(gatherKey, records);
     }
     records.set(this.#recordKey(record), record);
-  }
-
-  addReduced(gatherKey: string, record: GatherRecordType, retainRecord: boolean, contribution?: unknown): void {
-    if (retainRecord) {
-      this.add(gatherKey, record);
-      return;
-    }
-
-    let records = this.#reduced.get(gatherKey);
-    if (records === undefined) {
-      records = new Map<string, GatherReducedSummaryType>();
-      this.#reduced.set(gatherKey, records);
-    }
-    records.set(this.#recordKey(record), {
-      'source': record.source,
-      'output': record.output,
-      'terminalOutcome': record.terminalOutcome,
-      ...(contribution === undefined ? {} : { contribution }),
-    });
   }
 
   isEmpty(): boolean {
@@ -102,30 +88,45 @@ export class GatherBuffers {
     state: NodeStateInterface,
     options: GatherProgressRestoreOptionsType,
   ): Promise<void> {
+    // Two passes: derive (validate, no mutation) every contribution record
+    // across the whole restore() call before committing (mutating parent
+    // state) any of them. A malformed record anywhere in the set must leave
+    // every other record's state mutation un-applied.
+    const pendingCommits: Array<{ readonly gatherKey: string; readonly record: GatherRecordProgressType; readonly commit: () => void }> = [];
+    const cloneRecords: Array<{ readonly gatherKey: string; readonly record: GatherRecordProgressType }> = [];
+
     for (const [gatherKey, records] of Object.entries(progress.entries)) {
       for (const record of records) {
         if (record.contribution !== undefined) {
-          options.applyContribution(gatherKey, record);
-          this.#restoreReduced(gatherKey, record);
+          pendingCommits.push({ gatherKey, record, 'commit': options.deriveContribution(gatherKey, record) });
           continue;
         }
-        const childScope: GraphScopeType = {
-          'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
-          'dagIri': state.runIri,
-          'placementIri': record.source,
-        };
-        const cloneState = state.clone(childScope);
-        if (record.graphState !== undefined) await cloneState.restoreTransientState(cloneState.runIri, record.graphState);
-        this.add(gatherKey, {
-          'source': record.source,
-          'index': record.index,
-          'item': record.item,
-          'output': record.output,
-          'terminalOutcome': record.terminalOutcome,
-          'result': record.result,
-          cloneState,
-        });
+        cloneRecords.push({ gatherKey, record });
       }
+    }
+
+    for (const { gatherKey, record, commit } of pendingCommits) {
+      commit();
+      this.#restoreReduced(gatherKey, record);
+    }
+
+    for (const { gatherKey, record } of cloneRecords) {
+      const childScope: GraphScopeType = {
+        'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+        'dagIri': state.runIri,
+        'placementIri': record.source,
+      };
+      const cloneState = state.clone(childScope);
+      if (record.graphState !== undefined) await cloneState.restoreTransientState(cloneState.runIri, record.graphState);
+      this.add(gatherKey, {
+        'source': record.source,
+        'index': record.index,
+        'item': record.item,
+        'output': record.output,
+        'terminalOutcome': record.terminalOutcome,
+        'result': record.result,
+        cloneState,
+      });
     }
   }
 
@@ -152,9 +153,18 @@ export class GatherBuffers {
     return { entries };
   }
 
+  // A gather strategy that declares a `transientResultSelection()` narrower
+  // than `mode: 'full'` has told the dispatcher it needs nothing beyond the
+  // configured `resultField` projection (already captured in `record.result`)
+  // to fold or replay a clone's contribution. That contract is reused here,
+  // parent-facing progress retention, so any strategy — built-in or
+  // consumer-registered under any name — compacts to `result` instead of a
+  // full-clone `graphState` snapshot whenever it applies. A strategy that has
+  // not declared a selection defaults to `mode: 'full'` and always falls
+  // through to full-clone retention, preserving correctness.
   private static canCompactRecord(gather: GatherConfigType, record: GatherRecordType): boolean {
     if (record.result === undefined) return false;
-    return gather.strategy === 'custom' || gather.strategy === 'discard';
+    return GatherStrategies.resolve(gather.strategy).transientResultSelection(gather).mode !== 'full';
   }
 
   private static toProgressRecord(

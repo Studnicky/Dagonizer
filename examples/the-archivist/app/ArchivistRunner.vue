@@ -16,14 +16,20 @@
  * methods to write to the same reactive refs the template binds.
  */
 
-import { computed, defineAsyncComponent, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
+import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 
 import { ArchivistState } from '../ArchivistState.ts';
+import { archivistDAG } from '../dag.ts';
+import { bookSearchScatterDAG } from '../embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from '../embedded-dags/ComposeRetryLoopDAG.ts';
 import { DomConsoleLogger } from '../logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../logger/ConsoleLogger.ts';
 import { MemoryStore } from '../memory/MemoryStore.ts';
@@ -32,7 +38,7 @@ import { SeedLibrary } from '../data/SeedLibrary.ts';
 import { RdfProvObserver } from '../provenance/RdfProvObserver.ts';
 import { NODE_VARIANTS } from '../nodes/ArchivistNode.ts';
 import { ArchivistNodes } from '../nodes/ArchivistNodes.ts';
-import { ApiKeyStore, PreferredModels } from '../providers/index.ts';
+import { ApiKeyStore, BackendMatrix, PreferredModels, ProviderInstantiator } from '../providers/index.ts';
 import { MobileDetection } from '../providers/MobileDetection.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type {
@@ -54,19 +60,20 @@ import type {
   SessionNodeEvent,
 } from '../ArchivistSession.ts';
 
-const BackendPicker = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/BackendPicker.vue'));
-const CheckpointControls = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/CheckpointControls.vue'));
-const Conversation = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/Conversation.vue'));
-const DagGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/DagGraph.vue'));
-const MemoryGraph = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/MemoryGraph.vue'));
-const PanesTabs = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/PanesTabs.vue'));
-const SendForm = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/SendForm.vue'));
-const ConversationContextPane = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/ConversationContextPane.vue'));
+import CheckpointControls from '../../../docs/.vitepress/theme/components/CheckpointControls.vue';
+import Conversation from '../../../docs/.vitepress/theme/components/Conversation.vue';
+import ConversationContextPane from '../../../docs/.vitepress/theme/components/ConversationContextPane.vue';
+import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
+import LlmConfigurationPane from '../../../docs/.vitepress/theme/components/LlmConfigurationPane.vue';
+import { LlmBackendStatus } from '../../../docs/.vitepress/theme/components/LlmBackendStatus.ts';
+import MemoryGraph from '../../../docs/.vitepress/theme/components/MemoryGraph.vue';
+import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
+import SendForm from '../../../docs/.vitepress/theme/components/SendForm.vue';
 import TimeoutPane from '../../../docs/.vitepress/theme/components/TimeoutPane.vue';
 import type { TimeoutSettings } from '../../../docs/.vitepress/theme/components/TimeoutPane.vue';
-const ToolExplainPanel = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/ToolExplainPanel.vue'));
-const TraceFeed = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/TraceFeed.vue'));
-const TripleInspector = defineAsyncComponent(() => import('../../../docs/.vitepress/theme/components/TripleInspector.vue'));
+import ToolExplainPanel from '../../../docs/.vitepress/theme/components/ToolExplainPanel.vue';
+import TraceFeed from '../../../docs/.vitepress/theme/components/TraceFeed.vue';
+import TripleInspector from '../../../docs/.vitepress/theme/components/TripleInspector.vue';
 import type { IriSelectionType, LiteralSelectionType } from '../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import {
   SelectionController,
@@ -115,27 +122,7 @@ const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
 const preferredModels = ref<Partial<Record<ProviderId, string>>>(PreferredModels.load());
 
-// Slow-backend banner: shown when the active backend is the browser
-// built-in `LanguageModel` or WebLLM AND no cloud key is configured.
-// Dismissable; preference persisted under `archivist:dismiss-slow-banner`.
-const SLOW_BANNER_KEY = 'archivist:dismiss-slow-banner';
-const slowBannerDismissed = ref<boolean>(
-  typeof localStorage !== 'undefined' && localStorage.getItem(SLOW_BANNER_KEY) === '1',
-);
-const CLOUD_KEY_IDS: readonly ProviderId[] = ['gemini-api', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter'];
-const showSlowBanner = computed(() => {
-  if (slowBannerDismissed.value) return false;
-  if (activeBackend.value !== 'gemini-nano' && activeBackend.value !== 'web-llm') return false;
-  const hasCloudKey = CLOUD_KEY_IDS.some((id) => {
-    const k = apiKeys.value[id];
-    return typeof k === 'string' && k.length > 0;
-  });
-  return !hasCloudKey;
-});
-function dismissSlowBanner(): void {
-  slowBannerDismissed.value = true;
-  if (typeof localStorage !== 'undefined') localStorage.setItem(SLOW_BANNER_KEY, '1');
-}
+const llmWarning = computed(() => LlmBackendStatus.warning(activeBackend.value));
 const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
@@ -315,62 +302,11 @@ const resolvedModel = computed<string>(() => {
   return entry?.resolvedModel ?? '';
 });
 
-let runtimeModulesPromise:
-  | Promise<{
-      canonicalArchivistDAG: DAGType;
-      bookSearchScatterDAG: DAGType;
-      composeRetryLoopDAG: DAGType;
-      BackendMatrix: typeof import('../providers/index.ts').BackendMatrix;
-      ProviderInstantiator: typeof import('../providers/index.ts').ProviderInstantiator;
-      GoogleBooksTool: typeof import('@studnicky/dagonizer-tool-googlebooks').GoogleBooksTool;
-      OpenLibrarySearchTool: typeof import('@studnicky/dagonizer-tool-openlibrary').OpenLibrarySearchTool;
-      SubjectSearchTool: typeof import('@studnicky/dagonizer-tool-openlibrary').SubjectSearchTool;
-      WikipediaSummaryTool: typeof import('@studnicky/dagonizer-tool-wikipedia').WikipediaSummaryTool;
-    }>
-  | null = null;
-let runtimeBackendMatrix: typeof import('../providers/index.ts').BackendMatrix | null = null;
-let runtimeProviderInstantiator: typeof import('../providers/index.ts').ProviderInstantiator | null = null;
-
-function loadArchivistRuntimeModules() {
-  if (runtimeModulesPromise === null) {
-    runtimeModulesPromise = Promise.all([
-      import('../dag.ts'),
-      import('../embedded-dags/BookSearchScatterDAG.ts'),
-      import('../embedded-dags/ComposeRetryLoopDAG.ts'),
-      import('../providers/index.ts'),
-      import('@studnicky/dagonizer-tool-googlebooks'),
-      import('@studnicky/dagonizer-tool-openlibrary'),
-      import('@studnicky/dagonizer-tool-wikipedia'),
-    ]).then(([
-      dagModule,
-      scatterModule,
-      retryModule,
-      providerModule,
-      googleModule,
-      openLibraryModule,
-      wikipediaModule,
-    ]) => ({
-      canonicalArchivistDAG: dagModule.archivistDAG,
-      bookSearchScatterDAG: scatterModule.bookSearchScatterDAG,
-      composeRetryLoopDAG: retryModule.composeRetryLoopDAG,
-      BackendMatrix: providerModule.BackendMatrix,
-      ProviderInstantiator: providerModule.ProviderInstantiator,
-      GoogleBooksTool: googleModule.GoogleBooksTool,
-      OpenLibrarySearchTool: openLibraryModule.OpenLibrarySearchTool,
-      SubjectSearchTool: openLibraryModule.SubjectSearchTool,
-      WikipediaSummaryTool: wikipediaModule.WikipediaSummaryTool,
-    }));
-  }
-
-  return runtimeModulesPromise;
-}
-
 // #region archivist-browser-llm-client
 /** Construct an LLM client for the active backend, or null when none is selected. */
 async function makeLlm() {
   if (activeBackend.value === null) return null;
-  if (runtimeProviderInstantiator === null) return null;
-  return await runtimeProviderInstantiator.instantiate(activeBackend.value, {
+  return await ProviderInstantiator.instantiate(activeBackend.value, {
     'apiKeys': apiKeys.value,
     'model':   resolvedModel.value,
     ...(intentClassifier.value !== null ? { 'intentClassifier': intentClassifier.value } : {}),
@@ -408,7 +344,12 @@ const leftTabs = computed(() => [
 const rightTabs = computed(() => [
   { 'key': 'dag',    'label': 'DAG Topology',  'badge': isRunning.value ? 'live' : '',          'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
   { 'key': 'memory', 'label': 'Memory Graph',  'badge': String(tripleCount.value || ''),        'tone': 'accent' as const },
-  { 'key': 'llm',    'label': 'LLM Select',    'badge': activeBackend.value ?? '',              'tone': 'default' as const },
+  {
+    'key': 'llm',
+    'label': 'LLM Select',
+    'badge': llmWarning.value === null ? activeBackend.value ?? '' : '⚠',
+    'tone': llmWarning.value === null ? 'default' as const : 'warn' as const,
+  },
   { 'key': 'config', 'label': 'Configuration', 'badge': String(conversationContextWindow.value), 'tone': 'default' as const },
 ]);
 
@@ -421,10 +362,10 @@ const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 // #region archivist-browser-tool-registry
 // Stable tool instances for the checkpoint resume path and archivistToolRegistry.
 // One instance each: the HTTP tools are stateless.
-let webSearchTool: InstanceType<typeof import('@studnicky/dagonizer-tool-openlibrary').OpenLibrarySearchTool> | null = null;
-let googleBooksTool: InstanceType<typeof import('@studnicky/dagonizer-tool-googlebooks').GoogleBooksTool> | null = null;
-let subjectSearchTool: InstanceType<typeof import('@studnicky/dagonizer-tool-openlibrary').SubjectSearchTool> | null = null;
-let wikipediaSummaryTool: InstanceType<typeof import('@studnicky/dagonizer-tool-wikipedia').WikipediaSummaryTool> | null = null;
+let webSearchTool: OpenLibrarySearchTool | null = null;
+let googleBooksTool: GoogleBooksTool | null = null;
+let subjectSearchTool: SubjectSearchTool | null = null;
+let wikipediaSummaryTool: WikipediaSummaryTool | null = null;
 
 // Tool registry: each tool becomes an embeddable `tool:<name>` DAG that the
 // book-search scatter resolves at runtime via `{ dagFrom: 'dagName' }`. Must be
@@ -432,22 +373,18 @@ let wikipediaSummaryTool: InstanceType<typeof import('@studnicky/dagonizer-tool-
 // resolve its body DAG and routes to 'error'.
 const archivistToolRegistry = new ToolRegistry();
 
-async function primeArchivistArtifacts(): Promise<void> {
-  const runtime = await loadArchivistRuntimeModules();
-
-  archivistDag.value = runtime.canonicalArchivistDAG;
-  runtimeBackendMatrix = runtime.BackendMatrix;
-  runtimeProviderInstantiator = runtime.ProviderInstantiator;
+function primeArchivistArtifacts(): void {
+  archivistDag.value = archivistDAG;
   embeddedDagRegistry.value = new Map([
-    ['book-search-scatter', runtime.bookSearchScatterDAG],
-    ['compose-retry-loop', runtime.composeRetryLoopDAG],
+    ['book-search-scatter', bookSearchScatterDAG],
+    ['compose-retry-loop', composeRetryLoopDAG],
   ]);
 
   if (webSearchTool === null) {
-    webSearchTool = new runtime.OpenLibrarySearchTool();
-    googleBooksTool = new runtime.GoogleBooksTool();
-    subjectSearchTool = new runtime.SubjectSearchTool();
-    wikipediaSummaryTool = new runtime.WikipediaSummaryTool();
+    webSearchTool = new OpenLibrarySearchTool();
+    googleBooksTool = new GoogleBooksTool();
+    subjectSearchTool = new SubjectSearchTool();
+    wikipediaSummaryTool = new WikipediaSummaryTool();
     archivistToolRegistry.register(webSearchTool);
     archivistToolRegistry.register(googleBooksTool);
     archivistToolRegistry.register(subjectSearchTool);
@@ -738,25 +675,23 @@ const session = new VueArchivistSession(memoryStore, logger, props.lang.length >
 watch(apiKeys, async (keys) => {
   session.setApiKeys(keys);
   ApiKeyStore.save(keys);
-  await primeArchivistArtifacts();
-  if (runtimeBackendMatrix === null) return;
-  backends.value = await runtimeBackendMatrix.detect({
+  primeArchivistArtifacts();
+  backends.value = await BackendMatrix.detect({
     'apiKeys': keys,
     'preferredModels': preferredModels.value,
   });
-  noModel.value = runtimeBackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
   session.setBackends(backends.value);
 }, { 'deep': true });
 
 watch(preferredModels, async (models) => {
   session.setPreferredModels(models);
-  await primeArchivistArtifacts();
-  if (runtimeBackendMatrix === null) return;
-  backends.value = await runtimeBackendMatrix.detect({
+  primeArchivistArtifacts();
+  backends.value = await BackendMatrix.detect({
     'apiKeys': apiKeys.value,
     'preferredModels': models,
   });
-  noModel.value = runtimeBackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
   session.setBackends(backends.value);
 }, { 'deep': true });
 
@@ -853,7 +788,7 @@ async function runParkedSession(): Promise<void> {
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await primeArchivistArtifacts();
+  primeArchivistArtifacts();
   // Seed the memory store before the session boots so the memory graph shows
   // the ontology structure and sample books before any run.
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
@@ -978,14 +913,12 @@ async function resumeFromCheckpoint(): Promise<void> {
   try {
     const services = await buildServices();
     const nodes = ArchivistNodes.build(services);
-    const runtime = await loadArchivistRuntimeModules();
-
     observer = new VueResumeObserver(logger, session, prov, restored.cursor);
 
     observer.registerBundle(archivistToolRegistry.bundle());
-    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [runtime.bookSearchScatterDAG] });
-    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [runtime.composeRetryLoopDAG] });
-    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [runtime.canonicalArchivistDAG] });
+    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
     activeAbortController = new AbortController();
     const deadlineMs = overallDeadlineMs();
@@ -1066,15 +999,15 @@ async function resumeFromCheckpoint(): Promise<void> {
         </ul>
       </template>
 
-      <BackendPicker
+      <LlmConfigurationPane
         :backends="backends"
-        :active-id="activeBackend ?? ''"
+        :active-id="activeBackend"
         :api-keys="apiKeys"
         :preferred-models="preferredModels"
         :is-mobile="isMobile"
-        @update:active-id="activeBackend = $event as ProviderId"
+        @update:active-id="activeBackend = $event"
         @update:api-keys="apiKeys = $event"
-        @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
+        @update:preferred-models="preferredModels = $event"
       />
     </section>
 
@@ -1092,21 +1025,6 @@ async function resumeFromCheckpoint(): Promise<void> {
             <!-- Conversation tab: the visual-first surface -->
             <template #conversation>
               <div class="ar-left-pane">
-                <!-- Slow-backend warning: browser built-in LanguageModel / WebLLM with no cloud key. -->
-                <div v-if="showSlowBanner" class="slow-banner" role="note">
-                  <span class="slow-banner-text">
-                    <strong>Slow backend.</strong> You&rsquo;re using the browser&rsquo;s built-in
-                    <code>LanguageModel</code>. Structured-output steps (tool selection,
-                    candidate ranking) take 5&ndash;20s each on this backend. For 1&ndash;2s
-                    responses, add a free Groq, Cerebras, Gemini API, Mistral, or
-                    OpenRouter API key in the LLM Select tab.
-                  </span>
-                  <button
-                    type="button"
-                    class="slow-banner-dismiss"
-                    aria-label="Dismiss"
-                    @click="dismissSlowBanner">&times;</button>
-                </div>
                 <Conversation :turns="conversation" />
                 <SendForm
                   :query="visitorQuery"
@@ -1180,20 +1098,17 @@ async function resumeFromCheckpoint(): Promise<void> {
             <!-- LLM Select tab: backend catalogue and keys -->
             <template #llm>
               <div class="ar-config-pane">
-                <section class="ar-config-section">
-                  <h5 class="ar-config-head">Backend</h5>
-                  <BackendPicker
-                    :backends="backends"
-                    :active-id="activeBackend ?? ''"
-                    :api-keys="apiKeys"
-                    :preferred-models="preferredModels"
-                    :is-mobile="isMobile"
-                    :disabled="isRunning"
-                    @update:active-id="activeBackend = $event as ProviderId"
-                    @update:api-keys="apiKeys = $event"
-                    @update:preferred-models="preferredModels = $event as Partial<Record<ProviderId, string>>"
-                  />
-                </section>
+                <LlmConfigurationPane
+                  :backends="backends"
+                  :active-id="activeBackend"
+                  :api-keys="apiKeys"
+                  :preferred-models="preferredModels"
+                  :is-mobile="isMobile"
+                  :disabled="isRunning"
+                  @update:active-id="activeBackend = $event"
+                  @update:api-keys="apiKeys = $event"
+                  @update:preferred-models="preferredModels = $event"
+                />
               </div>
             </template>
 
@@ -1276,47 +1191,6 @@ async function resumeFromCheckpoint(): Promise<void> {
 
 .mobile-banner-link:hover {
   border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
-/* ── Slow-backend banner: gold-warning palette ───────────────────────── */
-.slow-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #d4a649;
-  border-radius: 6px;
-  background: rgba(212, 166, 73, 0.10);
-  color: var(--vp-c-text-1);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-.slow-banner-text {
-  flex: 1 1 auto;
-}
-
-.slow-banner-text code {
-  background: var(--vp-c-bg-elv);
-  padding: 0.04rem 0.3rem;
-  border-radius: 3px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.78rem;
-}
-
-.slow-banner-dismiss {
-  flex: 0 0 auto;
-  background: transparent;
-  border: none;
-  color: #d4a649;
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 0.25rem;
-}
-
-.slow-banner-dismiss:hover {
   color: var(--dagonizer-brand);
 }
 

@@ -1,9 +1,8 @@
 /**
- * scatter-execution-policy: proves the unified `ScatterNode.execution` policy
+ * scatter-execution-policy: proves the unified batching configuration
  * correctly gates concurrency in both modes.
  *
- * - `ScatterNodeDefaults.executionPolicy` resolves the documented defaults for
- *   absent/`item`/`reservoir` wire shapes (unit-level, no dispatcher run).
+ * - `DagConfiguration.resolve` resolves the dispatcher/DAG/placement cascade.
  * - `mode: 'item'` — `execution.concurrency` caps peak concurrently in-flight
  *   CLONE bodies (item-level `Semaphore`), end-to-end through `Dagonizer.execute`.
  * - `mode: 'reservoir'` — `execution.concurrency` caps peak concurrently
@@ -16,20 +15,18 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DagConfiguration } from '../../src/entities/configuration/DagConfiguration.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import { ScatterNodeDefaults } from '../../src/entities/dag/ScatterNode.js';
-import type { ScatterNodeType } from '../../src/entities/dag/ScatterNode.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
-const SCATTER_POLICY_FIXTURE_DAG_IRI = 'urn:noocodec:dag:x';
 
-// ─── ScatterNodeDefaults.executionPolicy — unit-level default resolution ─────
+// ─── DagConfiguration.resolve — unit-level cascade resolution ────────────────
 
-void describe('ScatterNodeDefaults.executionPolicy', () => {
+void describe('DagConfiguration.resolve', () => {
   const ADAPTIVE_THROTTLE = {
     'enabled': true,
     'targetLatencyMs': 50,
@@ -42,74 +39,59 @@ void describe('ScatterNodeDefaults.executionPolicy', () => {
     'stepSize': 1,
   } as const;
 
-  const BASE: ScatterNodeType = {
-    '@id': 'urn:noocodec:dag:x/node/fan',
-    '@type':   'ScatterNode',
-    'name':    'fan',
-    'source':  'items',
-    'body': { 'node': 'urn:noocodec:node:worker' },
-    'outputs': {
-      'all-success': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
-      'partial': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
-      'all-error': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
-      'empty': placementIri(SCATTER_POLICY_FIXTURE_DAG_IRI, 'end'),
-    },
-  };
-
-  void it('resolves to item mode, concurrency 1, throttle null when execution is absent', () => {
-    const policy = ScatterNodeDefaults.executionPolicy(BASE);
-    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 1, 'throttle': null });
+  void it('resolves to item mode, concurrency 1, throttle null when batching configuration is absent', () => {
+    const policy = DagConfiguration.resolve().execution.batching;
+    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 1, 'throttle': null, 'reservoir': null });
   });
 
-  void it('resolves item mode concurrency default (1) when execution.mode is item with no concurrency', () => {
-    const policy = ScatterNodeDefaults.executionPolicy({ ...BASE, 'execution': { 'mode': 'item' } });
-    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 1, 'throttle': null });
+  void it('resolves item mode concurrency default (1) when execution.batching.mode is item with no concurrency', () => {
+    const policy = DagConfiguration.resolve(undefined, undefined, { 'execution': { 'batching': { 'mode': 'item' } } }).execution.batching;
+    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 1, 'throttle': null, 'reservoir': null });
   });
 
   void it('preserves caller-supplied item-mode concurrency and throttle', () => {
-    const policy = ScatterNodeDefaults.executionPolicy({
-      ...BASE,
-      'execution': { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2 } },
-    });
-    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2 } });
+    const policy = DagConfiguration.resolve(undefined, undefined, {
+      'execution': { 'batching': { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2 } } },
+    }).execution.batching;
+    assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2, 'adaptive': null }, 'reservoir': null });
   });
 
   void it('preserves caller-supplied adaptive throttle tuning', () => {
-    const policy = ScatterNodeDefaults.executionPolicy({
-      ...BASE,
-      'execution': {
+    const policy = DagConfiguration.resolve(undefined, undefined, {
+      'execution': { 'batching': {
         'mode': 'item',
         'concurrency': 8,
         'throttle': { 'concurrencyLimit': 2, 'adaptive': ADAPTIVE_THROTTLE },
-      },
-    });
+      } },
+    }).execution.batching;
     assert.deepEqual(policy, {
       'mode': 'item',
       'concurrency': 8,
       'throttle': { 'concurrencyLimit': 2, 'adaptive': ADAPTIVE_THROTTLE },
+      'reservoir': null,
     });
   });
 
   void it('resolves reservoir mode with concurrency default (1) and idleMs null when absent', () => {
-    const policy = ScatterNodeDefaults.executionPolicy({
-      ...BASE,
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'k', 'capacity': 5 } },
-    });
+    const policy = DagConfiguration.resolve(undefined, undefined, {
+      'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'k', 'capacity': 5 } } },
+    }).execution.batching;
     assert.deepEqual(policy, {
       'mode': 'reservoir',
       'concurrency': 1,
+      'throttle': null,
       'reservoir': { 'keyField': 'k', 'capacity': 5, 'idleMs': null },
     });
   });
 
   void it('preserves caller-supplied reservoir-mode concurrency and idleMs', () => {
-    const policy = ScatterNodeDefaults.executionPolicy({
-      ...BASE,
-      'execution': { 'mode': 'reservoir', 'concurrency': 3, 'reservoir': { 'keyField': 'k', 'capacity': 5, 'idleMs': 100 } },
-    });
+    const policy = DagConfiguration.resolve(undefined, undefined, {
+      'execution': { 'batching': { 'mode': 'reservoir', 'concurrency': 3, 'reservoir': { 'keyField': 'k', 'capacity': 5, 'idleMs': 100 } } },
+    }).execution.batching;
     assert.deepEqual(policy, {
       'mode': 'reservoir',
       'concurrency': 3,
+      'throttle': null,
       'reservoir': { 'keyField': 'k', 'capacity': 5, 'idleMs': 100 },
     });
   });
@@ -142,7 +124,7 @@ class ItemModeDag {
           'body':      { 'node': 'urn:noocodec:node:worker' },
           'source':    'items',
           'itemKey':   'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'end'),
             'partial': placementIri(dagIri, 'end'),
@@ -207,14 +189,14 @@ class ReservoirModeDag {
           'body':      { 'node': 'urn:noocodec:node:batch-worker' },
           'source':    'events',
           'itemKey':   'item',
-          'execution': {
+          'configuration': { 'execution': { 'batching': {
             'mode':       'reservoir',
             'concurrency': concurrency,
             // capacity: 1 → every item is its own batch, so 6 distinct keys
             // release 6 concurrently-dispatchable batches, letting the
             // concurrency cap actually bind.
             'reservoir': { 'keyField': 'key', 'capacity': 1 },
-          },
+          } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'end'),
             'partial': placementIri(dagIri, 'end'),

@@ -94,16 +94,11 @@ describe('CartographerState#clone', () => {
 
   it('clone clears parent intake buffers', () => {
     const s = new CartographerState();
-    s.sources = [
-      { 'sourceId': 'a', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
-    ];
     s.sourceFeed = [
-      { 'sourceId': 'feed-1', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
+      { 'sourceId': 'position-ping-json-none-0', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
     ];
     const c = s.clone(CLONE_SCOPE);
-    assert.ok(Array.isArray(c.sources), 'clone.sources should be an array');
     assert.ok(Array.isArray(c.sourceFeed), 'clone.sourceFeed should be an array');
-    assert.equal(c.sources.length, 0);
     assert.equal(c.sourceFeed.length, 0);
   });
 
@@ -168,7 +163,7 @@ describe('CartographerState#clone', () => {
     assert.equal(s.gdprResult.personalDataFields.length, 2);
   });
 
-  it('snapshotTransientState keeps only the bounded worker-return surface', () => {
+  it('snapshotTransientState keeps the durable checkpoint surface', () => {
     const s = new CartographerState();
     s.decodedText = 'very large source payload';
     s.currentSource.payload = 'raw-wire-payload';
@@ -178,7 +173,7 @@ describe('CartographerState#clone', () => {
     s.processedCountExact = 33;
     s.capturedErrors = [{ 'source': 'gps', 'variant': 'range', 'message': 'bad coords', 'input': '' }];
     s.setMetadata('source-payload', {
-      'sourceId': 'raw-1',
+      'sourceId': 'position-ping-json-none-0',
       'format': 'json',
       'compression': 'none',
       'mappingKey': 'json-position',
@@ -197,6 +192,23 @@ describe('CartographerState#clone', () => {
     assert.equal('capturedErrors' in snapshot.domain, true);
     assert.deepEqual(snapshot.graphDomain, {});
     assert.ok('source-payload' in snapshot.metadata);
+  });
+
+  it('snapshotTransientStateSelection returns the explicit worker-result surface', () => {
+    const s = new CartographerState();
+    s.decodedText = 'large scratch payload';
+    s.enriched.shipmentId = 'ENRICHED-ONLY';
+    s.capturedErrors = [{ 'source': 'gps', 'variant': 'range', 'message': 'bad coords', 'input': '' }];
+
+    const snapshot = s.snapshotTransientStateSelection({
+      'mode': 'selection',
+      'domainPaths': ['enriched', 'capturedErrors'],
+      'metadataKeys': [],
+    });
+
+    assert.deepEqual(Object.keys(snapshot.domain).sort(), ['capturedErrors', 'enriched']);
+    assert.equal('decodedText' in snapshot.domain, false);
+    assert.deepEqual(snapshot.metadata, {});
   });
 });
 

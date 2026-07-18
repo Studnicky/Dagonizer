@@ -300,7 +300,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('reviews-rank'),
       }, {
         'name': 'reviews-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('reviews-gather'), { [placement('reviews-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {
@@ -350,7 +350,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('recommend-rank'),
       }, {
         'name': 'recommend-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('recommend-gather'), { [placement('recommend-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {
@@ -385,7 +385,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('compose-empty'),
       }, {
         'name': 'describe-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('describe-gather'), { [placement('describe-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {

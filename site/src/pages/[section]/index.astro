@@ -1,0 +1,51 @@
+---
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+
+export function getStaticPaths() {
+  const sections = ['guide', 'examples', 'reference', 'internal', 'experiments'];
+  return sections.map((section) => ({
+    params: { section },
+    props: { section }
+  }));
+}
+
+interface Props {
+  readonly section: string;
+}
+
+const { section } = Astro.props;
+const entries = (await SiteDocs.catalog()).filter((entry) => entry.section === section);
+if (entries.length === 0) {
+  throw new Error(`Documentation section has no corpus entries: ${section}`);
+}
+
+const pageTitle = section.replace(/^\w/, (character) => character.toUpperCase());
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site(SiteLinks.route(section)), label: pageTitle }
+];
+---
+
+<DocPageShell
+  title={pageTitle}
+  description={`Browse every ${pageTitle.toLowerCase()} document in the Dagonizer corpus.`}
+  headings={[]}
+  sections={[]}
+  crumbs={crumbs}
+>
+  <div class="grid gap-4 md:grid-cols-2">
+    {
+      entries.map((entry) => (
+        <a
+          href={SiteLinks.site(SiteLinks.route(entry.slug))}
+          class="rounded-2xl border border-white/10 bg-slate-950/55 p-5 transition hover:border-cyan-300/40 hover:bg-slate-900/75"
+        >
+          <h2 class="text-lg font-semibold text-white">{entry.title}</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-300">{entry.description}</p>
+        </a>
+      ))
+    }
+  </div>
+</DocPageShell>

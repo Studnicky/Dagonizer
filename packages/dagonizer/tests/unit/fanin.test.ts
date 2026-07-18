@@ -1057,7 +1057,7 @@ void describe('Dagonizer scatter gather strategies', () => {
           'empty':       placementIri(CONC_DAG_IRI, 'end'),
         },
         {
-          'execution': { 'mode': 'item', 'concurrency': 2 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
           'name':      'fan',
         },
       )
