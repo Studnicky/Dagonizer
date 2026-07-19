@@ -17,13 +17,13 @@ const breadcrumbItems = computed(() => props.crumbs.map((crumb) => ({ label: cru
 </script>
 
 <template>
-  <div class="max-w-4xl space-y-4 border-b border-white/8 pb-8">
+  <div class="max-w-4xl space-y-5 pb-10">
     <Breadcrumb :model="breadcrumbItems">
       <template #item="{ item, props: itemProps }">
         <a
           v-bind="itemProps.action"
           :href="item.url"
-          class="rounded-md text-xs uppercase tracking-[0.24em] text-slate-500 transition hover:text-slate-300"
+          class="inline-flex items-center px-3.5 py-1.5 hex-chrome text-[11px] leading-none uppercase tracking-[0.22em] text-slate-500 transition hover:text-slate-300"
         >
           {{ item.label }}
         </a>
@@ -31,5 +31,6 @@ const breadcrumbItems = computed(() => props.crumbs.map((crumb) => ({ label: cru
     </Breadcrumb>
     <h1 class="text-3xl font-semibold tracking-tight text-white md:text-5xl">{{ title }}</h1>
     <p class="text-base leading-7 text-slate-300 md:text-lg">{{ description }}</p>
+    <div class="hex-divider"></div>
   </div>
 </template>

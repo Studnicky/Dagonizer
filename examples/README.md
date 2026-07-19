@@ -105,7 +105,7 @@ A bookstore help-bot: multi-branch DAG with hard/soft gates, parallel scouts, de
 # Run with Ollama (or any available LLM adapter — cascades through available providers):
 npx tsx examples/the-archivist/runArchivist.ts
 
-# The in-browser live demo is at:
+# The interactive workflow surface is at:
 #   https://studnicky.github.io/Dagonizer/examples/the-archivist
 ```
 

@@ -1,7 +1,7 @@
 export const siteConfig = {
   title: 'Dagonizer',
   description:
-    'TypeScript DAG orchestration framework for LLM agents and data pipelines: typed nodes, JSON-LD DAGs, streaming, checkpoint resume, plugins, and browser demos.',
+    'TypeScript DAG orchestration runtime for LLM agents and data pipelines: typed nodes, JSON-LD DAGs, streaming, checkpoint resume, plugins, and reference workflows.',
   repoUrl: 'https://github.com/Studnicky/Dagonizer',
   siteUrl: 'https://studnicky.github.io',
   basePath: '/Dagonizer',

@@ -1,36 +1,5 @@
 ---
-import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
-import LazyArchivistRunner from '@/components/islands/LazyArchivistRunner.vue';
 import { SiteLinks } from '@/lib/links';
 
 return Astro.redirect(SiteLinks.site(SiteLinks.route('examples/the-archivist')), 301);
-
-const relatedLinks = [
-  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' },
-  { href: SiteLinks.site('/docs/architecture'), label: 'Architecture' },
-  { href: SiteLinks.site('/docs/concepts'), label: 'Concepts' }
-] as const;
-
-const crumbs = [
-  { href: SiteLinks.site('/docs'), label: 'Docs' },
-  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
-  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'The Archivist' }
-] as const;
-
-const proofPoints = [
-  'The demo page can move to Astro without waiting for a full runner rewrite.',
-  'Research-oriented DAGs can expose every decision point, tool call, and retry boundary without hiding runtime behavior.',
-  'Teams evaluating Dagonizer can inspect a realistic orchestration flow instead of reading a static diagram alone.'
-] as const;
 ---
-
-<RunnableExampleShell
-  title="The Archivist"
-  description="Runnable Dagonizer example for research and synthesis workflows with observable execution, tool use, and bounded retries."
-  pageDescription="A research and synthesis workflow that shows how Dagonizer handles tool-driven retrieval, validation, and controlled retry inside one observable DAG."
-  crumbs={crumbs}
-  proofPoints={proofPoints}
-  relatedLinks={relatedLinks}
->
-  <LazyArchivistRunner client:visible />
-</RunnableExampleShell>

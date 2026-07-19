@@ -9,7 +9,6 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const docsRoot = resolve(repoRoot, 'docs');
 const ignoredDirs = new Set(['.vitepress', '.orchestration', 'public']);
 const docEmbedTempRoot = resolve(repoRoot, '.orchestration/doc-embed-modules');
-
 register();
 mkdirSync(docEmbedTempRoot, { recursive: true });
 
@@ -271,9 +270,7 @@ function resolveBooleanBinding(binding: string | undefined, values: Readonly<Rec
 
 async function replaceSpecialEmbeds(body: string, markdownFilePath: string): Promise<string> {
   const bindings = collectDiagramBindings(body);
-  if (bindings.length === 0 && !body.includes('<ExperimentalHomeHero')) {
-    return body;
-  }
+  if (bindings.length === 0 && !body.includes('<ExperimentalHomeHero')) return body;
 
   const values = await evaluateScriptBindings(markdownFilePath, body);
 
@@ -294,7 +291,7 @@ async function replaceSpecialEmbeds(body: string, markdownFilePath: string): Pro
           `> Diagram reference`,
           `>`,
           `> **${title}**`,
-          `> Diagram data could not be resolved during the Astro build.`,
+          `> Diagram data could not be resolved while building the docs.`,
           ''
         ].join('\n');
       }
@@ -308,10 +305,10 @@ async function replaceSpecialEmbeds(body: string, markdownFilePath: string): Pro
     .replace(
       /<ExperimentalHomeHero\s*\/?>/g,
       [
-        '> Experimental surface',
+        '> Runtime overview',
         '>',
-        '> **Experimental home hero**',
-        '> This experiment maps to the Astro marketing shell rather than the legacy embedded docs component.',
+        '> **Runtime overview**',
+        '> This page collects Dagonizer’s core runtime model in one place.',
         ''
       ].join('\n')
     );

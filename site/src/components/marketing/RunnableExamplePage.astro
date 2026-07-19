@@ -1,0 +1,33 @@
+---
+import RunnableExampleRunner from '@/components/islands/RunnableExampleRunner.vue';
+import type { RunnableExampleId } from '@/components/islands/runnableExampleContext';
+import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
+
+interface LinkItem {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface Props {
+  example: RunnableExampleId;
+  title: string;
+  description: string;
+  pageDescription: string;
+  crumbs: readonly LinkItem[];
+  runtimeSurfaces: readonly string[];
+  relatedLinks: readonly LinkItem[];
+}
+
+const { example, title, description, pageDescription, crumbs, runtimeSurfaces, relatedLinks } = Astro.props;
+---
+
+<RunnableExampleShell
+  title={title}
+  description={description}
+  pageDescription={pageDescription}
+  crumbs={crumbs}
+  runtimeSurfaces={runtimeSurfaces}
+  relatedLinks={relatedLinks}
+>
+  <RunnableExampleRunner example={example} client:load />
+</RunnableExampleShell>

@@ -8,16 +8,22 @@ interface LinkItem {
 
 interface Props {
   links: readonly LinkItem[];
+  gemMarker?: boolean;
 }
 
-const { links } = Astro.props;
+const { links, gemMarker = false } = Astro.props;
 ---
 
-<div class="mt-4 space-y-3 text-sm">
+<div class="mt-4 space-y-2.5 text-sm">
   {
     links.map((link) => (
-      <UiActionLink href={link.href} variant="text" block class="justify-start">
-        {link.label}
+      <UiActionLink href={link.href} variant="text" block class="justify-start px-4 py-3 text-left leading-6 whitespace-normal">
+        <span class="flex items-center gap-2.5">
+          {gemMarker && (
+            <span class="hex-gem inline-block w-3 shrink-0" style="aspect-ratio: var(--dagonizer-hex-ratio);" aria-hidden="true" />
+          )}
+          {link.label}
+        </span>
       </UiActionLink>
     ))
   }

@@ -15,19 +15,15 @@ seeAlso:
 
 # Monadic Node
 
-## What It Is
+## Node Base-class Surface
 
-Monadic Node is a small base-class pattern for application nodes that must return declared output ports on every code path. The example registers `SearchCatalogueNode` on a two-placement DAG and runs it through both success and error routes.
+Monadic Node is a small base-class pattern for host-authored nodes that must return declared output ports on every code path. The example registers `SearchCatalogueNode` on a two-placement DAG and runs it through both success and error routes.
 
-Use this when node authors want structure around `execute`: declared outputs, a protected `run` hook, and a consistent error route instead of uncaught throws escaping the node boundary.
+This pattern fits node authors who want structure around `execute`: declared outputs, a protected `run` hook, and a consistent error route instead of uncaught throws escaping the node boundary.
 
-## How It Works
+## Minimal Routing Flow
 
-`MonadicNode` requires concrete subclasses to declare `name` and `outputs`. A logging intermediate class can wrap the protected `run` method, while the concrete node owns domain behavior. The dispatcher sees a normal `NodeInterface`.
-
-## Diagrams, Examples, and Outputs
-
-The example is intentionally tiny: one `SingleNode` placement followed by one completed terminal. The CLI output demonstrates both routes.
+The example is intentionally tiny: one `SingleNode` placement followed by one completed terminal. The CLI output shows both routes.
 
 ### Run
 
@@ -35,9 +31,17 @@ The example is intentionally tiny: one `SingleNode` placement followed by one co
 npx tsx examples/monadic-node.ts
 ```
 
-## What It Lets You Do
+## Declared-output Model
 
-The monadic node pattern lets applications build node classes where every code path returns a declared output port. Use it when node authors need a small base class that catches implementation errors, routes failures explicitly, and keeps node behavior testable outside the dispatcher.
+`MonadicNode` requires concrete subclasses to declare `name` and `outputs`. A logging intermediate class can wrap the protected `run` method, while the concrete node owns domain behavior. The dispatcher sees a normal `NodeInterface`.
+
+## Code Samples
+
+<<< @/../examples/monadic-node.ts
+
+## Operational Uses
+
+The monadic node pattern lets teams build node classes where every code path returns a declared output port. It fits node authors who need a small base class that catches implementation errors, routes failures explicitly, and keeps node behavior testable outside the dispatcher.
 
 `MonadicNode` is the abstract base for canonical DAG node patterns. Concrete subclasses declare `name`, `outputs`, and implement `execute` (or, as shown here, a protected `run` method called by a logging intermediate class). Every code path must return a declared output port — nothing throws past the node boundary.
 
@@ -46,11 +50,7 @@ The monadic node pattern lets applications build node classes where every code p
 - With a real query — routes `'success'`.
 - With an empty query — routes `'error'`.
 
-## Code Samples
-
-<<< @/../examples/monadic-node.ts
-
-## Details for Nerds
+## Runtime Notes
 
 - **`MonadicNode` abstract base.** Subclass it to get structural enforcement: `name` and `outputs` are required abstract members; `execute` is the hook point. The base class catches any unhandled throws from `run` and routes them to `'error'` automatically.
 - **Protected `run` method.** A logging intermediate class can override `execute` to wrap `run` with metrics or tracing. The node implementation goes in `run`; the infrastructure goes in `execute`.

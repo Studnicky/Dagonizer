@@ -19,19 +19,13 @@ import { cartographerDAG } from '../exampleDags.ts';
 
 # Example 34: Producer Feed DAGs
 
-## What It Is
+## Producer Feed Surface
 
 Producer Feed DAGs are the Cartographer’s open-input pattern: each event type enters through its own embedded `dag-feed-*` placement, opens only that producer’s source stream, runs the same unpack/normalize body, and emits canonical events for a shared gather.
 
-The graph shows the feed-in explicitly. There is no seed pre-phase and no hidden host-side source merge.
+The graph shows the feed-in explicitly. There is no seed pre-phase and no hidden source merge outside the DAG.
 
-## How It Works
-
-Each source entrypoint targets a concrete embedded feed DAG. Inside that DAG, `feed-*` opens a producer-local `AsyncIterable<SourcePayload>` onto `state.sourceFeed` and routes straight to `done` — unpacking and normalization happen downstream in the shared scatter body, not per producer.
-
-The top-level `source-intake` gather receives all five producer streams and merges them into `state['source-payload']`. The shared `process-stream` scatter then decodes and enriches that payload collection through `stream-event`.
-
-## Diagrams, Examples, and Outputs
+## Feed-in Topology
 
 ### DAG registration and diagram
 
@@ -39,21 +33,21 @@ The [Cartographer](./the-cartographer) enters through five data-type entrypoints
 
 <DagJsonMermaid :dag="cartographerDAG" title="Cartographer producer feed DAG" aria-label="Cartographer producer feed JSON-LD DAG beside Mermaid generated from it." />
 
-The stream source is not a hidden host-side setup step. JSON-LD shows the graph shape: producer feed DAG placements, first-class gather, then the worker-capable scatter.
+The stream source is not a hidden setup step outside the DAG. JSON-LD shows the graph shape: producer feed DAG placements, first-class gather, then the worker-capable scatter.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Cartographer](./the-cartographer) and run the stream.
+Visit [The Cartographer](./the-cartographer) and run the stream.
 
-## What It Lets You Do
+## Feed DAG and Intake Model
 
-Producer feed DAGs let sources supply async data without materializing the full input collection first. Use this when different domains or data types should enter a DAG independently, run source-specific unpacking, and then converge into one canonical processing stream.
+Each source entrypoint targets a concrete embedded feed DAG. Inside that DAG, `feed-*` opens a producer-local `AsyncIterable<SourcePayload>` onto `state.sourceFeed` and routes straight to `done` — unpacking and normalization happen downstream in the shared scatter body, not per producer.
 
-For applications, the useful property is clarity: feed ownership is graph-visible, while the scatter still controls how quickly work is drained through concurrency and reservoir settings.
+The top-level `source-intake` gather receives all five producer streams and merges them into `state['source-payload']`. The shared `process-stream` scatter then decodes and enriches that payload collection through `stream-event`.
 
 ## Code Samples
 
@@ -69,12 +63,18 @@ The source-intake gather is the visible convergence point before the enrichment 
 
 <<< @/../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
-## Details for Nerds
+## Operational Uses
+
+Producer feed DAGs let sources supply async data without materializing the full input collection first. They fit cases where different domains or data types should enter a DAG independently, run source-specific unpacking, and then converge into one canonical processing stream.
+
+For hosts, the useful property is clarity: feed ownership is graph-visible, while the scatter still controls how quickly work is drained through concurrency and reservoir settings.
+
+## Runtime Notes
 
 - **Bounded streaming source.** Each producer feed DAG consumes an `AsyncIterable<SourcePayload>` without materializing the whole feed.
 - **Back-pressure by pull rate.** The scatter controls drain speed through concurrency and reservoir settings.
 - **Graph-visible feed-in.** Switching from one producer to many producers changes DAG topology intentionally: each producer gets its own feed DAG.
-- **Runnable browser ownership.** The Cartographer page exposes event count, worker pool size, and batch capacity controls for the same stream.
+- **Runtime controls.** The Cartographer interactive host exposes event count, worker pool size, and batch capacity controls for the same stream.
 
 ## Related Concepts
 

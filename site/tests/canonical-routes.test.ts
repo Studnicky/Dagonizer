@@ -23,6 +23,23 @@ function builtPageForRoute(route: string): string {
   return route === '/' ? join(distRoot, 'index.html') : join(distRoot, route.slice(1), 'index.html');
 }
 
+function runnableExampleIslandContract(html: string): {
+  readonly componentUrl: string;
+  readonly example: string;
+} {
+  const matches = [...html.matchAll(
+    /<astro-island\b[^>]*component-url="([^"]*RunnableExampleRunner[^"]*)"[^>]*client="load"[^>]*>[\s\S]*?data-runnable-example="([^"]+)"/g,
+  )];
+
+  assert.equal(matches.length, 1, 'expected exactly one emitted RunnableExampleRunner island');
+
+  const [componentUrl, example] = matches[0]!.slice(1);
+  assert.ok(typeof componentUrl === 'string' && componentUrl.length > 0);
+  assert.ok(typeof example === 'string' && example.length > 0);
+
+  return { componentUrl, example };
+}
+
 async function renderedCorpus(): Promise<ReadonlyMap<string, string>> {
   const pages = new Map<string, string>();
 
@@ -124,22 +141,37 @@ test('every rendered corpus link targets a canonical route or a valid local frag
   }
 });
 
-test('dedicated demo shells and their legacy redirects are emitted', async () => {
+test('dedicated runnable-example shells and their legacy redirects are emitted', async () => {
   for (const slug of ['examples/the-archivist', 'examples/the-cartographer', 'examples/the-dispatcher']) {
     const route = SiteLinks.route(slug);
     const demoHtml = await readFile(builtPageForRoute(route), 'utf8');
     const redirectHtml = await readFile(join(distRoot, 'docs', slug, 'index.html'), 'utf8');
 
-    assert.match(demoHtml, /What this proves/);
+    assert.match(demoHtml, /Runtime behavior/);
     assert.ok(redirectHtml.includes(SiteLinks.site(route)));
   }
 });
 
-test('the Dispatcher browser runtime is emitted as a client-only island', async () => {
-  const demoHtml = await readFile(builtPageForRoute(SiteLinks.route('examples/the-dispatcher')), 'utf8');
+test('every runnable example page is emitted through the shared Vue island mount', async () => {
+  const sharedComponentUrls = new Set<string>();
 
-  assert.match(demoHtml, /client="only"/);
-  assert.doesNotMatch(demoHtml, /class="dispatcher-runner/);
+  for (const [slug, expectedExample] of [
+    ['examples/the-archivist', 'archivist'],
+    ['examples/the-cartographer', 'cartographer'],
+    ['examples/the-dispatcher', 'dispatcher'],
+  ] as const) {
+    const demoHtml = await readFile(builtPageForRoute(SiteLinks.route(slug)), 'utf8');
+    const contract = runnableExampleIslandContract(demoHtml);
+
+    assert.match(demoHtml, /client="load"/);
+    assert.equal(contract.example, expectedExample);
+    assert.equal((demoHtml.match(/data-runnable-example="/g) ?? []).length, 1);
+    assert.doesNotMatch(demoHtml, /class="(?:archivist|cartographer|dispatcher)-runner/);
+
+    sharedComponentUrls.add(contract.componentUrl);
+  }
+
+  assert.equal(sharedComponentUrls.size, 1, 'all runnable example pages must hydrate the same compiled Vue island');
 });
 
 test('invalid documentation slugs are rejected instead of rewritten', () => {

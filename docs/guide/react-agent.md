@@ -1,6 +1,6 @@
 ---
 title: 'ReAct Agent: Streaming and Provenance Recall'
-description: 'Map the 8-node agent loop onto ReAct Thought/Action/Observation/Final, stream the reasoning trace through DagStreamProducer, stream live model tokens via chatStream, and record/recall reasoning with RDF provenance.'
+description: 'Treat the canonical 8-node agent loop as ReAct: stream reasoning through DagStreamProducer, stream model tokens via chatStream, and persist/recall reasoning through RDF provenance.'
 seeAlso:
   - text: 'Conversational Agents'
     link: './conversational#agent-loop'
@@ -10,16 +10,16 @@ seeAlso:
     description: 'host one registered agent DAG behind EventTrigger or RequestTrigger'
   - text: 'Streaming Producers'
     link: './streaming-producers'
-    description: 'StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses'
+    description: 'StreamChannel, DagStreamProducer, and the scatter-source path behind streamed reasoning traces'
   - text: 'Example: ReAct agent memory'
     link: '../examples/react-agent-memory'
-    description: 'working example: trace streaming, live token deltas, provenance recall'
+    description: 'trace streaming, live token deltas, and provenance recall in one agent flow'
   - text: 'Example: ReAct agent routing'
     link: '../examples/react-agent-routing'
-    description: 'working example: one shared sink demultiplexes two concurrent conversations by routeKey'
+    description: 'one shared sink demultiplexing concurrent conversations by routeKey'
   - text: 'Example 29: Agent DAG'
     link: '../examples/29-agent-dag'
-    description: 'the 8-node JSON-LD topology this guide annotates as ReAct'
+    description: 'the 8-node JSON-LD topology behind the reusable ReAct loop'
 ---
 
 <script setup lang="ts">
@@ -28,26 +28,14 @@ import { reactAgentDAG, reactRoutingDAG, reactTraceDAG } from '../exampleDags.ts
 
 # ReAct Agent: Streaming and Provenance Recall
 
-## What It Is
+## ReAct Mapping
 
 ReAct is a vocabulary for an agent loop Dagonizer already represents as a DAG: thought, action, observation, and final answer are observable stages in the registered graph. The engine does not need a separate agent runtime to support it.
+The same registered loop also supports live trace streaming, token streaming, and provenance-backed recall without changing the execution model.
 
-This guide maps the 8-node loop onto ReAct, then shows how the runnable examples stream reasoning traces with `DagStreamProducer`, stream live model deltas with `chatStream`, and record/recall reasoning with RDF provenance.
+## Registered Flows
 
-## How It Works
-
-The eight-node agent loop is a DAG. ReAct labels the loop's observable stages as thought, action, observation, and final. Dagonizer streams those stages through `Execution`, `DagStreamProducer`, and `StreamChannel`, then records and routes them with ordinary scatter DAGs.
-
-ReAct (Reason + Act) names a loop already built into `@studnicky/dagonizer`:
-the [8-node agent loop](./conversational#agent-loop) authored as
-JSON-LD. This guide gives that loop its ReAct vocabulary, then adds
-three capabilities on top of surfaces the engine already ships:
-streaming ([streaming producers](./streaming-producers)) and graph provenance.
-None of this is a new execution mechanism.
-
-## Diagrams, Examples, and Outputs
-
-The runnable ReAct examples expose three DAGs: the inner agent loop, the reasoning-trace memory writer, and the routed stream sink:
+A ReAct-style Dagonizer host usually registers three cooperating DAGs: the inner agent loop, the reasoning-trace memory writer, and the routed stream sink:
 
 <DagJsonMermaid :dag="reactAgentDAG" title="ReAct agent loop DAG" aria-label="ReAct agent loop JSON-LD DAG beside Mermaid generated from it." />
 
@@ -57,21 +45,23 @@ The runnable ReAct examples expose three DAGs: the inner agent loop, the reasoni
 
 - [Conversational Agents](./conversational#agent-loop) - the 8-node agent loop authored as JSON-LD
 - [Chat Event Orchestration](./chat-event-orchestration) - host one registered agent DAG behind EventTrigger or RequestTrigger
-- [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses
-- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming, live token deltas, provenance recall
-- [Example: ReAct agent routing](../examples/react-agent-routing) - working example: one shared sink demultiplexes two concurrent conversations by routeKey
+- [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source path behind streamed reasoning traces
+- [Example: ReAct agent memory](../examples/react-agent-memory) - trace streaming, live token deltas, and provenance recall in one agent flow
+- [Example: ReAct agent routing](../examples/react-agent-routing) - one shared sink demultiplexing concurrent conversations by routeKey
 
-## What It Lets You Do
+## Streaming and Recall
 
-### Use when
-
-Use this guide when mapping a ReAct-style agent onto Dagonizer's DAG primitives. It is for applications that need reasoning traces, model token streaming, tool dispatch, provenance, recall, or concurrent stream routing without leaving the JSON-LD graph model.
+The eight-node agent loop remains the execution core. ReAct supplies names for four observable stages, while `Execution`, `DagStreamProducer`, and `StreamChannel` expose those stages as live runtime data. Reasoning traces, token deltas, and recalled prior reasoning all hang off the same DAG and stream contracts; nothing here introduces a second agent executor.
 
 ## Code Samples
 
-The sections below explain how the runnable ReAct examples hang together: the loop mapping, trace streaming, live token deltas, RDF provenance, and stream demultiplexing.
+The React integration splits into five concerns: loop mapping, trace production, token streaming, provenance recording, and routed sinks.
 
-## Details for Nerds
+## Operational Uses
+
+This mapping fits hosts that need reasoning traces, model token streaming, tool dispatch, provenance, recall, or concurrent stream routing without leaving the JSON-LD graph model.
+
+## Runtime Notes
 
 ### The 8-node loop IS ReAct
 
@@ -97,7 +87,7 @@ A running agent loop already emits one `NodeResultType` per node per turn —
 observe the ReAct trace live, organize it as a stream using the framework from
 [Streaming Producers](./streaming-producers): no new mechanism, the same
 `DagStreamProducer` → `StreamChannel.driven` → outer scatter idiom used
-everywhere else in the docs.
+by the other streaming DAGs in this repository.
 
 `AgentTraceProducer` (exported from `@studnicky/dagonizer/patterns`) is a
 `DagStreamProducer<ReasoningTraceItemType>` purpose-built for this. Each
@@ -113,7 +103,7 @@ import type { NodeStateInterface } from '@studnicky/dagonizer';
 
 class ReActTraceProducer extends AgentTraceProducer {
   protected describe(stage: NodeResultType<NodeStateInterface>): string {
-    // Map the stage's state back to a human-readable string for this step.
+    // Map the stage's state back to a display string for this step.
     // AgentTraceProducer already decides WHICH kind (thought/action/
     // observation/final) the stage represents from its fixed node-name map.
     return stage.nodeName; // replace with your state-shaped extraction
@@ -207,14 +197,13 @@ format the chain as a one-line hint. That hint is injected as a leading
 `system` message on the next run's `build-request`, so the model sees what it
 concluded last time before reasoning again.
 
-This is exactly the pattern [the Archivist](../examples/the-archivist) uses in
-production: its `recall-context` node walks prior `dag:Reasoning` provenance
-quads to inform new decisions, and its recording node asserts the same
-`wasGeneratedBy` / `wasInformedBy` chain documented here.
+The Archivist uses the same pattern: its `recall-context` node walks prior
+`dag:Reasoning` provenance quads to inform new decisions, and its recording
+node asserts the same `wasGeneratedBy` / `wasInformedBy` chain documented here.
 
-See [Example: ReAct agent memory](../examples/react-agent-memory) for the
-complete, runnable version of trace streaming, live token deltas, provenance
-recording, and cross-run recall.
+[Example: ReAct agent memory](../examples/react-agent-memory) applies the same
+chain in an executable agent workflow that records reasoning steps, streams live deltas, and
+recalls prior runs on the next turn.
 
 ### Routing concurrent streams — the sink is a DAG
 
@@ -271,17 +260,17 @@ here is a live, concurrently-fed sink rather than a single producer's output,
 and the scatter body classifies each item by a field on its own payload
 (`routeKey`) instead of accumulating everything into one bucket.
 
-The runnable [Example: ReAct agent routing](../examples/react-agent-routing)
-starts the routing DAG's drain first (so the channel's bounded buffer never
-backs up two conversations' pushes), runs two conversations concurrently
-against the one shared node and one shared channel, closes the channel once
-both conversations finish, then awaits the routing drain — reconstructing
-each conversation's transcript separately from the interleaved chunk stream.
+[Example: ReAct agent routing](../examples/react-agent-routing) drains the
+routing DAG first so the channel's bounded buffer never backs up two
+conversations' pushes, runs two conversations concurrently against one shared
+node and one shared channel, closes the channel once both conversations
+finish, then awaits the routing drain to reconstruct each transcript
+separately from the interleaved chunk stream.
 
 ## Related Concepts
 
 - [Conversational Agents](./conversational#agent-loop) - the 8-node agent loop authored as JSON-LD
-- [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses
-- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming, live token deltas, provenance recall
-- [Example: ReAct agent routing](../examples/react-agent-routing) - working example: one shared sink demultiplexes two concurrent conversations by routeKey
-- [Example 29: Agent DAG](../examples/29-agent-dag) - the 8-node JSON-LD topology this guide annotates as ReAct
+- [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source path behind streamed reasoning traces
+- [Example: ReAct agent memory](../examples/react-agent-memory) - trace streaming, live token deltas, and provenance recall in one agent flow
+- [Example: ReAct agent routing](../examples/react-agent-routing) - one shared sink demultiplexing concurrent conversations by routeKey
+- [Example 29: Agent DAG](../examples/29-agent-dag) - the 8-node JSON-LD topology behind the reusable ReAct loop

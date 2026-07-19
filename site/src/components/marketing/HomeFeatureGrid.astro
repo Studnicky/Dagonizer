@@ -11,7 +11,7 @@ const features = [
   {
     badge: '↻',
     title: 'Durable resume',
-    body: 'Capture runnable state, persist it, and continue the same workflow from the exact execution point when work needs to pause or recover.'
+    body: 'Capture execution state, persist it, and continue the same workflow from the recorded cursor when work needs to pause or recover.'
   },
   {
     badge: '⬡',
@@ -23,10 +23,22 @@ const features = [
 
 <section id="features" class="space-y-6">
   <UiSectionIntro
-    eyebrow="Core runtime surfaces"
-    title="Build on one explicit workflow model instead of a pile of orchestration side effects"
-    description="Dagonizer keeps routing, resume, scatter, gather, and visualization attached to the same DAG contract so teams can reason about runtime behavior without reconstructing it from glue code."
+    eyebrow="Core runtime capabilities"
+    title="Work from one runtime model instead of stitching orchestration together case by case"
+    description="Dagonizer keeps routing, resume, scatter, gather, and visualization attached to the same DAG contract so teams can follow execution policy directly in the workflow artifact."
   />
+
+  <div class="hex-honeycomb py-4">
+    {features.map((feature) => (
+      <div
+        class="hex-cell flex items-center justify-center bg-cyan-400/8 text-2xl"
+        style="aspect-ratio: var(--dagonizer-hex-ratio);"
+        aria-hidden="true"
+      >
+        {feature.badge}
+      </div>
+    ))}
+  </div>
 
   <UiMarketingCardGrid items={features} />
 </section>

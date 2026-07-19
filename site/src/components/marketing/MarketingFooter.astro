@@ -6,8 +6,9 @@ import { SiteLinks } from '@/lib/links';
 
 const navigateLinks = [
   { href: SiteLinks.site('/architecture'), label: 'Architecture' },
-  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
-  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
+  { href: SiteLinks.site(SiteLinks.route('examples')), label: 'Examples' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' },
+  { href: SiteLinks.site('/design/palette'), label: 'Palette' }
 ] as const;
 
 const referenceLinks = [
@@ -17,12 +18,12 @@ const referenceLinks = [
 ] as const;
 ---
 
-<footer class="border-t border-white/8 py-10">
+<footer class="border-t py-10" style="border-top-width: var(--dagonizer-bezel-width); border-top-color: var(--dagonizer-divider);">
   <div class="mx-auto grid max-w-7xl gap-8 px-4 md:px-6 lg:grid-cols-[1.2fr_0.8fr]">
     <div class="space-y-4">
       <p class="text-xs uppercase tracking-[0.28em] text-slate-500">Dagonizer</p>
       <h2 class="max-w-xl text-2xl font-semibold tracking-tight text-white">
-        Explicit workflow execution for teams that need routing, visualization, and resume to stay legible under real operational pressure.
+        TypeScript DAG runtime for teams that need explicit routing, resumable execution, and visible workflow state.
       </h2>
       <UiCtaRow>
         <UiActionLink href={SiteLinks.site('/getting-started')} variant="primary">Get started</UiActionLink>
@@ -37,8 +38,8 @@ const referenceLinks = [
       </div>
 
       <div class="space-y-3">
-        <p class="text-xs uppercase tracking-[0.24em] text-slate-500">Reference</p>
-        <UiLinkList links={referenceLinks} />
+        <p class="text-xs uppercase tracking-[0.24em] text-slate-500">Resources</p>
+        <UiLinkList links={referenceLinks} gemMarker />
       </div>
     </div>
   </div>

@@ -6,6 +6,7 @@ import { TransformersEmbedder } from '@studnicky/dagonizer-embedder-transformers
 import { BaseLlmClient } from '../../../the-archivist/providers/BaseLlmClient.ts';
 import { MobileDetection } from '../../../the-archivist/providers/MobileDetection.ts';
 import {
+  ActiveBackendStore,
   ApiKeyStore,
   BackendMatrix,
   PreferredModels,
@@ -44,6 +45,7 @@ void describe('DispatcherProviderRuntime', () => {
     const runtime = await DispatcherProviderRuntime.load();
 
     assert.deepEqual(Object.keys(runtime).sort(), [
+      'ActiveBackendStore',
       'ApiKeyStore',
       'BackendMatrix',
       'BaseLlmClient',
@@ -51,6 +53,7 @@ void describe('DispatcherProviderRuntime', () => {
       'PreferredModels',
       'ProviderInstantiator',
     ]);
+    assert.equal(runtime.ActiveBackendStore, ActiveBackendStore);
     assert.equal(runtime.ApiKeyStore, ApiKeyStore);
     assert.equal(runtime.BackendMatrix, BackendMatrix);
     assert.equal(runtime.BaseLlmClient, BaseLlmClient);
@@ -73,7 +76,7 @@ void describe('DispatcherProviderRuntime', () => {
       }),
     });
 
-    const bootstrap = await browserRuntime.loadBootstrapState(null);
+    const bootstrap = await browserRuntime.loadBootstrapState();
 
     assert.equal(bootstrap.noModel, true);
     assert.equal(provisionCount, 0);

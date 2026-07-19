@@ -21,17 +21,13 @@ import { scatterExtensionsDAG } from '../exampleDags.ts';
 
 # Scatter Extensions
 
-## What It Is
+## Gather and Reducer Surface
 
-Scatter Extensions shows how an application adds domain-specific scatter behavior without changing dispatcher code. The CLI example installs `TopNGatherStrategy` and `ThresholdReducer`, then references both by registry key from a normal scatter DAG.
+Scatter Extensions shows how a host adds domain-specific scatter behavior without changing dispatcher code. The CLI example installs `TopNGatherStrategy` and `ThresholdReducer`, then references both by registry key from a normal scatter DAG.
 
 This is the extension seam behind custom gather and reducer policy: register the implementation once, then keep DAG assembly declarative.
 
-## How It Works
-
-`GatherStrategies.register(...)` and `OutcomeReducers.register(...)` install custom implementations into global registries. A scatter placement references them through `gather.strategy` and `reducer`. The dispatcher resolves those names at execution time.
-
-## Diagrams, Examples, and Outputs
+## Canonical Document and Runtime
 
 The DAG below is the same `reservoirDag` exported by the CLI example. It shows the custom gather strategy and reducer as graph configuration, not code branches inside the dispatcher.
 
@@ -43,28 +39,32 @@ The DAG below is the same `reservoirDag` exported by the CLI example. It shows t
 npx tsx examples/scatter-extensions.ts
 ```
 
-## What It Lets You Do
+## Strategy Resolution Model
 
-Scatter extensions let applications add domain-specific gather and reducer behavior without changing dispatcher code. Use them when built-in strategies do not match the merge policy or success threshold your DAG needs.
-
-`GatherStrategies.register` and `OutcomeReducers.register` install custom plugins into the global registries. A scatter placement then references them by strategy/reducer key. No dispatcher or DAG document changes are needed beyond the `gather.strategy` and `reducer` keys.
-
-This example registers two plugins:
-
-- **`TopNGatherStrategy`** — collects the top-3 candidates by score from each clone's state into `state.topCandidates`.
-- **`ThresholdReducer`** — gates `'success'` on ≥ 75% of clones returning `'success'`; routes `'partial'` below that threshold.
+`GatherStrategies.register(...)` and `OutcomeReducers.register(...)` install custom implementations into global registries. A scatter placement references them through `gather.strategy` and `reducer`. The dispatcher resolves those names at execution time.
 
 ## Code Samples
 
 <<< @/../examples/scatter-extensions.ts
 
-## Details for Nerds
+## Operational Uses
+
+Scatter extensions let hosts add domain-specific gather and reducer behavior without changing dispatcher code. Use them when built-in strategies do not match the merge policy or success threshold your DAG needs.
+
+`GatherStrategies.register` and `OutcomeReducers.register` install custom plugins into the global registries. A scatter placement then references them by strategy/reducer key. No dispatcher or DAG document changes are needed beyond the `gather.strategy` and `reducer` keys.
+
+The CLI example registers two extension points:
+
+- **`TopNGatherStrategy`** — collects the top-3 candidates by score from each clone's state into `state.topCandidates`.
+- **`ThresholdReducer`** — gates `'success'` on ≥ 75% of clones returning `'success'`; routes `'partial'` below that threshold.
+
+## Runtime Notes
 
 - **`GatherStrategies.register(strategy)`.** Installs a custom `GatherStrategy` implementation into the global registry under `strategy.name`. Any gather configuration whose `strategy` field matches the key uses this implementation.
 - **Custom `GatherStrategy`.** Implement `reduce(config, batch, state, accessor)` (called per clone as it completes) and override `finalize(config, execution)` for all-at-once processing after every clone is done. The `TopNGatherStrategy` accumulates nothing in `reduce` and sorts by score in `finalize`, keeping only the top 3 and merging into `state.topCandidates`.
 - **`OutcomeReducers.register(reducer)`.** Installs a custom `OutcomeReducer` into the global registry under `reducer.name`. A scatter placement's `reducer` field references that key.
 - **Custom `OutcomeReducer`.** Receives the array of clone outcomes (`'success'` / `'error'` / `'empty'`) and returns the routing token for the parent's output port. `ThresholdReducer` computes the success ratio and routes `'success'` at ≥ 75%, `'partial'` below.
-- **Side-effect registration.** Importing `examples/dags/scatter-extensions.ts` triggers the `register` calls. The convention is to register in the module that defines the plugin, so any application that imports the module gets the plugin installed automatically.
+- **Side-effect registration.** Importing `examples/dags/scatter-extensions.ts` triggers the `register` calls. The convention is to register in the module that defines the plugin, so any host package that imports the module gets the plugin installed automatically.
 
 ## Related Concepts
 

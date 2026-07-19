@@ -23,19 +23,13 @@ import { archivistDAG } from '../exampleDags.ts';
 
 # Example 06: Cancellation
 
-## What It Is
+## Cancellation Contract
 
-Cancellation is how a host stops The Archivist without turning a half-finished run into mystery meat. A visitor can close the tab, an HTTP request can disconnect, or the host can enforce a hard deadline; the same signal reaches every node.
+Cancellation is the execution control plane for long-running DAGs. A visitor can close the tab, an HTTP request can disconnect, or the caller can enforce a hard deadline; the same signal reaches every node in The Archivist.
 
 The DAG does not change for cancellation. The execution options change, the lifecycle records the interrupted terminal state, and the result cursor says where a later resume can continue.
 
-## How It Works
-
-The dispatcher composes the caller `AbortSignal` with `deadlineMs` and passes the resulting signal to every node as `context.signal`. Nodes pass that signal into adapters, tools, and retry policies. When the signal aborts, work exits through the dispatcher lifecycle as `cancelled` or `timed_out`, and `result.cursor` records where a checkpoint can resume later.
-
-The Archivist scouts are the important proof point. External calls and `RetryPolicy` waits both receive `context.signal`, so aborting during a backoff or slow provider call does not wait for the happy-path timeout.
-
-## Diagrams, Examples, and Outputs
+## Abort and Deadline Flow
 
 ### DAG registration and diagram
 
@@ -49,11 +43,11 @@ The Archivist scouts are the important proof point. External calls and `RetryPol
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Signal Propagation
 
-Cancellation lets applications stop work without corrupting DAG state or leaking in-flight retries. Use it when a browser tab closes, an HTTP request disconnects, a user presses cancel, or a host enforces a hard execution budget.
+The dispatcher composes the caller `AbortSignal` with `deadlineMs` and passes the resulting signal to every node as `context.signal`. Nodes pass that signal into adapters, tools, and retry policies. When the signal aborts, work exits through the dispatcher lifecycle as `cancelled` or `timed_out`, and `result.cursor` records where a checkpoint can resume later.
 
-For product teams, this means long-running model or tool workflows can behave like normal web infrastructure. They can be cancelled, observed, checkpointed, and resumed instead of being treated as fire-and-forget background jobs.
+The Archivist scouts are the critical path here. External calls and `RetryPolicy` waits both receive `context.signal`, so aborting during a backoff or slow provider call does not wait for the happy-path timeout.
 
 ## Code Samples
 
@@ -69,14 +63,20 @@ The `#tool-candidate-gather-strategy` region shows how `openLibraryScout` propag
 
 <<< @/../examples/the-archivist/nodes/scouts.ts#tool-candidate-gather-strategy
 
-## Details for Nerds
+## Operational Uses
+
+Cancellation lets hosts stop work without corrupting DAG state or leaking in-flight retries. It fits browser tabs closing, HTTP requests disconnecting, user-driven cancellation, or hosts enforcing a hard execution budget.
+
+For product teams, this means long-running model or tool workflows can behave like normal web infrastructure. They can be cancelled, observed, checkpointed, and resumed instead of being treated as fire-and-forget background jobs.
+
+## Runtime Notes
 
 - **`signal` + `deadlineMs` composition.** `Signal.compose` (from `@studnicky/signal`) combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together — when neither is supplied, `context.signal` is `Signal.never()`, a valid never-aborting `AbortSignal`.
 - **Nodes propagate the signal.** Every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
 - **Lifecycle records the exact terminal state.** `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
 - **`result.cursor`.** Records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.capture` (see [Example 08](./08-checkpoint)) to resume in a later process.
 
-See this in action in the [Archivist live demo](./the-archivist); the cancel button fires the same `AbortController.abort()` path.
+The same cancellation path is wired to the cancel control in [The Archivist](./the-archivist).
 
 ## Related Concepts
 

@@ -8,33 +8,33 @@ const examples = [
   {
     eyebrow: 'LLM agents',
     title: 'The Archivist',
-    body: 'Bibliographic orchestration, tool use, retries, provenance, and browser-visible execution state.',
-    href: SiteLinks.site('/docs/examples/the-archivist')
+    body: 'Bibliographic orchestration, tool use, retries, provenance, and observable execution state.',
+    href: SiteLinks.site(SiteLinks.route('examples/the-archivist'))
   },
   {
     eyebrow: 'Human in the loop',
     title: 'The Dispatcher',
     body: 'Warm handoff routing, park-and-correlate, and deterministic resume from checkpoint.',
-    href: SiteLinks.site('/docs/examples/the-dispatcher')
+    href: SiteLinks.site(SiteLinks.route('examples/the-dispatcher'))
   },
   {
     eyebrow: 'Data orchestration',
     title: 'The Cartographer',
     body: 'Streaming intake, normalization DAGs, geo-resolution, GDPR redaction, and insight fan-in.',
-    href: SiteLinks.site('/docs/examples/the-cartographer')
+    href: SiteLinks.site(SiteLinks.route('examples/the-cartographer'))
   }
 ];
 ---
 
 <section id="examples" class="space-y-6">
   <UiSectionIntro
-    eyebrow="Reference workflows"
-    title="Start from runnable flows that expose the runtime model clearly"
-    description="The examples are not toy snippets. Each one demonstrates a concrete orchestration shape you can inspect in docs, adapt to your own DAGs, and use as a starting point for production workflow design."
+    eyebrow="Runnable workflows"
+    title="Inspect concrete workflows that execute the registered DAGs directly"
+    description="Each workflow runs the same DAG documents the runtime registers. Use them to inspect routing, checkpoint, and state behavior across agent, support, and streaming workloads."
     align="between"
   >
     <Fragment slot="actions">
-      <UiActionLink href={SiteLinks.site('/docs/examples')} label="Browse all examples" />
+      <UiActionLink href={SiteLinks.site(SiteLinks.route('examples'))} label="Browse all examples" />
     </Fragment>
   </UiSectionIntro>
 

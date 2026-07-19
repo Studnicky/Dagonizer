@@ -102,7 +102,7 @@ export class DispatcherBrowserRuntime {
     this.#loadProviderRuntimeDependency = dependencies.loadProviderRuntime;
   }
 
-  async loadBootstrapState(savedBackendId: string | null): Promise<DispatcherBrowserBootstrapState> {
+  async loadBootstrapState(): Promise<DispatcherBrowserBootstrapState> {
     const runtime = await this.#loadProviderRuntimeDependency();
     const isMobile = runtime.MobileDetection.isLikelyMobile();
     const apiKeys = runtime.ApiKeyStore.load();
@@ -121,9 +121,7 @@ export class DispatcherBrowserRuntime {
       };
     }
 
-    const savedBackend = savedBackendId !== null && runtime.ApiKeyStore.isProviderId(savedBackendId)
-      ? savedBackendId
-      : null;
+    const savedBackend = runtime.ActiveBackendStore.load();
     const savedEntry = savedBackend !== null
       ? backends.find((backend) => backend.id === savedBackend) ?? null
       : null;
@@ -177,6 +175,15 @@ export class DispatcherBrowserRuntime {
   async savePreferredModels(models: Partial<Record<ProviderId, string>>): Promise<void> {
     const runtime = await this.#loadProviderRuntimeDependency();
     runtime.PreferredModels.save(models);
+  }
+
+  async saveActiveBackend(id: ProviderId | null): Promise<void> {
+    const runtime = await this.#loadProviderRuntimeDependency();
+    if (id === null) {
+      runtime.ActiveBackendStore.clear();
+      return;
+    }
+    runtime.ActiveBackendStore.save(id);
   }
 
   async resolveProviderId(id: string): Promise<ProviderId | null> {

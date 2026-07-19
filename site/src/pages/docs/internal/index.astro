@@ -20,24 +20,24 @@ const internalLinks = [
 ] as const;
 ---
 
-<DocsArticleShell title="Internal" description="Implementation notes for internal runtime mechanics that support checkpointing, state transfer, and related lower-level framework behavior.">
+<DocsArticleShell title="Internal" description="Implementation notes for internal runtime mechanics that support checkpointing, state transfer, and related lower-level runtime behavior.">
   <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
     <article class="space-y-8">
       <UiPageHeader
         title="Internal"
-        description="This section is for lower-level implementation details that support the framework itself. It is useful when you are extending or debugging Dagonizer internals rather than consuming the public API."
+        description="Use the internal section for lower-level runtime mechanics such as state transfer, checkpoint internals, and runtime implementation details."
         crumbs={crumbs}
       />
 
       <UiSectionIntro
         eyebrow="Internal entry points"
-        title="Stable entry points for lower-level runtime documents"
-        description="The internal pages should not dead-end. This index provides a stable entry point for deep runtime documents that are linked from other docs and examples. Start with graph-state transfer when you need to understand how execution state crosses container or transport boundaries."
+        title="Lower-level runtime mechanics"
+        description="Start with graph-state transfer when you need to understand how execution state crosses container or transport boundaries."
       />
     </article>
 
     <aside class="space-y-5">
-      <UiAsideCard title="Internal pages">
+      <UiAsideCard title="Internal links">
         <UiLinkList links={internalLinks} />
       </UiAsideCard>
     </aside>

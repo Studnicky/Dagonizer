@@ -18,7 +18,7 @@ const guideTracks = [
   {
     eyebrow: 'Authoring',
     title: 'Graph definition and builder patterns',
-    body: 'Move from hand-authored JSON-LD through the builder, schema constraints, and node composition without losing inspectable graph structure.',
+    body: 'Move from hand-authored JSON-LD through the builder, schema constraints, and node composition while keeping placements, routes, and terminals in one graph document.',
     href: SiteLinks.site('/docs/guide/builder')
   },
   {
@@ -30,7 +30,7 @@ const guideTracks = [
   {
     eyebrow: 'Visualization',
     title: 'Render and inspect DAGs in the browser',
-    body: 'See how Cytoscape, Mermaid, and related visual surfaces fit the framework and what consumers can customize.',
+    body: 'See how Cytoscape, Mermaid, and JSON-LD outputs are produced and what consumers can customize around them.',
     href: SiteLinks.site('/docs/guide/visualization')
   }
 ] as const;
@@ -50,15 +50,15 @@ const guideLinks = [
     <article class="space-y-8">
       <UiPageHeader
         title="Guide"
-        description="Use the guide section when you already know what Dagonizer is and need the operational detail: how to author graphs, tune execution, checkpoint state, visualize runs, and wire deployment seams."
+        description="Use the guide section for workflow authoring, execution behavior, checkpoint recovery, visualization, and deployment seams."
         crumbs={crumbs}
       />
 
       <section class="space-y-5">
         <UiSectionIntro
           eyebrow="Guide tracks"
-          title="Documentation organized around the runtime lifecycle"
-          description="Start with authoring if you are defining graphs, execution if you are tuning behavior or recovery, and visualization when you need inspectable browser surfaces around the DAG runtime."
+          title="Guidance organized around the runtime lifecycle"
+          description="Start with authoring for graph definition, execution for runtime behavior and recovery, and visualization for Mermaid, Cytoscape, or JSON-LD output."
         />
         <UiMarketingCardGrid client:visible items={guideTracks} linkCards />
       </section>
@@ -71,8 +71,8 @@ const guideLinks = [
 
       <UiAsideCard title="Next">
         <div class="space-y-3 text-sm leading-6 text-slate-300">
-          <p>Use Examples when you want runnable proof instead of isolated explanation.</p>
-          <p>Use Reference when you need the API surface for the runtime contracts and exported types.</p>
+          <p>Examples show the same runtime contracts inside complete agent, support, and data workflows.</p>
+          <p>Reference covers the exported runtime classes, contracts, entities, and types.</p>
         </div>
       </UiAsideCard>
     </aside>

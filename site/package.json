@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro preview --host 127.0.0.1 --port 4322",
     "test": "astro build && tsx --test tests/*.test.ts",
-    "test:browser": "node scripts/dispatcher-browser-smoke.mjs"
+    "test:browser": "node scripts/runnable-examples-browser-smoke.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.3",
@@ -16,9 +16,11 @@
     "@astrojs/vue": "^7.0.1",
     "@tailwindcss/vite": "^4.1.12",
     "astro": "^7.0.9",
+    "marked": "^18.0.6",
     "mermaid": "^11.16.0",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
+    "shiki": "^4.3.1",
     "tailwindcss": "^4.1.12",
     "tailwindcss-primeui": "^0.6.1",
     "vue": "^3.5.22"

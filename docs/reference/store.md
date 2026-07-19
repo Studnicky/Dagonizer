@@ -15,36 +15,25 @@ seeAlso:
 
 # Store
 
-## What It Is
+## Shared Store Contract
 
-The store surface provides shared mutable state outside point-to-point DAG state mappings: `StoreInterface`, `BaseStore`, `MemoryStore`, `TypedStore`, snapshots, update semantics, remote-store shape, and `StoreError` taxonomy.
+The store package provides shared mutable state outside point-to-point DAG state mappings: `StoreInterface`, `BaseStore`, `MemoryStore`, `TypedStore`, snapshots, update semantics, remote-store shape, and `StoreError` taxonomy.
 
-Use this page when nodes need a shared memory graph, cache, typed key space, remote replicated state, or checkpoint-restorable structure that multiple placements can read and write.
+Stores own shared mutable structures that sit outside edge-to-edge state mapping: memory graphs, caches, typed key spaces, remote replicated state, and checkpoint-restorable data that multiple placements read and write.
 
-## How It Works
+## Store and Checkpoint References
 
-Stores are passed into node constructors and survive scatter clone boundaries within a run. Checkpoints can snapshot named stores alongside parent state for deterministic resume.
-
-Use state mapping for point-to-point field transfer. Use stores when multiple placements accumulate into the same structure or when state needs a named persistence boundary.
-
-## Diagrams, Examples, and Outputs
-
-Stores are runtime objects, not DAG placements. These pages show when to choose stores and how checkpoint snapshots interact with them:
+Stores are runtime objects, not DAG placements. These related docs cover when to choose stores and how checkpoint snapshots interact with them:
 
 - [Reference: Contracts](./contracts) - `StoreInterface`, `StoreSnapshotType`, `StoreSnapshotEntryType`
 - [Reference: Checkpoint](./checkpoint) - `Checkpoint.capture` and `restoreStores` for store snapshots
 - [Guide: Shared state](../guide/shared-state) - decision matrix, concurrency contract, custom-store authoring
 
-## What It Lets You Do
+## Snapshot and Mutation Contract
 
-The store reference lets applications share and checkpoint mutable data outside point-to-point DAG state mappings.
+Stores are passed into node constructors and survive scatter clone boundaries within a run. Checkpoints can snapshot named stores alongside parent state for deterministic resume.
 
-`@studnicky/dagonizer/store`
-
-The store module provides the shared key-value store contract and its
-implementations. Stores are passed into node constructors and survive scatter
-clone boundaries within a run. Checkpoint integration snapshots named stores
-alongside parent state for deterministic resume.
+Use state mapping for point-to-point field transfer. Use stores when multiple placements accumulate into the same structure or when state needs a named persistence boundary.
 
 ## Code Samples
 
@@ -81,7 +70,7 @@ interface SnapshottableInterface {
 | `snapshot()` | `Promise<StoreSnapshotType>` | Capture the entire state as a typed envelope. |
 | `restore(snapshot)` | `Promise<void>` | Repopulate from a snapshot. Implementations validate `type` and `version` before applying entries. |
 
-`SnapshottableInterface` is decoupled from the key-value surface on purpose.
+`SnapshottableInterface` is decoupled from the key-value contract on purpose.
 `Checkpoint.capture(dag, result, { stores })` and `Checkpoint.restoreStores(map)`
 take `Record<string, SnapshottableInterface>`, so a non-KV backing (an RDF triple
 store, a vector index, an append-only projection) can ride along in a
@@ -410,7 +399,7 @@ interface RemoteStoreInterface extends StoreInterface {
 }
 ```
 
-The engine consumes a `RemoteStoreInterface` through the `StoreInterface` surface. The extra
+The engine consumes a `RemoteStoreInterface` through the `StoreInterface` contract. The extra
 methods are observability and coordination primitives the dispatcher uses when
 distributed execution is wired in.
 
@@ -454,7 +443,7 @@ leasing is enforced.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `endpoint` | `RemoteStoreEndpointType` | Endpoint descriptor; surfaces in observability and placement decisions. |
+| `endpoint` | `RemoteStoreEndpointType` | Endpoint descriptor; appears in observability output and placement decisions. |
 | `acquireLease(subject, ttlMs, maxWaitMs)` | `Promise<RemoteStoreLeaseType>` | Acquire exclusive write authority for `subject` with a lifetime of `ttlMs` ms. Waits up to `maxWaitMs` for an active holder to release before throwing `StoreError(LEASE_DENIED)`. |
 | `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent: releasing an already-expired lease is a no-op. |
 | `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure: return `false` so the dispatcher can route around an unhealthy store. |
@@ -524,7 +513,15 @@ time.
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+Stores give the host a named shared-state boundary that survives clone isolation and can optionally ride along inside checkpoints. Nodes collaborate through the store while the DAG stays focused on routing and control flow.
+
+That separation matters whenever many placements accumulate into one structure or when a host needs a persistence boundary that is not the main state object.
+
+`@studnicky/dagonizer/store` provides the shared key-value store contract and its implementations. Stores are passed into node constructors and survive scatter clone boundaries within a run. Checkpoint integration snapshots named stores alongside parent state for deterministic resume.
+
+## Runtime Notes
 
 Stores are runtime dependencies, not graph topology. The DAG can stay portable while nodes share a store instance injected by the host.
 
@@ -535,5 +532,5 @@ Snapshot support is explicit. A store that implements `SnapshottableInterface` c
 - [Reference: Contracts](./contracts) - `StoreInterface`, `StoreSnapshotType`, `StoreSnapshotEntryType`
 - [Reference: Checkpoint](./checkpoint) - `Checkpoint.capture` and `restoreStores` for store snapshots
 - [Guide: Shared state](../guide/shared-state) - decision matrix, concurrency contract, custom-store authoring
-- [Example 10: Shared State](../examples/10-shared-state) - runnable shared-store behavior
+- [Example 10: Shared State](../examples/10-shared-state) - shared-store checkpoint and resume behavior
 - [Remote Store](../examples/store-remote) - remote-store contract example

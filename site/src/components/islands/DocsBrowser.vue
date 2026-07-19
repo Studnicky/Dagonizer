@@ -88,7 +88,7 @@ const tabValue = computed(() =>
 
     <UiProofStrip
       :label="`${matchingCount} matched pages`"
-      detail="Search runs across titles, descriptions, excerpts, and extracted headings from the current docs corpus."
+      detail="Search runs across titles, descriptions, excerpts, and extracted headings from the current documentation catalog."
     />
 
     <Tabs :value="tabValue">

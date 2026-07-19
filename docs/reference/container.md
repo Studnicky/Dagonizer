@@ -21,19 +21,13 @@ seeAlso:
 
 # Container
 
-## What It Is
+## Container Surface
 
 Containers run embedded DAGs or scatter body DAGs outside the parent dispatcher process. A placement declares a logical container role; the host binds that role to a `DagContainerInterface`.
 
-Use this page when worker threads, forked processes, browser workers, service workers, or remote workers should execute sub-DAG work while the parent graph remains canonical JSON-LD.
+Containers are the isolate boundary for worker threads, forked processes, browser workers, service workers, and remote workers that should execute sub-DAG work while the parent graph remains canonical JSON-LD.
 
-## How It Works
-
-`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent while preserving the child DAG boundary, placement path, and terminal state snapshot.
-
-Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
-
-## Diagrams, Examples, and Outputs
+## Worker and Role References
 
 Container behavior is visible in the worker examples and the distribution guide:
 
@@ -42,11 +36,11 @@ Container behavior is visible in the worker examples and the distribution guide:
 - [Guide: Distribution and Cloud](../guide/distribution) - worker pool patterns and multi-backend dispatch
 - [Example 12: Worker Containers](../examples/12-workers) - scatter dag-body over a WorkerThreadContainer pool
 
-## What It Lets You Do
+## Isolate Execution Model
 
-The container reference lets applications bind embedded DAGs or scatter body DAGs to isolate-backed execution roles.
+`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent while preserving the child DAG boundary, placement path, and terminal state snapshot.
 
-DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@studnicky/dagonizer/container`.
+Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
 
 ## Code Samples
 
@@ -311,9 +305,15 @@ const isOther: boolean = TransportErrorCode.isInfrastructureFailure('domain.some
 
 ---
 
-## Details for Nerds
+## Operational Uses
 
-Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and surface transport failures as container errors. Do not let worker internals leak into the parent DAG document or collapse child DAG topology into a node-level callback.
+`@studnicky/dagonizer/container` is the DAG containment package: pool-owning base class, isolate-side host runtime, and the task/outcome value types that move sub-DAG work across a transport boundary.
+
+Hosts bind logical container roles to worker-backed execution backends without changing the DAG document itself.
+
+## Runtime Notes
+
+Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and report transport failures as container errors. Do not let worker internals leak into the parent DAG document or collapse child DAG topology into a node-level callback.
 
 Role names are deployment configuration. A DAG can declare `container: 'cpu'` or `container: 'io'`; the host decides whether those roles map to worker threads, child processes, browser workers, or remote services.
 

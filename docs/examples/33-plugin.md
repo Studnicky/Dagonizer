@@ -19,23 +19,17 @@ import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../exampleDa
 
 # Example 33: Plugin-Defined DAGs
 
-## What It Is
+## Plugin DAG Surface
 
 Plugin-Defined DAGs show the unified interface for plugins and embedded flows. The Cartographer packages source-normalization child DAGs as a plugin, registers that plugin once, and embeds the exported DAG references from the ingest DAG.
 
 There is no special plugin placement type. Plugin DAGs enter the same registry as local DAGs, and parent graphs embed them with the same `EmbeddedDAGNode` contract.
 
-## How It Works
-
-`defineDagonizerPlugin` packages a plugin ID, nodes, DAGs, and context declarations. `registerPlugin(...)` scopes those registry entries by plugin identity, then exposes the plugin DAGs through the same DAG registry used by `registerBundle(...)`. The parent DAG embeds plugin-provided DAG IRIs exactly like locally-authored child DAGs.
-
-This is the dev-ex target from the plugin work: a reusable part ships its own nodes and DAG documents, while the host assembles the final application through canonical JSON-LD or builder output.
-
-## Diagrams, Examples, and Outputs
+## Plugin-backed Ingest Flow
 
 ### DAG registration and diagram
 
-The [Cartographer](./the-cartographer) packages its format-normalization child DAGs as `normalizeSourcesPlugin`. The browser runner registers the plugin, then registers `ingestSourceDAG`, whose embedded placements reference the plugin-provided DAG IRIs (`urn:noocodec:dag:normalize-csv`, `urn:noocodec:dag:normalize-json`, `urn:noocodec:dag:normalize-ndjson`, `urn:noocodec:dag:normalize-yaml`).
+The [Cartographer](./the-cartographer) packages its format-normalization child DAGs as `normalizeSourcesPlugin`. The runtime registers the plugin, then registers `ingestSourceDAG`, whose embedded placements reference the plugin-provided DAG IRIs (`urn:noocodec:dag:normalize-csv`, `urn:noocodec:dag:normalize-json`, `urn:noocodec:dag:normalize-ndjson`, `urn:noocodec:dag:normalize-yaml`).
 
 <DagJsonMermaid :dag="ingestSourceDAG" title="Cartographer ingest DAG embedding plugin DAGs" aria-label="Cartographer ingest JSON-LD DAG beside Mermaid generated from it." />
 
@@ -43,21 +37,21 @@ The [Cartographer](./the-cartographer) packages its format-normalization child D
 
 <DagJsonMermaid :dag="normalizeJsonDAG" title="plugin-provided normalize-json DAG" aria-label="Plugin-provided JSON normalization JSON-LD DAG beside Mermaid generated from it." />
 
-The important point is interface unification: plugin DAGs and ordinary embedded DAGs both enter the same registry and both execute through `EmbeddedDAGNode`.
+Plugin DAGs and ordinary embedded DAGs both enter the same registry and execute through `EmbeddedDAGNode`.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Cartographer](./the-cartographer). The browser runner registers `normalizeSourcesPlugin` alongside the Cartographer DAG bundle before execution.
+Visit [The Cartographer](./the-cartographer). The runtime registers `normalizeSourcesPlugin` alongside the Cartographer DAG bundle before execution.
 
-## What It Lets You Do
+## Plugin Registration Model
 
-Plugin-defined DAGs let applications consume reusable flows as installable parts while preserving the same embedded-DAG interface used inside the application. Use this when a team wants to package nodes and child DAGs once, register them by plugin ID, and embed the exported DAG IRIs from higher-level flows.
+`defineDagonizerPlugin` packages a plugin ID, nodes, DAGs, and context declarations. `registerPlugin(...)` scopes those registry entries by plugin identity, then exposes the plugin DAGs through the same DAG registry used by `registerBundle(...)`. The parent DAG embeds plugin-provided DAG IRIs exactly like locally-authored child DAGs.
 
-The result is composability without a second assembly language. Local DAGs, plugin DAGs, literal `dag` references, and dynamic `DagReference` bodies all resolve through the same registry.
+This is the plugin assembly pattern in practice: a reusable part ships its own nodes and DAG documents, while the host assembles the final workflow through canonical JSON-LD or builder output.
 
 ## Code Samples
 
@@ -65,20 +59,26 @@ The plugin packages real Cartographer normalization nodes and child DAGs:
 
 <<< @/../examples/the-cartographer/plugins/NormalizeSourcesPlugin.ts#cartographer-normalize-plugin
 
-The ingest DAG embeds the plugin-provided child DAG IRIs through the normal builder surface:
+The ingest DAG embeds the plugin-provided child DAG IRIs through the normal builder API:
 
 <<< @/../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts
 
-The browser demo registers the plugin before registering the ingest and top-level bundles:
+The Cartographer runner registers the plugin before registering the ingest and top-level bundles:
 
 <<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-plugin-registration
 
-## Details for Nerds
+## Operational Uses
+
+Plugin-defined DAGs let hosts consume reusable flows as installable parts while preserving the same embedded-DAG interface used elsewhere in the workflow. They fit teams that want to package nodes and child DAGs once, register them by plugin ID, and embed the exported DAG IRIs from higher-level flows.
+
+The result is composability without a second assembly language. Local DAGs, plugin DAGs, literal `dag` references, and dynamic `DagReference` bodies all resolve through the same registry.
+
+## Runtime Notes
 
 - **One registry seam.** `registerPlugin(normalizeSourcesPlugin)` adds nodes and DAGs through the same registry used by `registerBundle()`.
 - **No plugin-specific placement.** `IngestSourceDAG` embeds `urn:noocodec:dag:normalize-csv` and `urn:noocodec:dag:normalize-json` exactly like any other child DAG.
 - **Scoped package exports.** Applications depend on plugin exports and DAG IRIs, not on plugin internals.
-- **Runnable browser assembly.** The Cartographer HMR page registers the plugin during each run, so docs and runtime use the same assembly pattern.
+- **Workflow assembly.** The Cartographer interactive host registers the plugin during each run, so docs and runtime use the same assembly pattern.
 
 ## Related Concepts
 

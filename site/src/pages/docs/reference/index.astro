@@ -29,8 +29,8 @@ const referenceTracks = [
   },
   {
     eyebrow: 'Visualization',
-    title: 'Graph rendering and control surfaces',
-    body: 'Review the API surface for the visualization package and the controls that sit around it.',
+    title: 'Graph rendering package and browser helpers',
+    body: 'Review the visualization APIs that emit Mermaid, JSON-LD, and Cytoscape data, plus the helpers used around those outputs.',
     href: SiteLinks.site('/docs/reference/viz')
   }
 ] as const;
@@ -50,15 +50,15 @@ const referenceLinks = [
     <article class="space-y-8">
       <UiPageHeader
         title="Reference"
-        description="Use the reference section when you need exported classes, interfaces, entities, and runtime contracts rather than conceptual or tutorial material."
+        description="Use the reference section when you need exported classes, interfaces, entities, and runtime contracts."
         crumbs={crumbs}
       />
 
       <section class="space-y-5">
         <UiSectionIntro
           eyebrow="Reference tracks"
-          title="API surface grouped by runtime responsibility"
-          description="The reference docs are broad. This index narrows them to the three areas users reach for most: runtime execution, deployment seams, and browser visualization."
+          title="Runtime contracts grouped by responsibility"
+          description="Start with runtime execution, deployment seams, or visualization APIs depending on which part of the workflow stack you are changing."
         />
         <UiMarketingCardGrid client:visible items={referenceTracks} linkCards />
       </section>
@@ -71,8 +71,8 @@ const referenceLinks = [
 
       <UiAsideCard title="Next">
         <div class="space-y-3 text-sm leading-6 text-slate-300">
-          <p>Use Guide when you need usage patterns or runtime behavior in prose.</p>
-          <p>Use Examples when you want to see the same contracts exercised in runnable graphs.</p>
+          <p>Guide explains usage patterns, runtime behavior, and host integration in prose.</p>
+          <p>Examples show the same contracts inside complete workflows.</p>
         </div>
       </UiAsideCard>
     </aside>

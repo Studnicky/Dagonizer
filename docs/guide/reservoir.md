@@ -7,7 +7,7 @@ seeAlso:
     description: 'batch-native mental model behind reservoir dispatch'
   - text: 'Example 13: Multi-Backend Roles'
     link: '../examples/13-multibackend'
-    description: 'Cartographer browser demo using reservoir scatter'
+    description: 'Cartographer shipment pipeline using reservoir scatter'
   - text: 'Reference: Nodes'
     link: '../reference/nodes'
     description: 'ScatterNode execution policy fields'
@@ -19,15 +19,26 @@ import { scatterExtensionsDAG } from '../exampleDags.ts';
 
 # Reservoir
 
-## What It Is
+## Reservoir Model
 
 A reservoir is scatter's keyed input-batching policy. Instead of dispatching one source item per body invocation, a reservoir buffers source items by key and releases bounded `Batch<N>` chunks when capacity, idle time, or source completion says it is time.
 
-Use it when the scatter body should process micro-batches: provider APIs that accept batches, grouped aggregation, streaming fan-out with bounded memory, or resumable work where reissuing already-acknowledged items is unacceptable.
+Reservoir mode handles scatter bodies that should process micro-batches: provider APIs that accept batches, grouped aggregation, streaming fan-out with bounded memory, or resumable work where reissuing already-acknowledged items is unacceptable.
 
-## How It Works
+## Buffered Scatter Flow
 
-The scatter buffers source items by key until a release condition is met: size, time, flush, or source completion. It then dispatches a batch for that key through the normal scatter body. Checkpoint metadata tracks released and pending work so resume can avoid duplicates.
+The supporting reservoir example exports the exact `ScatterNode` configuration. The JSON-LD shows `execution.mode: "reservoir"`; Mermaid shows that it is still one scatter placement in the DAG.
+
+<DagJsonMermaid :dag="scatterExtensionsDAG" title="scatter-extensions reservoir DAG" aria-label="Scatter extensions reservoir JSON-LD DAG beside Mermaid generated from it." />
+
+- [Plural-native execution](./plural-native) - batch-native mental model behind reservoir dispatch
+- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - Cartographer shipment pipeline using reservoir scatter
+- [Reference: Nodes](../reference/nodes) - ScatterNode execution policy fields
+- [Scatter Extensions](../examples/scatter-extensions) - focused reservoir, gather, and batch-native snippets
+
+## Release Contract
+
+The scatter buffers source items by key until a release condition is met: size, time, flush, or source completion. It then dispatches a batch for that key through the normal scatter body, while checkpoint metadata tracks released and pending work so resume can avoid duplicates.
 
 A **reservoir** is a scatter's keyed input-batching policy. Without it, a scatter
 dispatches one source item per body invocation (batch-size-1). With it, the
@@ -47,28 +58,15 @@ structurally forbids the combination. See
 [`ScatterNode` execution policy](/reference/nodes#execution-policy) for the
 full field reference.
 
-## Diagrams, Examples, and Outputs
-
-The supporting reservoir example exports the exact `ScatterNode` configuration. The JSON-LD shows `execution.mode: "reservoir"`; Mermaid shows that it is still one scatter placement in the DAG.
-
-<DagJsonMermaid :dag="scatterExtensionsDAG" title="scatter-extensions reservoir DAG" aria-label="Scatter extensions reservoir JSON-LD DAG beside Mermaid generated from it." />
-
-- [Plural-native execution](./plural-native) - batch-native mental model behind reservoir dispatch
-- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - Cartographer browser demo using reservoir scatter
-- [Reference: Nodes](../reference/nodes) - ScatterNode execution policy fields
-- [Scatter Extensions](../examples/scatter-extensions) - focused reservoir, gather, and batch-native snippets
-
-## What It Lets You Do
-
-### Use when
-
-Use a reservoir when scatter input is a stream but the body should process keyed micro-batches instead of one item at a time. This is for throughput, batching APIs, grouped aggregation, and resumable fan-out with bounded memory.
-
 ## Code Samples
 
 The source below is the reservoir placement from the same DAG rendered above.
 
-## Details for Nerds
+## Operational Uses
+
+A reservoir is the scatter mode for stream inputs whose body should process keyed micro-batches instead of one item at a time. It exists for throughput, batching APIs, grouped aggregation, and resumable fan-out with bounded memory.
+
+## Runtime Notes
 
 ### Configuration
 
@@ -106,15 +104,15 @@ inbox grouped by key, so no item is lost or double-folded. See
 A reservoir-configured scatter renders a distinct glyph. The Mermaid renderer
 labels it `▣ <keyField> ×<capacity>` and assigns a `reservoir` class; the
 Cytoscape renderer adds a `dag-reservoir` class and a `reservoir` data field. A
-application animation layer drives the live per-key fill from observer buffer-size
+The runtime-view animation layer drives the live per-key fill from observer buffer-size
 deltas. See [visualization](./visualization).
 
 ## Related Concepts
 
 - [Plural-native execution](./plural-native) - batch-native mental model behind reservoir dispatch
-- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - Cartographer browser demo using reservoir scatter
+- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - Cartographer shipment pipeline using reservoir scatter
 - [Reference: Nodes](../reference/nodes) - ScatterNode execution policy fields
 - [Scatter Extensions](../examples/scatter-extensions)
 - [Example 17: Async Scatter Source](../examples/17-scatter-async-source) shows the source side of streaming scatter.
 - [Example 20: Streaming Execution](../examples/20-streaming) shows live execution observation.
-- [The Cartographer](../examples/the-cartographer) is the runnable data-pipeline demo for streaming fan-out.
+- [The Cartographer](../examples/the-cartographer) is the data-pipeline workflow for streaming fan-out.

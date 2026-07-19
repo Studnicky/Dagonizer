@@ -4,16 +4,16 @@ description: 'One shared RoutingCallModelNode and one shared StreamChannel<Route
 seeAlso:
   - text: 'Guide: ReAct agent § Routing concurrent streams'
     link: '../guide/react-agent#routing-concurrent-streams-the-sink-is-a-dag'
-    description: 'Full guide: RoutedChatStreamChunk, routeKey(state), and the routing DAG'
+    description: 'RoutedChatStreamChunk, routeKey(state), and the sink-routing DAG'
   - text: 'Streaming Producers'
     link: '../guide/streaming-producers'
-    description: 'DagStreamProducer, StreamChannel.driven, and the scatter-source idiom this example reuses'
+    description: 'StreamChannel-driven routing and the scatter-source path behind concurrent stream demultiplexing'
   - text: 'Example: ReAct agent memory'
     link: './react-agent-memory'
-    description: 'the agent loop, ScriptedAdapter, and node classes this example reuses unchanged'
+    description: 'the same agent loop, ScriptedAdapter, and trace-capable node set'
   - text: 'Example 29: Agent DAG'
     link: './29-agent-dag'
-    description: 'the 8-node JSON-LD agent loop this example runs'
+    description: 'the 8-node JSON-LD agent loop feeding the routed sink'
 ---
 
 <script setup lang="ts">
@@ -22,19 +22,13 @@ import { reactAgentDAG, reactRoutingDAG } from '../exampleDags.ts';
 
 # ReAct Agent Routing
 
-## What It Is
+## Execution Stream Surface
 
 ReAct Agent Routing demultiplexes concurrent token streams through a DAG. One shared `RoutingCallModelNode` and one shared `StreamChannel<RoutedChatStreamChunkType>` serve two conversations; a routing DAG scatters over the channel and writes each chunk to the transcript keyed by `routeKey`.
 
 The sink is not a passive callback map. It is a DAG source, so routing, buffering, and per-conversation transcript writes stay inside the same graph machinery used elsewhere.
 
-## How It Works
-
-The shared model node writes routed chunks into a `StreamChannel`. The routing DAG consumes that channel as a scatter source, reads each chunk's `routeKey`, and appends the delta to the matching transcript. The channel is drained before the conversations begin, so concurrent producers do not deadlock on bounded buffer backpressure.
-
-Each chunk carries its route key and source metadata. The routing DAG does not trust timing or ordering to separate conversations; it routes by payload.
-
-## Diagrams, Examples, and Outputs
+## Channel and Producer Flows
 
 ### DAG registration and diagram
 
@@ -72,25 +66,19 @@ Lesson: one shared StreamChannel, fed by one shared RoutingCallModelNode instanc
         — the sink itself is a DAG that routes by payload, not a passive buffer.
 ```
 
-`ScriptedAdapter`'s final answer text is prompt-INSENSITIVE (a fixed tool
+`ScriptedAdapter`'s final answer text is prompt-insensitive (a fixed tool
 observation), so c1 and c2's printed transcripts are legitimately identical
-strings — that alone is not proof of correct routing. The actual proof is at
-the chunk level (see the test suite): every one of the 26 routed chunks is
+strings. The routing check is at the chunk level (see the test suite): every one of the 26 routed chunks is
 owned by exactly one `routeKey`, and each conversation's recorded transcript
 equals the exact concatenation of only its own chunks, with zero loss and
 zero cross-contamination under concurrent execution on a single shared node
 instance and a single shared sink.
 
-## What It Lets You Do
+## Push-to-Pull Bridge Model
 
-ReAct agent routing lets applications demultiplex concurrent model token streams through a DAG instead of bespoke callback maps. Use it when one shared model node and one shared sink serve multiple conversations that must remain separated by route key.
+The shared model node writes routed chunks into a `StreamChannel`. The routing DAG consumes that channel as a scatter source, reads each chunk's `routeKey`, and appends the delta to the matching transcript. The channel is drained before the conversations begin, so concurrent producers do not deadlock on bounded buffer backpressure.
 
-Reuses `AgentState` and the eight agent-loop node subclasses from
-[Example: ReAct agent memory](./react-agent-memory) unchanged, and adds one
-subclassed node (`RoutingCallModelNode`, overriding `routeKey(state)`) plus a
-second, small DAG that scatters over a shared `StreamChannel` to demultiplex
-two conversations running concurrently against ONE shared node instance and
-ONE shared sink.
+Each chunk carries its route key and source metadata. The routing DAG does not trust timing or ordering to separate conversations; it routes by payload.
 
 ## Code Samples
 
@@ -104,7 +92,18 @@ The DAG module defines `RoutingCallModelNode`, the shared `TranscriptStore`, `Ro
 
 <<< @/../examples/dags/react-agent-routing.ts
 
-## Details for Nerds
+## Operational Uses
+
+ReAct agent routing lets hosts demultiplex concurrent model token streams through a DAG instead of bespoke callback maps. It fits one shared model node and one shared sink serving multiple conversations that must remain separated by route key.
+
+The example reuses `AgentState` and the eight agent-loop node subclasses from
+[Example: ReAct agent memory](./react-agent-memory) unchanged, and adds one
+subclassed node (`RoutingCallModelNode`, overriding `routeKey(state)`) plus a
+second, small DAG that scatters over a shared `StreamChannel` to demultiplex
+two conversations running concurrently against ONE shared node instance and
+ONE shared sink.
+
+## Runtime Notes
 
 - **One node instance, many concurrent runs.** `CallModelNode.execute` wraps the shared sink per execution so route metadata is stamped per conversation.
 - **The sink is itself a DAG.** `RoutedChatStreamChunkType` is a JSON
@@ -113,7 +112,7 @@ The DAG module defines `RoutingCallModelNode`, the shared `TranscriptStore`, `Ro
   The scatter's body (`RouteChunkNode`) classifies each item by its own
   `routeKey` field and routes it into a per-conversation destination
   (`TranscriptStore.append`) — this is the same `DagStreamProducer` →
-  `StreamChannel` → outer-scatter idiom used everywhere else in the docs, fed
+  `StreamChannel` → outer-scatter idiom used by the other streaming DAGs in the repository, fed
   by a live concurrently-written sink instead of a single producer.
 - **Deadlock-free lifecycle ordering.** The routing DAG's drain is started
   (not awaited) BEFORE the two conversations run, so the channel's bounded
@@ -153,7 +152,7 @@ Lifecycle, in order:
 
 ## Related Concepts
 
-- [Guide: ReAct agent § Routing concurrent streams](../guide/react-agent#routing-concurrent-streams-the-sink-is-a-dag) - Full guide: RoutedChatStreamChunk, routeKey(state), and the routing DAG
-- [Streaming Producers](../guide/streaming-producers) - DagStreamProducer, StreamChannel.driven, and the scatter-source idiom this example reuses
-- [Example: ReAct agent memory](./react-agent-memory) - the agent loop, ScriptedAdapter, and node classes this example reuses unchanged
-- [Example 29: Agent DAG](./29-agent-dag) - the 8-node JSON-LD agent loop this example runs
+- [Guide: ReAct agent § Routing concurrent streams](../guide/react-agent#routing-concurrent-streams-the-sink-is-a-dag) - RoutedChatStreamChunk, routeKey(state), and the sink-routing DAG
+- [Streaming Producers](../guide/streaming-producers) - StreamChannel-driven routing and the scatter-source path behind concurrent stream demultiplexing
+- [Example: ReAct agent memory](./react-agent-memory) - the same agent loop, ScriptedAdapter, and trace-capable node set
+- [Example 29: Agent DAG](./29-agent-dag) - the 8-node JSON-LD agent loop feeding the routed sink

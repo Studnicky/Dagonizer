@@ -160,6 +160,7 @@ async function loadProviderRuntime(): Promise<ProviderRuntimeModuleType> {
  * ApiKeyStore: per-provider API key persistence in localStorage.
  */
 export class ApiKeyStore {
+  static readonly #STORAGE_KEY = 'dagonizer-api-keys';
   static readonly #VALID_ID_SET: ReadonlySet<string> = new Set<string>(['gemini-nano', 'gemini-api', 'web-llm', 'groq', 'cerebras', 'mistral', 'openrouter', 'anthropic', 'ollama']);
 
   /** Returns true when `value` is a valid ProviderId string. */
@@ -170,17 +171,30 @@ export class ApiKeyStore {
   /** Load the per-provider API key map from localStorage. */
   static load(): Partial<Record<ProviderId, string>> {
     if (typeof localStorage === 'undefined') return {};
-    const raw = localStorage.getItem('dagonizer-api-keys');
+    const raw = localStorage.getItem(ApiKeyStore.#STORAGE_KEY);
     if (raw === null) return {};
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        ApiKeyStore.clear();
+        return {};
+      }
       const result: Partial<Record<ProviderId, string>> = {};
+      let normalized = false;
       for (const [key, val] of Object.entries(parsed)) {
-        if (typeof val === 'string' && ApiKeyStore.isProviderId(key)) result[key] = val;
+        if (typeof val === 'string' && ApiKeyStore.isProviderId(key)) {
+          result[key] = val;
+          continue;
+        }
+        normalized = true;
+      }
+      if (normalized) {
+        if (Object.keys(result).length === 0) ApiKeyStore.clear();
+        else ApiKeyStore.save(result);
       }
       return result;
     } catch {
+      ApiKeyStore.clear();
       return {};
     }
   }
@@ -188,7 +202,12 @@ export class ApiKeyStore {
   /** Persist the per-provider API key map to localStorage. */
   static save(keys: Partial<Record<ProviderId, string>>): void {
     if (typeof localStorage === 'undefined') return;
-    localStorage.setItem('dagonizer-api-keys', JSON.stringify(keys));
+    localStorage.setItem(ApiKeyStore.#STORAGE_KEY, JSON.stringify(keys));
+  }
+
+  static clear(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(ApiKeyStore.#STORAGE_KEY);
   }
 }
 
@@ -208,15 +227,27 @@ export class PreferredModels {
     if (raw === null) return {};
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        PreferredModels.clear();
+        return {};
+      }
       const result: Partial<Record<ProviderId, string>> = {};
+      let normalized = false;
       for (const [key, val] of Object.entries(parsed)) {
         if (typeof val === 'string' && ApiKeyStore.isProviderId(key) && val.trim().length > 0) {
-          result[key] = val.trim();
+          const trimmed = val.trim();
+          result[key] = trimmed;
+          if (trimmed !== val) normalized = true;
+          continue;
         }
+        normalized = true;
+      }
+      if (normalized) {
+        PreferredModels.save(result);
       }
       return result;
     } catch {
+      PreferredModels.clear();
       return {};
     }
   }
@@ -270,6 +301,7 @@ export class ActiveBackendStore {
     if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem(ActiveBackendStore.#STORAGE_KEY);
     if (raw !== null && ApiKeyStore.isProviderId(raw)) return raw;
+    if (raw !== null) ActiveBackendStore.clear();
     return null;
   }
 

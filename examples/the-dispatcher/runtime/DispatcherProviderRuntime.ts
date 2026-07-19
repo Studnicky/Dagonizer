@@ -1,4 +1,5 @@
 import {
+  ActiveBackendStore,
   ApiKeyStore,
   BackendMatrix,
   BaseLlmClient,
@@ -8,6 +9,7 @@ import {
 } from '../../the-archivist/providers/index.ts';
 
 interface DispatcherProviderRuntimeModule {
+  readonly ActiveBackendStore: typeof ActiveBackendStore;
   readonly ApiKeyStore: typeof ApiKeyStore;
   readonly BackendMatrix: typeof BackendMatrix;
   readonly BaseLlmClient: typeof BaseLlmClient;
@@ -18,6 +20,7 @@ interface DispatcherProviderRuntimeModule {
 
 export class DispatcherProviderRuntime {
   static readonly #modulePromise: Promise<DispatcherProviderRuntimeModule> = Promise.resolve({
+    ActiveBackendStore,
     ApiKeyStore,
     BackendMatrix,
     BaseLlmClient,

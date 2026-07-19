@@ -15,13 +15,17 @@ interface Props {
   readonly section: string;
 }
 
+const SECTION_LABELS: Readonly<Record<string, string>> = {
+  experiments: 'Runtime Overviews'
+};
+
 const { section } = Astro.props;
 const entries = (await SiteDocs.catalog()).filter((entry) => entry.section === section);
 if (entries.length === 0) {
   throw new Error(`Documentation section has no corpus entries: ${section}`);
 }
 
-const pageTitle = section.replace(/^\w/, (character) => character.toUpperCase());
+const pageTitle = SECTION_LABELS[section] ?? section.replace(/^\w/, (character) => character.toUpperCase());
 const crumbs = [
   { href: SiteLinks.site('/docs'), label: 'Docs' },
   { href: SiteLinks.site(SiteLinks.route(section)), label: pageTitle }
@@ -35,12 +39,12 @@ const crumbs = [
   sections={[]}
   crumbs={crumbs}
 >
-  <div class="grid gap-4 md:grid-cols-2">
+  <div class="grid gap-6 md:grid-cols-2">
     {
       entries.map((entry) => (
         <a
           href={SiteLinks.site(SiteLinks.route(entry.slug))}
-          class="rounded-2xl border border-white/10 bg-slate-950/55 p-5 transition hover:border-cyan-300/40 hover:bg-slate-900/75"
+          class="hex-tile bg-slate-950/55 p-7 transition hover:border-cyan-300/40 hover:bg-slate-900/75"
         >
           <h2 class="text-lg font-semibold text-white">{entry.title}</h2>
           <p class="mt-2 text-sm leading-6 text-slate-300">{entry.description}</p>

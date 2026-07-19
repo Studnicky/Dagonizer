@@ -182,11 +182,11 @@ async function copySource(value: string): Promise<void> {
             <div class="space-y-4">
               <div
                 ref="renderContainer"
-                class="overflow-auto rounded-2xl border border-white/8 bg-slate-950/88 p-4"
+                class="hex-tile overflow-auto bg-slate-950/88 p-5"
                 v-html="mermaidSvg"
               />
               <p v-if="!renderReady" class="text-sm text-slate-400">Loading renderer…</p>
-              <p v-if="renderError" class="rounded-xl border border-rose-400/20 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
+              <p v-if="renderError" class="hex-chrome border-rose-400/20 bg-rose-400/8 px-5 py-3.5 text-sm text-rose-100">
                 {{ renderError }}
               </p>
             </div>
@@ -199,7 +199,7 @@ async function copySource(value: string): Promise<void> {
               <div class="flex justify-end">
                 <Button label="Copy source" variant="outlined" severity="contrast" @click="copySource(mermaidSource)" />
               </div>
-              <pre class="overflow-auto rounded-2xl border border-white/8 bg-slate-950/88 p-4 text-xs leading-6 text-slate-200"><code>{{ mermaidSource }}</code></pre>
+              <pre class="hex-tile overflow-auto bg-slate-950/88 p-5 text-xs leading-6 text-slate-200"><code>{{ mermaidSource }}</code></pre>
             </div>
           </UiPanelShell>
         </TabPanel>
@@ -210,7 +210,7 @@ async function copySource(value: string): Promise<void> {
               <div class="flex justify-end">
                 <Button label="Copy JSON-LD" variant="outlined" severity="contrast" @click="copySource(jsonLdSource)" />
               </div>
-              <pre class="overflow-auto rounded-2xl border border-white/8 bg-slate-950/88 p-4 text-xs leading-6 text-slate-200"><code>{{ jsonLdSource }}</code></pre>
+              <pre class="hex-tile overflow-auto bg-slate-950/88 p-5 text-xs leading-6 text-slate-200"><code>{{ jsonLdSource }}</code></pre>
             </div>
           </UiPanelShell>
         </TabPanel>

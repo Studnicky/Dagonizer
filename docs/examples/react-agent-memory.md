@@ -4,16 +4,16 @@ description: 'Stream a ReAct agent loop reasoning trace via AgentTraceProducer, 
 seeAlso:
   - text: 'Guide: ReAct agent'
     link: '../guide/react-agent'
-    description: 'Full guide: 8-node loop as ReAct, streaming, live tokens, provenance recall'
+    description: '8-node loop as ReAct, streamed traces, live tokens, and provenance recall'
   - text: 'Streaming Producers'
     link: '../guide/streaming-producers'
-    description: 'DagStreamProducer, StreamChannel.driven, and the scatter-source idiom this example reuses'
+    description: 'DagStreamProducer, StreamChannel.driven, and the scatter-source path behind the trace recorder'
   - text: 'Example 29: Agent DAG'
     link: './29-agent-dag'
-    description: 'the 8-node JSON-LD agent loop whose trace this example streams'
+    description: 'the 8-node JSON-LD agent loop that emits the reasoning trace'
   - text: 'The Archivist'
     link: './the-archivist'
-    description: 'production use of the same reasoning-provenance + recall pattern'
+    description: 'the same provenance-backed recall pattern in a full workflow'
 ---
 
 <script setup lang="ts">
@@ -22,23 +22,17 @@ import { reactAgentDAG, reactTraceDAG } from '../exampleDags.ts';
 
 # ReAct Agent Memory
 
-## What It Is
+## Shared Memory Surface
 
 ReAct Agent Memory records a reasoning trace while an agent loop runs, then recalls that trace on a later run. The example streams model tokens, maps selected node results into `thought`, `action`, `observation`, and `final` steps, records those steps into an RDF store, and recalls the prior chain through provenance traversal.
 
-This is the reusable memory pattern behind applications that need "what happened last time?" context without hiding the agent loop inside callbacks.
+This is the reusable memory pattern behind teams that need "what happened last time?" context without hiding the agent loop inside callbacks or transport glue.
 
-## How It Works
-
-The inner agent DAG returns an `Execution` async iterable. `ReActTraceProducer` maps selected node results into reasoning trace items, `StreamChannel.driven(...)` exposes those items as a scatter source, and the outer DAG records each item into an RDF store. A later run traverses provenance edges to recall the prior chain.
-
-The agent loop and the memory writer are separate DAGs. The memory DAG drains the agent execution stream, so recording provenance is part of the graph, not an after-the-fact log scrape.
-
-## Diagrams, Examples, and Outputs
+## Semantic Recall Flow
 
 ### DAG registration and diagram
 
-The runnable memory example registers two DAGs: the canonical ReAct agent loop and the outer trace-recording DAG that drains the agent loop through `ReActTraceProducer`.
+The memory flow registers two DAGs: the canonical ReAct agent loop and the outer trace-recording DAG that drains the agent loop through `ReActTraceProducer`.
 
 <DagJsonMermaid :dag="reactAgentDAG" title="ReAct agent loop DAG" aria-label="ReAct agent loop JSON-LD DAG beside Mermaid generated from it." />
 
@@ -81,14 +75,11 @@ recalled hint shows `ReActRecall.hint` walking run-1's `wasInformedBy` chain
 run-2 seeds as a leading system message — the same production pattern
 [the Archivist](./the-archivist) uses for cross-run recall.
 
-## What It Lets You Do
+## Streaming and Recall
 
-ReAct agent memory lets applications stream an agent's reasoning trace into durable graph memory while the agent runs. Use it when thoughts, actions, observations, final answers, and provenance need to become queryable state for later runs.
+The inner agent DAG returns an `Execution` async iterable. `ReActTraceProducer` maps selected node results into reasoning trace items, `StreamChannel.driven(...)` exposes those items as a scatter source, and the outer DAG records each item into an RDF store. A later run traverses provenance edges to recall the prior chain.
 
-Runs the canonical 8-node [agent DAG](./29-agent-dag) and streams the
-agent's ReAct reasoning trace through a second, outer DAG. The outer DAG records
-each step into a shared `RdfStore` with provenance and recalls a prior run's
-reasoning via graph traversal to inform the next.
+The agent loop and the memory writer are separate DAGs. The memory DAG drains the agent execution stream, so recording provenance is part of the graph, not an after-the-fact log scrape.
 
 ## Code Samples
 
@@ -102,7 +93,16 @@ The DAG module contains the canonical agent loop, the trace-memory DAG, the dete
 
 <<< @/../examples/dags/react-agent-memory.ts
 
-## Details for Nerds
+## Operational Uses
+
+ReAct agent memory lets hosts stream an agent's reasoning trace into durable graph memory while the agent runs. It fits systems where thoughts, actions, observations, final answers, and provenance need to become queryable state for later runs.
+
+Runs the canonical 8-node [agent DAG](./29-agent-dag) and streams the
+agent's ReAct reasoning trace through a second, outer DAG. The outer DAG records
+each step into a shared `RdfStore` with provenance and recalls a prior run's
+reasoning via graph traversal to inform the next.
+
+## Runtime Notes
 
 - **Organizing a reasoning trace as a stream.** `ReActTraceProducer` maps selected inner DAG node results into ordered `ReasoningTraceItemType` values.
 - **Reusing the streaming-producer framework, not a new mechanism.**
@@ -143,7 +143,7 @@ call is never awaited or drained directly.
 
 ## Related Concepts
 
-- [Guide: ReAct agent](../guide/react-agent) - Full guide: 8-node loop as ReAct, streaming, live tokens, provenance recall
-- [Streaming Producers](../guide/streaming-producers) - DagStreamProducer, StreamChannel.driven, and the scatter-source idiom this example reuses
-- [Example 29: Agent DAG](./29-agent-dag) - the 8-node JSON-LD agent loop whose trace this example streams
-- [The Archivist](./the-archivist) - production use of the same reasoning-provenance + recall pattern
+- [Guide: ReAct agent](../guide/react-agent) - 8-node loop as ReAct, streamed traces, live tokens, and provenance recall
+- [Streaming Producers](../guide/streaming-producers) - DagStreamProducer, StreamChannel.driven, and the scatter-source path behind the trace recorder
+- [Example 29: Agent DAG](./29-agent-dag) - the 8-node JSON-LD agent loop that emits the reasoning trace
+- [The Archivist](./the-archivist) - the same provenance-backed recall pattern in a full workflow

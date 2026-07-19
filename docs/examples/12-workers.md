@@ -25,41 +25,37 @@ import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/St
 
 # Example 12: Worker Containers
 
-## What It Is
+## Container Role Surface
 
-Worker Containers let an application run a DAG body outside the main execution context while keeping the parent graph unchanged. The Cartographer binds a scatter body to a browser worker pool; the Node companion uses the same container seam for worker-thread style deployments.
+Worker Containers let a host run a DAG body outside the main execution context while keeping the parent graph unchanged. The Cartographer binds a scatter body to a browser worker pool; the Node companion uses the same container seam for worker-thread style deployments.
 
 The important contract is the role binding: the DAG declares a logical container role, and the host decides which `DagContainerInterface` implementation satisfies that role.
 
-## How It Works
-
-The parent placement declares a logical container role. The host binds that role to a `DagContainerInterface` implementation, and the worker loads a registry module that reconstructs the DAG bundle and services inside the isolated context. The dispatcher sends clone tasks to the container, receives outcomes, and applies the same gather and reducer semantics it uses in-process.
-
-This keeps worker adoption incremental. Application authors do not fork their DAG into "local" and "worker" versions; they bind a role when isolation or parallel throughput is needed.
-
-## Diagrams, Examples, and Outputs
+## Worker-backed Scatter Flow
 
 ### DAG registration and diagram
 
-The parent DAG declares the container-bound scatter; the worker DAG is the body registered inside the worker-host registry. [The Cartographer](./the-cartographer) is the in-browser owner for this principle through its container-role stream processing path.
+The parent DAG declares the container-bound scatter; the worker DAG is the body registered inside the worker-host registry. [The Cartographer](./the-cartographer) applies this directly through its container-role stream processing path.
 
 <DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
 
 <DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Stream-event worker body JSON-LD DAG beside Mermaid generated from it." />
 
-This example runs a scatter-dag-body placement over a real browser `WebWorkerContainer` pool from `@studnicky/dagonizer-executor-web`. Each scatter clone's sub-DAG executes in a worker; the results are gathered back into the parent state identically to the in-process path.
+The Cartographer runtime runs a scatter-dag-body placement over a real `WebWorkerContainer` pool from `@studnicky/dagonizer-executor-web`. Each scatter clone's sub-DAG executes in a worker; the results are gathered back into the parent state identically to the in-process path.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Cartographer](./the-cartographer), click **Run**, and watch `process-stream` execute through the worker-backed body DAG.
+Visit [The Cartographer](./the-cartographer), click **Run**, and watch `process-stream` execute through the worker-backed body DAG.
 
-## What It Lets You Do
+## Role Binding Model
 
-Worker containers let applications execute a DAG body in an isolated worker pool while preserving the same parent DAG, state mapping, gather, and lifecycle contracts. Use this when a browser or Node host needs CPU isolation, parallel throughput, crash containment, or a deployment seam for clone-level work.
+The parent placement declares a logical container role. The host binds that role to a `DagContainerInterface` implementation, and the worker loads a registry module that reconstructs the DAG bundle and services inside the isolated context. The dispatcher sends clone tasks to the container, receives outcomes, and applies the same gather and reducer semantics it uses in-process.
+
+This keeps worker adoption incremental. Application authors do not fork their DAG into "local" and "worker" versions; they bind a role when isolation or parallel throughput is needed.
 
 ## Code Samples
 
@@ -75,7 +71,7 @@ The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, t
 
 #### Container and dispatcher setup
 
-The browser runner constructs registry-backed worker containers and binds them by role. `process-stream` uses `cpu`; the same page also binds `io` for the summary embedded DAG.
+The Cartographer runtime constructs registry-backed worker containers and binds them by role. `process-stream` uses `cpu`; the same runtime also binds `io` for the summary embedded DAG.
 
 <<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-containers
 
@@ -85,7 +81,7 @@ Web workers load a separate module — the main thread's in-memory registry is n
 
 <<< @/../examples/the-cartographer/app/cartographerWorkerRegistry.ts#cartographer-worker-registry
 
-Vite chunks the worker entry for the docs site; the runner supplies the module URL to `WebWorkerContainer`.
+The site build emits a separate worker chunk; the runner supplies that module URL to `WebWorkerContainer`.
 
 ### Key APIs
 
@@ -97,11 +93,15 @@ Vite chunks the worker entry for the docs site; the runner supplies the module U
 | `RegistryBundleInterface` | `@studnicky/dagonizer/contracts` | Return type of `instantiate`: bundle, services, version, restoreState |
 | `DagonizerOptionsType.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
 
-## Details for Nerds
+## Operational Uses
+
+Worker containers let hosts execute a DAG body in an isolated worker pool while preserving the same parent DAG, state mapping, gather, and lifecycle contracts. They fit browser or Node hosts that need CPU isolation, parallel throughput, crash containment, or a deployment seam for clone-level work.
+
+## Runtime Notes
 
 ### Other Node.js backends
 
-`@studnicky/dagonizer-executor-node` exports `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node deployments. The repository keeps `examples/12-workers.ts` as the Node companion for that backend family; the browser runnable for this page is the Cartographer code above.
+`@studnicky/dagonizer-executor-node` exports `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node deployments. The same role-binding model also has a Node companion in `examples/12-workers.ts`; the Cartographer runtime above is the runtime companion for that backend family.
 
 - **`container` key on a scatter placement.** A `ScatterNode` with a dag body and `container: "cpu"` delegates each clone's sub-DAG to the bound `WebWorkerContainer`. Node-body scatter (no `dag` key in `body`) is not containable; validation rejects `container` on a node body.
 - **`containers` option.** `new Dagonizer({ containers: { cpu: workerContainer } })` binds the `"cpu"` role. Any scatter or embedded-DAG placement declaring `container: "cpu"` uses this backend.

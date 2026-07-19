@@ -34,6 +34,9 @@ export class MobileDetection {
   static readOverride(): 'mobile' | 'desktop' | null {
     if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem('dagonizer-device-override');
+    if (raw !== null && raw !== 'mobile' && raw !== 'desktop') {
+      localStorage.removeItem('dagonizer-device-override');
+    }
     return raw === 'mobile' || raw === 'desktop' ? raw : null;
   }
 }

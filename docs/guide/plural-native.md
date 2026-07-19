@@ -19,38 +19,32 @@ import { reservoirDag as pluralNativeDag } from '../../examples/dags/plural-nati
 
 # Plural-Native Execution
 
-## What It Is
+## Batch Execution Model
 
 Dagonizer moves work through a DAG as batches. A single item is just a batch of one; branching means partitioning a batch by output port; joins mean merging pending batches at the same placement. Scatter, gather, retry, checkpoint, and reservoir behavior all build on that one contract.
 
-This page is the mental model for execution. Once you understand that every node receives `Batch<TState>` and returns routed sub-batches, the rest of the engine stops looking like special cases.
+This is the execution model behind the rest of the engine. Once every node is understood as receiving `Batch<TState>` and returning routed sub-batches, scatter, gather, retry, and reservoir behavior stop looking like separate mechanisms.
 
-## How It Works
+## Reservoir-backed Example Flow
 
-Every node receives a `Batch<TState>` and returns routed batches partitioned by output. A single item is represented as a batch of one. Scatter clones, reservoir batches, gather folds, checkpoint progress, and retry semantics all build on that plural-native contract.
-
-The work-set scheduler keeps a `Map<placement, Batch>`. It fires the lowest-rank placement with pending items, merges returned sub-batches into downstream placements, and repeats until the graph drains or the lifecycle exits. A size-1 run follows the same path as a size-N run.
-
-## Diagrams, Examples, and Outputs
-
-The focused runnable module exports a reservoir-backed scatter DAG. The JSON-LD shows the `ScatterNode` placement and reservoir policy; the Mermaid view shows that the topology is still a simple scatter-to-terminal graph.
+The focused example module exports a reservoir-backed scatter DAG. The JSON-LD shows the `ScatterNode` placement and reservoir policy; the Mermaid view shows that the topology is still a simple scatter-to-terminal graph.
 
 <<< @/../examples/dags/plural-native.ts#reservoir-scatter
 
 <DagJsonMermaid :dag="pluralNativeDag" title="plural-native reservoir scatter DAG" aria-label="Plural-native reservoir scatter JSON-LD DAG beside Mermaid generated from it." />
 
-For larger runnable contexts:
+For larger contexts:
 
 - [Scatter Extensions](../examples/scatter-extensions) shows batch-native nodes, custom gather, direct node calls, and reservoir authoring.
 - [Example 14: Gather Strategies](../examples/14-gather-strategies) shows gather behavior against real Cartographer DAGs.
 - [Example 16: Scatter Resume](../examples/16-scatter-resume) shows durable progress over scatter batches.
 - [Reservoir](./reservoir) explains keyed input batching for scatter sources.
 
-## What It Lets You Do
+## Work-set Scheduler
 
-### Use when
+Every node receives a `Batch<TState>` and returns routed batches partitioned by output. A single item is represented as a batch of one. Scatter clones, reservoir batches, gather folds, checkpoint progress, and retry semantics all build on that plural-native contract.
 
-Use this guide when reasoning about how Dagonizer executes batches, scatter worksets, and reservoir releases. The mental model is useful before writing custom nodes, gather strategies, outcome reducers, or migration code.
+The work-set scheduler keeps a `Map<placement, Batch>`. It fires the lowest-rank placement with pending items, merges returned sub-batches into downstream placements, and repeats until the graph drains or the lifecycle exits. A size-1 run follows the same path as a size-N run.
 
 ## Code Samples
 
@@ -70,7 +64,11 @@ node's items **partitioned** across its output ports.
 - micro-batching — a node that emits batches instead of items;
 - the [reservoir](#the-reservoir) — a node that partitions *over time*, buffering until a threshold.
 
-## Details for Nerds
+## Operational Uses
+
+This execution model matters before writing custom nodes, gather strategies, outcome reducers, or migration code, because each of those contracts is defined in terms of batches and routed sub-batches.
+
+## Runtime Notes
 
 ### The node taxonomy
 
@@ -85,7 +83,7 @@ how you want to write the work, not by what the engine does:
 `MonadicNode` is the minimum viable node — it supplies `timeout` / `validate` / `destroy` defaults and leaves `name`, `outputs`, `outputSchema`, and `execute` abstract. Concrete nodes must implement all four. `outputSchema` is an abstract getter (`abstract get outputSchema(): Record<TOutput, SchemaObjectType>`) that declares a per-port JSON Schema fragment describing the state delta the node writes when routing to that port; the compiler enforces its presence on every subclass.
 A single item is still a batch of one; per-item routing is a local loop that builds a `RoutedBatchType`.
 
-The Cartographer's `RouteGeoNode` is the runnable example: it receives a whole batch, routes each item to `has-geo` or `needs-geo`, and returns a routed batch map for the scheduler to merge into downstream placements.
+The Cartographer's `RouteGeoNode` shows the pattern directly: it receives a whole batch, routes each item to `has-geo` or `needs-geo`, and returns a routed batch map for the scheduler to merge into downstream placements.
 
 <<< @/../examples/the-cartographer/nodes/routeGeo.ts#route-geo-node
 

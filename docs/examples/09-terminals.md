@@ -19,23 +19,17 @@ import { gdprComplianceDAG, supportDispatcherDAG } from '../exampleDags.ts';
 
 # Example 09: Terminal Nodes
 
-## What It Is
+## Terminal Outcome Surface
 
 Terminal nodes are explicit graph endpoints. They tell Dagonizer whether a branch completes or fails, and they make "the flow stops here" visible in JSON-LD, Mermaid, lifecycle events, and embedded-DAG parent routing.
 
-The runnable examples show the two shapes application code usually needs: a shared successful endpoint in The Dispatcher, and completed/failed child endpoints in The Cartographer's GDPR compliance sub-DAG.
+The examples below show the two endpoint shapes hosts usually need: a shared successful endpoint in The Dispatcher, and completed/failed child endpoints in The Cartographer's GDPR compliance sub-DAG.
 
-## How It Works
-
-A terminal placement does not execute user code. It declares the endpoint reached by a named route and sets the lifecycle outcome for that branch. When a parent embeds a child DAG, the child's terminal outcome becomes the parent embedded placement's `success` or `error` output.
-
-That means application code should route to terminals deliberately. A missing route is a graph bug; a terminal route is a documented outcome.
-
-## Diagrams, Examples, and Outputs
+## Completed and Failed Endpoints
 
 ### DAG registration and diagram
 
-`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Every flow branch must end at a named `TerminalNode`. The runnable examples show the two common patterns: shared completed terminals in a parent flow, and completed/failed terminals inside a reusable sub-DAG whose parent routes on `success` or `error`.
+`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Every flow branch must end at a named `TerminalNode`. The diagrams below show the two common patterns: shared completed terminals in a parent flow, and completed/failed terminals inside a reusable sub-DAG whose parent routes on `success` or `error`.
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher" aria-label="The Dispatcher support JSON-LD DAG beside Mermaid generated from it." />
 
@@ -44,14 +38,16 @@ That means application code should route to terminals deliberately. A missing ro
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Dispatcher](./the-dispatcher) for shared completed terminals and [The Cartographer](./the-cartographer) for child DAG success/error terminal outcomes.
 
-Terminal nodes let applications name every graph endpoint and attach an explicit lifecycle outcome to it. They belong on completed, failed, rejected, or declined paths that must be visible in the DAG instead of implied by "no next node."
+## Outcome Propagation Model
 
-For application builders, terminals make support escalation, policy rejection, compliance failure, and normal completion all observable without special-case code at the runner boundary.
+A terminal placement does not execute user code. It declares the endpoint reached by a named route and sets the lifecycle outcome for that branch. When a parent embeds a child DAG, the child's terminal outcome becomes the parent embedded placement's `success` or `error` output.
+
+That means workflow authors should route to terminals deliberately. A missing route is a graph bug; a terminal route is a documented outcome.
 
 ## Code Samples
 
@@ -75,7 +71,13 @@ The GDPR sub-DAG owns its internal terminal semantics: `compliant` means the chi
 
 Each per-event pipeline routes an embedded child DAG's `success` to `done` and `error` to `rejected`; `rejected` is a failed terminal. The parent does not inspect child internals.
 
-## Details for Nerds
+## Operational Uses
+
+Terminal nodes let teams name every graph endpoint and attach an explicit lifecycle outcome to it. They belong on completed, failed, rejected, or declined paths that must be visible in the DAG instead of implied by "no next node."
+
+For workflow builders, terminals make support escalation, policy rejection, compliance failure, and normal completion all observable without special-case code at the runner boundary.
+
+## Runtime Notes
 
 - **Shared completed terminal.** The Dispatcher routes routine, escalated, and off-topic support paths to one `end` terminal with `outcome: 'completed'`.
 - **Explicit failed terminal.** The Cartographer `gdpr-compliance` sub-DAG routes `redact-pii` to either `compliant` (`completed`) or `violation` (`failed`).

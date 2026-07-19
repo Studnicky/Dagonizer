@@ -1,6 +1,6 @@
 ---
 title: 'Example 30: Progress Events'
-description: 'The Dispatcher browser demo turns lifecycle hooks into trace/progress events and renders them alongside the live DAG.'
+description: 'The Dispatcher host turns lifecycle hooks into trace/progress events and renders them beside the executing DAG.'
 seeAlso:
   - text: 'Observability guide'
     link: '../guide/observability'
@@ -19,27 +19,21 @@ import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
 
 # Example 30: Progress Events
 
-## What It Is
+## Lifecycle Projection
 
-Progress Events are application-facing projections of the Dagonizer lifecycle. The Dispatcher browser demo turns runtime hooks into trace rows, active-node highlights, completed edges, and error markers beside the live DAG.
+Progress Events are read-side projections built from the Dagonizer lifecycle. In the Dispatcher host, observer hooks become trace rows, active-node highlights, completed edges, and error markers beside the DAG.
 
-This page is the UI layer on top of [Example 18: Observability](./18-observability): hooks report what happened; progress events decide how the application displays or transports it.
+It sits one layer above [Example 18: Observability](./18-observability): hooks report flow and node events; the host turns those callbacks into UI state or transport messages.
 
-## How It Works
-
-The observer layer receives lifecycle callbacks from the dispatcher and projects them into trace records plus graph state. The DAG remains unchanged; progress is a read-side projection of execution events. Multiple UI panes can consume the same event stream without adding progress nodes to the workflow.
-
-That separation keeps progress cheap to add. A browser trace, CLI spinner, log sink, or server-sent events endpoint can all subscribe to the same lifecycle-derived stream.
-
-## Diagrams, Examples, and Outputs
+## Registered Flow
 
 ### DAG registration and diagram
 
-The graph is a normal pipeline; progress events are emitted by the runtime observer while these placements execute. [The Dispatcher](./the-dispatcher) owns the smallest in-browser version through its trace panel.
+The DAG stays unchanged. Progress comes from the observer that watches these placements execute and projects lifecycle into the trace panel and graph state.
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher progress DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
-The browser demo translates lifecycle hooks into view-model events:
+The Dispatcher host maps lifecycle hooks into view-model events:
 
 - `onNodeStart` appends a `start` trace event and marks the DAG node active.
 - `onNodeEnd` appends an `end` trace event, marks the node completed, and flashes the traversed edge.
@@ -48,14 +42,16 @@ The browser demo translates lifecycle hooks into view-model events:
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Dispatcher](./the-dispatcher) and watch lifecycle events appear in the Trace pane while the DAG advances.
 
-Progress events let applications turn DAG lifecycle hooks into product UI or transport updates. Use this when a live page, CLI, SSE endpoint, or log sink needs to show node-level progress while the DAG is still running.
+## Projection Boundary
 
-They also keep progress out of business logic. Nodes do not emit UI events; the runtime reports lifecycle, and the runner decides how to render it.
+The observer layer receives lifecycle callbacks from the dispatcher and projects them into trace records plus graph state. The DAG remains unchanged; progress is a read-side projection of execution events. Multiple UI panes can consume the same event stream without adding progress nodes to the workflow.
+
+That separation keeps progress cheap to add. A browser trace, CLI spinner, log sink, or server-sent events endpoint can all subscribe to the same lifecycle-derived stream.
 
 ## Code Samples
 
@@ -63,7 +59,13 @@ The observer snippet shows lifecycle hooks becoming Dispatcher trace state. The 
 
 <<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-observer
 
-## Details for Nerds
+## Usage
+
+Progress events project node-level execution into UI, CLI, SSE, or log updates without adding progress-specific nodes to the graph. The runtime emits lifecycle facts; each host decides how to display or forward them.
+
+That keeps progress logic at the host boundary instead of inside business nodes.
+
+## Runtime Notes
 
 ### DAG definition
 
@@ -72,7 +74,7 @@ The observer snippet shows lifecycle hooks becoming Dispatcher trace state. The 
 - **Lifecycle hooks to progress events.** The Dispatcher observer converts engine hooks into `TraceEvent` records.
 - **Multiple subscribers.** The same hook updates the text trace, DAG graph, and log feed.
 - **Browser-visible progress.** The right-side **Trace** tab and **DAG** tab subscribe to these events.
-- **Transport option.** For server transports, `@studnicky/dagonizer/progress` still provides `EventBus` and `SseStream`; the browser runnable demonstrates the hook-to-progress boundary.
+- **Transport option.** For server transports, `@studnicky/dagonizer/progress` still provides `EventBus` and `SseStream`; the Dispatcher host applies the same hook-to-progress boundary in the browser UI.
 
 ## Related Concepts
 

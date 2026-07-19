@@ -21,23 +21,17 @@ import { cartographerResumeDAG } from '../../examples/the-cartographer/dag.ts';
 
 # Example 16: Scatter Resume
 
-## What It Is
+## Durable Scatter Resume
 
 Scatter Resume is for long fan-out work that can stop halfway through. The Cartographer streams source events through a scatter, aborts in the middle of the run, checkpoints progress, and resumes without replaying items that already completed.
 
 The runtime does this with a durable inbox. Pulled items are recorded before execution, acknowledged items are recorded after execution, and checkpoint/resume uses those two sets to decide what is safe to skip and what must be retried.
 
-## How It Works
-
-The engine records scatter progress under `SCATTER_PROGRESS_KEY` in state metadata. Pulled items enter the inbox before body execution. Completed items move to `ackedResults`. A checkpoint preserves both structures. Resume drains inbox items first because their completion is uncertain, skips acked items because they already finished, and then continues pulling the remaining source.
-
-Application code still defines an ordinary scatter. The resume behavior belongs to the dispatcher and checkpoint state, so the DAG stays readable: source, body, gather, and routes remain the pieces you author.
-
-## Diagrams, Examples, and Outputs
+## Checkpointed Scatter Flow
 
 ### DAG registration and diagram
 
-The JSON-LD graph is a normal scatter; the resume behavior comes from checkpoint metadata captured while that scatter is running. [The Cartographer](./the-cartographer) owns this runnable path through `cartographerResumeDAG` and `CartographerResumableScenario`.
+The JSON-LD graph is a normal scatter; the resume behavior comes from checkpoint metadata captured while that scatter is running. [The Cartographer](./the-cartographer) exercises this path through `cartographerResumeDAG` and `CartographerResumableScenario`.
 
 <DagJsonMermaid :dag="cartographerResumeDAG" title="Cartographer scatter resume DAG" aria-label="Cartographer resume JSON-LD DAG beside Mermaid generated from it." />
 
@@ -64,27 +58,33 @@ Watch: `execLog` shows different labels for Run 1 vs Run 2 items. The union of b
 npx tsx examples/the-cartographer/runCartographer.ts --stream
 ```
 
-## What It Lets You Do
+## Inbox and Ack Model
 
-Scatter resume lets applications restart long fan-out work without re-running completed items. Use it when clone bodies call external APIs, model providers, or expensive transforms and a crash, abort, or timeout should replay only uncertain work.
+The engine records scatter progress under `SCATTER_PROGRESS_KEY` in state metadata. Pulled items enter the inbox before body execution. Completed items move to `ackedResults`. A checkpoint preserves both structures. Resume drains inbox items first because their completion is uncertain, skips acked items because they already finished, and then continues pulling the remaining source.
 
-This is the scatter version of exactly-once-at-the-DAG-boundary thinking: node bodies still need to be idempotent, but the engine gives the application a durable record of which source items are already done.
+Application code still defines an ordinary scatter. The resume behavior belongs to the dispatcher and checkpoint state, so the DAG stays readable: source, body, gather, and routes remain the pieces you author.
 
 ## Code Samples
 
-The DAG snippet shows the scatter shape. The scenario snippet shows the deterministic abort, checkpoint capture, resume call, and execution log used by the runnable Cartographer demo.
+The DAG snippet shows the scatter shape. The scenario snippet shows the deterministic abort, checkpoint capture, resume call, and execution log used by the Cartographer resume workflow.
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-resume-dag
 
 <<< @/../examples/the-cartographer/runCartographer.ts#cartographer-resumable-scenario
 
-## Details for Nerds
+## Operational Uses
+
+Scatter resume lets hosts restart long fan-out work without re-running completed items. It fits clone bodies that call external APIs, model providers, or expensive transforms where a crash, abort, or timeout should replay only uncertain work.
+
+This is the scatter version of exactly-once-at-the-DAG-boundary thinking: node bodies still need to be idempotent, but the engine gives the host a durable record of which source items are already done.
+
+## Runtime Notes
 
 - **Durable inbox.** The scatter pull loop persists each pulled item to the `inbox` before dispatching the body. The inbox survives process interruption via `Checkpoint.capture`.
 - **`ackedResults` deduplication.** After a body completes, the engine moves the item from inbox to `ackedResults`. On resume, the engine skips any item whose key is already in `ackedResults` — no re-execution.
 - **Inbox reprocessing.** Items that were in the inbox at checkpoint time (pulled but not yet acked) are re-run first on resume. The body is idempotent by design.
 - **`SCATTER_PROGRESS_KEY`.** The constant under which the scatter engine stores the inbox and acked-results index in `state.metadata`. Inspect it after a checkpoint capture to see the progress snapshot.
-- **No reservoir in the resume DAG.** The runnable resume variant uses per-item dispatch so abort can leave a meaningful stream cursor.
+- **No reservoir in the resume DAG.** The checkpoint-aware resume variant uses per-item dispatch so abort can leave a meaningful stream cursor.
 
 ## Related Concepts
 

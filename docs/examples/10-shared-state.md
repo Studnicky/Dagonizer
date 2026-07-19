@@ -10,7 +10,7 @@ seeAlso:
     description: 'state transfer at the scatter boundary'
   - text: 'Example 08: Checkpoint and Resume'
     link: './08-checkpoint'
-    description: 'checkpoint lifecycle this page extends with stores'
+    description: 'checkpoint lifecycle with shared-store capture and restore'
   - text: 'Reference: Store'
     link: '../reference/store'
 ---
@@ -21,37 +21,33 @@ import { archivistDAG } from '../exampleDags.ts';
 
 # Example 10: Shared State
 
-## What It Is
+## Shared Memory Surface
 
-Shared State is for data that belongs to a session or application boundary, not to one edge in the DAG. The Archivist uses a session `MemoryStore` so parent nodes, embedded search DAGs, and resume logic can read and write the same memory graph.
+Shared State covers data that belongs to a session or host boundary rather than one edge in the DAG. The Archivist keeps RDF memory in a session-scoped `MemoryStore` so parent nodes, embedded search DAGs, and resume logic all read and write the same graph.
 
-Use this when `stateMapping` or `gather` would force every node to pass around a growing structure that is really a shared service: memory, audit trails, caches, ranked stores, or provenance indexes.
+A `Store` handles long-lived structures that `stateMapping` or `gather` would otherwise force every node to carry through the graph: memory, audit trails, caches, ranked stores, or provenance indexes.
 
-## How It Works
-
-A `MemoryStore` is passed into each node's constructor. Parent and child nodes append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside parent state; `Checkpoint.load` and `restoreStores` restore it on resume. The code below is the real Archivist browser/CLI memory path.
-
-The graph remains pure topology. The store is an injected dependency, so reusable DAGs can share application state without smuggling it through every placement.
-
-## Diagrams, Examples, and Outputs
+## Store-backed Archivist Flow
 
 ### DAG registration and diagram
 
-The graph is the production-shaped pattern in [The Archivist](./the-archivist): parent placements and embedded search/compose sub-DAGs share the session `MemoryStore` through injected services while the topology stays pure JSON-LD.
+The graph uses the real Archivist parent DAG because it already exercises parent placements, embedded sub-DAGs, and checkpoint resume against one shared `MemoryStore`. The store lives in injected services while the topology stays pure JSON-LD.
 
 <DagJsonMermaid :dag="archivistDAG" title="The Archivist parent DAG" aria-label="The Archivist JSON-LD DAG beside Mermaid generated from it." />
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Archivist](./the-archivist), run a turn, save a checkpoint, then resume it to watch the shared memory store survive the pause.
 
-Shared state lets applications accumulate data across parent DAGs, embedded DAGs, and scatter clones without threading every value through `stateMapping` or `gather`. Use it for memory graphs, caches, audit logs, ranked stores, and other structures that many nodes read or write over time.
+## Store Injection Model
 
-For an application, this keeps the DAG readable while still supporting long-lived domain state. The parent graph says what runs next; the store owns the durable structure multiple nodes collaborate on.
+A `MemoryStore` is passed into each node's constructor. Parent and child nodes append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside parent state; `Checkpoint.load` and `restoreStores` restore it on resume. The code below is the real Archivist interactive host and CLI memory path.
+
+The graph remains pure topology. The store is an injected dependency, so reusable DAGs can share host state without smuggling it through every placement.
 
 ## Code Samples
 
@@ -71,17 +67,23 @@ The shared store is part of the `ArchivistServices` record injected into node co
 
 #### Checkpoint capture with stores
 
-The browser runner captures the same memory store when the visitor saves a checkpoint:
+The Archivist workflow captures the same memory store when the visitor saves a checkpoint:
 
 <<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-capture
 
 #### Checkpoint restore with stores
 
-On resume, the browser runner restores the memory store before calling back into the dispatcher:
+On resume, the workflow restores the memory store before calling back into the dispatcher:
 
 <<< @/../examples/the-archivist/app/ArchivistRunner.vue#checkpoint-store-restore
 
-## Details for Nerds
+## Operational Uses
+
+Shared state keeps long-lived domain structures off the edge payload while still making them available to every node that needs them. Memory graphs, caches, provenance stores, and audit logs stay in the host service layer while the DAG stays focused on control flow.
+
+Checkpointing closes the loop: the same store can be captured with a parked run and restored before resume.
+
+## Runtime Notes
 
 - **Constructor/service injection.** Nodes receive `ArchivistServices`, which carries the shared `MemoryStore`.
 - **Single store, many writers.** Recall, record, provenance, and projection paths read/write one session memory graph.
@@ -95,5 +97,5 @@ See [Shared state](../guide/shared-state) for the decision matrix between `input
 
 - [Shared state guide](../guide/shared-state) - decision matrix, concurrency contract, checkpoint integration
 - [Example 05: Embedded DAGs](./05-embedded-dags) - state transfer at the scatter boundary
-- [Example 08: Checkpoint and Resume](./08-checkpoint) - checkpoint lifecycle this page extends with stores
+- [Example 08: Checkpoint and Resume](./08-checkpoint) - checkpoint lifecycle with shared-store capture and restore
 - [Reference: Store](../reference/store)

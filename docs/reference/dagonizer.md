@@ -21,30 +21,24 @@ seeAlso:
 
 `Dagonizer<TState>` is the dispatcher. It owns the node registry, DAG registry, plugin registration boundary, lifecycle hooks, execution entrypoints, resume entrypoints, and read accessors.
 
-Use this page when integrating the dispatcher directly into an application host. The key distinction is simple: the DAG document describes what should run; the dispatcher owns the registered implementations and moves state through the routed graph.
+`Dagonizer<TState>` is the runtime host: the DAG document describes what should run, and the dispatcher owns the registered implementations and moves state through the routed graph.
 
-## How It Works
+## Registry and Runtime References
 
-Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG IRIs. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
-
-`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the application awaits the result or iterates events. Validation happens at registration time so dangling node/DAG references, missing embedded DAGs, invalid placement-IRI routes, and contract mismatches fail before a run starts.
-
-## Diagrams, Examples, and Outputs
-
-The dispatcher is visible in every runnable demo: it registers the same JSON-LD DAGs that the docs render as diagrams, then executes those registered names.
+The dispatcher is the runtime behind every registered workflow in the docs and examples. The Archivist, The Cartographer, CLI examples, and guide snippets all bind JSON-LD DAG documents into one registry and execute them through the same dispatcher contract.
 
 - [Reference: Execution](./execution) - what `execute` and `resume` return
 - [Reference: Contracts](./contracts) - `NodeInterface`, `ExecuteOptionsType`
 - [Reference: Core](./core) - `GatherStrategies`, `OutcomeReducers`
 - [Reference: Lifecycle](./lifecycle)
-- [The Archivist](../examples/the-archivist) - browser runner registering a large conversational DAG
-- [The Cartographer](../examples/the-cartographer) - browser runner registering plugin-defined and embedded data-pipeline DAGs
+- [The Archivist](../examples/the-archivist) - large conversational DAG registration and execution
+- [The Cartographer](../examples/the-cartographer) - plugin-defined and embedded data-pipeline DAG registration and execution
 
-## What It Lets You Do
+## Registration and Execution Model
 
-The Dagonizer reference lets applications register nodes, DAGs, bundles, and plugins, then execute or resume registered graphs. It is the API to reach for when a CLI, browser page, worker, serverless handler, or long-running service needs to host a DAG.
+Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG IRIs. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
 
-`@studnicky/dagonizer` root export.
+`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the caller awaits the result or iterates events. Validation happens at registration time so dangling node/DAG references, missing embedded DAGs, invalid placement-IRI routes, and contract mismatches fail before a run starts.
 
 ## Code Samples
 
@@ -403,7 +397,7 @@ const _nodes: readonly NodeInterface<NodeStateInterface, string>[] = bundle.node
 const _dags: readonly DAGType[] = bundle.dags;
 ```
 
-A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so applications register the whole unit in one call.
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so hosts register the whole unit in one call.
 
 ---
 
@@ -453,7 +447,13 @@ Reserved metadata key used by the work-set scheduler to persist the in-flight wo
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer` is the root dispatcher export for registering nodes, DAGs, bundles, and plugins, then executing or resuming registered graphs.
+
+CLI tools, browser pages, workers, serverless handlers, and long-running services all host DAGs through this dispatcher.
+
+## Runtime Notes
 
 `Dagonizer` intentionally keeps assembly explicit. JSON-LD carries DAG IRIs, placement IRIs, routes, contexts, state mappings, phases, scatter bodies, gather barriers, and embedded DAG references. Registries bind registered references to node implementations, DAG documents, child-state factories, containers, and channels. Visualization is generated from the DAG document, not from the live dispatcher.
 

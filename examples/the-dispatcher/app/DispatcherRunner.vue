@@ -59,6 +59,7 @@ import LlmConfigurationPane from '../../../docs/.vitepress/theme/components/LlmC
 import { LlmBackendStatus } from '../../../docs/.vitepress/theme/components/LlmBackendStatus.ts';
 import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
 import TraceFeed from '../../../docs/.vitepress/theme/components/TraceFeed.vue';
+import RunnableExampleWorkbench from '../../runnable-example/RunnableExampleWorkbench.vue';
 
 type DispatcherTraceEvent =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
@@ -386,21 +387,11 @@ watch(preferredModels, async (models) => {
 }, { 'deep': true });
 
 watch(activeBackend, (id) => {
-  if (typeof localStorage === 'undefined') {
-    return;
-  }
-  if (id === null) {
-    localStorage.removeItem('dagonizer-active-backend');
-    return;
-  }
-  localStorage.setItem('dagonizer-active-backend', id);
+  void browserRuntime.saveActiveBackend(id);
 });
 
 onMounted(async () => {
-  const savedBackendId = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('dagonizer-active-backend')
-    : null;
-  const bootstrap = await browserRuntime.loadBootstrapState(savedBackendId);
+  const bootstrap = await browserRuntime.loadBootstrapState();
 
   isMobile.value = bootstrap.isMobile;
   apiKeys.value = bootstrap.apiKeys;
@@ -413,7 +404,7 @@ onMounted(async () => {
     logger.note(bootstrap.backendNote);
   }
   if (bootstrap.noModel) {
-    logger.warn('no LLM backend detected; select one to enable the demo');
+    logger.warn('no LLM backend detected; select one to enable the workflow');
     return;
   }
 });
@@ -596,7 +587,7 @@ function fillPrompt(text: string): void {
     <!-- No-model gate: shown when no real backend is available on this device. -->
     <section v-if="noModel" class="dr-no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
-      <p>The Dispatcher demo now uses real LLM calls for classification and reply composition. Enable one of the backends below to start:</p>
+      <p>The Dispatcher workflow uses real LLM calls for classification and reply composition. Enable one of the backends below to start:</p>
       <LlmConfigurationPane
         :backends="backends"
         :active-id="activeBackend"
@@ -610,15 +601,18 @@ function fillPrompt(text: string): void {
     </section>
 
     <template v-else>
-    <div class="dr-grid">
+    <RunnableExampleWorkbench
+      left-label="Customer"
+      right-label="Operator / Graph"
+      :right-hint="isAwaiting ? 'awaiting operator' : isRunning ? 'running…' : 'ready'"
+      secondary-width="1.35fr"
+    >
+      <template #left-meta>
+        <span :class="['dr-badge', `dr-badge--${lifecycleBadge}`]">{{ lifecycleBadge }}</span>
+      </template>
 
       <!-- LEFT: Stream | Config -->
-      <div class="dr-col dr-col--left">
-        <div class="dr-col-head">
-          <span class="dr-label">Customer</span>
-          <span :class="['dr-badge', `dr-badge--${lifecycleBadge}`]">{{ lifecycleBadge }}</span>
-        </div>
-
+      <template #left>
         <PanesTabs :tabs="leftTabs" :default-key="leftActiveKey" class="dr-tabs">
 
           <!-- Customer tab: conversation history -->
@@ -729,15 +723,10 @@ function fillPrompt(text: string): void {
           </template>
 
         </PanesTabs>
-      </div>
+      </template>
 
       <!-- RIGHT: DAG | Config | Trace -->
-      <div class="dr-col dr-col--right">
-        <div class="dr-col-head">
-          <span class="dr-label">Operator / Graph</span>
-          <span class="dr-hint">{{ isAwaiting ? 'awaiting operator' : isRunning ? 'running…' : 'ready' }}</span>
-        </div>
-
+      <template #right>
         <PanesTabs
           :tabs="rightTabs"
           default-key="dag"
@@ -864,9 +853,8 @@ function fillPrompt(text: string): void {
           </template>
 
         </PanesTabs>
-      </div>
-
-    </div>
+      </template>
+    </RunnableExampleWorkbench>
     </template>
   </div>
 </template>
@@ -882,50 +870,6 @@ function fillPrompt(text: string): void {
   background: var(--vp-c-bg-alt);
   font-family: var(--vp-font-family-base);
   width: 100%;
-}
-
-/* ── Two-column grid: iridis pattern ──────────────────────────────────── */
-.dr-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-}
-
-@container dispatcher (min-width: 720px) {
-  .dr-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
-  }
-}
-
-/* ── Column ────────────────────────────────────────────────────────────── */
-.dr-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-/* ── Column head ────────────────────────────────────────────────────────── */
-.dr-col-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 1.75rem;
-}
-
-.dr-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-}
-
-.dr-hint {
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
-  font-family: var(--vp-font-family-mono);
 }
 
 /* ── Lifecycle badge ────────────────────────────────────────────────────── */

@@ -1,36 +1,5 @@
 ---
-import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
-import LazyCartographerRunner from '@/components/islands/LazyCartographerRunner.vue';
 import { SiteLinks } from '@/lib/links';
 
 return Astro.redirect(SiteLinks.site(SiteLinks.route('examples/the-cartographer')), 301);
-
-const relatedLinks = [
-  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'The Archivist' },
-  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' },
-  { href: SiteLinks.site('/docs/concepts'), label: 'Concepts' }
-] as const;
-
-const crumbs = [
-  { href: SiteLinks.site('/docs'), label: 'Docs' },
-  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
-  { href: SiteLinks.site('/docs/examples/the-cartographer'), label: 'The Cartographer' }
-] as const;
-
-const proofPoints = [
-  'Dagonizer is not limited to agent workflows; it also fits deterministic multi-stage data processing.',
-  'Streaming intake, transformation boundaries, and fan-in remain visible as first-class graph behavior.',
-  'Teams can inspect how one framework handles both operational data flow and higher-level derived outputs.'
-] as const;
 ---
-
-<RunnableExampleShell
-  title="The Cartographer"
-  description="Runnable Dagonizer example for deterministic intake, enrichment, geo-resolution, and insight fan-in across a data workflow."
-  pageDescription="A data workflow that demonstrates how Dagonizer handles staged intake, normalization, enrichment, and insight aggregation in one deterministic graph."
-  crumbs={crumbs}
-  proofPoints={proofPoints}
-  relatedLinks={relatedLinks}
->
-  <LazyCartographerRunner client:visible />
-</RunnableExampleShell>

@@ -1,6 +1,6 @@
 ---
 title: 'Example 24: LLM Adapter'
-description: 'LLM adapter surface: register OllamaApiAdapter instances in an LlmAdapterRegistry, wire an LlmAdapterCascade that walks the preference list probing each adapter, and call .chat() inside a DAG node that routes on the response variant.'
+description: 'LLM adapter API: register OllamaApiAdapter instances in an LlmAdapterRegistry, wire an LlmAdapterCascade that walks the preference list probing each adapter, and call .chat() inside a DAG node that routes on the response variant.'
 seeAlso:
   - text: 'The Archivist'
     link: './the-archivist'
@@ -22,41 +22,35 @@ import { archivistDAG } from '../exampleDags.ts';
 
 # Example 24: LLM Adapter
 
-## What It Is
+## Model Provider Surface
 
 LLM Adapter is the provider boundary for model-backed DAG nodes. The Archivist can run against local Ollama, browser models, or cloud APIs because nodes depend on an `LlmAdapterInterface`, not on a provider SDK.
 
-The application builds an adapter or cascade before execution, injects it through services, and lets DAG routes handle the response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
+The host builds an adapter or cascade before execution, injects it through services, and lets DAG routes handle the response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
 
-## How It Works
-
-Nodes depend on an `LlmAdapterInterface` supplied through services. The host builds an adapter or cascade before execution, injects it into node constructors, and lets DAG routes handle the model response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
-
-This keeps provider choice outside the graph. The DAG still says "classify," "extract," "rank," and "compose"; the service layer decides whether those calls go to a local model, a browser runtime, or a cloud backend.
-
-## Diagrams, Examples, and Outputs
+## Adapter-backed Agent Flow
 
 ### DAG registration and diagram
 
-The adapter is injected service state; the DAG shows where model-backed nodes sit in the flow. [The Archivist](./the-archivist) is the in-browser owner for adapter selection.
+The adapter is injected service state; the DAG shows where model-backed nodes sit in the flow. [The Archivist](./the-archivist) is the adapter-selection example.
 
 <DagJsonMermaid :dag="archivistDAG" title="Archivist LLM adapter DAG" aria-label="Archivist JSON-LD DAG beside Mermaid generated from it." />
 
-The LLM adapter surface provides a provider-agnostic interface for chat completion. The browser Archivist lets the user select among configured backends, instantiates the selected adapter, and injects it into `ArchivistServices` for classify/extract/rank/compose nodes.
+The LLM adapter API provides a provider-agnostic interface for chat completion. The Archivist runner lets the user select among configured backends, instantiates the selected adapter, and injects it into `ArchivistServices` for classify/extract/rank/compose nodes.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Archivist](./the-archivist) and choose a backend in the Config panel.
+Visit [The Archivist](./the-archivist) and choose a backend in the Config panel.
 
-## What It Lets You Do
+## Adapter Injection Model
 
-LLM adapters let applications swap model providers without changing DAG topology or node contracts. Use them when the same graph should run against local Ollama, browser models, cloud APIs, or a cascade that selects the first available backend.
+Nodes depend on an `LlmAdapterInterface` supplied through services. The host builds an adapter or cascade before execution, injects it into node constructors, and lets DAG routes handle the model response variant. Provider probing, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
 
-They also give the application one place to enforce provider policy: request timeout, system prompt defaults, tool-call support, JSON mode, and capability probing.
+This keeps provider choice outside the graph. The DAG still says "classify," "extract," "rank," and "compose"; the service layer decides whether those calls go to a local model, an interactive host, or a cloud backend.
 
 ## Code Samples
 
@@ -68,11 +62,17 @@ The browser snippets show provider selection and service injection. The CLI snip
 
 <<< @/../examples/the-archivist/runArchivist.ts#adapter-cascade
 
-## Details for Nerds
+## Operational Uses
+
+LLM adapters let hosts swap model providers without changing DAG topology or node contracts. Use them when the same graph should run against local Ollama, browser models, cloud APIs, or a cascade that selects the first available backend.
+
+They also give the host one place to enforce provider policy: request timeout, system prompt defaults, tool-call support, JSON mode, and capability probing.
+
+## Runtime Notes
 
 ### Adapter options
 
-Every adapter extends `BaseAdapter`, so two options are uniform across the whole surface — the cloud HTTP adapters (`OpenAiCompatibleAdapter` and its `groq` / `cerebras` / `mistral` / `openRouter` presets, `anthropic`, `gemini-api`, `ollama`) and the on-device adapters (`gemini-nano`, `web-llm`) alike:
+Every adapter extends `BaseAdapter`, so two options are uniform across the whole adapter API — the cloud HTTP adapters (`OpenAiCompatibleAdapter` and its `groq` / `cerebras` / `mistral` / `openRouter` presets, `anthropic`, `gemini-api`, `ollama`) and the on-device adapters (`gemini-nano`, `web-llm`) alike:
 
 - **`systemPrompt`.** A default directive the base injects as the leading system message of any request that carries no system message. Leading position is load-bearing for on-device backends (the Chrome Prompt API rejects a system turn at any index but 0). A caller-supplied system turn is never overridden; an empty string is a no-op.
 - **`timeoutMs`** (default `60_000`). A per-request deadline. The HTTP adapters enforce it around the network call; `gemini-nano` composes it into the `LanguageModel.create()` / `session.prompt()` abort signal, and `web-llm` races the non-cancellable MLC generation against it. On expiry the adapter rejects with a `TIMEOUT`-classified `LlmError`, so a cascade falls through to the next adapter instead of hanging.

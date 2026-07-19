@@ -38,7 +38,7 @@ import { SeedLibrary } from '../data/SeedLibrary.ts';
 import { RdfProvObserver } from '../provenance/RdfProvObserver.ts';
 import { NODE_VARIANTS } from '../nodes/ArchivistNode.ts';
 import { ArchivistNodes } from '../nodes/ArchivistNodes.ts';
-import { ApiKeyStore, BackendMatrix, PreferredModels, ProviderInstantiator } from '../providers/index.ts';
+import { ActiveBackendStore, ApiKeyStore, BackendMatrix, PreferredModels, ProviderInstantiator } from '../providers/index.ts';
 import { MobileDetection } from '../providers/MobileDetection.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type {
@@ -81,7 +81,9 @@ import {
 } from '../../../packages/dagonizer/src/viz/SelectionController.ts';
 import type { InspectorTargetType } from '../../../packages/dagonizer/src/viz/InspectorTarget.ts';
 
+import RunnableExampleWorkbench from '../../runnable-example/RunnableExampleWorkbench.vue';
 import { RunnerMachine } from '../../../docs/.vitepress/theme/runner/RunnerMachine.ts';
+import { RestoredContextRecovery } from './RestoredContextRecovery.ts';
 
 // ── URL-param bootstrap (standalone-app entrypoint) ────────────────────────
 // Optional props let `examples/the-archivist/main.ts` seed the same local
@@ -113,9 +115,7 @@ if (props.webLlmModel.length > 0) {
 const backends = ref<readonly BackendAvailability[]>([]);
 // Prefer a saved override; fall back to the highest-priority reachable
 // backend at mount time (resolved in onMounted once BackendMatrix.detect completes).
-const savedBackend = typeof localStorage !== 'undefined'
-  ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
-  : null;
+const savedBackend = ActiveBackendStore.load();
 const activeBackend = ref<ProviderId | null>(savedBackend);
 const noModel = ref(false);
 const isMobile = ref(false);
@@ -698,9 +698,8 @@ watch(preferredModels, async (models) => {
 // Persist the visitor's backend selection and keep the session in sync.
 watch(activeBackend, (id) => {
   session.setActiveBackend(id);
-  if (typeof localStorage !== 'undefined' && id !== null) {
-    localStorage.setItem('dagonizer-active-backend', id);
-  }
+  if (id === null) ActiveBackendStore.clear();
+  else ActiveBackendStore.save(id);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -864,27 +863,42 @@ async function reset(): Promise<void> {
 // ── Checkpoint ────────────────────────────────────────────────────────────
 async function resumeFromCheckpoint(): Promise<void> {
   if (isRunning.value || activeBackend.value === null) return;
-  const raw = typeof localStorage !== 'undefined'
-    ? localStorage.getItem(CHECKPOINT_KEY)
-    : null;
-  if (raw === null) {
+  const restoredContext = await RestoredContextRecovery.restore(
+    {
+      'load': () => (typeof localStorage !== 'undefined'
+        ? localStorage.getItem(CHECKPOINT_KEY)
+        : null),
+      'clear': () => {
+        if (typeof localStorage === 'undefined') return;
+        localStorage.removeItem(CHECKPOINT_KEY);
+      },
+    },
+    async (raw) => {
+      const parsed = JSON.parse(raw) as unknown;
+      const ckpt = Checkpoint.load(parsed);
+      await ckpt.restoreStores({ 'memory': memoryStore });
+      return await ckpt.restoreState(
+        CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
+      );
+    },
+  );
+
+  if (restoredContext.variant === 'missing') {
+    hasCheckpoint.value = false;
     logger.warn('no checkpoint found in localStorage');
     return;
   }
-  let restored: { state: ArchivistState; dagName: string; cursor: string } | null = null;
-  try {
-    // #region checkpoint-store-restore
-    const parsed = JSON.parse(raw) as unknown;
-    const ckpt = Checkpoint.load(parsed);
-    await ckpt.restoreStores({ 'memory': memoryStore });
-    restored = await ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap(() => new ArchivistState()),
-    );
-    // #endregion checkpoint-store-restore
-  } catch (err) {
-    logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
+
+  if (restoredContext.variant === 'cleared') {
+    hasCheckpoint.value = false;
+    checkpointNode.value = null;
+    await reset();
+    logger.warn(`checkpoint restore failed: ${restoredContext.error.message}; cleared stale checkpoint and started a fresh session`);
     return;
   }
+  // #region checkpoint-store-restore
+  const restored = restoredContext.value;
+  // #endregion checkpoint-store-restore
 
   runnerMachine.dispatch({ 'type': 'submit' });
   isRunning.value       = true;
@@ -961,7 +975,7 @@ async function resumeFromCheckpoint(): Promise<void> {
       <h3>No LLM backend detected</h3>
 
       <template v-if="isMobile">
-        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key: no download, no GPU required.</p>
+        <p>The Archivist workflow runs against real cloud LLMs. On mobile, the fastest option is a free Groq key: no download, no GPU required.</p>
         <ul>
           <li>
             <strong>Groq (fastest):</strong> paste a free key from
@@ -986,7 +1000,7 @@ async function resumeFromCheckpoint(): Promise<void> {
         </ul>
       </template>
       <template v-else>
-        <p>The Archivist demo runs against real on-device or web LLMs only; there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
+        <p>The Archivist workflow runs against real on-device or web LLMs only; there is no fallback response path in this host. To execute the DAG, enable one of:</p>
         <ul>
           <li><strong>Browser built-in LanguageModel (on-device):</strong> toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
           <li><strong>Gemini API key:</strong> paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
@@ -1013,14 +1027,14 @@ async function resumeFromCheckpoint(): Promise<void> {
 
     <!-- Main layout: two-column grid, container-query driven -->
     <template v-else>
-      <div class="ar-grid">
-
+      <RunnableExampleWorkbench
+        left-label="Archivist"
+        :left-hint="isRunning ? 'running…' : 'ready'"
+        right-label="Graph"
+        :right-hint="`${String(tripleCount)} triples`"
+      >
         <!-- LEFT: Conversation | Trace -->
-        <div class="ar-col ar-col--left">
-          <div class="ar-col-head">
-            <span class="ar-label">Archivist</span>
-            <span class="ar-hint">{{ isRunning ? 'running…' : 'ready' }}</span>
-          </div>
+        <template #left>
           <PanesTabs :tabs="leftTabs" default-key="conversation" class="ar-tabs">
             <!-- Conversation tab: the visual-first surface -->
             <template #conversation>
@@ -1043,14 +1057,10 @@ async function resumeFromCheckpoint(): Promise<void> {
               <TraceFeed :entries="trace" :log-events="logEvents" :selected-tool="selectedTool" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
-        </div>
+        </template>
 
         <!-- RIGHT: DAG | Memory | LLM Select | Configuration -->
-        <div class="ar-col ar-col--right">
-          <div class="ar-col-head">
-            <span class="ar-label">Graph</span>
-            <span class="ar-hint">{{ tripleCount }} triples</span>
-          </div>
+        <template #right>
           <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
 
             <!-- DAG tab: live execution graph -->
@@ -1136,9 +1146,8 @@ async function resumeFromCheckpoint(): Promise<void> {
               </div>
             </template>
           </PanesTabs>
-        </div>
-
-      </div>
+        </template>
+      </RunnableExampleWorkbench>
     </template>
   </div>
 </template>
@@ -1231,50 +1240,6 @@ async function resumeFromCheckpoint(): Promise<void> {
   border-radius: 3px;
   font-family: var(--vp-font-family-mono);
   font-size: 0.82rem;
-}
-
-/* ── Two-column grid: iridis pattern ──────────────────────────────────── */
-.ar-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-}
-
-@container archivist (min-width: 720px) {
-  .ar-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-  }
-}
-
-/* ── Column ────────────────────────────────────────────────────────────── */
-.ar-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-/* ── Column head (iridis pattern) ──────────────────────────────────────── */
-.ar-col-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 1.75rem;
-}
-
-.ar-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-}
-
-.ar-hint {
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
-  font-family: var(--vp-font-family-mono);
 }
 
 /* ── Tab panels ────────────────────────────────────────────────────────── */

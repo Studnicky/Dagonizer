@@ -16,17 +16,17 @@ return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments/modern-home'))
 const doc = await getEntry('docs', 'experiments/modern-home');
 
 if (doc === undefined) {
-  throw new Error('Missing docs/experiments/modern-home.md content for Astro site.');
+  throw new Error('Missing docs/experiments/modern-home.md content for the site experiments route.');
 }
 
-const pageTitle = doc.data.title ?? 'Modern home concept';
+const pageTitle = doc.data.title ?? 'Runtime overview';
 const pageDescription =
   doc.data.description ??
-  'Typed orchestration for agent workflows, resumable pipelines, and inspectable DAG execution.';
+  'Typed orchestration for agent workflows, resumable pipelines, and explicit DAG execution.';
 
 const crumbs = [
   { href: SiteLinks.site('/docs'), label: 'Docs' },
-  { href: SiteLinks.site('/docs/experiments'), label: 'Experiments' },
+  { href: SiteLinks.site('/docs/experiments'), label: 'Runtime Overviews' },
   { href: SiteLinks.site('/docs/experiments/modern-home'), label: pageTitle }
 ] as const;
 
@@ -34,7 +34,7 @@ const featureCards = [
   {
     badge: 'λ',
     title: 'Typed graph contracts',
-    body: 'Route work through explicit ports, declared terminals, and runtime documents that stay legible under change.'
+    body: 'Route work through explicit ports, declared terminals, and runtime documents that stay stable under change.'
   },
   {
     badge: '↻',
@@ -49,7 +49,7 @@ const featureCards = [
 ] as const;
 
 const relatedLinks = [
-  { href: SiteLinks.site('/'), label: 'Current Astro home' },
+  { href: SiteLinks.site('/'), label: 'Home' },
   { href: SiteLinks.site('/docs/architecture'), label: 'Architecture' },
   { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
@@ -60,7 +60,7 @@ const relatedLinks = [
     <article class="space-y-8">
       <UiPageHeader title={pageTitle} description={pageDescription} crumbs={crumbs} />
 
-      <div class="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/50">
+      <div class="hex-shell overflow-hidden bg-slate-950/50">
         <HomeHeroSection
           client:visible
           gettingStartedHref={SiteLinks.site('/getting-started')}
@@ -70,19 +70,19 @@ const relatedLinks = [
 
       <section class="space-y-5">
         <UiSectionIntro
-          eyebrow="Concept direction"
-          title="A cleaner marketing shell for the Astro cut-over"
-          description="This experiment carries the current home-page direction into the docs surface so the same branded hero, CTA treatment, and runtime framing can be reviewed in the Astro marketing shell with the same runtime story."
+          eyebrow="Runtime overview"
+          title="Core runtime capabilities in one view"
+          description="This layout concentrates Dagonizer’s core runtime model into one view: typed graph contracts, durable resume, and first-class graph behavior."
         />
         <UiMarketingCardGrid client:visible items={featureCards} />
       </section>
     </article>
 
     <aside class="space-y-5">
-      <UiAsideCard title="Why this page exists">
+      <UiAsideCard title="Runtime overview">
         <div class="space-y-3 text-sm leading-6 text-slate-300">
-          <p>This route keeps the concept reviewable as a first-class Astro page instead of an embedded one-off.</p>
-          <p>It is the current experimental surface for branding direction, hero framing, and top-level CTA treatment.</p>
+          <p>This overview keeps Dagonizer’s core runtime capabilities together on one page.</p>
+          <p>Use it when you want the short version of Dagonizer’s runtime model before diving into the full guides and examples.</p>
         </div>
       </UiAsideCard>
 

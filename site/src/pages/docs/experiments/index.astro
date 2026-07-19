@@ -10,34 +10,34 @@ return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments')), 301);
 
 const crumbs = [
   { href: SiteLinks.site('/docs'), label: 'Docs' },
-  { href: SiteLinks.site('/docs/experiments'), label: 'Experiments' }
+  { href: SiteLinks.site('/docs/experiments'), label: 'Runtime overviews' }
 ] as const;
 
 const experimentLinks = [
-  { href: SiteLinks.site('/docs/experiments/modern-home'), label: 'Modern home experiment' },
-  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'Runnable Archivist surface' },
+  { href: SiteLinks.site('/docs/experiments/modern-home'), label: 'Runtime overview' },
+  { href: SiteLinks.site(SiteLinks.route('examples/the-archivist')), label: 'The Archivist' },
   { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
 ] as const;
 ---
 
-<DocsArticleShell title="Experiments" description="Exploratory Astro and UI surfaces used to evaluate the modernized marketing shell without replacing the current documentation model.">
+<DocsArticleShell title="Runtime Overviews" description="Short Dagonizer runtime summaries and graph references for the main workflow capabilities, examples, and guides.">
   <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
     <article class="space-y-8">
       <UiPageHeader
-        title="Experiments"
-        description="Experimental pages let the site evolve without overwriting the current docs shell. They are the place to validate Astro islands, navigation treatment, content framing, and more modern feature presentation."
+        title="Runtime Overviews"
+        description="Short summaries and graph references for Dagonizer’s runtime model, examples, and main guides."
         crumbs={crumbs}
       />
 
       <UiSectionIntro
-        eyebrow="Experiment routes"
-        title="Inspectable, linkable Astro experiments"
-        description="These routes exist so experimental marketing and presentation work is inspectable, linkable, and indexable instead of hidden behind ad hoc embedded components. The modern-home experiment is the first of those routes and should remain reachable from its breadcrumb and related links."
+        eyebrow="Quick references"
+        title="Short runtime overviews and graph references"
+        description="These pages collect shorter runtime summaries and graph references. Use them when you want the condensed version before diving into the full guides and examples."
       />
     </article>
 
     <aside class="space-y-5">
-      <UiAsideCard title="Experiment pages">
+      <UiAsideCard title="Links">
         <UiLinkList links={experimentLinks} />
       </UiAsideCard>
     </aside>

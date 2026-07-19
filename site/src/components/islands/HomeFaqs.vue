@@ -14,20 +14,20 @@ const faqs = [
   {
     value: '1',
     title: 'Why use a DAG instead of implicit orchestration?',
-    body: 'A DAG makes routing, concurrency, retries, and terminal outcomes explicit. That improves inspection, debugging, and confidence when workflows become operationally important.'
+    body: 'A DAG makes routing, concurrency, retries, and terminal outcomes explicit. That keeps the control path in the workflow document instead of burying it in host callbacks.'
   },
   {
     value: '2',
     title: 'What does the visualization layer add?',
-    body: 'It gives users a readable surface for the same workflow they execute, document, review, and integrate, instead of forcing separate representations for each use case.'
+    body: 'It renders Mermaid, JSON-LD, and Cytoscape views from the same DAG document the dispatcher executes, so docs and tools do not need a second graph format.'
   }
 ] as const;
 </script>
 
 <template>
   <Card>
-    <template #subtitle>Product fit</template>
-    <template #title>Where Dagonizer earns its keep</template>
+    <template #subtitle>Runtime scope</template>
+    <template #title>Workflows the runtime is built to handle</template>
     <template #content>
       <Accordion value="0">
         <AccordionPanel v-for="item in faqs" :key="item.value" :value="item.value">

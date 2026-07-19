@@ -1,19 +1,17 @@
 /**
  * main.ts: browser entrypoint for the standalone Cartographer demo.
  *
- * Mounts the same `CartographerRunner.vue` component the docs site renders
- * at `docs/examples/the-cartographer`, so the standalone app and the docs
- * page are the same code running two different hosts. All Cartographer
- * orchestration (streaming shipment-tracking pipeline, worker-pool
- * dispatch, geo resolution, GDPR redaction, live DAG visualization) lives
- * in that component and the sub-DAGs / worker registry it wires up.
+ * Boots the same shared runnable-example host the Astro site and VitePress
+ * docs use, so stale browser context recovery and the Vue mount path stay
+ * identical across every host. All Cartographer orchestration (streaming
+ * shipment-tracking pipeline, worker-pool dispatch, geo resolution, GDPR
+ * redaction, live DAG visualization) still lives in `CartographerRunner.vue`.
  *
  * The runner takes no props — it is a self-contained, deterministic,
  * offline pipeline; the visitor configures the run entirely through the
  * Configuration tab and clicks Run.
  */
 
-import { createApp, h } from 'vue';
-import CartographerRunner from './app/CartographerRunner.vue';
+import { mountStandaloneRunnableExample } from '../runnable-example/standaloneRunnableExample.ts';
 
-createApp({ 'render': () => h(CartographerRunner) }).mount('#app');
+mountStandaloneRunnableExample('cartographer');

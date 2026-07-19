@@ -15,17 +15,17 @@ const proofItems = [
     body: 'Pause, persist, and continue from a real execution cursor instead of rebuilding context.'
   },
   {
-    label: 'Shared graph surface',
+    label: 'Shared DAG document',
     body: 'The same DAG shape drives docs, examples, visualization, and runtime execution.'
   }
 ] as const;
 ---
 
-<section class="rounded-[1.75rem] border border-white/10 bg-slate-950/72 px-5 py-5 shadow-[0_20px_72px_-40px_rgba(15,23,42,0.95)] backdrop-blur md:px-6">
+<section class="hex-shell bg-slate-950/72 px-6 py-6 shadow-[0_20px_72px_-40px_rgba(15,23,42,0.95)] backdrop-blur md:px-8 md:py-8">
   <UiSectionIntro
-    eyebrow="Why this runtime reads differently"
-    title="Understand the workflow model quickly without reverse-engineering behavior from scattered runtime code."
-    description=""
+    eyebrow="Core runtime capabilities"
+    title="See the execution model, persistence model, and graph model in one place."
+    description="Dagonizer is for workflows that need explicit routing, durable pause-and-resume, and graph-native fan-out/fan-in without rebuilding that behavior from separate subsystems."
     align="between"
   >
     <Fragment slot="actions">
@@ -36,7 +36,7 @@ const proofItems = [
     </Fragment>
   </UiSectionIntro>
 
-  <div class="mt-5">
-    <UiProofGrid title="Runtime proof points" items={proofItems} />
+  <div class="mt-6">
+    <UiProofGrid title="What the runtime includes" items={proofItems} />
   </div>
 </section>

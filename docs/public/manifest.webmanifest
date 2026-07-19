@@ -37,7 +37,7 @@
       "type": "image/png",
       "sizes": "1200x630",
       "form_factor": "wide",
-      "label": "Dagonizer docs with live interactive Archivist demo and DAG visualization"
+      "label": "Dagonizer example workflows and DAG visualization"
     }
   ]
 }

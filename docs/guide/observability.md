@@ -22,21 +22,15 @@ import { supportDispatcherDAG } from '../exampleDags.ts';
 
 # Observability
 
-## What It Is
+## Observer Surface
 
-Observability is how a host application projects DAG execution into logs, traces, metrics, progress streams, and UI state without changing the DAG document. The graph remains business flow; observers watch execution boundaries.
+Observability is how a host projects DAG execution into logs, traces, metrics, progress streams, and UI state without changing the DAG document. The graph remains business flow; observers watch execution boundaries.
 
-You can subclass `Dagonizer` and override protected `on*` hooks, or attach `DispatcherObserverType` records through the `observers` option. Both surfaces observe flow, node, phase, and error boundaries.
+You can subclass `Dagonizer` and override protected `on*` hooks, or attach `DispatcherObserverType` records through the `observers` option. Both mechanisms observe flow, node, phase, and error boundaries.
 
-## How It Works
+## Observable Flow
 
-Subclass `Dagonizer` and override protected `on*` hooks. The dispatcher calls those hooks around flow, phase, node, and error boundaries. Hook implementations can write to an event bus, tracer, logger, metrics sink, or browser state without changing the DAG document.
-
-Protected `on*` hooks on `Dagonizer` fire at every execution boundary. Subclass the dispatcher and override whichever hooks you need. Class extension is the only extension mechanism; the dispatcher exposes no callback API.
-
-## Diagrams, Examples, and Outputs
-
-The Dispatcher demo is the compact runnable for observing routing, handoff, and operational control. The graph below is the same support dispatcher DAG rendered on the example pages:
+The Dispatcher support workflow is the most compact shipped flow for observing routing, handoff, and operator control. The graph below is the same registered support DAG used by The Dispatcher example:
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher observable DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
@@ -46,17 +40,17 @@ The Dispatcher demo is the compact runnable for observing routing, handoff, and 
 - [Example 30: EventBus and SseStream](../examples/30-progress) - complete example: hooks → bus → console + SSE + metrics
 - [Example 18: Observability](../examples/18-observability) - subclass and multi-observer examples
 
-## What It Lets You Do
+## Observation Contract
 
-### Use when
+Subclass `Dagonizer` and override protected `on*` hooks. The dispatcher calls those hooks around flow, phase, node, and error boundaries. Hook implementations can write to an event bus, tracer, logger, metrics sink, or UI state without changing the DAG document.
 
-Use observability hooks when a host needs traces, metrics, progress events, audit logs, or UI updates from a DAG run. The DAG should stay about business flow; observers project execution state into product and operations surfaces.
+Protected `on*` hooks on `Dagonizer` fire at every execution boundary. Subclass the dispatcher and override whichever hooks you need. Class extension is the only extension mechanism; the dispatcher exposes no callback API.
 
 ## Code Samples
 
-The snippets below show the hook surface, subclass pattern, observer mux, EventBus publishing, SSE streaming, and timing integration.
+The code samples cover the hook API, subclass pattern, observer mux, EventBus publishing, SSE streaming, and timing integration.
 
-### API surface
+### API
 
 | Symbol | Source | Role |
 |--------|--------|------|
@@ -96,13 +90,17 @@ For scatter and embedded-DAG nodes, `onNodeStart` and `onNodeEnd` fire once for 
 
 Use it to disambiguate same-labeled inner placements across multiple embedded-DAG instances. The full qualified observability label of the current node is `[...placementPath, nodeName].join('/')`.
 
-## Details for Nerds
+## Operational Uses
+
+Observability hooks project DAG execution into traces, metrics, progress events, audit logs, and UI updates. The DAG stays about business flow; observers translate execution state into runtime UIs, logs, and operations systems.
+
+## Runtime Notes
 
 ### Subclass hooks
 
 <<< @/../examples/the-archivist/ObservedDag.ts#observed-dag
 
-The Cartographer uses the same subclassing surface in a deterministic ETL
+The Cartographer uses the same subclassing API in a deterministic ETL
 pipeline. Its dispatcher logs flow boundaries, node outputs, errors, phase
 entries, phase exits, and embedded placement paths:
 
@@ -124,7 +122,7 @@ OpenTelemetry spans map directly onto the `onFlowStart` / `onFlowEnd` and `onNod
 - `onError` → retrieve the span, call `span.recordException(error)` and `span.setStatus({ code: SpanStatusCode.ERROR })`.
 - `onFlowEnd` → end the flow span and clear the map.
 
-Wire `@opentelemetry/api` in through the constructor as a `Tracer` instance. The subclass holds the `Map<string, Span>` as a private field; nothing leaks to Dagonizer's public surface.
+Wire `@opentelemetry/api` in through the constructor as a `Tracer` instance. The subclass holds the `Map<string, Span>` as a private field; nothing leaks through Dagonizer's public API.
 
 ### `observers` option: mux without subclassing
 
@@ -247,7 +245,7 @@ bus.dispose(); // unsubscribes all subscribers
 
 **SseStream heartbeats.** The default heartbeat interval is 15 000 ms (a `: heartbeat\n\n` SSE comment frame, invisible to `EventSource` listeners). Set `heartbeatMs: 0` to disable in tests. The heartbeat timer is cleared when the subscriber cancels the stream.
 
-See [Example 30: EventBus and SseStream](../examples/30-progress) for a complete runnable demonstration.
+See [Example 30: EventBus and SseStream](../examples/30-progress) for a complete end-to-end hook-to-progress example.
 
 ### BusObserver
 

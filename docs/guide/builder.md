@@ -20,7 +20,7 @@ seeAlso:
 nextSteps:
   - text: 'Example 02: DAGBuilder'
     link: '../examples/02-builder'
-    description: 'runnable end-to-end example'
+    description: 'end-to-end builder-authored DAG'
 ---
 
 <script setup lang="ts">
@@ -29,21 +29,13 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 # DAGBuilder
 
-## What It Is
+## Builder Authoring Contract
 
 `DAGBuilder` is the chainable TypeScript API for writing a Dagonizer graph in code. Each call appends a placement with an explicit IRI to the JSON-LD DAG document, and each route map is checked against the node's declared output union before the graph ever runs.
 
-Use it when your workflow belongs in source control beside the nodes it invokes. The result is still the canonical JSON-LD `DAG`, so builder-authored DAGs can be serialized, visualized, embedded, packaged as plugins, and registered by the dispatcher without conversion.
+`DAGBuilder` writes workflows that live in source control beside the nodes they invoke. The result is still the canonical JSON-LD `DAG`, so builder-authored DAGs can be serialized, visualized, embedded, packaged as plugins, and registered by the dispatcher without conversion.
 
-## How It Works
-
-Every builder method appends a typed placement to an in-memory DAG document. The builder tracks the first placement IRI as the default entrypoint, narrows route maps from node output unions, emits JSON-LD placement types, materializes route targets to placement IRIs, and returns a plain `DAG` from `.build()`. The dispatcher registers that returned object directly.
-
-`DAGBuilder` is the chainable TypeScript factory for JSON-LD DAG documents: ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences all use the same surface. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
-
-See [Authoring DAGs](./authoring) for how DAGBuilder emits the canonical JSON-LD `DAG` object that serialization, validation, visualization, and dispatch all consume.
-
-## Diagrams, Examples, and Outputs
+## Typed Routing and Placement API
 
 ### Type-safe output routing
 
@@ -51,7 +43,7 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 
 <<< @/../examples/dags/02-builder.topology.ts#type-safe-routing
 
-The same runnable source builds the JSON-LD DAG below. The Mermaid diagram is generated from that object, so route changes in code change both panes together:
+The same source builds the JSON-LD DAG below. The Mermaid diagram is generated from that object, so route changes in code change both panes together:
 
 <DagJsonMermaid :dag="builderDag" title="Example 02 builder DAG" aria-label="The Example 02 builder JSON-LD DAG beside Mermaid generated from it." />
 
@@ -74,11 +66,13 @@ const dag = new DAGBuilder(dagIri, '1')
 
 Import: `PlaceholderNode` is available from `@studnicky/dagonizer` if you need to construct one directly.
 
-## What It Lets You Do
+## Builder Emission Model
 
-### Use when
+Every builder method appends a typed placement to an in-memory DAG document. The builder tracks the first placement IRI as the default entrypoint, narrows route maps from node output unions, emits JSON-LD placement types, materializes route targets to placement IRIs, and returns a plain `DAG` from `.build()`. The dispatcher registers that returned object directly.
 
-Use `DAGBuilder` when the DAG lives in TypeScript source and you want route maps, embedded DAG references, scatter bodies, phase nodes, and terminal placement IRIs checked before runtime. Use raw JSON-LD loading when the graph is external configuration.
+`DAGBuilder` is the chainable TypeScript factory for JSON-LD DAG documents: ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences all use the same builder API. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
+
+See [Authoring DAGs](./authoring) for how DAGBuilder emits the canonical JSON-LD `DAG` object that serialization, validation, visualization, and dispatch all consume.
 
 ## Code Samples
 
@@ -96,7 +90,11 @@ Example 02 registers two nodes and builds a two-step chat flow:
 
 The first `.node()` call sets the `main` entrypoint automatically. Call `.entrypoints({ main: placementIri })` to override or declare multiple entry roots.
 
-## Details for Nerds
+## Operational Uses
+
+`DAGBuilder` is the authoring path for DAGs that live in TypeScript source and need route maps, embedded DAG references, scatter bodies, phase nodes, and terminal placement IRIs checked before runtime. Raw JSON-LD loading is the companion path for graphs that arrive as external configuration.
+
+## Runtime Notes
 
 ### Scatter
 
@@ -151,7 +149,7 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 `.embed()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
 
-Use `.embed()` for the unified DAG reference surface:
+Use `.embed()` for the unified DAG-reference API:
 
 - a DAG IRI or CURIE string
 - a `DAG` object
@@ -191,7 +189,7 @@ Normalization is direct:
 - `DAGType` becomes `{ dag: value['@id'] }`
 - `{ from, path, candidates }` becomes `{ dag: { '@type': 'DagReference', from, path, candidates } }`
 
-That means application code can treat embedded local DAGs, plugin-exported DAGs, tool DAGs, and runtime-selected DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
+That means host code can treat embedded local DAGs, plugin-exported DAGs, tool DAGs, and runtime-selected DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
 
 #### Runtime DAG resolution with `DagReference`
 
@@ -305,6 +303,6 @@ The returned object is identical to one written by hand. Pass it directly to `di
 - [Shared state](./shared-state) - decision matrix for inputs/gather versus stores; checkpoint integration
 - [Schema and JSON loading](./schema) - load DAGs from JSON instead of building them in code
 - [Visualization](./visualization) - render the built DAG as Mermaid or Cytoscape
-- [Example 02: DAGBuilder](../examples/02-builder) - runnable end-to-end example
+- [Example 02: DAGBuilder](../examples/02-builder) - end-to-end builder-authored DAG
 - [Reference, Dagonizer](../reference/dagonizer)
 - [Reference, Entities, `DAG`, `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)

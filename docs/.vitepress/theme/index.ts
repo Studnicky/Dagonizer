@@ -20,24 +20,7 @@ import ExperimentalHomeHero from './components/ExperimentalHomeHero.vue'
 import DocFooter from './components/DocFooter.vue'
 import UiCallout from './components/ui/UiCallout.vue'
 import UiCodeTabs from './components/ui/UiCodeTabs.vue'
-
-// ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
-// lazy-load so doc pages that don't embed it don't pay for the bundle.
-const ArchivistRunner = defineAsyncComponent(() =>
-  import('./components/ArchivistRunner.vue'),
-)
-
-// CartographerRunner: deterministic data-orchestration demo (no LLM).
-// Lazy-loaded for the same reason as ArchivistRunner.
-const CartographerRunner = defineAsyncComponent(() =>
-  import('./components/CartographerRunner.vue'),
-)
-
-// DispatcherRunner: HITL park-and-correlate demo (no LLM, deterministic).
-// Lazy-loaded for the same reason as ArchivistRunner.
-const DispatcherRunner = defineAsyncComponent(() =>
-  import('./components/DispatcherRunner.vue'),
-)
+import RunnableExampleRunner from '../../../site/src/components/islands/RunnableExampleRunner.vue'
 
 // DagGraph renders any Dagonizer DAG via cytoscape. Lazy-load: only doc
 // pages with a <DagGraph :elements="..." /> block pull the bundle.
@@ -54,9 +37,7 @@ const DagJsonMermaid = defineAsyncComponent(() =>
 export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
-    app.component('ArchivistRunner', ArchivistRunner)
-    app.component('CartographerRunner', CartographerRunner)
-    app.component('DispatcherRunner', DispatcherRunner)
+    app.component('RunnableExampleRunner', RunnableExampleRunner)
     app.component('DagGraph', DagGraph)
     app.component('DagJsonMermaid', DagJsonMermaid)
     app.component('ExperimentalHomeHero', ExperimentalHomeHero)

@@ -1,23 +1,27 @@
 <script setup lang="ts">
-import Tag from 'primevue/tag';
-
-defineProps<{
-  items: readonly string[];
-  tone?: 'default' | 'cyan';
-}>();
+withDefaults(
+  defineProps<{
+    items: readonly string[];
+    tone?: 'default' | 'cyan';
+  }>(),
+  {
+    tone: 'default'
+  }
+);
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2">
-    <Tag
-      v-for="item in items"
+  <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+    <span
+      v-for="(item, index) in items"
       :key="item"
-      :value="item"
-      :class="
-        tone === 'cyan'
-          ? '!border-cyan-400/25 !bg-cyan-400/10 !text-cyan-100'
-          : '!border-white/10 !bg-white/4 !text-slate-400'
-      "
-    />
+      :class="[
+        'inline-flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em]',
+        tone === 'cyan' ? 'text-cyan-100' : 'text-slate-500'
+      ]"
+    >
+      <span v-if="index > 0" aria-hidden="true" class="h-1 w-1 rounded-full bg-white/16"></span>
+      <span>{{ item }}</span>
+    </span>
   </div>
 </template>

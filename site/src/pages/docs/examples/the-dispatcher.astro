@@ -1,36 +1,5 @@
 ---
-import RunnableExampleShell from '@/components/marketing/RunnableExampleShell.astro';
-import LazyDispatcherRunner from '@/components/islands/LazyDispatcherRunner.vue';
 import { SiteLinks } from '@/lib/links';
 
 return Astro.redirect(SiteLinks.site(SiteLinks.route('examples/the-dispatcher')), 301);
-
-const relatedLinks = [
-  { href: SiteLinks.site('/docs/examples/the-archivist'), label: 'The Archivist' },
-  { href: SiteLinks.site('/docs/examples/the-cartographer'), label: 'The Cartographer' },
-  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
-] as const;
-
-const crumbs = [
-  { href: SiteLinks.site('/docs'), label: 'Docs' },
-  { href: SiteLinks.site('/docs/examples'), label: 'Examples' },
-  { href: SiteLinks.site('/docs/examples/the-dispatcher'), label: 'The Dispatcher' }
-] as const;
-
-const proofPoints = [
-  'Human-in-the-loop orchestration can remain deterministic even when a workflow must stop and wait for operator input.',
-  'Checkpoint continuity lets teams resume from the exact control boundary instead of rebuilding state by hand.',
-  'Dagonizer supports routing logic that spans automated classification and explicit human takeover.'
-] as const;
 ---
-
-<RunnableExampleShell
-  title="The Dispatcher"
-  description="Runnable Dagonizer example for routing, pause-and-resume, and human-in-the-loop orchestration with checkpoint continuity."
-  pageDescription="A routing workflow that shows how Dagonizer handles pause points, operator handoff, and checkpoint-based resume without losing execution context."
-  crumbs={crumbs}
-  proofPoints={proofPoints}
-  relatedLinks={relatedLinks}
->
-  <LazyDispatcherRunner client:only="vue" />
-</RunnableExampleShell>

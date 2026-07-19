@@ -1,9 +1,8 @@
 ---
 layout: doc
 aside: false
-experimental: true
-title: Modern home concept
-description: Typed orchestration for agent workflows, resumable pipelines, and inspectable DAG execution.
+title: Runtime overview
+description: Typed orchestration for agent workflows, resumable pipelines, and explicit DAG execution.
 hero:
   name: Dagonizer
   text: Typed orchestration, visible execution.
@@ -21,7 +20,7 @@ hero:
 features:
   - icon: λ
     title: Typed graph contracts
-    details: Route work through explicit ports, declared terminals, and runtime documents that stay legible under change.
+    details: Route work through explicit ports, declared terminals, and runtime documents that remain stable as workflows evolve.
   - icon: ↻
     title: Durable resume
     details: Capture execution state, persist it outside process memory, and continue from the recorded cursor.

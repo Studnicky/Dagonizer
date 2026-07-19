@@ -15,8 +15,8 @@ const groupedSections = SiteDocs.sections();
     <TopNav />
     <SectionShell
       eyebrow="Documentation"
-      title="Reference, guides, and runnable examples for building with Dagonizer."
-      description={`Browse ${(await allDocs).length} documentation pages covering graph authoring, execution behavior, checkpoints, visualization, and runnable workflow examples.`}
+      title="Build, run, and inspect Dagonizer workflows."
+      description={`Browse ${(await allDocs).length} docs covering graph authoring, runtime APIs, checkpoints, visualization, agent workflows, human handoff, and streaming orchestration.`}
     >
       <DocsBrowser client:idle docs={await allDocs} sections={await groupedSections} />
     </SectionShell>

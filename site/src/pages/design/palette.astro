@@ -1,0 +1,203 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
+
+interface SwatchDefinition {
+  readonly role: string;
+  readonly hex: string;
+  readonly description: string;
+}
+
+interface SwatchGroup {
+  readonly title: string;
+  readonly description: string;
+  readonly swatches: readonly SwatchDefinition[];
+}
+
+const swatchGroups: readonly SwatchGroup[] = [
+  {
+    title: 'Backgrounds',
+    description: 'Neutral surface layers, darkest to lightest elevation.',
+    swatches: [
+      { role: 'bg', hex: '#03060b', description: 'Page body: darkest neutral surface' },
+      { role: 'bg-alt', hex: '#151c25', description: 'Sidebar / nav / panels: raised neutral surface' },
+      { role: 'bg-elv', hex: '#000000', description: 'Code blocks / deep elevation: darkest available neutral' },
+      { role: 'bg-soft', hex: '#111b28', description: 'Hover / lift surface: slightly lighter neutral than bg-alt' }
+    ]
+  },
+  {
+    title: 'Text',
+    description: 'Reading-order neutral text layers plus the divider hairline.',
+    swatches: [
+      { role: 'text', hex: '#d5e0e2', description: 'Primary body text: brightest silver/steel neutral' },
+      { role: 'text2', hex: '#b2c9cd', description: 'Secondary text: next-brightest steel neutral' },
+      { role: 'text3', hex: '#879da1', description: 'Tertiary text / captions: mid steel neutral' },
+      { role: 'divider', hex: '#989ba0', description: 'Borders and dividers: mid steel neutral' }
+    ]
+  },
+  {
+    title: 'Brand accents',
+    description: "The seal's real coverage: ~25% silver/steel structure (brand) plus two genuinely rare gem accents (brand2 cyan, brand3 violet) that cover well under 1% of the mark each — a third 'gold' family from an earlier extraction pass turned out to be an artifact of an unrelated version-badge asset and was dropped.",
+    swatches: [
+      { role: 'brand', hex: '#bdc0dc', description: 'Primary brand identity: the silver/steel structural color, matching the mark’s real dominant hue-family' },
+      { role: 'brand2', hex: '#3ca7c9', description: 'Cyan gem accent root — rare in the mark, used sparingly here too' },
+      { role: 'brand3', hex: '#b7bcfa', description: 'Violet gem accent root — rare in the mark, used sparingly here too' }
+    ]
+  },
+  {
+    title: 'Interactive & status',
+    description: 'Links, focus, selection, and the four semantic status roles.',
+    swatches: [
+      { role: 'link', hex: '#31a2c5', description: "Hyperlink text: derived from brand2's cyan hue family" },
+      { role: 'link-hover', hex: '#bceafb', description: 'Hyperlink hover/active: brighter variant of link' },
+      { role: 'focus-ring', hex: '#b1b6fe', description: "Keyboard focus outline: derived from brand3's violet hue family" },
+      { role: 'selection-bg', hex: '#242546', description: 'Text selection highlight: low-chroma dark overlay' },
+      { role: 'success', hex: '#a5cbda', description: "Success state: low-chroma tint derived from brand2's cyan hue family" },
+      { role: 'warning', hex: '#b0b4db', description: "Warning state: low-chroma tint derived from brand3's violet hue family" },
+      { role: 'danger', hex: '#9da0cd', description: "Error/danger state: low-chroma tint derived from brand3's violet hue family" },
+      { role: 'info', hex: '#b6d7e4', description: "Informational state: low-chroma tint derived from brand2's cyan hue family" }
+    ]
+  },
+  {
+    title: 'Chrome',
+    description: 'Minor UI chrome that does not fit the layers above.',
+    swatches: [
+      { role: 'scrollbar-thumb', hex: '#25292f', description: 'Scrollbar thumb: muted mid neutral' },
+      { role: 'code-inline-bg', hex: '#090a15', description: 'Inline code background: distinct from block-level bg-elv' }
+    ]
+  },
+  {
+    title: 'Syntax highlighting',
+    description: "Eleven token roles consumed by the dagonizer Shiki theme. Only two tokens (keyword, string) carry real gem color — the other nine are silver/steel neutral, mirroring how sparingly the mark itself uses color against its structural field.",
+    swatches: [
+      { role: 'syntax-keyword', hex: '#52bee1', description: "Keywords — the one gem-colored token, derived from brand2's cyan hue family" },
+      { role: 'syntax-string', hex: '#8b8ee7', description: "String literals — the other gem-colored token, derived from brand3's violet hue family" },
+      { role: 'syntax-number', hex: '#afb0bc', description: 'Numeric literals — silver/steel neutral' },
+      { role: 'syntax-comment', hex: '#8f9aa0', description: 'Comments — muted neutral, intentionally recessive' },
+      { role: 'syntax-function', hex: '#9697a3', description: 'Function/method names — silver/steel neutral' },
+      { role: 'syntax-type', hex: '#abadb9', description: 'Types/interfaces/classes — silver/steel neutral' },
+      { role: 'syntax-variable', hex: '#c0d2d5', description: 'Variable identifiers — near-neutral, dimmer than primary text' },
+      { role: 'syntax-constant', hex: '#bbbdc9', description: 'Constants/enum members — silver/steel neutral' },
+      { role: 'syntax-operator', hex: '#719aaa', description: 'Operators/punctuation — subdued neutral, low chroma' },
+      { role: 'syntax-tag', hex: '#9394a0', description: 'JSX/HTML tag names — silver/steel neutral' },
+      { role: 'syntax-attribute', hex: '#d2d3e0', description: 'JSX/HTML attribute names — silver/steel neutral' }
+    ]
+  }
+] as const;
+
+const totalRoleCount = swatchGroups.reduce((count, group) => count + group.swatches.length, 0);
+
+const syntaxSampleMarkdown = [
+  '```ts',
+  '// Resolve a placement from the checkpoint cursor.',
+  'const MAX_RETRIES: number = 3;',
+  '',
+  'interface NodeResultInterface<TState> {',
+  '  state: TState;',
+  '  output: NodeOutputInterface;',
+  '}',
+  '',
+  'function resolveCursor<TState>(dag: DagonizerInterface, cursor: string): NodeResultInterface<TState> {',
+  "  const label = `resume:${cursor}`;",
+  '  return dag.restore(label);',
+  '}',
+  '```'
+].join('\n');
+
+const rendered = await DocPageRenderer.render(syntaxSampleMarkdown);
+
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/design/palette'), label: 'Palette' }
+] as const;
+---
+
+<BaseLayout
+  title="dagonizer-32 Palette"
+  description="Reference sheet for the dagonizer-32 color palette and the syntax-highlighting theme used across Dagonizer documentation and code references."
+>
+  <main class="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+
+    <section class="hex-shell bg-slate-950/72 px-8 py-10 shadow-[0_30px_120px_-48px_rgba(15,23,42,1)] backdrop-blur md:px-10 md:py-12">
+      <div class="space-y-8">
+        <UiPageHeader
+          title="dagonizer-32 palette"
+          description={`Reference sheet for all ${totalRoleCount} roles in the dagonizer-32 palette and the syntax theme used across Dagonizer documentation and code references.`}
+          crumbs={crumbs}
+        />
+
+        <div class="max-w-3xl space-y-3 text-sm leading-6" style="color: var(--dagonizer-text2);">
+          <p>
+            The palette below is extracted entirely from the Dagonizer logo mark through an OKLCH
+            color-derivation pipeline: hues come from the mark's seed
+            colors, lightness and chroma are assigned per role band, contrast is enforced with APCA (WCAG 3
+            draft) Lc targets rather than WCAG 2.1 ratios, and every pair is checked (and corrected where
+            possible) against protanopia, deuteranopia, tritanopia, and achromatopsia simulation.
+          </p>
+          <p>
+            Every swatch below renders its actual <code style="background: var(--dagonizer-code-inline-bg); padding: 0.05rem 0.35rem; border-radius: 0.25rem;">var(--dagonizer-&lt;role&gt;)</code>
+            value with no local overrides. The code sample at the bottom runs through the same
+            Shiki pipeline (<code style="background: var(--dagonizer-code-inline-bg); padding: 0.05rem 0.35rem; border-radius: 0.25rem;">DocPageRenderer.render()</code>)
+            used for Dagonizer guides, references, and example writeups.
+          </p>
+        </div>
+
+        {
+          swatchGroups.map((group) => (
+            <section class="space-y-4">
+              <div>
+                <h2 class="text-xl font-semibold" style="color: var(--dagonizer-text);">{group.title}</h2>
+                <p class="mt-1 text-sm" style="color: var(--dagonizer-text3);">{group.description}</p>
+              </div>
+              <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {
+                  group.swatches.map((swatch) => (
+                    <div
+                      class="hex-chrome overflow-hidden"
+                      style="border-color: var(--dagonizer-divider); background: var(--dagonizer-bg-soft);"
+                    >
+                      <div
+                        class="h-16 w-full"
+                        style={`background: var(--dagonizer-${swatch.role});`}
+                        role="img"
+                        aria-label={`Swatch for --dagonizer-${swatch.role}`}
+                      />
+                      <div class="space-y-1 px-4 py-3.5">
+                        <div class="flex items-baseline justify-between gap-2">
+                          <code class="text-xs font-semibold" style="color: var(--dagonizer-text);">
+                            --dagonizer-{swatch.role}
+                          </code>
+                          <code class="text-xs" style="color: var(--dagonizer-text3);">{swatch.hex}</code>
+                        </div>
+                        <p class="text-xs leading-5" style="color: var(--dagonizer-text3);">{swatch.description}</p>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            </section>
+          ))
+        }
+
+        <section class="space-y-4">
+          <div>
+            <h2 class="text-xl font-semibold" style="color: var(--dagonizer-text);">Syntax theme in action</h2>
+            <p class="mt-1 text-sm" style="color: var(--dagonizer-text3);">
+              Rendered through the same Shiki highlighter and <code style="background: var(--dagonizer-code-inline-bg); padding: 0.05rem 0.35rem; border-radius: 0.25rem;">dagonizer-shiki-theme.json</code> used
+              across Dagonizer documentation and code references.
+            </p>
+          </div>
+          <div class="hex-tile docs-content overflow-hidden px-2 py-2" style="border-color: var(--dagonizer-divider);">
+            <Fragment set:html={rendered.html} />
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

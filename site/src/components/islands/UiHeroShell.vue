@@ -9,9 +9,9 @@ defineProps<{
 </script>
 
 <template>
-  <Card class="relative overflow-hidden rounded-[2rem]">
+  <Card class="hex-shell relative overflow-hidden">
     <template #content>
-      <section class="relative px-6 py-8 md:px-10 md:py-10">
+      <section class="relative px-8 py-10 md:px-12 md:py-14">
         <div class="absolute inset-y-0 right-0 hidden w-[44%] md:block xl:hidden">
           <slot name="visual" />
         </div>
@@ -25,7 +25,10 @@ defineProps<{
             </div>
 
             <div class="space-y-4">
-              <h1 class="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-6xl">
+              <h1
+                class="max-w-3xl text-4xl font-semibold tracking-tight md:text-6xl"
+                style="color: var(--dagonizer-text);"
+              >
                 {{ title }}
               </h1>
               <p class="max-w-xl text-base leading-7 text-slate-300 md:text-lg">

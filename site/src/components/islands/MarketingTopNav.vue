@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import Menubar from 'primevue/menubar';
-import Menu from 'primevue/menu';
+import { ref } from 'vue';
 import Drawer from 'primevue/drawer';
-import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import UiActionLink from '@/components/islands/UiActionLink.vue';
 import UiCtaRow from '@/components/islands/UiCtaRow.vue';
@@ -21,19 +18,6 @@ const props = defineProps<{
 const mobileOpen = ref(false);
 const desktopSearchQuery = ref('');
 const mobileSearchQuery = ref('');
-const desktopNavItems = computed(() =>
-  props.links.map((link) => ({
-    label: link.label,
-    url: link.href
-  }))
-);
-const mobileNavItems = computed(() =>
-  props.links.map((link) => ({
-    label: link.label,
-    url: link.href,
-    command: closeDrawer
-  }))
-);
 const topFacts = ['Typed DAG runtime', 'Inspectable execution', 'Durable resume'] as const;
 
 function closeDrawer() {
@@ -57,32 +41,32 @@ function submitMobileSearch() {
 
 <template>
   <header class="sticky top-0 z-50">
-    <div class="rounded-[1.75rem] border border-white/10 bg-slate-950/88 px-4 py-3 shadow-[0_24px_80px_-44px_rgba(2,6,23,1)] backdrop-blur-xl md:px-5">
+    <div class="hex-shell bg-slate-950/86 px-4 py-3.5 shadow-[0_24px_80px_-44px_rgba(2,6,23,1)] backdrop-blur-xl md:px-6">
       <div class="flex items-center justify-between gap-4 lg:hidden">
-        <a :href="homeHref" class="flex min-w-0 items-center gap-3">
-          <div class="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/8 shadow-[0_0_0_1px_rgba(34,232,255,0.08)_inset]">
-            <img :src="iconHref" alt="Dagonizer" class="h-8 w-8" />
-          </div>
+        <a :href="homeHref" class="flex min-w-0 items-center gap-3.5">
+          <img :src="iconHref" alt="Dagonizer" class="h-14 w-14" />
           <div class="min-w-0">
             <div class="truncate text-sm font-semibold uppercase tracking-[0.22em] text-slate-50">Dagonizer</div>
             <div class="truncate text-[11px] uppercase tracking-[0.18em] text-slate-400">Typed DAG orchestration</div>
           </div>
         </a>
 
-        <Button
-          label="Menu"
-          severity="contrast"
-          variant="outlined"
+        <button
+          type="button"
+          aria-label="Open navigation"
+          class="inline-flex h-11 w-11 items-center justify-center text-slate-200 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/35"
           @click="mobileOpen = true"
-        />
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.75">
+            <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
       </div>
 
-      <div class="hidden flex-col gap-3 lg:flex">
-        <div class="flex items-center justify-between gap-6 border-b border-white/8 pb-3">
-          <a :href="homeHref" class="flex min-w-0 items-center gap-3 pr-2">
-            <div class="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/8 shadow-[0_0_0_1px_rgba(34,232,255,0.08)_inset]">
-              <img :src="iconHref" alt="Dagonizer" class="h-8 w-8" />
-            </div>
+      <div class="hidden flex-col gap-4 lg:flex">
+        <div class="flex items-center justify-between gap-6 pb-3">
+          <a :href="homeHref" class="flex min-w-0 items-center gap-3.5 pr-2">
+            <img :src="iconHref" alt="Dagonizer" class="h-14 w-14" />
             <div class="min-w-0 space-y-1">
               <div class="truncate text-sm font-semibold uppercase tracking-[0.22em] text-slate-50">Dagonizer</div>
               <div class="truncate text-[11px] uppercase tracking-[0.18em] text-slate-400">Typed DAG orchestration</div>
@@ -92,36 +76,43 @@ function submitMobileSearch() {
           <UiFactTags :items="topFacts" />
         </div>
 
-        <div class="flex items-center gap-5">
-          <Menubar :model="desktopNavItems" class="min-w-0 flex-1" aria-label="Primary">
-            <template #item="{ item, props: itemProps }">
-              <a
-                v-bind="itemProps.action"
-                :href="item.url"
-                class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/6 hover:text-white"
-              >
-                <span>{{ item.label }}</span>
-              </a>
-            </template>
-          </Menubar>
+        <div class="hex-divider"></div>
 
-          <InputText
-            v-model="desktopSearchQuery"
-            placeholder="Search docs..."
-            aria-label="Search docs"
-            class="w-40 shrink-0 xl:w-56"
-            @keydown.enter="submitDesktopSearch"
-          />
+        <div class="flex items-center justify-between gap-6 pt-1">
+          <nav class="flex min-w-0 flex-1 flex-wrap items-center gap-x-6 gap-y-2" aria-label="Primary">
+            <a
+              v-for="link in links"
+              :key="link.href"
+              :href="link.href"
+              class="group relative inline-flex items-center py-2 text-[15px] font-medium text-slate-300 transition hover:text-white"
+            >
+              <span>{{ link.label }}</span>
+              <span
+                aria-hidden="true"
+                class="absolute inset-x-0 -bottom-px h-px bg-transparent transition duration-150 group-hover:bg-cyan-300/45"
+              ></span>
+            </a>
+          </nav>
 
-          <UiCtaRow>
-            <UiActionLink :href="ctaHref" variant="primary" label="Get started" />
-            <UiActionLink :href="repoUrl" target="_blank" rel="noreferrer" label="GitHub" />
-          </UiCtaRow>
+          <div class="flex shrink-0 items-center gap-4">
+            <InputText
+              v-model="desktopSearchQuery"
+              placeholder="Search docs..."
+              aria-label="Search docs"
+              class="w-44 xl:w-56"
+              @keydown.enter="submitDesktopSearch"
+            />
+
+            <UiCtaRow>
+              <UiActionLink :href="ctaHref" variant="primary" label="Get started" />
+              <UiActionLink :href="repoUrl" target="_blank" rel="noreferrer" label="GitHub" />
+            </UiCtaRow>
+          </div>
         </div>
       </div>
 
       <Drawer v-model:visible="mobileOpen" position="right" header="Dagonizer">
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-5">
           <InputText
             v-model="mobileSearchQuery"
             placeholder="Search docs..."
@@ -130,17 +121,27 @@ function submitMobileSearch() {
             @keydown.enter="submitMobileSearch"
           />
 
-          <Menu :model="mobileNavItems">
-            <template #item="{ item, props: itemProps }">
-              <a
-                v-bind="itemProps.action"
-                :href="item.url"
-                class="flex items-center rounded-xl px-4 py-3 text-sm font-medium text-slate-200 transition hover:text-white"
+          <nav class="flex flex-col" aria-label="Primary">
+            <a
+              v-for="link in links"
+              :key="link.href"
+              :href="link.href"
+              class="group flex items-center justify-between border-b border-white/8 py-3 text-base text-slate-200 transition hover:text-white"
+              @click="closeDrawer"
+            >
+              <span>{{ link.label }}</span>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                class="h-4 w-4 text-slate-500 transition group-hover:text-slate-300"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
               >
-                {{ item.label }}
-              </a>
-            </template>
-          </Menu>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 3.5 9.5 8 5 12.5" />
+              </svg>
+            </a>
+          </nav>
 
           <div class="mt-2">
             <UiFactTags :items="topFacts" />

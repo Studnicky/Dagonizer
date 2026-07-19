@@ -10,7 +10,7 @@ import { SiteLinks } from '@/lib/links';
 const roleOptions = [
   { label: 'LLM agent orchestration', value: 'agents' },
   { label: 'Data pipelines / ETL', value: 'etl' },
-  { label: 'Browser demos / visualization', value: 'viz' }
+  { label: 'Browser workflows / visualization', value: 'viz' }
 ];
 
 const selectedRole = ref(roleOptions[0]);
@@ -38,7 +38,7 @@ const problem = ref('We need deterministic orchestration, live diagram feedback,
         </label>
         <div class="md:col-span-2 flex flex-wrap gap-3">
           <Button label="Review workflow fit" />
-          <Button as="a" :href="SiteLinks.site('/docs/examples/the-archivist')" label="Open examples" variant="outlined" severity="contrast" />
+          <Button as="a" :href="SiteLinks.site(SiteLinks.route('examples/the-archivist'))" label="Open examples" variant="outlined" severity="contrast" />
         </div>
       </div>
     </template>

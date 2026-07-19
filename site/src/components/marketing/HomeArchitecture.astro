@@ -6,46 +6,46 @@ import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
 
 <section id="visualize" class="space-y-6">
   <UiSectionIntro
-    eyebrow="Inspection surfaces"
-    title="Use one DAG across execution, visualization, and authored workflows"
-    description="The graph model is useful when teams can inspect runtime behavior clearly, explain the workflow precisely, and move from examples into real authored DAGs without changing representations."
+    eyebrow="Graph outputs"
+    title="Use one DAG document across execution, visualization, and authoring"
+    description="The graph model matters when one DAG document needs to survive authoring, registration, rendering, and browser execution without a second graph description."
   />
 
-  <div class="grid gap-5 xl:grid-cols-[1.35fr_0.95fr]">
+  <div class="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
     <UiPanelShell>
-      <div class="grid gap-2 border-b border-white/8 pb-4 md:grid-cols-3">
-        <div class="rounded-xl border border-cyan-400/25 bg-cyan-400/12 px-4 py-3 text-sm font-medium tracking-[0.01em] text-cyan-100">Execution model</div>
-        <div class="rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm tracking-[0.01em] text-slate-300">Visualization</div>
-        <div class="rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm tracking-[0.01em] text-slate-300">Authoring</div>
+      <div class="grid gap-3 border-b border-white/8 pb-5 md:grid-cols-3">
+        <div class="hex-chrome !border-cyan-400/25 bg-cyan-400/12 px-5 py-4 text-sm font-medium tracking-[0.01em] text-cyan-100">Execution model</div>
+        <div class="hex-chrome bg-white/3 px-5 py-4 text-sm tracking-[0.01em] text-slate-300">Visualization</div>
+        <div class="hex-chrome bg-white/3 px-5 py-4 text-sm tracking-[0.01em] text-slate-300">Authoring</div>
       </div>
 
-      <div class="mt-5 grid gap-4 md:grid-cols-3">
+      <div class="mt-6 grid gap-5 md:grid-cols-3">
         <UiContentPanel eyebrow="Explicit structure" title="Typed placements and routing">
           <p class="text-sm leading-6 text-slate-300">
-            Workflows stay readable because the graph defines transitions, terminals, and downstream branches directly.
+            Workflows stay readable because the graph defines transitions, terminals, and downstream branches directly instead of inferring them from application glue.
           </p>
         </UiContentPanel>
         <UiContentPanel eyebrow="Runtime control" title="Checkpoints, retries, and fan-in">
           <p class="text-sm leading-6 text-slate-300">
-            The runtime model covers pause points, retry paths, gather behavior, and resumable execution instead of leaving them to ad hoc orchestration code.
+            The runtime model covers pause points, retry paths, gather behavior, and resumable execution instead of leaving them to unrelated libraries or ad hoc orchestration code.
           </p>
         </UiContentPanel>
-        <UiContentPanel eyebrow="Reusable model" title="One DAG across surfaces">
+        <UiContentPanel eyebrow="Reusable model" title="One DAG across tools">
           <p class="text-sm leading-6 text-slate-300">
-            The same workflow can be documented, executed, visualized, and integrated without maintaining separate representations.
+            The same workflow can be documented, executed, visualized, and integrated without maintaining separate DAG definitions.
           </p>
         </UiContentPanel>
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-        <UiContentPanel eyebrow="Inspection surface" title="Readable graph behavior">
+      <div class="mt-5 grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
+        <UiContentPanel eyebrow="Execution view" title="Execution-aligned graph view">
           <p class="text-sm leading-6 text-slate-300">
-            Teams can inspect placements, flow direction, and state boundaries in a way that matches how the workflow actually runs.
+            Placements, route labels, and state boundaries stay visible in the same graph shape the dispatcher executes.
           </p>
         </UiContentPanel>
         <UiContentPanel eyebrow="Authoring path" title="Start with examples, then author your own DAGs">
           <p class="text-sm leading-6 text-slate-300">
-            Users can move from runnable examples to their own graph documents without switching mental models or maintaining a second graph description.
+            Move from the shipped example workflows to your own graph documents without switching models or maintaining a second graph description.
           </p>
         </UiContentPanel>
       </div>

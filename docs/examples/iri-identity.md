@@ -12,21 +12,15 @@ seeAlso:
 
 # IRI Identity and Prefix Isolation
 
-## What It Is
+## Registry Identity Surface
 
 IRI Identity and Prefix Isolation explains how independently authored plugins can share local names without registry collisions. Two plugins can both ship a node named `classify`; `@context` prefix expansion turns each one into a different absolute IRI before registration. Names remain display and observability text only.
 
-This is a registry and JSON-LD identity page. The proof lives in unit tests and small JSON-LD snippets rather than a browser DAG demo.
+The registry seam shows up in unit tests and JSON-LD snippets rather than in a larger workflow walkthrough. The point is identifier expansion and collision control, not interactive execution.
 
-## How It Works
+## Collision and Prefix Cases
 
-Registration stores node identifiers, DAG identifiers, placement identifiers, and references as canonical IRIs. Absolute IRIs pass through unchanged; declared `prefix:local` CURIEs expand through the active `@context`. Bare identifiers and undeclared prefixes are invalid. The `name` field remains display text for humans.
-
-The application authoring rule is practical: plugin-owned names should carry plugin-owned prefixes, and every DAG that references them should declare the same prefix in `@context`.
-
-## Diagrams, Examples, and Outputs
-
-This page has JSON-LD snippets instead of a Mermaid graph because the interesting behavior is registry identity, not route topology.
+The core behavior is prefix expansion and collision detection, so JSON-LD snippets and test cases carry the signal more directly than a route diagram.
 
 1. Two nodes with the same local name under distinct prefix contexts coexist without collision.
 2. A bare `increment` and a prefixed `pluginA:increment` expand to different IRIs.
@@ -41,11 +35,11 @@ This page has JSON-LD snippets instead of a Mermaid graph because the interestin
 npx litany test unit
 ```
 
-## What It Lets You Do
+## Prefix Expansion Model
 
-IRI identity lets applications combine plugins that use the same local node or DAG labels without registry collisions. Use it when teams independently ship `classify`, `extract`, `normalize`, or `route` nodes that may later run in one dispatcher.
+Registration stores node identifiers, DAG identifiers, placement identifiers, and references as canonical IRIs. Absolute IRIs pass through unchanged; declared `prefix:local` CURIEs expand through the active `@context`. Bare identifiers and undeclared prefixes are invalid. The `name` field remains display text for humans.
 
-Node and DAG registries are keyed by **expanded IRI**, not raw short names. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes - each name expands to a different absolute IRI before entering the registry.
+The host authoring rule is practical: plugin-owned names should carry plugin-owned prefixes, and every DAG that references them should declare the same prefix in `@context`.
 
 ## Code Samples
 
@@ -104,7 +98,13 @@ A DAG document that references a prefixed node declares the prefix in its own `@
 
 Every node reference is expanded through the document's `@context` before the DAG is stored. The `node` target `pluginA:classify` resolves to `https://plugin-a.dev/dag#classify` — the same IRI under which the node was registered. Placement `@id` values are already explicit IRIs, while `name` stays display-only.
 
-## Details for Nerds
+## Operational Uses
+
+IRI identity lets hosts combine plugins that use the same local node or DAG labels without registry collisions. It fits teams that independently ship `classify`, `extract`, `normalize`, or `route` nodes which may later run in one dispatcher.
+
+Node and DAG registries are keyed by **expanded IRI**, not raw short names. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes - each name expands to a different absolute IRI before entering the registry.
+
+## Runtime Notes
 
 ### The problem: short-name collision
 
@@ -159,7 +159,7 @@ A compound reference like `tool:calculator` is valid only when `tool` is declare
 
 ### What the unit tests assert
 
-The plugin composition examples in `examples/the-cartographer/plugins/NormalizeSourcesPlugin.ts` and `examples/the-cartographer/embedded-dags/IngestSourceDAG.ts` show the same registry seam in runnable code.
+The plugin composition examples in `examples/the-cartographer/plugins/NormalizeSourcesPlugin.ts` and `examples/the-cartographer/embedded-dags/IngestSourceDAG.ts` show the same registry seam in concrete workflow code.
 
 ## Related Concepts
 

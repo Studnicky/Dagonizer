@@ -15,34 +15,28 @@ seeAlso:
 
 # Dependency Injection
 
-## What It Is
+## Dependency Model
 
-Dependency injection in Dagonizer is plain TypeScript constructor injection. The host application creates services, passes them into node constructors, and registers those node instances with the dispatcher.
+Dependency injection in Dagonizer is plain TypeScript constructor injection. The host creates services, passes them into node constructors, and registers those node instances with the dispatcher.
 
 The dispatcher carries DAG state and lifecycle; it does not carry an ambient service bag. That keeps node dependencies visible in the class signature and easy to replace in tests.
 
-## How It Works
+## Examples and References
 
-The host constructs service objects, passes them into node constructors, then registers those node instances. The dispatcher remains generic over state only. Tests instantiate the same nodes with fakes or stubs, and DAG JSON-LD remains independent of concrete service wiring.
+Constructor injection is node construction, not DAG topology, so the relevant artifacts are source samples rather than a graph.
 
-Nodes receive external dependencies through their constructors and hold them as private fields. The dispatcher is generic over state only — `Dagonizer<TState>`. There is no ambient services record and no `context.services`.
-
-## Diagrams, Examples, and Outputs
-
-Dependency injection is node construction, not DAG topology, so this page uses runnable source snippets instead of a graph.
-
-Use these examples:
+These examples show constructor injection and service lifetime in running code:
 
 - [The Cartographer](../examples/the-cartographer) injects geo resolvers, delivery transports, and stores into nodes before registering DAG bundles.
 - [The Archivist](../examples/the-archivist) injects model adapters, embedders, and graph-backed memory services into the nodes used by the parent and embedded DAGs.
 - [Shared State](./shared-state) explains when a shared store dependency is safe and how it interacts with checkpointing.
 - [Observability](./observability) shows dispatcher subclass hooks for cross-cutting logging and tracing that do not belong inside node constructors.
 
-## What It Lets You Do
+## Injection Contract
 
-### Use when
+The host constructs service objects, passes them into node constructors, then registers those node instances. The dispatcher remains generic over state only. Tests instantiate the same nodes with fakes or stubs, and DAG JSON-LD remains independent of concrete service wiring.
 
-Use constructor dependency injection when nodes need external services: LLM adapters, embedders, stores, geocoders, HTTP clients, loggers, clocks, or domain repositories. Dependencies should be explicit on the node class, not hidden behind dispatcher globals.
+Nodes receive external dependencies through their constructors and hold them as private fields. The dispatcher is generic over state only — `Dagonizer<TState>`. There is no ambient services record and no `context.services`.
 
 ## Code Samples
 
@@ -52,11 +46,15 @@ Constructor injection is explicit, statically typed, and testable. Each node dec
 
 The dispatcher carries no ambient state. Every object a node needs is held by that node as a field, visible in the class declaration and verifiable at construction time.
 
-## Details for Nerds
+## Operational Uses
+
+Constructor dependency injection is the pattern for nodes that need external services: LLM adapters, embedders, stores, geocoders, HTTP clients, loggers, clocks, or domain repositories. Dependencies stay explicit on the node class instead of hiding behind dispatcher globals.
+
+## Runtime Notes
 
 ### Pattern
 
-Declare the dependency as a private field on the node class. Accept it via the constructor. Register the node with an injected instance. The Cartographer resolver nodes are the runnable example: `ResolveIpNode` receives an `IpGeolocator`, holds it as a field, and calls it from `execute()`.
+Declare the dependency as a private field on the node class. Accept it via the constructor. Register the node with an injected instance. The Cartographer resolver nodes show the pattern directly: `ResolveIpNode` receives an `IpGeolocator`, holds it as a field, and calls it from `execute()`.
 
 <<< @/../examples/the-cartographer/nodes/geo/resolveIp.ts#resolve-ip-node
 
@@ -98,5 +96,5 @@ Because dependencies are constructor arguments, a node can be tested directly wi
 - [Reference: Dagonizer](../reference/dagonizer)
 - [Reference: Contracts](../reference/contracts)
 - [Guide: Shared state](./shared-state)
-- [Demo: The Archivist](../examples/the-archivist) — nodes receive an LLM adapter through their constructors
-- [Demo: The Cartographer](../examples/the-cartographer) — nodes receive geo resolvers through their constructors
+- [The Archivist](../examples/the-archivist) — nodes receive an LLM adapter through their constructors
+- [The Cartographer](../examples/the-cartographer) — nodes receive geo resolvers through their constructors

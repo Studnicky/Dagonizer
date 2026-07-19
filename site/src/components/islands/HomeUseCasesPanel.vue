@@ -28,14 +28,14 @@ const useCases: readonly UseCase[] = [
     label: 'Agents',
     title: 'Agent workflows with explicit routing and durable checkpoints',
     summary:
-      'Keep tool use, retries, operator handoff, and downstream routing inside one visible DAG instead of scattering orchestration logic across app code.',
+      'Keep tool use, retries, operator handoff, and downstream routing inside one DAG document instead of scattering orchestration logic across app code.',
     capabilities: [
-      'Typed terminals and branch outputs keep control flow inspectable.',
+      'Typed terminals and branch outputs keep control flow explicit.',
       'Checkpoint resume preserves execution context for long-running or interrupted runs.',
-      'Visualization surfaces expose the same workflow operators execute.'
+      'Visualization views render the same DAG operators the runtime executes.'
     ],
-    primaryHref: SiteLinks.site('/docs/examples/the-archivist'),
-    primaryLabel: 'Open Archivist example',
+    primaryHref: SiteLinks.site(SiteLinks.route('examples/the-archivist')),
+    primaryLabel: 'Open Archivist workflow',
     secondaryHref: SiteLinks.site('/docs/guide/checkpoint'),
     secondaryLabel: 'Read checkpoint guide'
   },
@@ -50,24 +50,24 @@ const useCases: readonly UseCase[] = [
       'Hosts can release workers instead of simulating suspension.',
       'The resumed run continues the same DAG rather than rebuilding context ad hoc.'
     ],
-    primaryHref: SiteLinks.site('/docs/examples/the-dispatcher'),
-    primaryLabel: 'Open Dispatcher example',
+    primaryHref: SiteLinks.site(SiteLinks.route('examples/the-dispatcher')),
+    primaryLabel: 'Open Dispatcher workflow',
     secondaryHref: SiteLinks.site('/docs/guide/hitl'),
     secondaryLabel: 'Read HITL guide'
   },
   {
     key: 'streaming',
     label: 'Streaming',
-    title: 'Streaming DAGs that stay readable under fan-out and fan-in',
+    title: 'Streaming DAGs with explicit fan-out and fan-in',
     summary:
-      'Model intake, normalization, concurrency, gather behavior, and downstream enrichment directly in the graph so operational behavior remains legible.',
+      'Model intake, normalization, concurrency, gather behavior, and downstream enrichment directly in the graph so operational behavior remains attached to the DAG.',
     capabilities: [
       'Streaming producers feed work over time without inventing a second execution model.',
       'Scatter and gather stay graph-native instead of hidden queue glue.',
-      'Teams can document, inspect, and tune the same workflow artifact.'
+      'Teams can render, run, and tune the same workflow artifact.'
     ],
-    primaryHref: SiteLinks.site('/docs/examples/the-cartographer'),
-    primaryLabel: 'Open Cartographer example',
+    primaryHref: SiteLinks.site(SiteLinks.route('examples/the-cartographer')),
+    primaryLabel: 'Open Cartographer workflow',
     secondaryHref: SiteLinks.site('/docs/guide/streaming-producers'),
     secondaryLabel: 'Read streaming guide'
   }
@@ -76,8 +76,8 @@ const useCases: readonly UseCase[] = [
 
 <template>
   <Card>
-    <template #subtitle>Use-case fit</template>
-    <template #title>Match the runtime model to the workflow you need to operate</template>
+    <template #subtitle>Workflow categories</template>
+    <template #title>Choose the runtime pattern that matches the job</template>
     <template #content>
       <Tabs value="agents">
         <TabList>
@@ -96,11 +96,11 @@ const useCases: readonly UseCase[] = [
                   <p class="text-sm leading-6 text-slate-300">{{ useCase.summary }}</p>
                 </div>
 
-                <ul class="space-y-3 text-sm leading-6 text-slate-300">
+                <ul class="space-y-4 text-sm leading-6 text-slate-300">
                   <li
                     v-for="capability in useCase.capabilities"
                     :key="capability"
-                    class="rounded-xl border border-white/8 bg-white/4 px-4 py-3"
+                    class="hex-tile bg-white/4 px-5 py-4"
                   >
                     {{ capability }}
                   </li>
@@ -108,12 +108,12 @@ const useCases: readonly UseCase[] = [
               </div>
 
               <Card class="h-full">
-                <template #subtitle>Next step</template>
-                <template #title>Inspect the runnable example and the runtime contract</template>
+                <template #subtitle>Open next</template>
+                <template #title>Read the workflow and the contract that drives it</template>
                 <template #content>
                   <div class="space-y-4">
                     <p class="text-sm leading-6 text-slate-300">
-                      Use the example to inspect the concrete workflow shape, then move into the guide for the execution contract behind it.
+                      Open the runnable workflow example, then move into the guide for the execution contract behind it.
                     </p>
 
                     <UiCtaRow class="flex-col items-stretch">

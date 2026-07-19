@@ -52,6 +52,7 @@ import AboxAccordion from '../../../docs/.vitepress/theme/components/AboxAccordi
 import DagGraph from '../../../docs/.vitepress/theme/components/DagGraph.vue';
 import PanesTabs from '../../../docs/.vitepress/theme/components/PanesTabs.vue';
 import Spinner from '../../../docs/.vitepress/theme/components/Spinner.vue';
+import RunnableExampleWorkbench from '../../runnable-example/RunnableExampleWorkbench.vue';
 
 // ── Web-worker container ───────────────────────────────────────────────────────
 // Runs the CPU-heavy typed event pipeline off the main thread. `spawnWorker` is
@@ -913,14 +914,14 @@ onMounted(() => {
     </div>
 
     <!-- Main layout -->
-    <div class="cr-grid">
-
+    <RunnableExampleWorkbench
+      left-label="Cartographer"
+      :left-hint="flowHint"
+      right-label="Graph"
+      :right-hint="`${trace.length} events`"
+    >
       <!-- LEFT: Stream | Insights | Compare + pinned Run bar -->
-      <div class="cr-col cr-col--left">
-        <div class="cr-col-head">
-          <span class="cr-label">Cartographer</span>
-          <span class="cr-hint">{{ flowHint }}</span>
-        </div>
+      <template #left>
 
         <!-- Tab host: Stream, Insights, and Compare -->
         <PanesTabs :tabs="leftTabs" default-key="stream" class="cr-tabs cr-tabs--left">
@@ -1132,14 +1133,10 @@ onMounted(() => {
           </div>
         </footer>
 
-      </div>
+      </template>
 
       <!-- RIGHT: DAG | Config | Trace -->
-      <div class="cr-col cr-col--right">
-        <div class="cr-col-head">
-          <span class="cr-label">Graph</span>
-          <span class="cr-hint">{{ trace.length }} events</span>
-        </div>
+      <template #right>
         <PanesTabs :tabs="rightTabs" default-key="dag" class="cr-tabs cr-tabs--right">
 
           <!-- DAG tab: live execution graph -->
@@ -1353,7 +1350,7 @@ onMounted(() => {
                 The generative streamer yields events lazily — heap stays flat regardless of total.
                 The live feed is virtualized to the most recent {{ MAX_VISIBLE_FEED }} lines and the
                 DAG/trace updates follow the timer-based presentation cadence. The telemetry above shows the browser-side
-                flush cost the demo is actually paying on this device; the Stream badge shows the
+                flush cost this host is actually paying on this device; the Stream badge shows the
                 true processed count.
               </div>
 
@@ -1384,9 +1381,8 @@ onMounted(() => {
           </template>
 
         </PanesTabs>
-      </div>
-
-    </div>
+      </template>
+    </RunnableExampleWorkbench>
   </div>
 </template>
 
@@ -1412,50 +1408,6 @@ onMounted(() => {
   background: rgba(212, 166, 73, 0.08);
   font-size: 0.85rem;
   color: var(--vp-c-text-1);
-}
-
-/* ── Two-column grid: iridis pattern ──────────────────────────────────── */
-.cr-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-}
-
-@container cartographer (min-width: 720px) {
-  .cr-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-  }
-}
-
-/* ── Column ────────────────────────────────────────────────────────────── */
-.cr-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-/* ── Column head ─────────────────────────────────────────────────────── */
-.cr-col-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 1.75rem;
-}
-
-.cr-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-}
-
-.cr-hint {
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
-  font-family: var(--vp-font-family-mono);
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────────────── */

@@ -87,10 +87,8 @@ These components should not be flattened into generic PrimeVue wrappers because 
   - keep repository-owned
   - may use PrimeVue for tabs, selects, and buttons internally
   - the component API and behavior are Dagonizer-specific
-- `site/src/components/islands/LazyArchivistRunner.vue`
-- `site/src/components/islands/LazyCartographerRunner.vue`
-- `site/src/components/islands/LazyDispatcherRunner.vue`
-  - example/runtime island boundaries
+- `site/src/components/islands/RunnableExampleRunner.vue`
+  - shared example/runtime island boundary for Archivist, Cartographer, and Dispatcher
 - `site/src/components/islands/UiCtaRow.vue`
   - layout composition primitive for site CTA grouping
 - `site/src/components/islands/UiSectionIntro.vue`

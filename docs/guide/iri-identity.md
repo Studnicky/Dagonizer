@@ -12,23 +12,17 @@ seeAlso:
 
 # IRI Identity
 
-## What It Is
+## Registry Identity Surface
 
-IRI identity is how Dagonizer lets independently authored plugins share a dispatcher without fighting over short labels. A plugin can publish a node displayed as `classify`, another plugin can publish its own `classify`, and both can run in one application because registry keys are expanded IRIs, not bare strings. Names are display and observability text only.
+IRI identity is how Dagonizer lets independently authored plugins share a dispatcher without fighting over short labels. A plugin can publish a node displayed as `classify`, another plugin can publish its own `classify`, and both can run in one host because registry keys are expanded IRIs, not bare strings. Names are display and observability text only.
 
 `ContextResolver` maps `prefix:local` references through a DAG or bundle `@context`. The short form is what people can read and write; the expanded IRI is what the registry stores.
 
-## How It Works
+## Registry and Runtime References
 
-Every registry key is an explicit IRI. Absolute IRIs pass through unchanged, and declared prefixes expand through the active JSON-LD-style `@context`. Unknown prefixes and short names fail validation; the runtime does not synthesize identities.
+IRI identity is registry behavior, not graph topology, so focused JSON-LD and registration snippets cover the core cases more directly than a Mermaid graph. The supporting example and unit tests cover the collision cases:
 
-Every node reference, DAG reference, and DAG `@id` is expanded to an **absolute IRI** before it enters the registry. Two plugins that both ship a node labeled `classify` can coexist without collision because each resolves to a distinct IRI key.
-
-## Diagrams, Examples, and Outputs
-
-IRI identity is registry behavior, not graph topology, so this page uses focused JSON-LD and registration snippets instead of a Mermaid graph. The supporting example and unit tests prove the collision cases:
-
-- [IRI Identity and Prefix Isolation](../examples/iri-identity) shows the application-level rule set.
+- [IRI Identity and Prefix Isolation](../examples/iri-identity) shows the host-level rule set.
 - `packages/dagonizer/tests/unit/iri-identity.test.ts` verifies prefix isolation, duplicate rejection, and `@context` validation.
 - [Example 33: Plugin-Defined DAGs](../examples/33-plugin) shows plugin-provided DAGs embedded by a parent flow.
 
@@ -63,11 +57,11 @@ The `node`, `dag`, phase `node`, and scatter body references in a DAG document a
 
 `myPlugin:summarize` resolves to `https://myplugin.dev/dag#summarize` before the node registry lookup occurs. The `"done"` route remains a placement-to-placement edge over placement IRIs.
 
-## What It Lets You Do
+## Prefix Expansion Model
 
-### Use when
+Every registry key is an explicit IRI. Absolute IRIs pass through unchanged, and declared prefixes expand through the active JSON-LD-style `@context`. Unknown prefixes and short names fail validation; the runtime does not synthesize identities.
 
-Use IRI identity when multiple plugins, packages, or teams may register the same local node or DAG labels in one dispatcher. Prefix-scoped references let `classify`, `normalize`, or `route` coexist without forcing every application to invent globally unique display names.
+Every node reference, DAG reference, and DAG `@id` is expanded to an **absolute IRI** before it enters the registry. Two plugins that both ship a node labeled `classify` can coexist without collision because each resolves to a distinct IRI key.
 
 ## Code Samples
 
@@ -194,7 +188,11 @@ dispatcher.nodes.size === 2;                  // true
 
 Nodes and DAGs register under the exact absolute IRI they declare, or under the expanded IRI produced by a declared JSON-LD prefix. There is no default namespace and no short-reference authoring mode. Placement `name` is for diagrams, logs, and operator-facing text only.
 
-## Details for Nerds
+## Operational Uses
+
+IRI identity is what lets multiple plugins, packages, or teams register the same local node or DAG labels in one dispatcher. Prefix-scoped references let `classify`, `normalize`, or `route` coexist without forcing every host to invent globally unique display names.
+
+## Runtime Notes
 
 ### What expands, and when
 

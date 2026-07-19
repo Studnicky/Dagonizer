@@ -29,7 +29,7 @@ const props = withDefaults(
 </script>
 
 <template>
-  <section :id="sectionId" class="grid gap-5 md:grid-cols-3">
+  <section :id="sectionId" class="grid gap-6 md:grid-cols-3">
     <template v-for="item in items" :key="`${item.title}-${item.eyebrow ?? item.badge ?? ''}`">
       <UiLinkCard
         v-if="item.href && linkCards"
@@ -43,7 +43,12 @@ const props = withDefaults(
         <template #title>
           <div class="space-y-3">
             <div v-if="item.eyebrow || item.badge" class="flex items-center gap-3">
-              <Tag v-if="item.badge" :value="item.badge" class="!h-10 !w-10 !justify-center !rounded-xl !px-0 !py-0 !text-sm" />
+              <Tag
+                v-if="item.badge"
+                :value="item.badge"
+                class="hex-cell !w-10 !justify-center !px-0 !py-0 !text-sm"
+                style="aspect-ratio: var(--dagonizer-hex-ratio);"
+              />
               <p v-if="item.eyebrow" class="text-xs uppercase tracking-[0.24em] text-slate-500">{{ item.eyebrow }}</p>
             </div>
             <h2

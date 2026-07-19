@@ -13,6 +13,10 @@ interface DocEntry {
   readonly headings: readonly string[];
 }
 
+const DOC_SECTION_LABELS: Readonly<Record<string, string>> = {
+  experiments: 'Runtime Overviews'
+};
+
 function inlineText(text: string): string {
   return text
     .replace(/`([^`]+)`/g, '$1')
@@ -33,6 +37,10 @@ function toTitleFromSlug(slug: string): string {
     .replace(/^\d+-/, '')
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function toSectionDisplayName(section: string): string {
+  return DOC_SECTION_LABELS[section] ?? toTitleFromSlug(section);
 }
 
 function toDisplayTitle(entry: Awaited<ReturnType<typeof getCollection<'docs'>>>[number]): string {
@@ -116,7 +124,7 @@ export const SiteDocs = {
     }
 
     return Array.from(grouped.entries())
-      .map(([name, entries]) => ({ name: toTitleFromSlug(name), entries }))
+      .map(([name, entries]) => ({ name: toSectionDisplayName(name), entries }))
       .sort((left, right) => left.name.localeCompare(right.name));
   },
 
