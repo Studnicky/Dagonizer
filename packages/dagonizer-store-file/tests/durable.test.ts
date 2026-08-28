@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
 
@@ -110,6 +110,49 @@ void describe('FileGraphDataset durable adapter', () => {
       dataset.flush();
       assert.equal(existsSync(path), true);
       assert.equal(existsSync(`${path}.journal`), false);
+    } finally {
+      rmSync(directory, { "recursive": true, "force": true });
+    }
+  });
+
+  void it('tolerates a torn terminal journal record and reopens only intact data', () => {
+    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
+    const path = `${directory}/torn-journal-state.nq`;
+    try {
+      const source = new FileGraphDataset(path);
+      const graph = DagGraphTerms.namedNode('urn:file:torn-journal:graph');
+      const subject = DagGraphTerms.namedNode('urn:file:torn-journal:subject');
+      source.assert(
+        subject,
+        DagGraphTerms.namedNode('urn:file:torn-journal:predicate'),
+        DagGraphTerms.literal('intact'),
+        graph,
+      );
+      source.flush();
+
+      appendFileSync(`${path}.journal`, '{"operation":"add","quads":[', 'utf8');
+
+      const reopened = new FileGraphDataset(path);
+      assert.equal(reopened.count({ "graph": graph }), 1);
+      assert.equal([...reopened.match({ 'subject': subject })][0]?.object.value, 'intact');
+    } finally {
+      rmSync(directory, { "recursive": true, "force": true });
+    }
+  });
+
+  void it('rejects intact malformed terminal and earlier journal records', () => {
+    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
+    const path = `${directory}/malformed-journal-state.nq`;
+    try {
+      appendFileSync(`${path}.journal`, '{"operation":"add"}\n', 'utf8');
+      assert.throws(() => new FileGraphDataset(path), /Graph journal contains an invalid committed record/u);
+
+      appendFileSync(
+        `${path}.journal`,
+        '{"operation":"clearGraph","graph":{"termType":"DefaultGraph","value":""}}\n',
+        'utf8',
+      );
+      assert.throws(() => new FileGraphDataset(path), /Graph journal contains an invalid committed record/u);
     } finally {
       rmSync(directory, { "recursive": true, "force": true });
     }

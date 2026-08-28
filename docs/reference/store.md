@@ -501,11 +501,7 @@ const store = new TypedStore<MySchema>(new MemoryStore(), {
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
 | `update(key, fn)` | `Promise<Schema[K]>` | Atomic read-modify-write. `fn` receives `Schema[K] \| undefined`, returns `Schema[K]`. |
-| `snapshot()` | `Promise<StoreSnapshotType>` | Pass-through to the underlying `StoreInterface`. |
-| `restore(snapshot)` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
-| `connect()` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
-| `disconnect()` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
-| `.inner` | `StoreInterface` | The underlying `StoreInterface` instance for un-narrowed operations. |
+| `.inner` | `StoreInterface` | The underlying `StoreInterface` instance. `TypedStore` does not re-expose `snapshot`/`restore`/`connect`/`disconnect` — call them via `typedStore.inner.snapshot()`, `typedStore.inner.connect()`, etc. |
 
 All key parameters are constrained to `keyof Schema & string`. TypeScript
 rejects keys absent from the schema and values of the wrong type at compile

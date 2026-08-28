@@ -83,7 +83,7 @@ The dispatcher resolves a strategy by `name` (the `GatherNode.gather.strategy` f
 | Member | Description |
 |--------|-------------|
 | `abstract name` | Wire-shape identifier; matches `GatherConfig.strategy`. |
-| `retainsRecordsForFinalize` | When `true`, the engine retains every acked record across resume (retained checkpoint). When `false` (default), checkpoint is O(1) with respect to item count. |
+| `retainsRecordsForFinalize` | When `true`, the strategy needs the full record set at `finalize` and the scatter writes no per-item checkpoint progress at all — a crash or resume re-runs the entire scatter source from the start (verified by `packages/dagonizer/tests/unit/scatter-bounded-memory.test.ts`, "retaining gather writes no progress and reruns the complete replayable input on resume"). It is not incremental persistence of retained records; resume is full replay, correct only when item execution is idempotent. When `false` (default), checkpoint is O(1) with respect to item count and resumes from a watermark instead of replaying. |
 | `initial(config, state, accessor)` | Called once when the gather barrier initializes. Default: no-op. |
 | `abstract reduce(config, batch, state, accessor)` | Fold a batch of producer records into state. Called per-batch during streaming or once with all results for bulk strategies. |
 | `finalize(config, execution)` | End-of-gather work after all clones complete. Default: no-op. |

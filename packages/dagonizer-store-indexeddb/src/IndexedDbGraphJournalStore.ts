@@ -62,11 +62,10 @@ export class IndexedDbGraphJournalStore implements GraphJournalStoreInterface {
     this.#db = null;
   }
 
-  /** Single `put` into the log store — O(1), never touches the snapshot or any other delta. */
+  /** Atomically commit one log row; resolves only after the enclosing transaction commits. */
   async append(runIri: string, record: GraphDeltaRecordType): Promise<void> {
     const db = this.#requireDb();
-    const store = db.transaction(LOG_STORE, 'readwrite').objectStore(LOG_STORE);
-    await IdbRequest.toPromise(store.put(JSON.stringify(record), IndexedDbGraphJournalStore.#logKey(runIri, record.seq)));
+    await IndexedDbGraphJournalStore.#appendTransaction(db, runIri, record);
   }
 
   async *readSnapshot(runIri: string): AsyncIterable<string> {
@@ -122,6 +121,36 @@ export class IndexedDbGraphJournalStore implements GraphJournalStoreInterface {
     if (typeof raw !== 'string') return undefined;
     const parsed: unknown = JSON.parse(raw);
     return IndexedDbGraphJournalStore.#isDeltaRecord(parsed) ? parsed : undefined;
+  }
+
+  /**
+   * Append exactly one delta in a strict-durability transaction. A request's
+   * success event only confirms that its `put` completed; the journal append
+   * succeeds only when the transaction itself completes, so an aborted write
+   * cannot be reported as durable.
+   */
+  static #appendTransaction(db: IdbDatabaseLikeInterface, runIri: string, record: GraphDeltaRecordType): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(LOG_STORE, 'readwrite', { 'durability': 'strict' });
+      let settled = false;
+      const fail = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        reject(error instanceof Error ? error : new Error('IDB graph journal append transaction aborted'));
+      };
+
+      tx.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      tx.onerror = () => { fail(tx.error); };
+      tx.onabort = () => { fail(tx.error); };
+
+      const store = tx.objectStore(LOG_STORE);
+      const put = store.put(JSON.stringify(record), IndexedDbGraphJournalStore.#logKey(runIri, record.seq));
+      put.onerror = () => { fail(put.error); };
+    });
   }
 
   /**

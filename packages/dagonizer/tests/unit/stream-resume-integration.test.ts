@@ -171,6 +171,7 @@ void describe('StreamChannel.resumable + StreamCursor: deterministic streamed re
     const dispatcher = new Dagonizer<StreamResumeState>();
     const fanIri = placementIri('urn:noocodec:dag:stream-resume-integration', 'fan');
     dispatcher.registerNode(TestNode.make<StreamResumeState>('urn:noocodec:node:worker', ['success'], async (state, context) => {
+      // Real timers are intentional: the test aborts a live async stream item before checkpoint/resume.
       await new Promise<void>((resolve, reject) => {
         const handle = setTimeout(resolve, 2);
         context.signal.addEventListener('abort', () => {

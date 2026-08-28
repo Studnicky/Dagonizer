@@ -339,6 +339,7 @@ void describe('ToolInvokeNode: batch execution', () => {
       async execute(_input: Record<string, unknown>): Promise<{ 'ok': boolean }> {
         active += 1;
         peak = Math.max(peak, active);
+        // Real timers are intentional: concurrent tool calls need a real overlap window for the gate assertion.
         await new Promise<void>((resolve) => { setTimeout(resolve, 10); });
         active -= 1;
         return { 'ok': true };

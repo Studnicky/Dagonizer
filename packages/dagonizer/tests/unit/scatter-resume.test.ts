@@ -777,6 +777,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const dispatcher = new Dagonizer<ScatterState>({ 'foldJournalStores': { journal } });
     dispatcher.registerNode(TestNode.make<ScatterState>('urn:noocodec:node:worker-fold-journal-concurrent', ['success'], async (state) => {
       const item = state.getter.number('item');
+      // Real timers are intentional: staggered platform completions exercise concurrent fold ordering.
       await new Promise((resolve) => setTimeout(resolve, 50 - item));
       return 'success';
     }));

@@ -55,6 +55,7 @@ function delayedNode(probe: ConcurrencyProbe) {
     probe.starts += 1;
     probe.maxActive = Math.max(probe.maxActive, probe.active);
     try {
+      // Real timers are intentional: the overlap window makes real throttle concurrency observable.
       await new Promise<void>((resolve) => { setTimeout(resolve, ITEM_DELAY_MS); });
       return 'done';
     } finally {

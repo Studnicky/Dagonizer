@@ -17,6 +17,9 @@ seeAlso:
   - text: 'Reference: Adapters'
     link: './adapters'
     description: 'LlmAdapterInterface implementations, buffered vs. streaming, cascades'
+  - text: 'Reference: RDF 1.2'
+    link: './rdf-12'
+    description: 'how inputSchema/outputSchema and route compatibility are projected into graph triples'
 ---
 
 # Contracts
@@ -100,10 +103,14 @@ import { Timeout } from '@studnicky/dagonizer';
 interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
+  TInputSchema extends SchemaObjectType = SchemaObjectType,
+  TOutputSchemas extends Record<string, SchemaObjectType> = Record<string, SchemaObjectType>,
 > {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly TOutput[];
-  readonly outputSchema: Record<TOutput, SchemaObjectType>;
+  readonly inputSchema: TInputSchema;
+  readonly outputSchema: TOutputSchemas;
   readonly timeout: Timeout;
   execute(batch: Batch<TState>, context: NodeContextType): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
@@ -111,11 +118,15 @@ interface NodeInterface<
 }
 ```
 
-The contract every host-authored node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` or another declared error output.
+The contract every host-authored node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` or another declared error output. `'@id'` is the canonical node IRI used exclusively for registry lookup; `name` is the display label for observability.
 
-`outputSchema` is a mandatory per-output-port JSON Schema 2020-12 record describing the state delta each port guarantees. Every declared output port in `outputs` must have an entry. Schemas are partial over state — they validate the fields the node writes; do not set `additionalProperties: false`. `MonadicNode` provides a passthrough default (`{ type: 'object' }` per port); concrete nodes should override with real schemas.
+`inputSchema` is a JSON Schema 2020-12 declaration describing the state shape the node expects before execution — the permissive object schema means "no additional structural requirement."
 
-`timeout` is a per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
+`outputSchema` is a mandatory per-output-port JSON Schema 2020-12 record describing the state delta each port guarantees. Every declared output port in `outputs` must have an entry (enforced at `registerNode`). Schemas are partial over state — they validate the fields the node writes; do not set `additionalProperties: false`. `MonadicNode.outputSchema` is `abstract` — there is no passthrough default, so a concrete `MonadicNode` subclass that omits its return shapes does not compile. Use `MonadicNode.permissiveSchema(outputs)` only when every port genuinely accepts the generic object shape.
+
+`inputSchema`/`outputSchema` are not TypeScript-only: `DagGraphProjector.projectNodeSchemas` projects both into the DAG's topology graph as `dagonizer:inputPort`/`dagonizer:outputPort` triples, and reifies each route as an RDF 1.2 triple term carrying `dagonizer:producesSchema`/`dagonizer:requiresSchema` annotations. See [Reference: RDF 1.2](./rdf-12) for the triple shapes.
+
+`timeout` is a per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`) and is a required field — every node carries it. When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget, scoped to that node's `execute()` call only. On expiry the engine throws a `DAGError` (code `NODE_TIMEOUT`), fires `onError`, and marks the run failed. `MonadicNode` declares `readonly timeout: Timeout = Timeout.none()` as the default; a node that does not extend `MonadicNode` must declare `readonly timeout = Timeout.none();` explicitly.
 
 ### ExecuteOptionsType
 
@@ -458,6 +469,7 @@ That keeps plugin packages portable: implement the contract, register or inject 
 - [Reference: Checkpoint](./checkpoint) - uses `CheckpointStore`
 - [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
 - [Reference: Adapters](./adapters) - LlmAdapterInterface implementations, buffered vs. streaming, cascades
+- [Reference: RDF 1.2](./rdf-12) - node contract projection into graph triples
 - [Cancellation](../guide/cancellation) - `ExecuteOptionsType.signal` behavior
 - [Dependency Injection](../guide/services) - pass contract implementations through constructors
 - [State Accessors](../guide/state-accessor) - `StateAccessorInterface`

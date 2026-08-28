@@ -21,6 +21,7 @@
 
 import cluster from 'node:cluster';
 import type { Worker } from 'node:cluster';
+import { fileURLToPath } from 'node:url';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
@@ -59,7 +60,7 @@ export class ClusterContainer extends NodeContainerBase<Worker> {
    */
   protected override composeEntry(): PoolEntryType<Worker> {
     if (!this.#setupDone) {
-      cluster.setupPrimary({ 'exec': this.#entryUrl.pathname });
+      cluster.setupPrimary({ 'exec': fileURLToPath(this.#entryUrl) });
       this.#setupDone = true;
     }
 

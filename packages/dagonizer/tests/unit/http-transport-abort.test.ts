@@ -107,6 +107,7 @@ void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
     const controller = new AbortController();
 
     // Abort after a short delay (well under the base backoff of 400ms)
+    // Real timers are intentional: this verifies an in-flight transport backoff is interrupted by the platform signal.
     setTimeout(() => { controller.abort(); }, 50);
 
     const start = Date.now();

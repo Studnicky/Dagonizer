@@ -98,6 +98,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     const worker = TestNode.make<AbortState>('urn:noocodec:node:worker', ['success'], async (state, context) => {
       // Simulate some async work.
+      // Real timers are intentional: this creates the live event-loop cancellation window for async scatter items.
       await new Promise<void>((resolve, reject) => {
         const handle = setTimeout(resolve, 2);
         context.signal.addEventListener('abort', () => {

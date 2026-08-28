@@ -4,9 +4,187 @@ import { describe, it } from 'node:test';
 import { DagGraphTerms, PersistentGraphDataset } from '@studnicky/dagonizer';
 import { IDBFactory } from 'fake-indexeddb';
 
-import type { IdbFactoryLikeInterface } from '../../src/IdbFactory.js';
+import type {
+  IdbDatabaseLikeInterface,
+  IdbCursorLikeInterface,
+  IdbFactoryLikeInterface,
+  IdbObjectStoreLikeInterface,
+  IdbOpenRequestLikeType,
+  IdbRequestLikeType,
+  IdbTransactionLikeInterface,
+} from '../../src/IdbFactory.js';
 import { IndexedDbGraphDatasetProvider } from '../../src/IndexedDbGraphDatasetProvider.js';
 import { IndexedDbGraphJournalStore } from '../../src/IndexedDbGraphJournalStore.js';
+
+/** Fault-injection boundary that aborts the first readwrite transaction after its first put succeeds. */
+class AbortOnPutFactory implements IdbFactoryLikeInterface {
+  readonly #factory: IdbFactoryLikeInterface;
+  #abortNextWrite = true;
+
+  constructor(factory: IdbFactoryLikeInterface) {
+    this.#factory = factory;
+  }
+
+  open(name: string, version?: number): IdbOpenRequestLikeType {
+    return new AbortOnPutOpenRequest(this.#factory.open(name, version), this);
+  }
+
+  transaction(
+    database: IdbDatabaseLikeInterface,
+    names: string | string[],
+    mode: 'readonly' | 'readwrite',
+    options: { durability?: 'strict' } | undefined,
+  ): IdbTransactionLikeInterface {
+    const abortOnPut = mode === 'readwrite' && this.#abortNextWrite;
+    if (abortOnPut) this.#abortNextWrite = false;
+    return new AbortOnPutTransaction(database.transaction(names, mode, options), abortOnPut);
+  }
+}
+
+/** Open-request adapter that returns database wrappers while preserving the structural IndexedDB boundary. */
+class AbortOnPutOpenRequest implements IdbOpenRequestLikeType {
+  readonly #source: IdbOpenRequestLikeType;
+  readonly #factory: AbortOnPutFactory;
+  #database: AbortOnPutDatabase | null = null;
+  #onsuccess: (() => void) | null = null;
+  #onerror: (() => void) | null = null;
+  #onupgradeneeded: ((event: { target: IdbOpenRequestLikeType | null }) => void) | null = null;
+
+  constructor(source: IdbOpenRequestLikeType, factory: AbortOnPutFactory) {
+    this.#source = source;
+    this.#factory = factory;
+    this.#source.onsuccess = () => { this.#onsuccess?.(); };
+    this.#source.onerror = () => { this.#onerror?.(); };
+    this.#source.onupgradeneeded = () => { this.#onupgradeneeded?.({ 'target': this }); };
+  }
+
+  get result(): IdbDatabaseLikeInterface {
+    if (this.#database === null) this.#database = new AbortOnPutDatabase(this.#source.result, this.#factory);
+    return this.#database;
+  }
+
+  get error(): unknown { return this.#source.error; }
+  get onsuccess(): (() => void) | null { return this.#onsuccess; }
+  set onsuccess(handler: (() => void) | null) { this.#onsuccess = handler; }
+  get onerror(): (() => void) | null { return this.#onerror; }
+  set onerror(handler: (() => void) | null) { this.#onerror = handler; }
+  get onupgradeneeded(): ((event: { target: IdbOpenRequestLikeType | null }) => void) | null { return this.#onupgradeneeded; }
+  set onupgradeneeded(handler: ((event: { target: IdbOpenRequestLikeType | null }) => void) | null) { this.#onupgradeneeded = handler; }
+}
+
+/** Database adapter that routes transactions through the fault-injection factory. */
+class AbortOnPutDatabase implements IdbDatabaseLikeInterface {
+  readonly #source: IdbDatabaseLikeInterface;
+  readonly #factory: AbortOnPutFactory;
+
+  constructor(source: IdbDatabaseLikeInterface, factory: AbortOnPutFactory) {
+    this.#source = source;
+    this.#factory = factory;
+  }
+
+  get objectStoreNames(): { contains(name: string): boolean } { return this.#source.objectStoreNames; }
+  'createObjectStore'(name: string): unknown { return this.#source.createObjectStore(name); }
+  close(): void { this.#source.close(); }
+
+  transaction(
+    names: string | string[],
+    mode: 'readonly' | 'readwrite',
+    options?: { durability?: 'strict' },
+  ): IdbTransactionLikeInterface {
+    return this.#factory.transaction(this.#source, names, mode, options);
+  }
+}
+
+/** Transaction adapter that preserves completion events and aborts a configured put before commit. */
+class AbortOnPutTransaction implements IdbTransactionLikeInterface {
+  readonly #source: IdbTransactionLikeInterface & { abort(): void };
+  #abortPending: boolean;
+  #oncomplete: (() => void) | null = null;
+  #onerror: (() => void) | null = null;
+  #onabort: (() => void) | null = null;
+
+  constructor(source: IdbTransactionLikeInterface, abortPending: boolean) {
+    if (!AbortOnPutTransaction.isAbortable(source)) throw new Error('fault-injection transaction does not support abort()');
+    this.#source = source;
+    this.#abortPending = abortPending;
+    this.#source.oncomplete = () => { this.#oncomplete?.(); };
+    this.#source.onerror = () => { this.#onerror?.(); };
+    this.#source.onabort = () => { this.#onabort?.(); };
+  }
+
+  get error(): unknown { return this.#source.error; }
+  get oncomplete(): (() => void) | null { return this.#oncomplete; }
+  set oncomplete(handler: (() => void) | null) { this.#oncomplete = handler; }
+  get onerror(): (() => void) | null { return this.#onerror; }
+  set onerror(handler: (() => void) | null) { this.#onerror = handler; }
+  get onabort(): (() => void) | null { return this.#onabort; }
+  set onabort(handler: (() => void) | null) { this.#onabort = handler; }
+
+  objectStore(name: string): IdbObjectStoreLikeInterface {
+    return new AbortOnPutObjectStore(this.#source.objectStore(name), this);
+  }
+
+  abortOnPut(): boolean {
+    if (!this.#abortPending) return false;
+    this.#abortPending = false;
+    return true;
+  }
+
+  abort(): void { this.#source.abort(); }
+
+  static isAbortable(transaction: IdbTransactionLikeInterface): transaction is IdbTransactionLikeInterface & { abort(): void } {
+    return typeof Reflect.get(transaction, 'abort') === 'function';
+  }
+}
+
+/** Object-store adapter that triggers the transaction abort after the put request succeeds. */
+class AbortOnPutObjectStore implements IdbObjectStoreLikeInterface {
+  readonly #source: IdbObjectStoreLikeInterface;
+  readonly #transaction: AbortOnPutTransaction;
+
+  constructor(source: IdbObjectStoreLikeInterface, transaction: AbortOnPutTransaction) {
+    this.#source = source;
+    this.#transaction = transaction;
+  }
+
+  get(key: string): IdbRequestLikeType<unknown> { return this.#source.get(key); }
+  delete(key: string): IdbRequestLikeType<unknown> { return this.#source.delete(key); }
+  count(key: string): IdbRequestLikeType<number> { return this.#source.count(key); }
+  clear(): IdbRequestLikeType<unknown> { return this.#source.clear(); }
+  openCursor(): IdbRequestLikeType<IdbCursorLikeInterface | null> { return this.#source.openCursor(); }
+
+  put(value: unknown, key: string): IdbRequestLikeType<unknown> {
+    const request = this.#source.put(value, key);
+    return this.#transaction.abortOnPut()
+      ? new AbortOnPutRequest(request, () => { this.#transaction.abort(); })
+      : request;
+  }
+}
+
+/** Request adapter that relays callbacks before aborting the enclosing transaction. */
+class AbortOnPutRequest<T> implements IdbRequestLikeType<T> {
+  readonly #source: IdbRequestLikeType<T>;
+  readonly #afterSuccess: () => void;
+  #onsuccess: (() => void) | null = null;
+  #onerror: (() => void) | null = null;
+
+  constructor(source: IdbRequestLikeType<T>, afterSuccess: () => void) {
+    this.#source = source;
+    this.#afterSuccess = afterSuccess;
+    this.#source.onsuccess = () => {
+      this.#onsuccess?.();
+      this.#afterSuccess();
+    };
+    this.#source.onerror = () => { this.#onerror?.(); };
+  }
+
+  get result(): T { return this.#source.result; }
+  get error(): unknown { return this.#source.error; }
+  get onsuccess(): (() => void) | null { return this.#onsuccess; }
+  set onsuccess(handler: (() => void) | null) { this.#onsuccess = handler; }
+  get onerror(): (() => void) | null { return this.#onerror; }
+  set onerror(handler: (() => void) | null) { this.#onerror = handler; }
+}
 
 /** Fresh journal-backed provider on its own IDBFactory. */
 async function providerOnFactory(factory: IdbFactoryLikeInterface): Promise<IndexedDbGraphDatasetProvider> {
@@ -113,6 +291,26 @@ void describe('IndexedDbGraphDatasetProvider: RDF 1.2 durability', () => {
     assert.ok(reopened);
     assert.equal(reopened.count({ 'subject': subject }), 2);
     await restarted.disconnect();
+  });
+
+  void it('rejects an aborted append and reopens without a partial delta record', async () => {
+    const factory = new AbortOnPutFactory(new IDBFactory());
+    const journal = new IndexedDbGraphJournalStore(factory);
+    await journal.connect();
+
+    await assert.rejects(journal.append('urn:test:aborted-run', {
+      'seq': 1,
+      'additions': '<urn:test:aborted-subject> <urn:test:aborted-predicate> "incomplete" .\n',
+      'deletions': '',
+    }));
+    await journal.disconnect();
+
+    const reopened = new IndexedDbGraphJournalStore(factory);
+    await reopened.connect();
+    const records = [];
+    for await (const record of reopened.readLog('urn:test:aborted-run')) records.push(record);
+    assert.equal(records.length, 0);
+    await reopened.disconnect();
   });
 
   void it('blank-node add-then-delete survives an N-Quads reopen round-trip with 0 quads left', async () => {

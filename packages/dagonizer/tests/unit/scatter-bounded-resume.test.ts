@@ -148,6 +148,7 @@ class CheckpointSizer {
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<BoundedState>, context: NodeContextType): Promise<Map<'success', Batch<BoundedState>>> {
         for (const item of batch) {
+          // Real timers are intentional: this creates the live event-loop cancellation window for bounded scatter items.
           await new Promise<void>((resolve, reject) => {
             const handle = setTimeout(resolve, 1);
             context.signal.addEventListener('abort', () => {

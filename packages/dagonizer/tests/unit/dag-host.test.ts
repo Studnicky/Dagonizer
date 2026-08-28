@@ -82,6 +82,7 @@ class TestHostPair {
     for (const parentSide of parentSides) {
       try { parentSide.send({ 'variant': 'shutdown' }); } catch { /* already closed */ }
     }
+    // Real timers are intentional: host shutdown is dispatched across the platform message channel.
     await new Promise<void>((resolve) => setTimeout(resolve, 25));
   }
 }

@@ -710,6 +710,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
         for (const item of batch) {
+          // Real timers are intentional: this creates the live event-loop cancellation window for streaming scatter items.
           await new Promise<void>((resolve, reject) => {
             const handle = setTimeout(resolve, 2);
             context.signal.addEventListener('abort', () => {

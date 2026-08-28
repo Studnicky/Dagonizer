@@ -20,6 +20,7 @@
 
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
@@ -50,7 +51,7 @@ export class SpawnContainer extends NodeContainerBase<ChildProcess> {
     super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     this.#command = options.command ?? process.execPath;
-    this.#args = options.args ?? [this.#entryUrl.pathname];
+    this.#args = options.args ?? [fileURLToPath(this.#entryUrl)];
   }
 
   // ---------------------------------------------------------------------------

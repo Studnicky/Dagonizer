@@ -18,6 +18,7 @@
 
 import { fork } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
@@ -56,7 +57,7 @@ export class ForkContainer extends NodeContainerBase<ChildProcess> {
     // Fork the entry module. IPC is enabled by default for fork().
     // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
-    const child = fork(this.#entryUrl.pathname, []);
+    const child = fork(fileURLToPath(this.#entryUrl), []);
     const channel = IpcChannel.ofChildProcess(child);
     return { 'worker': child, 'channel': channel, 'initialized': false };
   }

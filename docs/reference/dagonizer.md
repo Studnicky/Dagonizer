@@ -352,19 +352,21 @@ import type { ExecutionResultType, NodeStateInterface } from '@studnicky/dagoniz
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
-  protected override onFlowStart(dagIri: string, state: MyState): void {
+  protected override onFlowStart(dagIri: string, state: MyState, signal: AbortSignal): void {
     console.log('start', dagIri);
   }
-  protected override onFlowEnd(dagIri: string, state: MyState, result: ExecutionResultType<MyState>): void {
+  protected override onFlowEnd(dagIri: string, state: MyState, result: ExecutionResultType<MyState>, signal: AbortSignal): void {
     console.log('end', dagIri, result.terminalOutcome);
   }
-  protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseEnter(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseExit(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onPhaseEnter(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onPhaseExit(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
 }
 ```
+
+Every hook receives the run's `AbortSignal` as its trailing parameter — an override may omit trailing parameters it does not use (shown above for brevity), but the signal is always passed at the call site.
 
 | Hook | Fires |
 |------|-------|
@@ -373,7 +375,7 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
-| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagIri, phase: 'pre'\|'post', placementName, state, placementPath)` |
+| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagIri, phase: 'pre'\|'post', placementName, state, placementPath, signal)` |
 | `onPhaseExit` | After a `pre` or `post` phase placement completes (success or collected error); same signature as `onPhaseEnter` |
 
 `placementPath` is the ordered array of parent embedded-DAG placement labels leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` labelled `'search'` receives `['search']`. Graph identity still comes from placement `@id`; the path is observability context for watchers and worker relays.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
@@ -7,6 +7,8 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Scheduler } from '../../src/runtime/Scheduler.js';
+import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -17,14 +19,31 @@ const INSPECT_DAG_IRI = 'urn:noocodex:dag:inspect-dag';
 const HOOKED_DAG_IRI = 'urn:noocodex:dag:hooked';
 const ERROR_DAG_IRI = 'urn:noocodex:dag:err';
 
+class AbortAwaiter {
+  private constructor() {}
+
+  static untilAbort(signal: AbortSignal): Promise<void> {
+    return new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => { reject(signal.reason); }, { 'once': true });
+    });
+  }
+}
+
+class TaskQueue {
+  private constructor() {}
+
+  static next(): Promise<void> {
+    return new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
 void describe('Dagonizer AbortSignal cancellation', () => {
+  afterEach(() => { Scheduler.reset(); });
+
   void it('marks state cancelled when caller aborts before DAG starts', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('urn:noocodec:node:slow', ['success'], async (_state, context) => {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, 1000);
-        context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
-      });
+      await AbortAwaiter.untilAbort(context.signal);
       return 'success';
     }));
     dispatcher.registerDAG(TestDag.from({
@@ -91,12 +110,11 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   });
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
+    const scheduler = new VirtualScheduler();
+    Scheduler.configure(scheduler);
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('urn:noocodec:node:slow', ['success'], async (_state, context) => {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, 5000);
-        context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
-      });
+      await AbortAwaiter.untilAbort(context.signal);
       return 'success';
     }));
     dispatcher.registerDAG(TestDag.from({
@@ -116,7 +134,14 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     }));
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute(TIMEOUT_DAG_IRI, state, { 'deadlineMs': 25 });
+    const execution = dispatcher.execute(TIMEOUT_DAG_IRI, state, { 'deadlineMs': 25 });
+    const advance = (async (): Promise<void> => {
+      await TaskQueue.next();
+      scheduler.advance(26);
+      await TaskQueue.next();
+    })();
+    const result = await execution;
+    await advance;
     assert.equal(state.lifecycle.variant, 'timed_out');
     assert.equal(result.cursor, `${TIMEOUT_DAG_IRI}/node/slow`);
     assert.deepEqual(result.interruptedAt, { 'nodeName': `${TIMEOUT_DAG_IRI}/node/slow`, 'reason': 'timeout' });

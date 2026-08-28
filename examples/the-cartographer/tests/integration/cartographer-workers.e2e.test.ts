@@ -272,8 +272,9 @@ describe('Cartographer worker entry registry — dependency smoke', () => {
     // worker runtime; presence confirms the module is in the source tree.
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
     const entryPath = path.resolve(
-      new URL('.', import.meta.url).pathname,
+      fileURLToPath(new URL('.', import.meta.url)),
       '../../workers/eventPipelineRegistry.ts',
     );
     const stat = await fs.stat(entryPath);

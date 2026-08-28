@@ -8,6 +8,9 @@ seeAlso:
   - text: 'Reference: Store'
     link: './store'
     description: 'RDF-capable store and snapshot boundaries'
+  - text: 'Reference: Contracts'
+    link: './contracts'
+    description: 'NodeInterface.inputSchema/outputSchema — the TypeScript side of the node contract'
 ---
 
 # RDF 1.2
@@ -45,6 +48,34 @@ JSON-LD 1.1 is the deployed Recommendation. JSON-LD 1.2 support is still future 
 
 `@rdfjs/types` is present through the installed `@types/n3` dependency tree. If RDF 1.2 triple terms move from probe code into exported package APIs, the owning package should declare `@rdfjs/types` directly before exposing those types.
 
+## Node Contract Projection
+
+`DagGraphProjector.projectNodeSchemas` projects every node's `inputSchema`/`outputSchema` contract (see [Reference: Contracts](./contracts)) into the DAG's topology graph as triples under the `dagonizer:` namespace (`DagGraphTerms.DAGONIZER` = `https://noocodec.dev/ontology/dagonizer/`). This is the RDF-level home of the TypeScript-level contract — the same topology graph `DagGraphProjector.project` builds for placements, routes, and entrypoints.
+
+### Ports and schemas
+
+For a placement at IRI `<placement>`, `projectNodeContract` asserts one input port and one output port per declared output:
+
+- `<placement> dagonizer:inputPort <placement>/input`
+- `<placement>/input dagonizer:schema <schemaIri>`
+- `<placement> dagonizer:outputPort <placement>/output/<label>` (repeated per output)
+- `<placement>/output/<label> dagonizer:label "<label>"`
+- `<placement>/output/<label> dagonizer:schema <schemaIri>`
+
+`<schemaIri>` is `SchemaRegistry.register(schema)` → `SchemaIdentity.for(schema)`: the schema's own `$id` when it has one, else `urn:dagonizer:schema:structural:<hash>`, where `<hash>` is `StableSchemaHash.of(schema)` — a structural hash of the JSON Schema body. Two schemas with identical shape but no `$id` collapse onto the same schema node. Every schema node also carries:
+
+- `<schemaIri> rdf:type dagonizer:Schema`
+- `<schemaIri> dagonizer:contractHash "<hash>"`
+
+### Route compatibility as an annotated triple term
+
+`projectRouteSchemaAnnotations` is the concrete, load-bearing use of the triple-term mechanism described above. For each route in a placement's `outputs`, the route statement itself — `<< <source> dagonizer:route <target> >>` — is built with `DagGraphTerms.tripleTerm(...)` and used directly as the *subject* of two further assertions:
+
+- `<< <source> dagonizer:route <target> >> dagonizer:producesSchema <sourceOutputSchemaIri>`
+- `<< <source> dagonizer:route <target> >> dagonizer:requiresSchema <targetInputSchemaIri>`
+
+This attaches schema-compatibility metadata to the edge statement itself rather than to either endpoint — the same "statement-level metadata without expanding to RDF 1.1 reification quads" pattern the rest of this page describes in the abstract, applied here to route compatibility specifically. `DagGraphQueries.routeSchemaIris(store, source, target)` rebuilds the same triple-term subject to read `produced`/`required` back out; `placementInputSchemaIri`/`placementOutputSchemaIri` read a placement's port schema IRIs the same way.
+
 ## Operational Uses
 
 RDF 1.2 triple annotations handle DAG edges, placements, and provenance
@@ -72,6 +103,7 @@ Semantic graph writes are additive assertions. An exact quad is set-idempotent, 
 
 - [Reference: Visualization](./viz) - JSON-LD renderer and graph export
 - [Reference: Store](./store) - RDF-capable store and snapshot boundaries
+- [Reference: Contracts](./contracts) - `NodeInterface.inputSchema`/`outputSchema` — the TypeScript side of the node contract
 
 ### External standards
 

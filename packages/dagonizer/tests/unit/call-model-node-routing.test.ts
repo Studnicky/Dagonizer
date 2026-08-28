@@ -54,6 +54,7 @@ class RunState extends NodeStateBase {
 /** Yields the current macrotask, letting other scheduled callbacks interleave. */
 class TaskQueue {
   static yield(): Promise<void> {
+    // Real timers are intentional: this test requires a platform macrotask boundary for stream interleaving.
     return new Promise((resolve) => { setTimeout(resolve, 0); });
   }
 }

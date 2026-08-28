@@ -136,6 +136,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     const neverSettles = (): Promise<ChatResponseType> => new Promise(() => { /* intentional hang */ });
     const adapter = new GuardTestAdapter(neverSettles, { 'timeoutMs': 10_000, 'maxAttempts': 1 });
 
+    // Real timers are intentional: this verifies platform-timer abort races in the adapter boundary.
     const controller = new AbortController();
     setTimeout(() => { controller.abort(); }, 10);
 

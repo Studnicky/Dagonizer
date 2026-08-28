@@ -380,6 +380,7 @@ void describe('DagContainerBase — destroy() fails in-flight dispatch promises 
 
       // Allow the execute message to travel through the channel to DagHost before
       // calling destroy (so ChannelDispatch has a pending entry).
+      // Real timers are intentional: the loopback host/channel handoff runs on the platform event loop.
       await new Promise<void>((r) => setTimeout(r, 30));
 
       // destroy() must fail the in-flight pending entry, not hang.
