@@ -13,7 +13,7 @@
     "@studnicky/iridis-image": "file:../../../iridis/packages/image",
     "@studnicky/iridis-stylesheet": "file:../../../iridis/packages/stylesheet",
     "@studnicky/iridis-vscode": "file:../../../iridis/packages/vscode",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.0"
   },
   "devDependencies": {
     "tsx": "^4.23.0",

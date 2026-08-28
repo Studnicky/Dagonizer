@@ -268,7 +268,7 @@
     "cytoscape-dagre": "^4.0.0",
     "cytoscape-elk": "^2.3.0",
     "cytoscape-fcose": "^2.2.0",
-    "mermaid": "^11.16.0",
+    "mermaid": "^11.17.2",
     "tsx": "^4.23.0",
     "typescript": "^7.0.2",
     "vitepress": "^1.6.4",
