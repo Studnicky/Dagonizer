@@ -4,7 +4,7 @@ description: 'Container execution reference for DagContainerBase, DagHost, DagTa
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`'
+    description: '`DagContainerInterface`, `DagTaskType`, `DagOutcomeType`'
   - text: 'Reference: Channels'
     link: './channels'
     description: '`InMemoryChannel` reference'
@@ -21,32 +21,26 @@ seeAlso:
 
 # Container
 
-## What It Is
+## Container Surface
 
 Containers run embedded DAGs or scatter body DAGs outside the parent dispatcher process. A placement declares a logical container role; the host binds that role to a `DagContainerInterface`.
 
-Use this page when worker threads, forked processes, browser workers, service workers, or remote workers should execute sub-DAG work while the parent graph remains canonical JSON-LD.
+Containers are the isolate boundary for worker threads, forked processes, browser workers, service workers, and remote workers that should execute sub-DAG work while the parent graph remains canonical JSON-LD.
 
-## How It Works
-
-`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent while preserving the child DAG boundary, placement path, and terminal state snapshot.
-
-Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
-
-## Diagrams, Examples, and Outputs
+## Worker and Role References
 
 Container behavior is visible in the worker examples and the distribution guide:
 
-- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`
+- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskType`, `DagOutcomeType`
 - [Reference: Channels](./channels) - `InMemoryChannel` reference
 - [Guide: Distribution and Cloud](../guide/distribution) - worker pool patterns and multi-backend dispatch
 - [Example 12: Worker Containers](../examples/12-workers) - scatter dag-body over a WorkerThreadContainer pool
 
-## What It Lets You Do
+## Isolate Execution Model
 
-The container reference lets applications bind embedded DAGs or scatter body DAGs to isolate-backed execution roles.
+`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent while preserving the child DAG boundary, placement path, and terminal state snapshot.
 
-DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@studnicky/dagonizer/container`.
+Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
 
 ## Code Samples
 
@@ -65,10 +59,8 @@ import {
   DAG_CONTAINER_WORKER_DIED,
 } from '@studnicky/dagonizer/container';
 import type { DagContainerOptionsType, PoolEntryType, TransportErrorCode } from '@studnicky/dagonizer/container';
-import type {
-  DagOutcomeType,
-  DagTaskInterface,
-} from '@studnicky/dagonizer/contracts';
+import type { DagOutcomeType } from '@studnicky/dagonizer/contracts';
+import type { DagTaskType } from '@studnicky/dagonizer/types';
 ```
 
 ---
@@ -101,13 +93,21 @@ declare function construct(options: DagContainerOptionsType): void;
 | Field | Type | Description |
 |-------|------|-------------|
 | `poolSize` | `number` | Maximum number of pool entries (workers) to maintain. |
-| `init` | `InitMessageShapeType` | Init payload forwarded to each `DagHost` on first channel use. |
+| `init` | `InitMessageShapeType` (minus `graphStateTransferFormats`, `coalesceInstrumentation`, `instrumentationPlacementPathDepth`) | Init payload forwarded to each `DagHost` on first channel use. |
 | `shutdownGraceMs` | `number` | Grace period in milliseconds before a shutting-down worker is force-terminated. Pass `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms) as a baseline. |
+| `graphStateTransferFormats` | `readonly GraphStateTransferFormatType[]` (optional) | Accepted graph-state transfer wire formats for this container. Defaults to `DEFAULT_GRAPH_STATE_TRANSFER_FORMATS` when omitted. |
+
+The only negotiated content format is `application/n-quads`. Requests and
+responses each carry one combined batch transfer. `GraphStateTransferType`
+defines five explicit transport envelopes: `inline-nquads`, `graph-ref`,
+`shared-endpoint`, `inline-delta-nquads`, and `delta-ref`. The container path
+uses `inline-nquads`; store-backed transports require an injected graph-state
+transfer store.
 
 `DagContainerBase.defaultOptions` provides an ergonomic default for `shutdownGraceMs`:
 
 ```ts twoslash
-import { DagContainerBase } from '@studnicky/dagonizer/container';
+import { DagContainerBase, DEFAULT_GRAPH_STATE_TRANSFER_FORMATS } from '@studnicky/dagonizer/container';
 import type { DagContainerOptionsType, PoolEntryType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
@@ -123,7 +123,12 @@ class MyContainer extends DagContainerBase {
 const container = new MyContainer({
   ...DagContainerBase.defaultOptions,   // provides shutdownGraceMs default
   poolSize: 4,
-  init: { registryModule: './my-registry.js', registryVersion: '1.0.0', servicesConfig: {} },
+  init: {
+    registryModule: './my-registry.js',
+    registryVersion: '1.0.0',
+    servicesConfig: {},
+  },
+  graphStateTransferFormats: [...DEFAULT_GRAPH_STATE_TRANSFER_FORMATS],
 });
 ```
 
@@ -136,15 +141,28 @@ const container = new MyContainer({
 | `terminateWorker(worker): void` | Force-kill the worker. Must not throw. |
 | `awaitWorkerExit(worker): Promise<void>` | Resolves when the worker process/thread exits. |
 
-#### `runDag(task)`
+#### `runDag(task, batch, options?)`
 
 ```ts twoslash
-import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer/contracts';
+import type { Batch, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DagTaskType } from '@studnicky/dagonizer/types';
+import type { ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
+import type { RunResultType } from '@studnicky/dagonizer/container';
 // ---cut---
-declare function runDag(task: DagTaskInterface): Promise<DagOutcomeType>;
+declare function runDag(
+  task: DagTaskType,
+  batch: Batch<NodeStateInterface>,
+  options?: { readonly relay?: ObserverRelayInterface },
+): Promise<RunResultType[]>;
 ```
 
-Acquires a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
+Runs the non-empty item batch through one child DAG in one transport round trip
+and preserves item order. A batch of one uses the same path. The container
+encodes all selected input states into one request transfer, restores all
+selected response states into the matching batch items, and returns one
+`RunResultType` per item. The batch-level `graphState` envelope is not exposed
+on any result. Transport failures and host crashes return one unrecoverable
+error result per item; `runDag` does not throw.
 
 #### `destroy()`
 
@@ -153,7 +171,7 @@ Acquires a pool slot, sends the task to the isolate, and waits for the outcome. 
 declare function destroy(): Promise<void>;
 ```
 
-Gracefully shuts down all pool entries. Signals each worker to stop (shutdown message), waits up to `shutdownGraceMs`, then force-terminates any that did not exit. After `destroy()`, `runDag` throws `DAGError` with code `DAG_CONTAINER_ERROR`.
+Gracefully shuts down all pool entries. Signals each worker to stop (shutdown message), waits up to `shutdownGraceMs`, then force-terminates any that did not exit. After `destroy()`, `runDag` returns per-item transport-error outcomes.
 
 #### `onTransportDeath(entry, code, reason)`
 
@@ -197,12 +215,12 @@ host.start();
 
 ### Class: `DagTask`
 
-Value class for `DagTaskInterface`. Constructed by the dispatcher for each contained DAG execution.
+Value class for `DagTaskType`. Constructed by the dispatcher for each contained DAG execution.
 
 ```ts twoslash
 import { DagTask } from '@studnicky/dagonizer/container';
 // ---cut---
-// DagTask implements DagTaskInterface
+// DagTask implements DagTaskType
 const _check: typeof DagTask = DagTask;
 ```
 
@@ -213,9 +231,11 @@ const _check: typeof DagTask = DagTask;
 | `correlationId` | `string` | Dispatcher-monotonic id (no randomness). |
 | `timeout` | `Timeout` | Execution budget (`Timeout.none()` when none applies). |
 | `state` | `NodeStateInterface` | Live seeded clone for in-process paths (typed at the base contract; the concrete class may differ from the parent dispatcher's `TState`). |
+| `inputState` | `TransientNodeStateSelectionType` | State selection forwarded to the child execution. |
+| `responseState` | `TransientNodeStateResponseStateType` | Response-state shape the child execution reports back. |
 | `context` | `NodeContextType` | Context from the parent execution. |
 
-`toRequest()` snapshots the clone into a wire-safe `ExecutionRequest` for cross-boundary transports. The request keeps the DAG IRI and placement path separate from state payload so a worker can resume graph execution without flattening topology.
+Constructor arguments are required positional, in the field declaration order above (V8 shape stability); every field is populated at construction, none are optional.
 
 ---
 
@@ -227,18 +247,19 @@ Static factory for `DagOutcomeType` values. Used by containers to build transpor
 import { DagOutcome } from '@studnicky/dagonizer/container';
 import type { DagOutcomeType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-// Build a transport-error outcome (correlationId required; code and message optional):
-const outcome: DagOutcomeType = DagOutcome.transportError('corr-1');
+// Build a transport-error outcome (item id + correlationId required; code and message optional):
+const outcome: DagOutcomeType = DagOutcome.transportError('item-1', 'corr-1');
 ```
 
-`DagOutcomeType` fields:
+`RunResultType` carries `id` plus the `DagOutcomeType` fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `terminalOutput` | `string` | Routing output the child resolved to. |
-| `errors` | `readonly NodeErrorWireType[]` | Collected errors from the child run. |
-| `graphState` | `GraphStateTransferType` | Terminal child state as an explicit graph transfer envelope. |
-| `intermediates` | `readonly ExecutorIntermediate[]` | Per-node results forwarded to the parent stream. |
+| `id` | `string` | Input item identity used to correlate the batch result. |
+| `terminalOutput` | `string` | Per-item child outcome; the host emits `completed`, `failed`, or `awaiting-input`. |
+| `errors` | `readonly NodeErrorWireType[]` | Errors collected for this item only. |
+| `runIri` | `string` (optional) | Restored item run IRI; absent when no host response exists. |
+| `intermediates` | `readonly ExecutorIntermediateType[]` | Per-node results for this item only. |
 
 ---
 
@@ -284,15 +305,21 @@ const isOther: boolean = TransportErrorCode.isInfrastructureFailure('domain.some
 
 ---
 
-## Details for Nerds
+## Operational Uses
 
-Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and surface transport failures as container errors. Do not let worker internals leak into the parent DAG document or collapse child DAG topology into a node-level callback.
+`@studnicky/dagonizer/container` is the DAG containment package: pool-owning base class, isolate-side host runtime, and the task/outcome value types that move sub-DAG work across a transport boundary.
+
+Hosts bind logical container roles to worker-backed execution backends without changing the DAG document itself.
+
+## Runtime Notes
+
+Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and report transport failures as container errors. Do not let worker internals leak into the parent DAG document or collapse child DAG topology into a node-level callback.
 
 Role names are deployment configuration. A DAG can declare `container: 'cpu'` or `container: 'io'`; the host decides whether those roles map to worker threads, child processes, browser workers, or remote services.
 
 ## Related Concepts
 
-- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`
+- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskType`, `DagOutcomeType`
 - [Reference: Channels](./channels) - `InMemoryChannel` reference
 - [Guide: Distribution and Cloud](../guide/distribution) - worker pool patterns and multi-backend dispatch
 - [Example 12: Worker Containers](../examples/12-workers) - scatter dag-body over a WorkerThreadContainer pool

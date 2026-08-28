@@ -1,0 +1,28 @@
+---
+import { getCollection } from 'astro:content';
+import { SiteLinks } from '@/lib/links';
+
+export async function getStaticPaths() {
+  const explicitDocSlugs = new Set([
+    'examples/the-archivist',
+    'examples/the-cartographer',
+    'examples/the-dispatcher',
+    'experiments/modern-home'
+  ]);
+
+  return (await getCollection('docs'))
+    .filter((entry) => entry.id !== 'index' && !explicitDocSlugs.has(entry.id))
+    .map((entry) => ({
+      params: {
+        slug: entry.id
+      }
+    }));
+}
+
+const slugParam = Array.isArray(Astro.params.slug) ? Astro.params.slug.join('/') : Astro.params.slug ?? '';
+if (slugParam.length === 0) {
+  throw new Error('Legacy documentation redirect requires a slug.');
+}
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route(slugParam)), 301);
+---

@@ -26,23 +26,24 @@ import { describe, it } from 'node:test';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 const INIT_MSG: BridgeMessageType = {
   'variant': 'init',
   'registryModule': '/test/module.js',
   'registryVersion': '1.0.0',
   'servicesConfig': {},
+  'graphStateTransferFormats': ['application/n-quads'],
 };
 
 const SHUTDOWN_MSG: BridgeMessageType = { 'variant': 'shutdown' };
@@ -203,31 +204,22 @@ class CountingChannel implements MessageChannelInterface {
 class MinimalState extends NodeStateBase {}
 
 // ---------------------------------------------------------------------------
-// MinimalDagTask: minimal DagTaskInterface implementation
+// MinimalDagTask: minimal DagTaskType implementation
 // ---------------------------------------------------------------------------
 
 class LoopbackTask {
   private constructor() {}
 
-  static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
-    const snapshot = emptyGraphStateTransfer();
-    const request: ExecutionRequestType = {
-      'dagName': 'test-dag',
-      'placementPath': ['urn:dagonizer:placement:test'],
-      'items': [{ 'id': correlationId, 'graphState': snapshot }],
-      'timeoutMs': null,
-      'correlationId': correlationId,
-    };
+  static of(correlationId: string, signal: AbortSignal): DagTaskType {
     return {
       'dagName': 'test-dag',
       'placementPath': ['urn:dagonizer:placement:test'],
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
+      'inputState': FULL_INPUT_STATE,
+      'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
-      toRequest(): ExecutionRequestType {
-        return request;
-      },
     };
   }
 }
@@ -250,6 +242,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
 
 class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
+  #initPromise: Promise<void> | null;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {
     super({
@@ -258,18 +251,21 @@ class SingleChannelContainer extends DagContainerBase<null> {
       'init': NOOP_INIT,
     });
     this.#channel = channel;
+    this.#initPromise = null;
   }
 
   // Override acquireChannel to bypass the pool and always return the same channel.
-  protected override acquireChannel(): Promise<MessageChannelInterface> {
-    return Promise.resolve(this.#channel);
+  protected override async acquireChannel(): Promise<MessageChannelInterface> {
+    this.#initPromise ??= this.initializeChannel(this.#channel);
+    await this.#initPromise;
+    return this.#channel;
   }
 
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
   protected override composeEntry(): PoolEntryType<null> {
-    return { 'worker': null, 'channel': this.#channel, 'initialized': true };
+    return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 
   protected override attachDeathListeners(_entry: PoolEntryType<null>): void {
@@ -290,7 +286,7 @@ class SingleChannelContainer extends DagContainerBase<null> {
 //
 // Receives 'init' → sends 'ready'.
 // Receives 'execute' → sends 'result' with the matching correlationId and
-//   terminalOutput = 'done-' + correlationId (deterministic per-request value).
+//   terminalOutcome = 'done-' + correlationId (deterministic per-request value).
 // ---------------------------------------------------------------------------
 
 class LoopbackFakeHost {
@@ -303,17 +299,24 @@ class LoopbackFakeHost {
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
-        const itemId = msg.request.items[0]?.id ?? correlationId;
+        const requestItem = msg.request.items[0];
+        assert.ok(requestItem !== undefined);
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': itemId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${correlationId}` }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([requestItem.runIri]),
+            'items': [{
+              'id': requestItem.id,
+              'runIri': requestItem.runIri,
+              'terminalOutcome': `done-${correlationId}`,
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -339,12 +342,14 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     // and then checking the count proves the subscription is installed once.
     const REQUEST_COUNT = 30;
     const ac = new AbortController();
-    const results: DagOutcomeType[] = [];
+    const results: RunResultType[] = [];
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
-      const task = LoopbackTask.of(`req-${i}`, ac.signal);
-      const outcome = await container.runDag(task);
-      results.push(outcome);
+      const id = `req-${i}`;
+      const task = LoopbackTask.of(id, ac.signal);
+      const batch = Batch.from([{ id, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      if (outcome !== undefined) results.push(outcome);
     }
 
     // (a) Core assertion: exactly one onMessage call regardless of request count.
@@ -369,7 +374,9 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     for (let i = 0; i < REQUEST_COUNT; i++) {
       const correlationId = `req-${i}`;
       const task = LoopbackTask.of(correlationId, ac.signal);
-      const outcome = await container.runDag(task);
+      const batch = Batch.from([{ 'id': correlationId, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      assert.ok(outcome !== undefined);
 
       // (b) Each request must receive its own correlated terminalOutput.
       assert.strictEqual(
@@ -390,39 +397,57 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
-    const pending: Array<{ correlationId: string }> = [];
+    const pending: Array<{ correlationId: string; id: string; runIri: string }> = [];
     hostSide.onMessage((msg: BridgeMessageType) => {
       if (msg.variant === 'init') {
         hostSide.send({
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        pending.push({ 'correlationId': msg.request.correlationId });
+        const requestItem = msg.request.items[0];
+        assert.ok(requestItem !== undefined);
+        pending.push({
+          'correlationId': msg.request.correlationId,
+          'id': requestItem.id,
+          'runIri': requestItem.runIri,
+        });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
-          const secondId = pending[1]?.correlationId ?? '';
-          const firstId = pending[0]?.correlationId ?? '';
+          const second = pending[1];
+          const first = pending[0];
+          assert.ok(first !== undefined && second !== undefined);
           // Respond to second first, then first.
           setImmediate(() => {
             hostSide.send({
               'variant': 'result',
               'response': {
-                'correlationId': secondId,
-                'items': [{ 'id': secondId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${secondId}` }],
-                'errors': [],
-                'intermediates': [],
+                'correlationId': second.correlationId,
+                'graphState': emptyInlineTransfer([second.runIri]),
+                'items': [{
+                  'id': second.id,
+                  'runIri': second.runIri,
+                  'terminalOutcome': `done-${second.correlationId}`,
+                  'errors': [],
+                  'intermediates': [],
+                }],
               },
             });
             setImmediate(() => {
               hostSide.send({
                 'variant': 'result',
                 'response': {
-                  'correlationId': firstId,
-                  'items': [{ 'id': firstId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${firstId}` }],
-                  'errors': [],
-                  'intermediates': [],
+                  'correlationId': first.correlationId,
+                  'graphState': emptyInlineTransfer([first.runIri]),
+                  'items': [{
+                    'id': first.id,
+                    'runIri': first.runIri,
+                    'terminalOutcome': `done-${first.correlationId}`,
+                    'errors': [],
+                    'intermediates': [],
+                  }],
                 },
               });
             });
@@ -432,11 +457,18 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     });
 
     const ac = new AbortController();
+    const taskA = LoopbackTask.of('req-A', ac.signal);
+    const taskB = LoopbackTask.of('req-B', ac.signal);
+    const batchA = Batch.from([{ 'id': 'req-A', 'state': taskA.state }]);
+    const batchB = Batch.from([{ 'id': 'req-B', 'state': taskB.state }]);
     // Launch both requests concurrently.
-    const [outcomeA, outcomeB] = await Promise.all([
-      container.runDag(LoopbackTask.of('req-A', ac.signal)),
-      container.runDag(LoopbackTask.of('req-B', ac.signal)),
+    const [resultsA, resultsB] = await Promise.all([
+      container.runDag(taskA, batchA),
+      container.runDag(taskB, batchB),
     ]);
+    const [outcomeA] = resultsA;
+    const [outcomeB] = resultsB;
+    assert.ok(outcomeA !== undefined && outcomeB !== undefined);
 
     // (c) Each caller must receive its own outcome despite out-of-order delivery.
     assert.strictEqual(outcomeA.terminalOutput, 'done-req-A',
@@ -463,27 +495,37 @@ void describe('worker observability: forwarded node events reach the parent obse
     // WorkerObserver does for a contained sub-DAG), then complete the request.
     hostSide.onMessage((msg: BridgeMessageType) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
+        const requestItem = msg.request.items[0];
+        assert.ok(requestItem !== undefined);
         hostSide.send({
-          'variant': 'instrumentation',
+          'variant': 'instrumentationBatch',
           'correlationId': correlationId,
-          'hook': 'nodeStart',
-          'phase': '',
-          'dagName': 'inner-dag',
-          'nodeName': 'inner-step',
-          'output': null,
-          'message': '',
-          'placementPath': ['scatter-placement', 'inner-step'],
+          'items': [{
+            'correlationId': correlationId,
+            'hook': 'nodeStart',
+            'phase': '',
+            'dagName': 'inner-dag',
+            'nodeName': 'inner-step',
+            'output': null,
+            'message': '',
+            'placementPath': ['scatter-placement', 'inner-step'],
+          }],
         });
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'done' }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([requestItem.runIri]),
+            'items': [{
+              'id': requestItem.id,
+              'runIri': requestItem.runIri,
+              'terminalOutcome': 'done',
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -504,7 +546,10 @@ void describe('worker observability: forwarded node events reach the parent obse
     };
 
     const ac = new AbortController();
-    const outcome = await container.runDag(LoopbackTask.of('obs-1', ac.signal), { relay });
+    const task = LoopbackTask.of('obs-1', ac.signal);
+    const batch = Batch.from([{ 'id': 'obs-1', 'state': task.state }]);
+    const [outcome] = await container.runDag(task, batch, { relay });
+    assert.ok(outcome !== undefined);
 
     assert.strictEqual(outcome.terminalOutput, 'done');
     assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');

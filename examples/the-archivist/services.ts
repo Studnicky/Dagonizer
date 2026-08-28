@@ -49,16 +49,22 @@ export interface ScoredCandidate {
 /**
  * Every intent the classifier may emit. The four broad intents
  * (`search` / `describe` / `recommend` / `off-topic`) drive the
- * general pipeline; the four specific intents (`lookup-author` /
- * `find-reviews` / `describe-book` / `recommend-similar`) each route
- * to a dedicated embedded-DAG branch. `recall-memories` is the
+ * general pipeline; the specific intents (`lookup-author` /
+ * `find-reviews` / `describe-book` / `book-detail` / `recommend-similar`)
+ * each route to a dedicated branch. `recall-memories` is the
  * meta-query intent: the visitor asked what the agent has
- * seen/remembered across sessions.
+ * seen/remembered across sessions. `book-detail` is the follow-up
+ * intent: the visitor wants more detail on a book already surfaced
+ * earlier in the conversation (`state.conversation` /
+ * `state.priorCandidates` / `state.shortlist`), as opposed to
+ * `describe-book`, which names a book NOT yet searched and requires a
+ * fresh catalog lookup.
  */
 export type ClassifiedIntent =
   | 'lookup-author'
   | 'find-reviews'
   | 'describe-book'
+  | 'book-detail'
   | 'recommend-similar'
   | 'recall-memories'
   | 'search'

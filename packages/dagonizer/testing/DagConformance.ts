@@ -391,7 +391,7 @@ export class DagConformance {
           };
 
           await dispatcher.execute(CONFORMANCE_DAG.law7, state);
-          const finalSnapshot = await state.snapshotJsonLd();
+          const finalSnapshot = state.snapshotTransientState();
           return { checkpoints, finalSnapshot };
         };
 
@@ -447,8 +447,8 @@ export class DagConformance {
     // Harness-gated: runs only when harness.interruptMidScatter is provided.
     // When the harness supplies the capability, Law 8 kills a real isolate
     // mid-scatter (after >=1 item acks) and asserts that resume through a
-    // fresh container reprocesses un-acked items (no item lost, no acked item
-    // reprocessed — exactly-once effect via at-least-once + ack dedup).
+    // fresh container reprocesses unacknowledged items. The bounded watermark
+    // and aheadAcked window keep completed indices from running again.
     const hasLaw8Capability = harness.interruptMidScatter !== undefined;
     const law8: DagConformanceLawInterface = {
       'name': hasLaw8Capability
@@ -487,24 +487,29 @@ export class DagConformance {
           // Pool error: scatter threw. Checkpoint is still on state1.
         }
 
-        // At least one item must have been acked before the kill.
+        // The bounded checkpoint records completed indices as a contiguous
+        // watermark prefix plus the out-of-order aheadAcked window.
         const raw = state1.getMetadata(SCATTER_PROGRESS_KEY);
         const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
         const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
         const progressEntry = progress[fanIri];
-        const ackedBefore = progressEntry === undefined ? 0
-          : progressEntry.mode === 'bounded'
-            ? progressEntry.watermark + progressEntry.aheadAcked.length
-            : progressEntry.ackedResults.length;
+        assert.ok(progressEntry !== undefined, 'Expected bounded scatter progress before container kill');
+        const ackedBefore = progressEntry.watermark + progressEntry.aheadAcked.length;
 
         assert.ok(
           ackedBefore >= 1,
           `Expected >=1 acked item before container kill, got ${ackedBefore}. ` +
           `The failingContainer must kill after at least one item acks.`,
         );
+        assert.ok(
+          ackedBefore < state1.scatterItems.length,
+          `Expected an interrupted scatter checkpoint, but ${ackedBefore} of ` +
+          `${state1.scatterItems.length} items were acknowledged before the container kill.`,
+        );
 
         // Phase 2: resume through a fresh container.
-        // The inbox contains un-acked items; the fresh container processes them.
+        // The inbox contains unacknowledged items; the fresh container processes
+        // them while watermark and aheadAcked suppress completed indices.
         const freshContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: freshContainer });
         const freshDispatcher = harness.createDispatcher(bundle, freshContainers);
 
@@ -518,7 +523,7 @@ export class DagConformance {
         assert.strictEqual(
           finalItems.length,
           3,
-          `Expected 3 gathered items after resume, got ${finalItems.length}. Un-acked items must be reprocessed.`,
+          `Expected 3 gathered items after resume, got ${finalItems.length}. Unacknowledged items must be reprocessed.`,
         );
 
         // The flow must complete without error.
@@ -530,17 +535,16 @@ export class DagConformance {
 
         // Verify that acked items were not re-executed: the gatheredItems array
         // must have exactly 3 entries (no duplicates from re-processing acked items).
-        // Acked items' gather contribution comes from ackedResults.mappingValues;
-        // if acked items were re-executed their contribution would appear twice.
+        // The bounded watermark and aheadAcked window prevent acknowledged
+        // indices from being scheduled again during resume.
         assert.strictEqual(
           finalItems.length,
           3,
           `gatheredItems must have exactly 3 entries — no duplicate processing of acked items`,
         );
 
-        // capturedProgress was recorded during the failing run.
-        // It is already validated indirectly: ackedBefore >= 1 above checks the
-        // same SCATTER_PROGRESS_KEY entry. No further assertion needed.
+        // The partial bounded checkpoint and final result together prove resume
+        // advances from persisted progress without losing or duplicating items.
       },
     };
 

@@ -151,6 +151,7 @@ void describe('PostMessageChannel', () => {
       'variant': 'ready',
       'registryVersion': '1.0.0',
       'capabilities': [],
+      'graphStateTransferFormats': ['application/n-quads'],
     };
     workerChannel.send(msg);
 
@@ -172,6 +173,7 @@ void describe('PostMessageChannel', () => {
       'registryModule': '/path/to/registry.js',
       'registryVersion': '2.0.0',
       'servicesConfig': { 'timeout': 5000 },
+      'graphStateTransferFormats': ['application/n-quads'],
     };
     mainChannel.send(msg);
 
@@ -200,6 +202,7 @@ void describe('PostMessageChannel', () => {
       'registryModule': '/original.js',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
+      'graphStateTransferFormats': ['application/n-quads'],
     };
     mainChannel.send(msg);
 

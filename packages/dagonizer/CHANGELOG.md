@@ -4,6 +4,10 @@
 
 ### Major Changes
 
+- Provides the canonical graph-store provider port, synchronous RDF 1.2 live
+  datasets, durable resume integration, and shared append-delta journal
+  contracts for sibling backend packages.
+
 - 63a6261: Dagonizer uses a single JSON-LD front door, IRI-keyed node/DAG/state-factory registries, prefix-owned plugin bundles, the `@studnicky/dagonizer/context` subpath, and checkpoint DAG IRI persistence.
 
   Plugin IDs are required and duplicate IDs must identify the same plugin object. Bundle context prefixes are owned by the registering plugin specifier, and `PluginSpecifier.byPrefix()` resolves `prefix:local` DAG references through that ownership map.

@@ -31,6 +31,14 @@ export type ToolErrorOptionsType = {
   retryable: boolean;
   /** HTTP status code. Omit (or null) when no HTTP status applies; defaults to null. */
   status?: number | null;
+  /**
+   * Server-requested retry delay in milliseconds, parsed from a `Retry-After`
+   * response header (seconds form or HTTP-date form). Omit (or null) when the
+   * response carried no `Retry-After` header; defaults to null. A retry policy
+   * that reads this field honors the server's explicit backoff request
+   * instead of guessing with blind exponential backoff.
+   */
+  retryAfterMs?: number | null;
   /** Cause chain: original error if wrapped. */
   cause?: unknown;
 }
@@ -40,6 +48,9 @@ export class ToolError extends DAGError {
   // Always initialised (null = no HTTP status) so every ToolError instance
   // shares one stable V8 hidden class; declaration order matches assignment.
   readonly status: number | null;
+  // Always initialised (null = no server-requested delay) for the same
+  // V8 shape-stability reason as `status`.
+  readonly retryAfterMs: number | null;
 
   constructor(message: string, options: ToolErrorOptionsType) {
     super(message, {
@@ -50,5 +61,6 @@ export class ToolError extends DAGError {
     this.name = 'ToolError';
     this.reason = options.reason;
     this.status = options.status ?? null;
+    this.retryAfterMs = options.retryAfterMs ?? null;
   }
 }

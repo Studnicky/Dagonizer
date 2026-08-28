@@ -1,13 +1,13 @@
 ---
 title: 'Runner'
-description: 'Runner reference for DagRunner, TriggerInterface, OnceTrigger, CLI, event, and request triggers around registered DAG execution.'
+description: 'Runner reference for DagRunner, TriggerInterface, OnceTrigger, CLI, event, and request adapters around registered DAG execution.'
 seeAlso:
   - text: 'Guide: Chat Event Orchestration'
     link: '../guide/chat-event-orchestration'
     description: 'one registered agent DAG per inbound event or request turn'
   - text: 'Example 28: Runner and Triggers'
     link: '../examples/28-runner'
-    description: 'Full working example for all trigger variants'
+    description: 'trigger loop for execute and resume around one registered DAG'
   - text: 'Reference: Contracts'
     link: './contracts'
     description: 'TriggerInterface adapter contract'
@@ -21,31 +21,27 @@ seeAlso:
 
 # Runner
 
-## What It Is
+## Host Adapter Surface
 
-`DagRunner` is the reusable host loop around a registered DAG. It accepts trigger input, creates initial state, executes a DAG reference resolved by the dispatcher, and projects the final execution result into an application-specific output.
+`DagRunner` is the reusable host loop around a registered DAG. It accepts trigger input, creates initial state, executes a DAG reference resolved by the dispatcher, and projects the final execution result into a caller-specific output.
 
-Use this page when a CLI command, queue worker, HTTP route, browser action, or scheduled job should invoke the same registered DAG without rewriting the register→seed→execute→project loop.
+`DagRunner` is the shared host adapter for CLI commands, queue workers, HTTP routes, browser actions, and scheduled jobs that all need the same register -> seed -> execute -> project loop around one registered DAG.
 
-## How It Works
+## Trigger and Runner References
+
+Runner behavior sits at the host boundary rather than in graph topology. [Example 28: Runner and Triggers](../examples/28-runner) shows the execute/resume loop in a focused host harness; the dispatcher reference covers the underlying DAG execution calls.
+
+## Trigger Loop Contract
 
 Subclass `DagRunner<TInput, TState, TOutput>` and implement two hooks: `seedState(input)` and `projectResult(result)`. Triggers feed inputs into the runner; the runner delegates execution to a registered `Dagonizer`.
 
-The runner does not change DAG semantics. It is a hosting convenience for applications that want one stable adapter around many trigger shapes.
-
-## Diagrams, Examples, and Outputs
-
-The runner reference is about host integration rather than graph shape. For executable examples, start with [Example 28: Runner and Triggers](../examples/28-runner), then compare the triggered DAG registration with the `Dagonizer` reference.
-
-## What It Lets You Do
-
-Use `DagRunner` to keep trigger plumbing outside DAG node code. The DAG stays portable; the runner adapts external input and output to the host environment.
+The runner does not change DAG semantics. It is a hosting convenience for hosts that want one stable adapter around many trigger shapes.
 
 ## Code Samples
 
 ### Abstract class: `DagRunner<TInput, TState, TOutput>`
 
-The canonical DAG execution harness. Owns the register→seed→execute→route→project loop once. Applications subclass and override `seedState` and `projectResult`.
+The canonical DAG execution harness. Owns the register→seed→execute→route→project loop once. Hosts subclass and override `seedState` and `projectResult`.
 
 ```ts twoslash
 import { NodeStateBase } from '@studnicky/dagonizer';
@@ -151,7 +147,7 @@ Override to build the initial `TState` from the trigger input. Runs inside `run(
 
 #### `projectResult(result)` — abstract
 
-Override to project `ExecutionResultType<TState>` to the application's `TOutput` shape. Runs after each `execute`/`resume` call.
+Override to project `ExecutionResultType<TState>` to the caller's `TOutput` shape. Runs after each `execute`/`resume` call.
 
 #### `onRunError(dagIri, error)` — protected
 
@@ -325,15 +321,22 @@ import type {
 } from '@studnicky/dagonizer/runner';
 ```
 
-## Details for Nerds
+## Operational Uses
+
+Runner subclasses centralize host-boundary wiring around a dispatcher: triggers provide input, `seedState` builds the initial state, the dispatcher executes or resumes, and `projectResult` turns the final execution record into caller-facing output.
+
+That keeps trigger shape changes out of the DAG itself. A CLI, event consumer, or HTTP route can all drive the same workflow through different runner/triggers.
+Use `DagRunner` to keep trigger plumbing outside DAG node code. The DAG stays portable; the runner adapts external input and output to the surrounding interface.
+
+## Runtime Notes
 
 `@studnicky/dagonizer/runner` ships the `DagRunner` abstract base class and trigger variants. Every callable hangs off a class; there are no freestanding functions.
 
-Triggers are adapters around external input. They should translate host-specific request shape into `TInput`, choose a DAG reference, and pass execution options. They should not mutate DAG state directly or bypass `DagRunner.run()`.
+Triggers are adapters around external input. They should translate caller-specific request shape into `TInput`, choose a DAG reference, and pass execution options. They should not mutate DAG state directly or bypass `DagRunner.run()`.
 
 ## Related Concepts
 
-- [Example 28: Runner and Triggers](../examples/28-runner) - Full working example for all trigger variants
+- [Example 28: Runner and Triggers](../examples/28-runner) - trigger loop for execute and resume around one registered DAG
 - [Guide: Chat Event Orchestration](../guide/chat-event-orchestration) - one registered agent DAG per inbound event or request turn
 - [Reference: Contracts](./contracts) - TriggerInterface adapter contract
 - [Reference: Dagonizer](./dagonizer) - The dispatcher DagRunner drives

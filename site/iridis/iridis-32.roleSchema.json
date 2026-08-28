@@ -1,0 +1,636 @@
+{
+  "name": "dagonizer-32",
+  "description": "Revision 3: role assignment now matches the Dagonizer seal's real pixel-coverage proportions, measured directly (~75% void/near-black, ~25% silver/steel, ~0.4% each for the cyan and violet gem accents; a third 'gold' hue was confirmed to be an extraction artifact from an unrelated version-badge asset and has been dropped). brand is now the steel/silver identity color driving most of the site's structural chrome and 9 of 11 syntax roles; brand2 (cyan) and brand3 (violet) are the two real gem families, restricted to a small, genuinely sparing set of accent roles (link, focusRing, exactly two syntax tokens, and the four low-chroma status roles) so their footprint in the design matches their footprint in the mark, instead of driving the entire brand/link/syntax-highlighting system as in the prior revision.",
+  "roles": [
+    {
+      "name": "bg",
+      "description": "Page body: darkest neutral surface",
+      "intent": "background",
+      "required": true,
+      "lightnessRange": [
+        0.06,
+        0.22
+      ],
+      "chromaRange": [
+        0.0,
+        0.06
+      ]
+    },
+    {
+      "name": "bgAlt",
+      "description": "Sidebar / nav / panels: raised neutral surface",
+      "intent": "background",
+      "required": true,
+      "lightnessRange": [
+        0.1,
+        0.26
+      ],
+      "chromaRange": [
+        0.0,
+        0.06
+      ]
+    },
+    {
+      "name": "bgElv",
+      "description": "Code blocks / deep elevation: darkest available neutral",
+      "intent": "background",
+      "required": true,
+      "derivedFrom": "bg",
+      "lightnessRange": [
+        0.0,
+        0.08
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "bgSoft",
+      "description": "Hover / lift surface: slightly lighter neutral than bgAlt",
+      "intent": "background",
+      "derivedFrom": "bgAlt",
+      "lightnessRange": [
+        0.14,
+        0.3
+      ],
+      "chromaRange": [
+        0.0,
+        0.06
+      ]
+    },
+    {
+      "name": "text",
+      "description": "Primary body text: lightest available neutral",
+      "intent": "text",
+      "required": true,
+      "lightnessRange": [
+        0.9,
+        1.0
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "text2",
+      "description": "Secondary text: next-lightest neutral",
+      "intent": "text",
+      "required": true,
+      "derivedFrom": "text",
+      "lightnessRange": [
+        0.74,
+        0.9
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "text3",
+      "description": "Tertiary text / captions: mid neutral",
+      "intent": "muted",
+      "derivedFrom": "text",
+      "lightnessRange": [
+        0.5,
+        0.74
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "divider",
+      "description": "Borders and dividers: mid-low neutral",
+      "intent": "muted",
+      "lightnessRange": [
+        0.45,
+        0.65
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "brand",
+      "description": "Primary brand identity: the mark's real dominant silver/steel color (near-zero chroma, ~25% real pixel coverage vs the gems' ~0.4% each) \u2014 root for most structural chrome and 9 of 11 syntax roles, bracketed to the brightest measured steel pixel (#c5d0d2, L.85/C.012)",
+      "intent": "accent",
+      "required": true,
+      "lightnessRange": [
+        0.78,
+        0.86
+      ],
+      "chromaRange": [
+        0.025,
+        0.04
+      ]
+    },
+    {
+      "name": "brand2",
+      "description": "Secondary brand accent: real cyan gem root, bracketed to the seal's actual cyan gem-dot average (measured directly from opaque pixels: avg L.67/C.11/H223 across the two seal images, ~0.40% of total pixels) \u2014 clears Lc45 with zero correction",
+      "intent": "accent",
+      "required": true,
+      "lightnessRange": [
+        0.655,
+        0.67
+      ],
+      "chromaRange": [
+        0.1,
+        0.115
+      ]
+    },
+    {
+      "name": "brand3",
+      "description": "Tertiary brand accent: real violet gem root, bracketed to the seal's brightest violet gem-highlight pixels (measured directly: L.82/C.09/H281, ~0.41% of total pixels) \u2014 clears Lc45 with a large margin",
+      "intent": "accent",
+      "required": true,
+      "lightnessRange": [
+        0.805,
+        0.82
+      ],
+      "chromaRange": [
+        0.08,
+        0.095
+      ]
+    },
+    {
+      "name": "link",
+      "description": "Hyperlink text: derived from brand2 (cyan gem), own lightness step",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand2",
+      "lightnessRange": [
+        0.658,
+        0.673
+      ],
+      "chromaRange": [
+        0.1,
+        0.12
+      ]
+    },
+    {
+      "name": "linkHover",
+      "description": "Hyperlink hover/active: brighter variant of link",
+      "intent": "accent",
+      "derivedFrom": "link",
+      "lightnessRange": [
+        0.9,
+        0.92
+      ],
+      "chromaRange": [
+        0.05,
+        0.09
+      ]
+    },
+    {
+      "name": "selectionBg",
+      "description": "Text selection highlight: low-chroma dark overlay; steel-derived per revision 3 (was void-derived)",
+      "intent": "background",
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.22,
+        0.34
+      ],
+      "chromaRange": [
+        0.02,
+        0.1
+      ]
+    },
+    {
+      "name": "focusRing",
+      "description": "Keyboard focus outline: derived from brand3 (violet gem), own lightness step",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand3",
+      "lightnessRange": [
+        0.79,
+        0.81
+      ],
+      "chromaRange": [
+        0.16,
+        0.2
+      ]
+    },
+    {
+      "name": "success",
+      "description": "Success state: derived from brand2 (cyan gem), own lightness step, low-chroma muted variant",
+      "intent": "accent",
+      "derivedFrom": "brand2",
+      "lightnessRange": [
+        0.8,
+        0.84
+      ],
+      "chromaRange": [
+        0.03,
+        0.06
+      ]
+    },
+    {
+      "name": "warning",
+      "description": "Warning state: derived from brand3 (violet gem), own lightness step, low-chroma muted variant",
+      "intent": "accent",
+      "derivedFrom": "brand3",
+      "lightnessRange": [
+        0.76,
+        0.8
+      ],
+      "chromaRange": [
+        0.04,
+        0.07
+      ]
+    },
+    {
+      "name": "danger",
+      "description": "Error/danger state: derived from brand3 (violet gem), own lightness step, low-chroma muted variant",
+      "intent": "accent",
+      "derivedFrom": "brand3",
+      "lightnessRange": [
+        0.7,
+        0.74
+      ],
+      "chromaRange": [
+        0.05,
+        0.08
+      ]
+    },
+    {
+      "name": "info",
+      "description": "Informational state: derived from brand2 (cyan gem), own lightness step, low-chroma muted variant",
+      "intent": "accent",
+      "derivedFrom": "brand2",
+      "lightnessRange": [
+        0.84,
+        0.88
+      ],
+      "chromaRange": [
+        0.03,
+        0.05
+      ]
+    },
+    {
+      "name": "scrollbarThumb",
+      "description": "Scrollbar thumb: muted mid neutral",
+      "intent": "muted",
+      "lightnessRange": [
+        0.28,
+        0.46
+      ],
+      "chromaRange": [
+        0.0,
+        0.06
+      ]
+    },
+    {
+      "name": "codeInlineBg",
+      "description": "Inline code background: distinct from block-level bgElv, slightly lighter; steel-derived per revision 3 (was void-derived)",
+      "intent": "background",
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.1,
+        0.2
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "syntaxKeyword",
+      "description": "Syntax: keywords \u2014 derived from brand2 (cyan gem), one of exactly two colored syntax tokens",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand2",
+      "lightnessRange": [
+        0.745,
+        0.76
+      ],
+      "chromaRange": [
+        0.1,
+        0.12
+      ]
+    },
+    {
+      "name": "syntaxString",
+      "description": "Syntax: string literals \u2014 derived from brand3 (violet gem), one of exactly two colored syntax tokens",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand3",
+      "lightnessRange": [
+        0.675,
+        0.69
+      ],
+      "chromaRange": [
+        0.12,
+        0.14
+      ]
+    },
+    {
+      "name": "syntaxNumber",
+      "description": "Syntax: numeric literals \u2014 steel-derived (matches the mark's real dominant coverage), not gem",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.72,
+        0.8
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    },
+    {
+      "name": "syntaxComment",
+      "description": "Syntax: comments \u2014 muted neutral, intentionally recessive, no chroma",
+      "intent": "muted",
+      "required": true,
+      "lightnessRange": [
+        0.42,
+        0.58
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "syntaxFunction",
+      "description": "Syntax: function/method names \u2014 steel-derived (matches the mark's real dominant coverage), not gem",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.64,
+        0.72
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    },
+    {
+      "name": "syntaxType",
+      "description": "Syntax: types/interfaces/classes \u2014 steel-derived (matches the mark's real dominant coverage), not gem",
+      "intent": "accent",
+      "required": true,
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.73,
+        0.77
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    },
+    {
+      "name": "syntaxVariable",
+      "description": "Syntax: variable identifiers \u2014 near-neutral, dimmer than primary text",
+      "intent": "text",
+      "derivedFrom": "text",
+      "lightnessRange": [
+        0.78,
+        0.92
+      ],
+      "chromaRange": [
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "syntaxConstant",
+      "description": "Syntax: constants/enum members \u2014 steel-derived (matches the mark's real dominant coverage), not gem",
+      "intent": "accent",
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.78,
+        0.82
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    },
+    {
+      "name": "syntaxOperator",
+      "description": "Syntax: operators/punctuation \u2014 subdued neutral, no chroma",
+      "intent": "muted",
+      "lightnessRange": [
+        0.55,
+        0.72
+      ],
+      "chromaRange": [
+        0.0,
+        0.05
+      ]
+    },
+    {
+      "name": "syntaxTag",
+      "description": "Syntax: JSX/HTML tag names \u2014 steel-derived (matches the mark's real dominant coverage), not gem",
+      "intent": "accent",
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.32,
+        0.38
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    },
+    {
+      "name": "syntaxAttribute",
+      "description": "Syntax: JSX/HTML attribute names \u2014 steel-derived (matches the mark's real dominant coverage), not gem; lower chroma than syntaxFunction for distinction",
+      "intent": "accent",
+      "derivedFrom": "brand",
+      "lightnessRange": [
+        0.84,
+        0.9
+      ],
+      "chromaRange": [
+        0.01,
+        0.025
+      ]
+    }
+  ],
+  "contrastPairs": [
+    {
+      "foreground": "text",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text",
+      "background": "bgAlt",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text2",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text2",
+      "background": "bgAlt",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text2",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "text3",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "text3",
+      "background": "bgAlt",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "divider",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 3.0
+    },
+    {
+      "foreground": "brand",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "brand",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "brand2",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "brand3",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 7.0
+    },
+    {
+      "foreground": "link",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "focusRing",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 3.0
+    },
+    {
+      "foreground": "success",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "warning",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "danger",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "info",
+      "background": "bg",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxKeyword",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxString",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxNumber",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxComment",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 3.0
+    },
+    {
+      "foreground": "syntaxFunction",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxType",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxVariable",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxConstant",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxTag",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    },
+    {
+      "foreground": "syntaxAttribute",
+      "background": "bgElv",
+      "algorithm": "apca",
+      "minRatio": 4.5
+    }
+  ]
+}

@@ -21,6 +21,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
@@ -31,6 +32,7 @@ import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri': 'test-dag', 'placementIri': 'test-placement' };
 const displayFromIri = (iri: string): string => {
   const hashIndex = iri.lastIndexOf('#');
   if (hashIndex >= 0) return iri.slice(hashIndex + 1);
@@ -92,14 +94,14 @@ class WalkState extends NodeStateBase {
   count: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.count = 0;
     this.log = [];
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     copy.count = this.count;
     copy.log = [...this.log];
     return copy;
@@ -120,7 +122,7 @@ class TestWalkNode {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': WalkState }> = [];
       for (let i = 0; i < n; i++) {
-        const clone = sourceState.clone();
+        const clone = sourceState.clone(TEST_CHILD_SCOPE);
         clone.count = i;
         clone.log.push(`fan:${i}`);
         items.push({ 'id': String(i), 'state': clone });
@@ -180,14 +182,14 @@ class CompositeState extends NodeStateBase {
   value: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.value = 0;
     this.log = [];
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     copy.value = this.value;
     copy.log = [...this.log];
     return copy;
@@ -207,7 +209,7 @@ class TestCompositeWalkNode {
       const source = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CompositeState }> = [];
       for (let i = 0; i < n; i++) {
-        const clone = source.clone();
+        const clone = source.clone(TEST_CHILD_SCOPE);
         clone.value = i;
         clone.log.push(`fan:${i}`);
         items.push({ 'id': String(i), 'state': clone });
@@ -251,15 +253,15 @@ class ScatterParentState extends NodeStateBase {
   /** Log stamp set on each parent (fan-out index). */
   parentId: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.items = [];
     this.gathered = [];
     this.parentId = 0;
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     copy.items = [...this.items];
     copy.gathered = [...this.gathered];
     copy.parentId = this.parentId;
@@ -279,14 +281,14 @@ class CycleState extends NodeStateBase {
   exitAt: number;
   attempts: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.exitAt = 0;
     this.attempts = 0;
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     copy.exitAt = this.exitAt;
     copy.attempts = this.attempts;
     return copy;
@@ -306,7 +308,7 @@ class TestCycleWalkNode {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < n; i++) {
-        const clone = sourceState.clone();
+        const clone = sourceState.clone(TEST_CHILD_SCOPE);
         clone.exitAt = i;
         clone.attempts = 0;
         items.push({ 'id': String(i), 'state': clone });
@@ -323,7 +325,7 @@ class TestCycleWalkNode {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < n; i++) {
-        const clone = sourceState.clone();
+        const clone = sourceState.clone(TEST_CHILD_SCOPE);
         clone.exitAt = exitAt;
         clone.attempts = 0;
         items.push({ 'id': String(i), 'state': clone });
@@ -916,7 +918,7 @@ void describe('Batch walk — multi-item composites', () => {
         const source = batch.row(0).state;
         const items: Array<{ 'id': string; 'state': ScatterParentState }> = [];
         for (let i = 0; i < 3; i++) {
-          const clone = source.clone();
+          const clone = source.clone(TEST_CHILD_SCOPE);
           clone.parentId = i;
           // Parent i has i+1 items: [0, 1, ..., i].
           clone.items = Array.from({ 'length': i + 1 }, (_, k) => k);
@@ -1289,10 +1291,10 @@ void describe('Batch walk — cycles and retry loops', () => {
       ['out'],
       (batch) => {
         const sourceState = batch.row(0).state;
-        const s0 = sourceState.clone(); s0.exitAt = 0; s0.attempts = 0;
-        const s1 = sourceState.clone(); s1.exitAt = 0; s1.attempts = 0;
-        const s2 = sourceState.clone(); s2.exitAt = 255; s2.attempts = 0;
-        const s3 = sourceState.clone(); s3.exitAt = 255; s3.attempts = 0;
+        const s0 = sourceState.clone(TEST_CHILD_SCOPE); s0.exitAt = 0; s0.attempts = 0;
+        const s1 = sourceState.clone(TEST_CHILD_SCOPE); s1.exitAt = 0; s1.attempts = 0;
+        const s2 = sourceState.clone(TEST_CHILD_SCOPE); s2.exitAt = 255; s2.attempts = 0;
+        const s3 = sourceState.clone(TEST_CHILD_SCOPE); s3.exitAt = 255; s3.attempts = 0;
         const items: Array<{ 'id': string; 'state': CycleState }> = [
           { 'id': '0', 'state': s0 },
           { 'id': '1', 'state': s1 },
@@ -1395,11 +1397,11 @@ void describe('Batch walk — cycles and retry loops', () => {
       (batch, _ctx: NodeContextType) => {
         const sourceState = batch.row(0).state;
 
-        const l0 = sourceState.clone(); l0.exitAt = 0;
-        const l1 = sourceState.clone(); l1.exitAt = 1;
-        const l2 = sourceState.clone(); l2.exitAt = 1;
-        const s0 = sourceState.clone(); s0.exitAt = 0;
-        const s1 = sourceState.clone(); s1.exitAt = 0;
+        const l0 = sourceState.clone(TEST_CHILD_SCOPE); l0.exitAt = 0;
+        const l1 = sourceState.clone(TEST_CHILD_SCOPE); l1.exitAt = 1;
+        const l2 = sourceState.clone(TEST_CHILD_SCOPE); l2.exitAt = 1;
+        const s0 = sourceState.clone(TEST_CHILD_SCOPE); s0.exitAt = 0;
+        const s1 = sourceState.clone(TEST_CHILD_SCOPE); s1.exitAt = 0;
 
         const loopItems: Array<{ 'id': string; 'state': CycleState }> = [
           { 'id': 'L0', 'state': l0 },

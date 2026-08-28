@@ -15,19 +15,15 @@ seeAlso:
 
 # State Accessor
 
-## What It Is
+## Accessor Replacement Surface
 
-State Accessor shows how an application can replace the built-in dotted-path resolver used by scatter source reads and gather writes. The example wires `DottedPathAccessor` and a custom `PrefixAccessor` into a `Dagonizer` instance.
+State Accessor shows how a host can replace the built-in dotted-path resolver used by scatter source reads and gather writes. The example wires `DottedPathAccessor` and a custom `PrefixAccessor` into a `Dagonizer` instance.
 
-Use this when state is namespaced, wrapped, proxied, or backed by a structure that is not a plain JavaScript object path.
+This pattern fits state that is namespaced, wrapped, proxied, or backed by a structure that is not a plain JavaScript object path.
 
-## How It Works
+## CLI Wiring and Path Resolution
 
-The dispatcher calls the configured `StateAccessorInterface` whenever it reads a scatter source path or writes gather output. `PrefixAccessor` prepends a namespace before delegating to `DottedPathAccessor`, so the DAG can keep short path names while the host stores data under a scoped subtree.
-
-## Diagrams, Examples, and Outputs
-
-This page has no DAG diagram because it demonstrates accessor replacement, not a routed graph. The CLI output shows direct reads/writes, prefixed reads/writes, and dispatcher construction with the custom accessor.
+Accessor replacement is easier to show through reads, writes, and dispatcher wiring than through a topology diagram. The CLI output shows direct reads/writes, prefixed reads/writes, and dispatcher construction with the custom accessor.
 
 ### Run
 
@@ -35,23 +31,27 @@ This page has no DAG diagram because it demonstrates accessor replacement, not a
 npx tsx examples/state-accessor.ts
 ```
 
-## What It Lets You Do
+## Accessor Delegation Model
 
-Custom state accessors let applications change how scatter source reads and gather writes resolve paths in state. Use them when your state is namespaced, wrapped, proxied, or backed by a structure that is not a simple dotted JavaScript object path.
-
-`DottedPathAccessor` is the built-in path resolver used by scatter source reads and gather writes. Applications implement the `StateAccessorInterface` contract to replace it. `PrefixAccessor` (defined in `examples/dags/state-accessor.ts`) prepends a fixed namespace segment to every key before delegating to `DottedPathAccessor`.
-
-This example shows:
-
-1. Direct `get`/`set` via `DottedPathAccessor` on a concrete `NodeStateBase`.
-2. The same operations through `PrefixAccessor`.
-3. A `Dagonizer` constructed with the custom accessor (`accessor` option).
+The dispatcher calls the configured `StateAccessorInterface` whenever it reads a scatter source path or writes gather output. `PrefixAccessor` prepends a namespace before delegating to `DottedPathAccessor`, so the DAG can keep short path names while the host stores data under a scoped subtree.
 
 ## Code Samples
 
 <<< @/../examples/state-accessor.ts
 
-## Details for Nerds
+## Operational Uses
+
+Custom state accessors let hosts change how scatter source reads and gather writes resolve paths in state. They fit state objects that are namespaced, wrapped, proxied, or backed by a structure that is not a simple dotted JavaScript object path.
+
+`DottedPathAccessor` is the built-in path resolver used by scatter source reads and gather writes. Applications implement the `StateAccessorInterface` contract to replace it. `PrefixAccessor` (defined in `examples/dags/state-accessor.ts`) prepends a fixed namespace segment to every key before delegating to `DottedPathAccessor`.
+
+The CLI covers:
+
+1. Direct `get`/`set` via `DottedPathAccessor` on a concrete `NodeStateBase`.
+2. The same operations through `PrefixAccessor`.
+3. A `Dagonizer` constructed with the custom accessor (`accessor` option).
+
+## Runtime Notes
 
 - **`DottedPathAccessor`.** The built-in implementation. `get(target, 'a.b.c')` reads `target.a.b.c` using dot-segment traversal. `set(target, 'a.b.c', value)` writes at the same path, creating intermediate objects as needed.
 - **`StateAccessorInterface` contract.** Two methods: `get<T>(target, path): T | null` and `set(target, path, value): void`. Implement both to replace the built-in resolver.

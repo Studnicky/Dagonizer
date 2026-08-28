@@ -12,32 +12,24 @@ seeAlso:
 
 # Runtime
 
-## What It Is
+## Runtime Utilities
 
-The runtime surface contains the small utilities Dagonizer uses while executing a DAG: monotonic time, scheduling, retry policy, backoff strategies, abort/deadline composition, and dotted-path state access.
+The runtime package exports the small utilities Dagonizer uses while executing a DAG: monotonic time, scheduling, retry policy, backoff strategies, abort/deadline composition, and dotted-path state access.
 
-Use this page when swapping deterministic test providers, applying retry/backoff around one operation, composing cancellation signals, or customizing how scatter/state-mapping paths read and write state.
+These utilities are the execution seams swapped in tests and host integrations: deterministic clock and scheduler providers, retry/backoff around one operation, cancellation composition, and the default state accessor used by scatter and state mapping.
 
-## How It Works
+## References and Test Surfaces
 
-Runtime utilities are deliberately injectable. `Clock` and `Scheduler` delegate to provider interfaces. `DottedPathAccessor` implements the default `StateAccessorInterface`. `RetryPolicy` wraps transient operations without changing DAG topology.
-
-That means tests can pin time, production can use real time, and application code can keep provider/network resilience separate from reviewer-visible DAG control flow.
-
-## Diagrams, Examples, and Outputs
-
-Runtime primitives are not graph placements, but they affect how graph execution behaves. These pages show the same contracts in tests and runtime wiring:
+Runtime primitives are not graph placements, but they shape how graph execution behaves in production and tests. Adjacent references cover the same contracts from the provider and test-double sides:
 
 - [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`, `StateAccessorInterface`
 - [Reference: Testing](./testing) - `VirtualClockProvider`, `VirtualScheduler`
 
-## What It Lets You Do
+## Provider and Policy Model
 
-The runtime reference lets applications swap timing, scheduling, retry, signal, and state-access behavior at execution boundaries.
+Runtime utilities are deliberately injectable. `Clock` and `Scheduler` delegate to provider interfaces. `DottedPathAccessor` implements the default `StateAccessorInterface`. `RetryPolicy` wraps transient operations without changing DAG topology.
 
-`@studnicky/dagonizer/runtime`
-
-Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, and state accessor. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
+That means tests can pin time, production can use real time, and host code can keep provider/network resilience separate from DAG routing that belongs in the workflow document.
 
 ## Code Samples
 
@@ -251,11 +243,11 @@ await fetch(url, { signal });
 - One field supplied: returns that signal directly.
 - Both supplied: returns a composed signal that aborts when either the caller signal or deadline fires.
 
-`deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`. A negative or `NaN` `deadlineMs` throws `SignalError`.
+`deadlineMs` is wired through `AbortSignal.timeout()`, which produces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`. A negative or `NaN` `deadlineMs` throws `SignalError`.
 
 #### `Signal.never()`
 
-Returns a cached, never-aborting `AbortSignal`. Used throughout the engine wherever a run has no caller-supplied cancellation surface, so every node context carries a valid signal — never `null`.
+Returns a cached, never-aborting `AbortSignal`. Used throughout the engine wherever a run has no caller-supplied cancellation signal, so every node context carries a valid signal — never `null`.
 
 ---
 
@@ -274,11 +266,19 @@ Used by the dispatcher for scatter source reads, state-mapping input copies, and
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+Runtime utilities keep operational concerns out of the DAG document. Time, retry, cancellation, and state-path behavior can change with environment or provider policy without changing routed topology.
+
+That is why tests can pin time and drive retries deterministically while production uses real time, real waiting, and the same workflow document.
+
+`@studnicky/dagonizer/runtime` is the package that owns those execution-time seams: monotonic clock, scheduler, retry policy, signal composition, and state accessor. Clock and scheduler primitives stay swappable through provider contracts so tests can stay deterministic.
+
+## Runtime Notes
 
 `RetryPolicy` is for one transient operation, not for visible DAG control flow. If retry is part of the business process, model it as DAG routing. If retry is provider/network resilience around one call, keep it in runtime policy.
 
-`DottedPathAccessor` is the default path resolver for scatter source reads, gather writes, and embedded-DAG state mappings. Swap it only when an application state model needs different path semantics.
+`DottedPathAccessor` is the default path resolver for scatter source reads, gather writes, and embedded-DAG state mappings. Swap it only when a host state model needs different path semantics.
 
 ## Related Concepts
 

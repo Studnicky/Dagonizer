@@ -17,6 +17,11 @@
 
 import { computed } from 'vue';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
+import Badge from './ui/Badge.vue';
+import PanelHeader from './ui/PanelHeader.vue';
+import StateSurface from './ui/StateSurface.vue';
+import UiMetaText from './ui/UiMetaText.vue';
+import UiPaneSurface from './ui/UiPaneSurface.vue';
 
 type TraceEntry =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
@@ -32,6 +37,7 @@ type FeedItem =
 const props = defineProps<{
   entries: readonly TraceEntry[];
   logEvents: readonly LogEvent[];
+  selectedTool?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -57,11 +63,12 @@ function timeFor(ts: number): string {
 </script>
 
 <template>
-  <section class="trace-feed">
-    <header class="tf-header">
-      <h4>Trace</h4>
-      <span class="tf-count">{{ feed.length }} events</span>
-    </header>
+  <UiPaneSurface class="trace-feed" fill-height padding="md">
+    <PanelHeader title="Trace">
+      <template #meta>
+        <UiMetaText>{{ feed.length }} events</UiMetaText>
+      </template>
+    </PanelHeader>
 
     <ol v-if="feed.length > 0" class="tf-list">
       <li
@@ -75,13 +82,25 @@ function timeFor(ts: number): string {
 
         <!-- Node lifecycle event -->
         <template v-if="item.feedKind === 'trace'">
-          <span :class="['tf-variant', `tf-variant-${item.entry.variant}`]">{{ item.entry.variant }}</span>
+          <span class="tf-variant">
+            <Badge
+              :tone="item.entry.variant === 'start' ? 'accent' : item.entry.variant === 'end' ? 'info' : item.entry.variant === 'error' ? 'danger' : 'neutral'"
+              :dashed="item.entry.variant === 'note'"
+            >{{ item.entry.variant }}</Badge>
+          </span>
           <template v-if="item.entry.variant === 'note'">
             <span class="tf-node tf-note-node">{{ item.entry.node }}</span>
             <span class="tf-note-message">{{ item.entry.message }}</span>
           </template>
           <template v-else>
-            <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
+            <code
+              class="tf-node tf-node-clickable"
+              :class="{ 'tf-node-selected': props.selectedTool === item.entry.node }"
+              role="button"
+              tabindex="0"
+              @click="emit('node-click', item.entry.node)"
+              @keydown.enter="emit('node-click', item.entry.node)"
+            >{{ item.entry.node }}</code>
             <span v-if="item.entry.variant === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
             <span v-else-if="item.entry.variant === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
             <span v-else class="tf-output"></span>
@@ -90,51 +109,17 @@ function timeFor(ts: number): string {
 
         <!-- Logger line -->
         <template v-else>
-          <span :class="['tf-level', `tf-level-${item.event.level}`]">{{ item.event.level }}</span>
+          <Badge :tone="item.event.level === 'warn' ? 'warning' : item.event.level === 'error' || item.event.level === 'fatal' ? 'danger' : 'neutral'">{{ item.event.level }}</Badge>
           <span class="tf-message">{{ item.event.message }}</span>
         </template>
       </li>
     </ol>
 
-    <p v-else class="tf-empty">No events yet. Start a run to see the trace.</p>
-  </section>
+    <StateSurface v-else kind="empty">No events yet. Start a run to see the trace.</StateSurface>
+  </UiPaneSurface>
 </template>
 
 <style scoped>
-.trace-feed {
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 0.7rem 0.85rem;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.tf-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.55rem;
-  flex-shrink: 0;
-}
-
-.tf-header h4 {
-  margin: 0;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-}
-
-.tf-count {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
-}
-
 .tf-list {
   list-style: none;
   padding: 0;
@@ -180,21 +165,7 @@ function timeFor(ts: number): string {
 }
 
 /* Trace node variant badges */
-.tf-variant {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.05rem 0.35rem;
-  border-radius: 2px;
-  background: var(--vp-c-bg-alt);
-  color: var(--vp-c-text-3);
-  min-width: 38px;
-  text-align: center;
-}
-.tf-variant-start { background: rgba(34, 232, 255, 0.14); color: var(--dagonizer-brand); }
-.tf-variant-end   { background: rgba(155, 81, 224, 0.14); color: var(--dagonizer-brand2); }
-.tf-variant-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
-.tf-variant-note  { background: transparent; color: var(--vp-c-text-3); border: 1px solid var(--vp-c-divider); }
+.tf-variant { display: inline-flex; }
 
 .tf-node    { color: var(--vp-c-text-1); }
 .tf-note-node { color: var(--vp-c-text-3); }
@@ -216,24 +187,12 @@ function timeFor(ts: number): string {
   text-underline-offset: 2px;
 }
 .tf-node-clickable:hover { color: var(--dagonizer-brand2); }
-.tf-output { color: var(--vp-c-text-3); }
-
-/* Log level badges */
-.tf-level {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.05rem 0.4rem;
-  border-radius: 2px;
-  min-width: 44px;
-  text-align: center;
+.tf-node-selected {
+  color: var(--dagonizer-brand2);
+  text-decoration-color: var(--dagonizer-brand2);
+  font-weight: 700;
 }
-.tf-level-info   { background: rgba(34, 232, 255, 0.12); color: var(--dagonizer-brand); }
-.tf-level-warn   { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
-.tf-level-result { background: rgba(155, 81, 224, 0.16); color: var(--dagonizer-brand2); }
-/* Muted fallback for debug/trace levels — rendered without alarm color. */
-.tf-level-debug  { background: transparent; color: var(--vp-c-text-3); }
-.tf-level-trace  { background: transparent; color: var(--vp-c-text-3); }
+.tf-output { color: var(--vp-c-text-3); }
 
 .tf-message {
   color: var(--vp-c-text-1);
@@ -243,14 +202,6 @@ function timeFor(ts: number): string {
 
 .tf-log-warn   .tf-message { color: var(--dagonizer-brand3); }
 .tf-log-result .tf-message { color: var(--vp-c-text-1); font-weight: 600; }
-
-.tf-empty {
-  margin: auto 0;
-  text-align: center;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  font-size: 0.78rem;
-}
 
 @keyframes tf-in {
   from { opacity: 0; transform: translateX(-4px); }

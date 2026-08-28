@@ -11,6 +11,7 @@
  */
 
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -31,8 +32,8 @@ export class StateMapper {
    *
    * Factory-based sub-DAG body paths use `spawnChild` instead.
    */
-  cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface {
-    const childState = parentState.clone();
+  cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface {
+    const childState = parentState.clone(childScope);
     for (const [childKey, parentKey] of Object.entries(inputMapping)) {
       this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));
     }
@@ -49,8 +50,8 @@ export class StateMapper {
    * fields through the `StateAccessorInterface` (dotted-path accessor), which is
    * runtime type-agnostic.
    */
-  spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface {
-    const childState = factory(parentState);
+  spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface {
+    const childState = factory(parentState, childScope);
     for (const [childKey, parentKey] of Object.entries(inputMapping)) {
       this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));
     }

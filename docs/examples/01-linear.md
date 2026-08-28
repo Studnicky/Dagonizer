@@ -1,6 +1,6 @@
 ---
 title: 'Example 01: Linear Intake'
-description: 'The Archivist demo end-to-end: dispatcher wiring, sub-DAG registration, and a single execute call. Demonstrates Dagonizer node registration, DAG registration order, and lifecycle output.'
+description: 'The Archivist end-to-end host: dispatcher wiring, sub-DAG registration, and a single execute call over the canonical parent DAG.'
 seeAlso:
   - text: 'Running domain: The Archivist'
     link: './the-archivist'
@@ -16,32 +16,24 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+import { archivistDAG } from '../exampleDags.ts';
 </script>
 
 # Example 01: Linear Intake
 
-## What It Is
+## CLI Host
 
-Example 01 is the smallest host around the real Archivist DAG. It shows the boring but essential part every application needs: create the dispatcher, register nodes, register the DAGs in dependency order, execute one state object, and inspect the result.
+Example 01 is the smallest host shell around the real Archivist bundle. It builds the dispatcher, registers the packaged sub-DAGs and parent DAG, executes one visitor state, and reads back the lifecycle result.
 
-Nothing clever happens here, and that is why the page matters. Before scatter, plugins, checkpoint stores, or browser runners enter the picture, an application author needs to see the plain runtime handshake between registry entries and JSON-LD graph shape.
+This is the startup contract behind every Dagonizer host. A CLI entrypoint, request handler, worker task, or browser shell still begins by loading a registry-backed DAG bundle and calling `execute` on a state object.
 
-## How It Works
+## Canonical Document and Runtime
 
-The dispatcher owns registries, not application globals. The runner gives it a `DispatcherBundleType` containing node instances and canonical DAG documents. Once the bundle is registered, `dispatcher.execute('urn:noocodec:dag:the-archivist', visitor)` starts at the DAG entrypoint and follows the declared output route from each node.
-
-The result is one `ExecutionResult<ArchivistState>`: final state, lifecycle variant, cursor, executed nodes, skipped nodes, warnings, and errors. This is the shape to copy when embedding Dagonizer inside a CLI, request handler, test harness, or browser runner.
-
-## Diagrams, Examples, and Outputs
-
-The diagram is the live Archivist parent DAG. It is large because Example 01 intentionally does not simplify the domain: this is the real graph, with embedded search and compose sub-DAG placements visible in the JSON-LD and Mermaid pairing.
-
-Use it to connect registration order to graph resolution. The parent DAG references embedded DAG IRIs, so those sub-DAGs must be present in the registry before execution starts.
+The diagram and CLI entrypoint below are the same parent DAG and host file the product example uses. Keep them together: the graph shows what must already exist in the registry, and the host shows when that registration happens and what result shape the runtime returns.
 
 ### DAG registration and diagram
 
-The graph is the live [Archivist](./the-archivist) parent DAG. The runner registers the embedded sub-DAGs first, then registers this parent DAG, so every `EmbeddedDAGNode` reference resolves before execution starts.
+The host registers `bookSearchScatterDAG` and `composeRetryLoopDAG` first, then registers `archivistDAG`, so every `EmbeddedDAGNode` reference resolves during registration rather than halfway through a run.
 
 <DagJsonMermaid :dag="archivistDAG" title="The Archivist parent DAG" aria-label="The Archivist JSON-LD DAG beside Mermaid generated from it." />
 
@@ -51,15 +43,15 @@ The graph is the live [Archivist](./the-archivist) parent DAG. The runner regist
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Registration and Execution Model
 
-This lets you build the simplest possible host for a serious graph. You can keep the graph in a package, construct dependencies in application code, register the bundle at startup, and drive execution with a single state object.
+The dispatcher owns registries, not host globals. The runner gives it a `DispatcherBundleType` containing node instances and canonical DAG documents. Once the bundle is registered, `dispatcher.execute('urn:noocodec:dag:the-archivist', visitor)` starts at the DAG entrypoint and follows the declared output route from each node.
 
-It also gives reviewers an easy first check: if a node or embedded DAG appears in JSON-LD but is not registered, `registerDAG` fails before a customer request, model call, or data job ever runs.
+The result is one `ExecutionResult<ArchivistState>`: final state, lifecycle variant, cursor, executed nodes, skipped nodes, warnings, and errors. This is the same result shape handed back to a CLI, request handler, test harness, or interactive host.
 
 ## Code Samples
 
-This code is the host shell for the Archivist DAG. It is the piece applications usually write first: construct dependencies, register the bundle, call `execute`, and inspect the returned lifecycle.
+This code is the host shell for the Archivist DAG. It is the piece most hosts write first: construct dependencies, register the bundle, call `execute`, and read the returned lifecycle.
 
 ### Code
 
@@ -67,23 +59,29 @@ The `#linear-run` region covers the dispatcher construction, sub-DAG registratio
 
 <<< @/../examples/the-archivist/runArchivist.ts#linear-run
 
-## Details for Nerds
+## Operational Uses
 
-The important detail is that registration is validation, not just storage. DAG registration checks that placement IRIs resolve, node outputs have routes, and embedded DAG references do not form circular references.
+Use this host shape when you want a thin host shell around a packaged workflow. Keep the graph in a package, construct dependencies in host code, register the bundle at startup, and drive execution from one state object.
 
-That makes Example 01 a useful smoke test: if this host boots, the registry and the parent graph agree. Later examples add richer placement types, but they still rely on this same startup contract.
+It is also the fastest registry check: if a node or embedded DAG appears in JSON-LD but is not registered, `registerDAG` fails before any request, model call, or data job reaches runtime.
 
-### What it demonstrates
+## Runtime Notes
+
+Registration is a runtime contract, not a convenience cache. DAG registration checks that placement IRIs resolve, node outputs have routes, and embedded DAG references do not form circular references before any execution begins.
+
+This host shell is the shortest registry and entrypoint check for the Archivist bundle: if it boots, node registration, DAG registration, and entrypoint resolution agree. Later examples add richer placement types, but they still rely on this same startup contract.
+
+### Runtime contract
 - **Registration order.** Each sub-DAG ships as a canonical JSON-LD DAG constant; the caller registers a literal `DispatcherBundleType` with the concrete node group and that DAG. Register the embedded DAGs (`bookSearchScatterDAG`, `composeRetryLoopDAG`) before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
 - **Single execute call.** `dispatcher.execute('urn:noocodec:dag:the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
 - **Lifecycle result.** `result.state.lifecycle.variant` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
 - **Constructor injection.** Every node receives its dependencies (LLM adapter, search tools, memory, logger) through its constructor. Nodes hold them as private fields and never construct their own clients.
 
-See this in action in the [Archivist live demo](./the-archivist).
+The larger workflow built on the same DAG style is [The Archivist](./the-archivist).
 
 ## Related Concepts
 
-Read these next when you want to expand the same host pattern into richer graph features.
+These related pages expand the same minimal flow into richer graph features.
 
 - [Running domain: The Archivist](./the-archivist)
 - [Example 04: Scatter Scout](./04-scatter) - the `book-search-scatter` sub-DAG internals

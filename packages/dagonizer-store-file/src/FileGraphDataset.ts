@@ -179,12 +179,71 @@ export class FileGraphDataset implements GraphDatasetInterface {
   static #journalBytes(path: string): number { return existsSync(path) ? statSync(path).size : 0; }
 
   static #replayJournal(dataset: N3GraphDataset, journal: string): void {
-    for (const line of journal.split('\n')) {
+    const lines = journal.trimEnd().split('\n');
+    for (const [index, line] of lines.entries()) {
       if (line.length === 0) continue;
-      const record: JournalRecord = JSON.parse(line);
+      let value: unknown;
+      try {
+        value = JSON.parse(line);
+      } catch {
+        if (index === lines.length - 1) return;
+        throw new Error('Graph journal contains an invalid committed record');
+      }
+      const record = FileGraphDataset.#recordOf(value);
       if (record.operation === 'add') dataset.add(record.quads);
       else if (record.operation === 'delete') dataset.delete(record.pattern);
       else dataset.clearGraph(record.graph);
     }
+  }
+
+  static #recordOf(value: unknown): JournalRecord {
+    if (!FileGraphDataset.#isJournalRecord(value)) throw new Error('Graph journal contains an invalid committed record');
+    return value;
+  }
+
+  static #isJournalRecord(value: unknown): value is JournalRecord {
+    if (!FileGraphDataset.#isObject(value)) return false;
+    if (value['operation'] === 'add') return Array.isArray(value['quads']) && value['quads'].every(FileGraphDataset.#isQuad);
+    if (value['operation'] === 'delete') return FileGraphDataset.#isSlotPattern(value['pattern']);
+    if (value['operation'] === 'clearGraph') return FileGraphDataset.#isTerm(value['graph']);
+    return false;
+  }
+
+  static #isQuad(value: unknown): value is QuadType {
+    if (!FileGraphDataset.#isObject(value)) return false;
+    return FileGraphDataset.#isTerm(value['subject'])
+      && FileGraphDataset.#isTerm(value['predicate'])
+      && FileGraphDataset.#isTerm(value['object'])
+      && FileGraphDataset.#isTerm(value['graph']);
+  }
+
+  static #isSlotPattern(value: unknown): value is SlotPatternType {
+    if (!FileGraphDataset.#isObject(value)) return false;
+    for (const [key, slot] of Object.entries(value)) {
+      if (key !== 'subject' && key !== 'predicate' && key !== 'object' && key !== 'graph') return false;
+      if (typeof slot !== 'string' && !FileGraphDataset.#isTerm(slot)) return false;
+    }
+    return true;
+  }
+
+  static #isTerm(value: unknown): value is TermType {
+    if (!FileGraphDataset.#isObject(value) || typeof value['value'] !== 'string') return false;
+    if (value['termType'] === 'NamedNode') return true;
+    if (value['termType'] === 'BlankNode' || value['termType'] === 'DefaultGraph' || value['termType'] === 'Variable') return true;
+    if (value['termType'] === 'Literal') {
+      const language = value['language'];
+      const datatype = value['datatype'];
+      return (language === undefined || typeof language === 'string')
+        && (datatype === undefined || FileGraphDataset.#isNamedNode(datatype));
+    }
+    return value['termType'] === 'Quad' && value['value'] === '' && FileGraphDataset.#isQuad(value['quad']);
+  }
+
+  static #isNamedNode(value: unknown): boolean {
+    return FileGraphDataset.#isObject(value) && value['termType'] === 'NamedNode' && typeof value['value'] === 'string';
+  }
+
+  static #isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
   }
 }

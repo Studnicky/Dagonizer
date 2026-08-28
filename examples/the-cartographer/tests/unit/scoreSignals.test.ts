@@ -64,7 +64,7 @@ class CartographerStateFixture {
   static deliveryWithRecipientCountry(recipientCountry: string): CartographerState {
     const state = new CartographerState();
     const payload: SourcePayload = {
-      'sourceId': 'test-source',
+      'sourceId': 'delivery-confirmation-json-none-0',
       'format': 'json',
       'compression': 'none',
       'mappingKey': 'test',

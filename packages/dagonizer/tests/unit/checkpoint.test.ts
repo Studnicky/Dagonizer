@@ -15,7 +15,6 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/index.js';
-import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -24,7 +23,6 @@ import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -192,12 +190,9 @@ class ConcurrencyProbeStore implements SnapshottableInterface {
 const SAMPLE_CHECKPOINT: CheckpointDataType = {
   'dagName': 'demo',
   'cursor': 'next-node',
-  'graph': {
+  'state': {
     'runIri': SAMPLE_STATE.runIri,
-    'graphIri': GraphStateTerms.runGraphIri(SAMPLE_STATE.runIri),
-    'nquads': '',
-    'hash': 'sha256-empty',
-    'jsonLd': graphStateDocument(SAMPLE_STATE),
+    'transient': SAMPLE_STATE.snapshotTransientState(),
   },
   'executedNodes': ['first'],
   'skippedNodes': [],
@@ -215,7 +210,7 @@ void describe('NodeStateBase snapshot/restore', () => {
     s.markRunning();
 
     const restored = new NodeStateBase();
-    await restored.restoreJsonLd(s.runIri, graphStateDocument(s));
+    await restored.restoreTransientState(s.runIri, s.snapshotTransientState());
     assert.deepEqual(restored.getMetadata('k'), { 'nested': [1, 2] });
     // Errors are intentionally NOT captured in the snapshot — they flow via
     // outcome.errors as the single authoritative channel (matching lifecycle
@@ -226,14 +221,14 @@ void describe('NodeStateBase snapshot/restore', () => {
     assert.equal(restored.lifecycle.variant, 'running');
   });
 
-  void it('graph JSON-LD round-trips domain fields', async () => {
+  void it('transient snapshot round-trips domain fields', async () => {
     const s = new CountingState();
     s.count = 42;
     s.log = ['a', 'b'];
     s.setMetadata('top', 'level');
 
     const restored = new CountingState();
-    await restored.restoreJsonLd(s.runIri, graphStateDocument(s));
+    await restored.restoreTransientState(s.runIri, s.snapshotTransientState());
     assert.equal(restored.count, 42);
     assert.deepEqual(restored.log, ['a', 'b']);
     assert.equal(restored.getMetadata('top'), 'level');
@@ -438,7 +433,7 @@ void describe('Checkpoint round-trip', () => {
       'version': '1',
       'dagName': 'old-dag',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:store-error', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:store-error'), 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:store-error', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       // no 'stores' field; a checkpoint produced before stores were captured
@@ -452,7 +447,7 @@ void describe('Checkpoint round-trip', () => {
     // restoreState must reject this because there is no node to resume from.
     const data = {
       'dagName': 'x', 'cursor': null,
-      'graph': { 'runIri': 'urn:dagonizer:run:complete', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:complete'), 'nquads': '', 'hash': 'sha256-empty', 'jsonLd': { '@context': GraphStateTerms.JSON_LD_CONTEXT, '@graph': [] } },
+      'state': { 'runIri': 'urn:dagonizer:run:complete', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
@@ -464,7 +459,7 @@ void describe('Checkpoint round-trip', () => {
     source.count = 5;
     const data = {
       'dagName': 'wrap-test', 'cursor': 'node-b',
-      'graph': { 'runIri': source.runIri, 'graphIri': GraphStateTerms.runGraphIri(source.runIri), 'nquads': '', 'hash': 'sha256-empty', 'jsonLd': graphStateDocument(source) },
+      'state': { 'runIri': source.runIri, 'transient': source.snapshotTransientState() },
       'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
@@ -685,7 +680,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const badRaw = {
       'dagName': 'test-dag',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:store-error', 'graphIri': GraphStateTerms.runGraphIri('urn:dagonizer:run:store-error'), 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:store-error', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {

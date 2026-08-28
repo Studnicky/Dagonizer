@@ -111,9 +111,6 @@ export class DAGShape {
       errors.push(`ScatterNode '${scatter.name}': dynamic dag reference must use from='item'`);
     }
 
-    if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
-      DAGShape.validateReservoir(scatter, scatter.execution.reservoir, errors);
-    }
   }
 
   private static validateGatherNode(
@@ -159,21 +156,4 @@ export class DAGShape {
     return labels;
   }
 
-  private static validateReservoir(
-    scatter: ScatterNodeType,
-    reservoir: { keyField: string; capacity: number; idleMs?: number },
-    errors: string[],
-  ): void {
-    if (reservoir.keyField.trim().length === 0) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.keyField must be a non-empty accessor path`);
-    }
-
-    if (reservoir.capacity < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
-    }
-
-    if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
-    }
-  }
 }

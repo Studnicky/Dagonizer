@@ -1,7 +1,8 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts';
-import { CoordTimezoneResolver, CountryLocale, GeohashTzMap } from '@studnicky/geo-resolver';
+import { CoordinateGeoResolver } from '../../services/CoordinateGeoResolver.ts';
+import { CountryLocale } from '@studnicky/geo-resolver';
 import {
   MonadicNode,
   RoutedBatch,
@@ -10,8 +11,6 @@ import {
   type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
-
-const GEO_TABLE = GeohashTzMap.default();
 
 // #region resolve-coords-node
 export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'> {
@@ -35,47 +34,23 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
         continue;
       }
 
-      const result = GEO_TABLE.lookup(raw.lat, raw.lng);
-      const tableResolved =
-        result.timezone.length > 0 &&
-        (result.country.length > 0 || result.waterBody.length > 0);
-
-      if (tableResolved) {
-        item.state.candidate = GeoResolutionBuilder.from({
-          'source':       'coords',
-          'secondaryLookupUsed': false,
-          'timezone':     result.timezone,
-          'country':      result.country,
-          'countryName':  '',
-          'locale':       result.locale,
-          'region':       '',
-          'locality':     result.waterBody.length > 0 ? result.waterBody : '',
-          'lat':          raw.lat,
-          'lng':          raw.lng,
-          'status':       result.waterBody.length > 0 ? 'water' : 'land',
-          'weight':       raw.weight,
-        });
-        continue;
-      }
-
-      const { timezone, country } = CoordTimezoneResolver.resolve(raw.lat, raw.lng);
+      const { timezone, country, countryName, water, waterBody } = CoordinateGeoResolver.resolve(raw.lat, raw.lng);
       const locale = country.length > 0 ? CountryLocale.forIso2(country) : '';
-      const secondaryLookupResolved = timezone.length > 0 || country.length > 0;
-      const secondaryWater = timezone.length > 0 && country.length === 0;
+      const resolved = timezone.length > 0 || country.length > 0;
 
       item.state.candidate = GeoResolutionBuilder.from({
         'source':       'coords',
-        'secondaryLookupUsed': true,
+        'secondaryLookupUsed': false,
         'timezone':     timezone,
         'country':      country,
-        'countryName':  '',
+        'countryName':  countryName,
         'locale':       locale,
         'region':       '',
-        'locality':     secondaryWater ? 'International Waters' : '',
+        'locality':     water ? waterBody : '',
         'lat':          raw.lat,
         'lng':          raw.lng,
-        'status':       secondaryWater ? 'water' : 'land',
-        'weight':       secondaryLookupResolved ? raw.weight : 0,
+        'status':       water ? 'water' : 'land',
+        'weight':       resolved ? raw.weight : 0,
       });
     }
     return RoutedBatch.create('resolved', batch);

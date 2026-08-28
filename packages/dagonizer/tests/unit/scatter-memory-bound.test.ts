@@ -153,7 +153,7 @@ class TestScatterDag {
           'body':        { 'dag': BODY_DAG_IRI },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),

@@ -9,7 +9,9 @@ seeAlso:
 
 # Subclassing State
 
-`NodeStateBase` is the base class for application state. A subclass declares
+## State Model
+
+`NodeStateBase` is the base class for host state. A subclass declares
 typed fields for Node.js callers and maps those fields to graph facts through
 `graphStateFields()`, or exposes accessors backed by the protected
 `getGraphStateField` and `setGraphStateField` methods.
@@ -17,6 +19,26 @@ typed fields for Node.js callers and maps those fields to graph facts through
 The graph is the only state model. JSON-LD is the Node.js intermediate
 representation used by checkpoints and transport; N-Quads is the streaming and
 persistence representation of the same graph.
+
+## Examples and References
+
+No standalone DAG applies here. These examples and references show graph-backed state in running code:
+
+- [Example 08: Checkpoint and Resume](../examples/08-checkpoint) - persists and restores a `NodeStateBase` subclass through the graph port
+- [State Accessors](./state-accessor) - `StateAccessor` contract that reads and writes the same state object
+- [Checkpoint and Resume](./checkpoint) - the codec/store layer that carries subclass state across runs
+
+## Graph-backed Access
+
+A subclass wires typed getters and setters to the graph through
+`getGraphStateField` / `setGraphStateField`, or declares `graphStateFields()`
+for a bulk mapping. Nodes then use the typed accessor (`state.items`) directly;
+lifecycle, metadata, retry counters, errors, warnings, and host fields
+all persist through the shared graph dataset. `clone()` forks that dataset for
+isolated execution, and graph restoration rehydrates the subclass through its
+graph-backed accessors.
+
+## Code Samples
 
 ```ts
 class PipelineState extends NodeStateBase {
@@ -30,14 +52,8 @@ class PipelineState extends NodeStateBase {
 }
 ```
 
-Nodes use `state.items` directly. Lifecycle, metadata, retry counters, errors,
-warnings, and application fields all persist through the shared graph dataset.
-`clone()` forks that dataset for isolated execution, and graph restoration
-rehydrates the subclass through its graph-backed accessors.
-
-## Checkpoint and resume
-
-Pass a fresh state factory to `CheckpointRestoreAdapter`:
+Pass a fresh state factory to `CheckpointRestoreAdapter` to wire a subclass
+into checkpoint restore:
 
 ```ts
 CheckpointRestoreAdapter.wrap(() => new PipelineState());
@@ -47,8 +63,22 @@ CheckpointRestoreAdapter.wrap(() => new PipelineState());
 context-bound JSON-LD document into the newly constructed state. No subclass
 serialization hooks or object snapshots are involved.
 
-## Retry state
+## Operational Uses
+
+Subclass `NodeStateBase` whenever a DAG's domain state needs typed,
+Node.js-facing accessors instead of raw graph reads and writes. The same
+subclass gets checkpoint/resume, cloning for isolated execution, and retry
+bookkeeping for free, because all of it rides the shared graph dataset rather
+than bespoke serialization code.
+
+## Runtime Notes
+
+### Retry state
 
 `recordAttempt`, `retriesFor`, `clearAttempts`, and `withinRetryBudget` store
 retry facts in the run graph. The DAG topology still owns retry routing; the
 state only carries the observed attempt count.
+
+## Related Concepts
+
+- [Checkpoint and Resume](./checkpoint) - persist and restore the run graph through JSON-LD

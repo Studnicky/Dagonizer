@@ -11,46 +11,40 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+import { archivistDAG } from '../exampleDags.ts';
 </script>
 
 # Visualization
 
-## What It Is
+## Rendering Surface
 
-Visualization turns the canonical DAG document into the surfaces people use to reason about a workflow: Mermaid for docs, JSON-LD for semantic graph tooling, and Cytoscape element data for interactive runtime views.
+Visualization turns the canonical DAG document into three concrete outputs: Mermaid for docs, JSON-LD for semantic graph tooling, and Cytoscape element data for live runtime views.
 
 The input is always the same `DAG` object the dispatcher registers. Rendering never invents a second graph model.
 
-## How It Works
+## Rendered Outputs
 
-Each renderer consumes the same `DAG` document. `MermaidRenderer` emits flowchart source, `JsonLdRenderer` emits semantic JSON-LD, and `CytoscapeRenderer` emits element data for hosts that manage their own graph component and styling.
-
-Three renderers ship in `@studnicky/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElementType[]` array for applications that manage their own cytoscape instance.
-
-## Diagrams, Examples, and Outputs
-
-Guide and example pages show JSON-LD beside Mermaid so readers can correlate the document with the graph shape. Runnable demo pages use Cytoscape because they need interactive execution state.
+JSON-LD and Mermaid stay side by side so the DAG document and rendered topology stay easy to compare. Interactive hosts use Cytoscape because they need live execution state.
 
 <DagJsonMermaid :dag="archivistDAG" title="The Archivist parent DAG" aria-label="The Archivist JSON-LD DAG beside Mermaid generated from it." />
 
 - [DAGBuilder](./builder) - render anything `build()` returns
 - [Schema and JSON loading](./schema) - render a DAG loaded from JSON
-- [The Archivist](../examples/the-archivist) - Cytoscape runtime view for a real browser-executed DAG
-- [The Cartographer](../examples/the-cartographer) - Cytoscape runtime view for scatter, workers, and streaming
-- [The Dispatcher](../examples/the-dispatcher) - Cytoscape runtime view for routing and handoff
+- [The Archivist](../examples/the-archivist) - Cytoscape view for a registered DAG with live state
+- [The Cartographer](../examples/the-cartographer) - Cytoscape view for scatter, workers, and streaming
+- [The Dispatcher](../examples/the-dispatcher) - Cytoscape view for routing and handoff
 
-## What It Lets You Do
+## Renderer Contracts
 
-### Use when
+Each renderer consumes the same `DAG` document. `MermaidRenderer` emits flowchart source, `JsonLdRenderer` emits semantic JSON-LD, and `CytoscapeRenderer` emits element data for hosts that manage their own graph component and styling.
 
-Use visualization when applications need to correlate the canonical JSON-LD DAG with a human-readable graph. Docs and guide pages use Mermaid; runnable demos use Cytoscape for live execution state.
+Three renderers ship in `@studnicky/dagonizer/viz`. Each consumes a `DAG` and emits a different output: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElementType[]` array for hosts that manage their own cytoscape instance.
 
 ## Code Samples
 
-The snippets below show each renderer surface and the metadata they emit.
+The code samples cover each renderer output and the metadata it emits.
 
-### API surface
+### API
 
 | Symbol | Source | Role |
 |--------|--------|------|
@@ -59,7 +53,11 @@ The snippets below show each renderer surface and the metadata they emit.
 | `CytoscapeRenderer.render(dag, options?)` | `@studnicky/dagonizer/viz` | Returns `readonly CytoscapeElementType[]` (elements only; no positions) |
 | `DAGONIZER_VOCAB` | `@studnicky/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
 
-## Details for Nerds
+## Operational Uses
+
+Visualization correlates the canonical JSON-LD DAG with a graph rendering. Docs and guide pages use Mermaid; interactive hosts use Cytoscape for live execution state.
+
+## Runtime Notes
 
 ### MermaidRenderer
 
@@ -103,7 +101,7 @@ The output is a complete Mermaid block ready to drop into a fenced code block.
 npm install cytoscape @dagrejs/dagre
 ```
 
-The package injects cytoscape (applications pass the constructor to `CytoscapeGraph`) and lazy-loads `@dagrejs/dagre` internally. Neither peer is required for the non-cytoscape renderers.
+The package injects cytoscape (hosts pass the constructor to `CytoscapeGraph`) and lazy-loads `@dagrejs/dagre` internally. Neither peer is required for the non-cytoscape renderers.
 
 <<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
 
@@ -137,9 +135,9 @@ Select contained nodes in Cytoscape stylesheets via:
 
 `CytoscapeGraph`'s built-in stylesheet applies per-role colors to `.dag-contained` nodes via cytoscape `data(...)` mapping — `background-color: data(containerColor)`, `border-color: data(containerStroke)`, `color: data(containerText)` — so each distinct container role renders with its own palette. The colors are written to node data by `CytoscapeRenderer` and driven by the same `RoleColorUtils.forRole` palette as the Mermaid renderer. Subclasses that override `stylesheet()` should carry this rule forward or replace it with a custom containment style.
 
-#### Live rendering in the doc site
+#### Static and interactive rendering
 
-The GitHub Pages docs use Mermaid for guide and example pages so the registered JSON-LD and rendered graph stay visible together. Cytoscape is reserved for the runnable demo pages, where users need interactive execution state, expansion, and richer runtime navigation in [The Archivist](../examples/the-archivist), [The Cartographer](../examples/the-cartographer), and [The Dispatcher](../examples/the-dispatcher).
+Mermaid fits static references where the registered JSON-LD and rendered topology should stay adjacent. Cytoscape fits interactive hosts that need live execution state, expansion, and richer runtime navigation in [The Archivist](../examples/the-archivist), [The Cartographer](../examples/the-cartographer), and [The Dispatcher](../examples/the-dispatcher).
 
 ### JsonLdRenderer
 
@@ -153,7 +151,7 @@ Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag
 
 <<< @/../examples/the-archivist/viz/render-mermaid.ts#list-dags-render
 
-The dispatcher's read accessors (`getDAG`, `listDAGs`, `getNode`, `listNodes`) make documentation generation straightforward: pull every registered DAG, render it, write the markdown.
+The dispatcher's read accessors (`getDAG`, `listDAGs`, `getNode`, `listNodes`) give registry-walking tooling a direct path: enumerate every registered DAG, render it, and emit the reference or artifact you need.
 
 ## Related Concepts
 

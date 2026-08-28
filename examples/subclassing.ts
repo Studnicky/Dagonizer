@@ -1,5 +1,5 @@
 /**
- * subclassing: NodeStateBase subclassing — snapshot/restore, clone, and
+ * subclassing: NodeStateBase subclassing — transient snapshot/restore, clone, and
  * checkpoint round-trip.
  *
  * Demonstrates:

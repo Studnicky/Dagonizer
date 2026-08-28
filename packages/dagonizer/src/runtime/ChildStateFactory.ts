@@ -34,5 +34,5 @@ export class ChildStateFactory {
    * `registerDAG` time. The engine never branches on factory presence; it
    * always looks one up and calls it.
    */
-  static readonly cloneParent: ChildStateFactoryType = (parent) => parent.clone();
+  static readonly cloneParent: ChildStateFactoryType = (parent, childScope) => parent.clone(childScope);
 }

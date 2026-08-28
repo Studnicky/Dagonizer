@@ -4,28 +4,38 @@ description: 'Design human-in-the-loop flows that park with a correlation key, c
 seeAlso:
   - text: 'Example 31: HITL Park-and-Correlate'
     link: '../examples/31-hitl'
-    description: 'Dispatcher browser demo showing execute, park, checkpoint, and resume'
+    description: 'Dispatcher support flow showing execute, park, checkpoint, and resume'
   - text: 'The Dispatcher'
     link: '../examples/the-dispatcher'
-    description: 'in-browser runnable support escalation flow'
+    description: 'support workflow with operator park and resume'
   - text: 'Reference: Checkpoint'
     link: '../reference/checkpoint'
     description: 'checkpoint capture and restore APIs'
 ---
 
 <script setup lang="ts">
-import { supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+import { supportDispatcherDAG } from '../exampleDags.ts';
 </script>
 
 # HITL Park-and-Correlate
 
-## What It Is
+## Parking Model
 
 Human-in-the-loop flows need to pause execution, free the worker, and resume later when an external decision arrives. Dagonizer models that as park-and-correlate: a node routes to the reserved `parked` output, the result carries a correlation key and cursor, and the host persists a checkpoint until a webhook, operator action, or approval response arrives.
 
 This is not engine suspension. It is a controlled early exit with enough state to resume the same DAG from the parked placement.
 
-## How It Works
+## Escalation Flow
+
+The Dispatcher support workflow exercises this directly: it parks for an operator response, persists a checkpoint, and resumes once the operator decision is written back into state.
+
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher HITL DAG" aria-label="Support dispatcher HITL JSON-LD DAG beside Mermaid generated from it." />
+
+- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - support escalation flow showing execute, park, checkpoint, and resume
+- [The Dispatcher](../examples/the-dispatcher) - support escalation workflow with operator resume
+- [Reference: Checkpoint](../reference/checkpoint) - checkpoint capture and restore APIs
+
+## Park and Resume Contract
 
 A parking node writes correlation metadata and routes to the reserved parked output. The dispatcher returns an `ExecutionResult` with `parked` details and a checkpointable cursor. The caller persists the checkpoint, waits for the external decision, restores state, writes the response, and calls `resume` at the parked cursor.
 
@@ -70,27 +80,15 @@ The `correlationKey` field on the lifecycle state (`state.lifecycle.correlationK
 reflects the key stored in the `awaiting-input` state object. It is `null` on
 all other variants.
 
-## Diagrams, Examples, and Outputs
-
-The Dispatcher demo contains the support escalation flow that parks for an operator response, persists a checkpoint, and resumes once the simulated operator decision is written back into state.
-
-<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher HITL DAG" aria-label="Support dispatcher HITL JSON-LD DAG beside Mermaid generated from it." />
-
-- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - Dispatcher browser demo showing execute, park, checkpoint, and resume
-- [The Dispatcher](../examples/the-dispatcher) - in-browser runnable support escalation flow
-- [Reference: Checkpoint](../reference/checkpoint) - checkpoint capture and restore APIs
-
-## What It Lets You Do
-
-### Use when
-
-Use HITL park-and-correlate when a DAG must wait for an external actor: an operator, reviewer, customer, approval system, webhook, or compliance gate. The engine should free the worker, return a parked result, and resume later from a correlation key and cursor.
-
 ## Code Samples
 
-The snippets below show the parking node, the support dispatcher topology, and the checkpoint/resume lifecycle around a parked cursor.
+The code samples cover the parking node, the support dispatcher topology, and the checkpoint/resume lifecycle around a parked cursor.
 
-## Details for Nerds
+## Operational Uses
+
+HITL park-and-correlate is the pattern for DAGs that wait on an external actor: an operator, reviewer, customer, approval system, webhook, or compliance gate. The engine frees the worker, returns a parked result, and later resumes from a correlation key and cursor.
+
+## Runtime Notes
 
 ### Design: park-and-correlate vs. engine-suspend
 
@@ -101,7 +99,7 @@ arrives. This matches how serverless and queue-based architectures work: a
 function call parks, stores its state in a database, and resumes when a new
 invocation arrives.
 
-The three artifacts the engine surfaces on a parked result:
+The three artifacts the engine returns on a parked result:
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -119,15 +117,15 @@ A node parks by:
 2. Routing to the reserved `'parked'` output.
 
 The engine intercepts the `'parked'` output before normal downstream execution
-continues. [The Dispatcher](../examples/the-dispatcher) is the canonical runnable
-example: `ParkForOperatorNode` parks the support flow when no operator response
+continues. [The Dispatcher](../examples/the-dispatcher) is the canonical support
+workflow for this pattern: `ParkForOperatorNode` parks the support workflow when no operator response
 exists, then routes `'ready'` after the restored state contains the human reply.
 
 <<< @/../examples/the-dispatcher/nodes/ParkForOperatorNode.ts
 
 The DAG placement still declares the escalation branch as normal topology. The
 important part is that the parking node's output union includes `'parked'`; when
-that output appears, the engine surfaces `result.parked` with the correlation key
+that output appears, the engine returns `result.parked` with the correlation key
 and cursor.
 
 <<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
@@ -164,7 +162,7 @@ The engine calls `state.park(correlationKey)` automatically when it detects a
 
 ## Related Concepts
 
-- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - Dispatcher browser demo showing execute, park, checkpoint, and resume
-- [The Dispatcher](../examples/the-dispatcher) - in-browser runnable support escalation flow
+- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - Dispatcher interactive host showing execute, park, checkpoint, and resume
+- [The Dispatcher](../examples/the-dispatcher) - support workflow with operator park and resume
 - [Reference: Checkpoint](../reference/checkpoint) - checkpoint capture and restore APIs
 - [Reference: Lifecycle](../reference/lifecycle) - lifecycle states including `awaiting-input`

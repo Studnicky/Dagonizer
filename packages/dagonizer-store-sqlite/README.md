@@ -1,5 +1,21 @@
 # @studnicky/dagonizer-store-sqlite
 
+## Graph state provider
+
+```ts
+import { SqliteGraphDatasetProvider } from '@studnicky/dagonizer-store-sqlite';
+
+const graphStore = new SqliteGraphDatasetProvider('./runs.sqlite');
+const root = graphStore.root(runIri);
+```
+
+SQLite uses the shared persistent graph decorator and an append-only delta
+log (`dagonizer_graph_log`) plus a compacted snapshot row
+(`dagonizer_graph_snapshot`). A new provider instance can `await
+reopen(runIri)` a stored RDF 1.2 graph. Child graphs remain isolated and
+volatile by default; pass `{ durableChildren: true }` to persist child
+placement graphs as well.
+
 SQLite-backed `Store` for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer) using Node's built-in `node:sqlite` module.
 
 No external npm dependencies. Requires Node >= 24.

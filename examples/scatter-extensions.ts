@@ -50,7 +50,7 @@ const dag: DAGType = {
       body:         { node: 'urn:noocodec:node:score' },
       source:       'items',
       itemKey:      'item',
-      execution: { mode: 'item', concurrency: 5 },
+      configuration: { execution: { batching: { mode: 'item', concurrency: 5 } } },
       reducer:      'threshold-75',    // custom OutcomeReducer: >= 75% success
       outputs: {
         'all-success': placement('collect-top'),

@@ -15,7 +15,7 @@ import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionRe
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
 import { sharedAjv } from '../../src/validation/sharedAjv.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // Compile local validators (per existing entity test pattern)
@@ -77,7 +77,9 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'items':         [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer() }],
+  'graphState':    emptyInlineTransfer(['child:1']),
+  'responseState': FULL_RESPONSE_STATE,
+  'items':         [{ 'id': 'child:1', 'runIri': 'child:1' }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
 };
@@ -122,11 +124,16 @@ void describe('ExecutionRequest schema', () => {
 
 const validResponse = {
   'correlationId': 'child:1',
-  'items': [{ 'id': 'child:1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'success' }],
-  'errors': [],
-  'intermediates': [
-    { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
-  ],
+  'graphState': emptyInlineTransfer(['child:1']),
+  'items': [{
+    'id': 'child:1',
+    'runIri': 'child:1',
+    'terminalOutcome': 'success',
+    'errors': [],
+    'intermediates': [
+      { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
+    ],
+  }],
 };
 
 void describe('ExecutionResponse schema', () => {
@@ -134,20 +141,23 @@ void describe('ExecutionResponse schema', () => {
     assert.equal(responseValidator(validResponse), true);
   });
 
-  void it('accepts null item snapshot', () => {
-    assert.equal(responseValidator({ ...validResponse, 'items': [{ 'id': 'child:1', 'graphState': null, 'terminalOutcome': 'success' }] }), false);
+  void it('rejects an item missing required runIri', () => {
+    assert.equal(responseValidator({ ...validResponse, 'items': [{ 'id': 'child:1', 'terminalOutcome': 'success' }] }), false);
   });
 
   void it('accepts an error item in errors array', () => {
     const withError = {
       ...validResponse,
-      'errors': [{
-        'code': 'ERR_TRANSPORT',
-        'context': {},
-        'message': 'timeout',
-        'operation': 'runDag',
-        'recoverable': false,
-        'timestamp': new Date().toISOString(),
+      'items': [{
+        ...validResponse.items[0],
+        'errors': [{
+          'code': 'ERR_TRANSPORT',
+          'context': {},
+          'message': 'timeout',
+          'operation': 'runDag',
+          'recoverable': false,
+          'timestamp': new Date().toISOString(),
+        }],
       }],
     };
     assert.equal(responseValidator(withError), true);

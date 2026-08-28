@@ -21,30 +21,24 @@ seeAlso:
 
 `Dagonizer<TState>` is the dispatcher. It owns the node registry, DAG registry, plugin registration boundary, lifecycle hooks, execution entrypoints, resume entrypoints, and read accessors.
 
-Use this page when integrating the dispatcher directly into an application host. The key distinction is simple: the DAG document describes what should run; the dispatcher owns the registered implementations and moves state through the routed graph.
+`Dagonizer<TState>` is the runtime host: the DAG document describes what should run, and the dispatcher owns the registered implementations and moves state through the routed graph.
 
-## How It Works
+## Registry and Runtime References
 
-Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG IRIs. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
-
-`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the application awaits the result or iterates events. Validation happens at registration time so dangling node/DAG references, missing embedded DAGs, invalid placement-IRI routes, and contract mismatches fail before a run starts.
-
-## Diagrams, Examples, and Outputs
-
-The dispatcher is visible in every runnable demo: it registers the same JSON-LD DAGs that the docs render as diagrams, then executes those registered names.
+The dispatcher is the runtime behind every registered workflow in the docs and examples. The Archivist, The Cartographer, CLI examples, and guide snippets all bind JSON-LD DAG documents into one registry and execute them through the same dispatcher contract.
 
 - [Reference: Execution](./execution) - what `execute` and `resume` return
 - [Reference: Contracts](./contracts) - `NodeInterface`, `ExecuteOptionsType`
 - [Reference: Core](./core) - `GatherStrategies`, `OutcomeReducers`
 - [Reference: Lifecycle](./lifecycle)
-- [The Archivist](../examples/the-archivist) - browser runner registering a large conversational DAG
-- [The Cartographer](../examples/the-cartographer) - browser runner registering plugin-defined and embedded data-pipeline DAGs
+- [The Archivist](../examples/the-archivist) - large conversational DAG registration and execution
+- [The Cartographer](../examples/the-cartographer) - plugin-defined and embedded data-pipeline DAG registration and execution
 
-## What It Lets You Do
+## Registration and Execution Model
 
-The Dagonizer reference lets applications register nodes, DAGs, bundles, and plugins, then execute or resume registered graphs. It is the API to reach for when a CLI, browser page, worker, serverless handler, or long-running service needs to host a DAG.
+Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG IRIs. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
 
-`@studnicky/dagonizer` root export.
+`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the caller awaits the result or iterates events. Validation happens at registration time so dangling node/DAG references, missing embedded DAGs, invalid placement-IRI routes, and contract mismatches fail before a run starts.
 
 ## Code Samples
 
@@ -101,6 +95,8 @@ declare const _opts: DagonizerOptionsType;
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
 // registryVersion?: string
 // validateOutputs?: boolean
+// configuration?: DagConfiguration.InputType
+// foldJournalStores?: Readonly<Record<string, FoldJournalStoreInterface>>
 export {};
 ```
 
@@ -111,6 +107,23 @@ export {};
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 | `validateOutputs` | `boolean` | When `true`, validates each node output against the node's declared `outputSchema` for that port after execution. On mismatch the item is re-routed to `'error'`. Default `false` — zero overhead in production. Enable in dev/test to catch contract violations early. |
+| `configuration` | `DagConfiguration.InputType` | Dispatcher-wide execution and durability policy inherited by every DAG and scatter placement. |
+| `foldJournalStores` | `Readonly<Record<string, FoldJournalStoreInterface>>` | Runtime fold-journal stores keyed by `configuration.durability.foldJournalStoreKey`. Defaults to an empty registry. |
+
+Configuration resolves each field independently in this order: scatter
+placement `configuration`, DAG `configuration`, dispatcher `configuration`,
+then `DagConfiguration.DEFAULT`. The execution path is
+`configuration.execution.batching`. Its defaults are `mode: 'item'`,
+`concurrency: 1`, `throttle: null`, and `reservoir: null`. Durability defaults
+are `writePoints: ['NodeEdges', 'WatermarkCommit']` and
+`foldJournalStoreKey: null`. A present `writePoints` array replaces the
+inherited array, including an explicit empty array; write points do not merge.
+
+Selecting `FoldDeltaJournal` also requires `WatermarkCommit`, a non-null
+`foldJournalStoreKey` that resolves in `foldJournalStores`, and one replayable
+first-class gather (`append`, `collect`, `map`, or `partition`) bound to exactly
+the originating scatter source. Every non-empty scatter outcome must converge
+on that gather.
 
 ---
 
@@ -339,19 +352,21 @@ import type { ExecutionResultType, NodeStateInterface } from '@studnicky/dagoniz
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
-  protected override onFlowStart(dagIri: string, state: MyState): void {
+  protected override onFlowStart(dagIri: string, state: MyState, signal: AbortSignal): void {
     console.log('start', dagIri);
   }
-  protected override onFlowEnd(dagIri: string, state: MyState, result: ExecutionResultType<MyState>): void {
+  protected override onFlowEnd(dagIri: string, state: MyState, result: ExecutionResultType<MyState>, signal: AbortSignal): void {
     console.log('end', dagIri, result.terminalOutcome);
   }
-  protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseEnter(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
-  protected override onPhaseExit(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onPhaseEnter(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
+  protected override onPhaseExit(dagIri: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {}
 }
 ```
+
+Every hook receives the run's `AbortSignal` as its trailing parameter — an override may omit trailing parameters it does not use (shown above for brevity), but the signal is always passed at the call site.
 
 | Hook | Fires |
 |------|-------|
@@ -360,7 +375,7 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
-| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagIri, phase: 'pre'\|'post', placementName, state, placementPath)` |
+| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagIri, phase: 'pre'\|'post', placementName, state, placementPath, signal)` |
 | `onPhaseExit` | After a `pre` or `post` phase placement completes (success or collected error); same signature as `onPhaseEnter` |
 
 `placementPath` is the ordered array of parent embedded-DAG placement labels leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` labelled `'search'` receives `['search']`. Graph identity still comes from placement `@id`; the path is observability context for watchers and worker relays.
@@ -384,7 +399,7 @@ const _nodes: readonly NodeInterface<NodeStateInterface, string>[] = bundle.node
 const _dags: readonly DAGType[] = bundle.dags;
 ```
 
-A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so applications register the whole unit in one call.
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so hosts register the whole unit in one call.
 
 ---
 
@@ -434,7 +449,13 @@ Reserved metadata key used by the work-set scheduler to persist the in-flight wo
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer` is the root dispatcher export for registering nodes, DAGs, bundles, and plugins, then executing or resuming registered graphs.
+
+CLI tools, browser pages, workers, serverless handlers, and long-running services all host DAGs through this dispatcher.
+
+## Runtime Notes
 
 `Dagonizer` intentionally keeps assembly explicit. JSON-LD carries DAG IRIs, placement IRIs, routes, contexts, state mappings, phases, scatter bodies, gather barriers, and embedded DAG references. Registries bind registered references to node implementations, DAG documents, child-state factories, containers, and channels. Visualization is generated from the DAG document, not from the live dispatcher.
 

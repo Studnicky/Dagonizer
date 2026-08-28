@@ -16,6 +16,8 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
+import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
+import { Continent } from '../entities/Continent.ts';
 import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -58,7 +60,7 @@ export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
         'timezone':         geo.timezone,
         'jurisdiction':     geo.jurisdiction,
         // Macro continent for the per-region insights rollup (from the real API).
-        'continent':        geo.continent || AggregateEventNode.DEFAULT_GEO_LABEL,
+        'continent':        Continent.require(geo.continent),
         'region':           geo.region || AggregateEventNode.DEFAULT_GEO_LABEL,
         'country':          geo.country || AggregateEventNode.DEFAULT_GEO_LABEL,
         'hub':              geo.hub || AggregateEventNode.DEFAULT_GEO_LABEL,
@@ -93,9 +95,28 @@ export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
         // totals them into the savings view.
         'routing': { ...state.routing },
       };
+
+      AggregateEventNode.clearCloneScratch(state);
     }
 
     return RoutedBatch.create('done', batch);
+  }
+
+  private static clearCloneScratch(state: CartographerState): void {
+    state.currentSource = {
+      'sourceId':     '',
+      'format':       'json',
+      'compression':  'none',
+      'mappingKey':   'json-position',
+      'eventType':    'position-ping',
+      'payload':      '',
+    };
+    state.decodedText = '';
+    state.parsedRecords = [];
+    state.mappedRecords = [];
+    state.ingestedEvents = [];
+    state.canonical = CanonicalEventVariantBuilder.from({});
+    state.canonicalVariant = CanonicalEventVariantBuilder.from({});
   }
 }
 // #endregion aggregate-event-node

@@ -1,0 +1,26 @@
+---
+import UiActionLink from '@/components/islands/UiActionLink.vue';
+
+interface Props {
+  href: string;
+  variant?: 'primary' | 'secondary' | 'text';
+  block?: boolean;
+  target?: string;
+  rel?: string;
+  class?: string;
+  label?: string;
+}
+
+const { href, variant = 'secondary', block = false, target, rel, class: className = '', label } = Astro.props;
+const hasDefaultSlot = Astro.slots.has('default');
+---
+
+{
+  hasDefaultSlot ? (
+    <UiActionLink href={href} variant={variant} block={block} target={target} rel={rel} className={className}>
+      <slot />
+    </UiActionLink>
+  ) : (
+    <UiActionLink href={href} variant={variant} block={block} target={target} rel={rel} className={className} label={label} />
+  )
+}

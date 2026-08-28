@@ -24,6 +24,7 @@ import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.j
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
+import { DAGError } from '../../src/errors/index.js';
 import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
@@ -70,7 +71,7 @@ class ReservoirDag {
           'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'currentItem',
-          'execution': { 'mode': 'reservoir', 'reservoir': { keyField, 'capacity': capacity } },
+          'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { keyField, 'capacity': capacity } } } },
           // No `field`: append strategy appends record.item (the ReservoirItem) to target.
           'outputs': {
             'all-success': ReservoirDag.iri(dagIri, 'join'),
@@ -559,6 +560,65 @@ class FakeDriver {
 
 /** Simple `StateAccessorInterface` that reads/writes a top-level property on a plain object. */
 const accessor: StateAccessorInterface = new DottedPathAccessor();
+
+void describe('Reservoir checkpoint restore', () => {
+  void it('rejects an inbox entry without a persisted bufferKey', async () => {
+    const releases: { size: number; key: string }[] = [];
+    const buffer = new ReservoirBuffer(FakeDriver.recording(releases), {
+      'concurrencyLimit': 1,
+      'inbox': [{ 'index': 0, 'item': { 'key': 'derivable', 'value': 1 } }],
+      'freshIter': {
+        async next(): Promise<IteratorResult<unknown>> {
+          return { 'done': true, 'value': undefined };
+        },
+      },
+      'nextIndex': 1,
+      'signal': null,
+      'reservoir': { 'keyField': 'key', 'capacity': 2, 'idleMs': null },
+      accessor,
+    });
+
+    await assert.rejects(
+      buffer.drain(),
+      (error: unknown): boolean => {
+        assert.ok(error instanceof DAGError);
+        assert.equal(error.code, 'VALIDATION_ERROR');
+        assert.match(error.message, /requires persisted bufferKey/);
+        return true;
+      },
+    );
+    assert.deepEqual(releases, []);
+  });
+
+  void it('rebuilds groups from persisted bufferKeys instead of item fields', async () => {
+    const releases: { size: number; key: string }[] = [];
+    const buffer = new ReservoirBuffer(FakeDriver.recording(releases), {
+      'concurrencyLimit': 1,
+      'inbox': [
+        { 'index': 0, 'item': { 'key': 'derived', 'value': 1 }, 'bufferKey': 'persisted-a' },
+        { 'index': 1, 'item': { 'key': 'derived', 'value': 2 }, 'bufferKey': 'persisted-a' },
+        { 'index': 2, 'item': { 'key': 'derived', 'value': 3 }, 'bufferKey': 'persisted-b' },
+      ],
+      'freshIter': {
+        async next(): Promise<IteratorResult<unknown>> {
+          return { 'done': true, 'value': undefined };
+        },
+      },
+      'nextIndex': 3,
+      'signal': null,
+      'reservoir': { 'keyField': 'key', 'capacity': 2, 'idleMs': null },
+      accessor,
+    });
+
+    await buffer.drain();
+
+    releases.sort((left, right) => left.key.localeCompare(right.key));
+    assert.deepEqual(releases, [
+      { 'size': 2, 'key': 'persisted-a' },
+      { 'size': 1, 'key': 'persisted-b' },
+    ]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Test 7 — idle releases a partial buffer

@@ -1,6 +1,6 @@
 ---
 title: 'Schema and JSON Loading'
-description: 'DAG configs are JSON objects validated against DAGSchema (JSON Schema 2020-12) at the ingest boundary. Validator sub-validators are Ajv-compiled once at module load; applications call Validator.dag.validate(x), never building their own Ajv against the package schemas.'
+description: 'DAG configs are JSON objects validated against DAGSchema (JSON Schema 2020-12) at the ingest boundary. Validator sub-validators are Ajv-compiled once at module load; hosts call Validator.dag.validate(x), never building their own Ajv against the package schemas.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -14,7 +14,7 @@ seeAlso:
 nextSteps:
   - text: 'Example 03: Tool Schemas'
     link: '../examples/03-schema'
-    description: 'runnable load-and-validate example'
+    description: 'load, validate, and register a JSON-LD DAG'
 ---
 
 <script setup lang="ts">
@@ -23,19 +23,13 @@ import { dag as schemaDag } from '../../examples/dags/03-schema.ts';
 
 # Schema and JSON Loading
 
-## What It Is
+## Ingest Validation Contract
 
 Schema loading is the guardrail between untrusted JSON and the dispatcher registry. A DAG can arrive from a plugin package, config file, database row, or generated artifact; `DAGDocument.load` accepts it only after the JSON parses and the document satisfies `DAGSchema`.
 
-The schema is the same contract the builder emits. That keeps code-authored DAGs, serialized JSON-LD DAGs, docs diagrams, and runtime execution on one shape.
+The schema is the same contract the builder emits. That keeps code-authored DAGs, serialized JSON-LD DAGs, rendered diagrams, and runtime execution on one shape.
 
-## How It Works
-
-`DAGDocument.load` parses raw JSON, validates it against `DAGSchema`, and returns a typed `DAG` only after every placement satisfies its schema. `Validator` exposes the same precompiled Ajv validators for lower-level entity checks.
-
-`DAGSchema` describes the canonical DAG wire shape in JSON Schema 2020-12. The Ajv 2020-12 instance that validates against it is compiled once at module load and exposed through `Validator.dag`. Application code calls `Validator.dag.validate(x)`; it does not need to build a fresh Ajv instance against the package schemas.
-
-## Diagrams, Examples, and Outputs
+## Loaded Document and Validation Path
 
 Example 03 starts with a JSON-LD string, validates it, registers the loaded DAG, and runs it. The JSON-LD and diagram are generated from that same example source:
 
@@ -45,18 +39,18 @@ Example 03 starts with a JSON-LD string, validates it, registers the loaded DAG,
 
 <DagJsonMermaid :dag="schemaDag" title="Example 03 schema-loaded DAG" aria-label="Example 03 schema-loaded JSON-LD DAG beside Mermaid generated from it." />
 
-Use these pages together:
+These references cover the same loading boundary:
 
 - [Example 03: Tool Schemas](../examples/03-schema) runs the load, validation, and round-trip path.
 - [JSON-LD Export and Import](./json-ld) explains the serialized wire format.
 - [DAGBuilder](./builder) explains the code path that emits the same schema-valid DAG shape.
 - [Reference: Entities](../reference/entities) lists every schema-derived entity type.
 
-## What It Lets You Do
+## Schema Boundary Model
 
-### Use when
+`DAGDocument.load` parses raw JSON, validates it against `DAGSchema`, and returns a typed `DAG` only after every placement satisfies its schema. `Validator` exposes the same precompiled Ajv validators for lower-level entity checks.
 
-Use schema loading when a DAG document comes from outside trusted TypeScript source: a plugin package, config file, database row, user upload, or generated artifact. Validation is the boundary that keeps malformed JSON-LD out of the dispatcher registry.
+`DAGSchema` describes the canonical DAG wire shape in JSON Schema 2020-12. The Ajv 2020-12 instance that validates against it is compiled once at module load and exposed through `Validator.dag`. Application code calls `Validator.dag.validate(x)`; it does not need to build a fresh Ajv instance against the package schemas.
 
 ## Code Samples
 
@@ -77,7 +71,11 @@ The schema covers `@id`, `name`, `version`, `entrypoints`, and `nodes`. Each pla
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |
 
-## Details for Nerds
+## Operational Uses
+
+Schema loading is the boundary for DAG documents that come from outside trusted TypeScript source: a plugin package, config file, database row, user upload, or generated artifact. Validation is what keeps malformed JSON-LD out of the dispatcher registry.
+
+## Runtime Notes
 
 ### `DAGDocument.load`
 
@@ -85,7 +83,7 @@ The single permitted entry point for raw external JSON:
 
 <<< @/../examples/03-schema.ts#load-and-register
 
-`DAGDocument.load` calls `JSON.parse` then validates the result against `DAGSchema`. Both JSON syntax errors and schema violations throw `ValidationError` with a human-readable message listing every failing constraint.
+`DAGDocument.load` calls `JSON.parse` then validates the result against `DAGSchema`. Both JSON syntax errors and schema violations throw `ValidationError` with a message that lists every failing constraint.
 
 Example 03 exercises the validation path with a deliberately broken document:
 
@@ -134,7 +132,7 @@ Re-validating a value calls the precompiled function. There is no Ajv setup cost
 - [DAGBuilder](./builder) - author DAGs in code instead of loading from JSON
 - [JSON-LD export and import](./json-ld) - serialize, load, and round-trip a DAG document
 - [Entities](../reference/entities) - every schema and its derived type
-- [Example 03: Tool Schemas](../examples/03-schema) - runnable load-and-validate example
+- [Example 03: Tool Schemas](../examples/03-schema) - load-and-validate workflow example
 - [Reference, Validation](../reference/validation)
 - [Reference, Entities](../reference/entities)
 - [Reference, Errors, `ValidationError`](../reference/errors)

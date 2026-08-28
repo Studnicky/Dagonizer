@@ -12,30 +12,24 @@ seeAlso:
 
 # Visualization
 
-## What It Is
+## Renderer Surface
 
-The visualization surface turns canonical DAG documents into Mermaid source, JSON-LD graph documents, Cytoscape element data, and layout metadata.
+The visualization package turns canonical DAG documents into Mermaid source, JSON-LD graph documents, Cytoscape element data, and layout metadata.
 
-Use this page when docs, developer tools, or product UI need to show the graph shape that the dispatcher executes. Guide and example pages use Mermaid; runnable browser demos use Cytoscape for live execution state.
+Visualization is the rendering boundary for references, developer tools, and interactive hosts that need to show the graph shape the dispatcher executes. Static references use Mermaid; interactive hosts use Cytoscape for live execution state.
 
-## How It Works
+## Rendering References
 
-Renderers read `DAGType` documents. They do not inspect dispatcher internals, node implementations, or live runtime state unless a caller supplies explicit metadata. That keeps visualization tied to the same JSON-LD artifact used for registration: DAG and placement IRIs define identity, while `name` labels make the graph readable.
-
-Mermaid is the lightweight static format for docs. Cytoscape is the richer element format for browser runners that need expansion, live state, selection, and interaction.
-
-## Diagrams, Examples, and Outputs
-
-The renderers are used throughout the docs and demos. Start here for API details, then compare against pages that show JSON-LD beside the generated graph:
+The renderers feed both static Mermaid output and the live graph views used by interactive hosts. Start here for the API details, then compare them against the linked runtime references:
 
 - [Reference: Dagonizer](./dagonizer) - read accessors
 - [Reference: Entities](./entities) - `DAG`
 
-## What It Lets You Do
+## Renderer Model
 
-The visualization reference lets applications render one canonical DAG document into Mermaid, JSON-LD, or Cytoscape element data.
+Renderers read `DAGType` documents. They do not inspect dispatcher internals, node implementations, or live runtime state unless a caller supplies explicit metadata. That keeps visualization tied to the same JSON-LD artifact used for registration: DAG and placement IRIs define identity, while `name` labels provide display text.
 
-DAG visualization helpers. Ship through `@studnicky/dagonizer/viz`.
+Mermaid is the lightweight static format for references. Cytoscape is the richer element format for interactive graph UIs that need expansion, live state, selection, and interaction.
 
 ## Code Samples
 
@@ -128,7 +122,7 @@ const sources = dispatcher.listDAGs().map((dag) => ({
 }));
 ```
 
-`getDAG`, `listDAGs`, `getNode`, and `listNodes` give tooling everything it needs to walk the registry and emit per-DAG documentation.
+`getDAG`, `listDAGs`, `getNode`, and `listNodes` give tooling everything it needs to walk the registry and emit per-DAG references, tests, or snapshots.
 
 ---
 
@@ -362,7 +356,7 @@ const result: LayoutResultType = await CompositeLayout.compute(dag, embeddedDAGs
 // result.height:    number  (total bounding-box height)
 ```
 
-`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for applications managing their own cytoscape instances outside the factory.
+`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for hosts managing their own cytoscape instances outside the factory.
 
 ```ts twoslash
 import { CompositeLayout } from '@studnicky/dagonizer/viz';
@@ -392,7 +386,13 @@ const y: number = pos.y;
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer/viz` renders one canonical DAG document into Mermaid, JSON-LD, or Cytoscape element data.
+
+That lets docs, semantic tooling, and live graph UIs stay on the same topology instead of maintaining separate graph descriptions.
+
+## Runtime Notes
 
 Mermaid rendering is text-first and static. Cytoscape rendering is element-first and suitable for live browser state. `JsonLdRenderer` preserves semantic graph data for tools that need linked-data output rather than a visual graph.
 
@@ -402,5 +402,5 @@ Renderer options should make style pluggable without changing DAG documents. A s
 
 - [Reference: Dagonizer](./dagonizer) - read accessors
 - [Reference: Entities](./entities) - `DAG`
-- [Visualization](../guide/visualization) - JSON-LD/Mermaid correlation and Cytoscape-only runnable demos
+- [Visualization](../guide/visualization) - JSON-LD/Mermaid correlation and Cytoscape runtime views in the browser workflow pages
 - [DAGBuilder](../guide/builder) - builder output rendered by the visualization layer

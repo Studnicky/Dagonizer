@@ -27,6 +27,8 @@
 import type { FromSchema } from 'json-schema-to-ts';
 import { Validator } from '@studnicky/dagonizer/validation';
 
+import { Continent } from './Continent.ts';
+
 export const EnrichedShipmentSchema = {
   '$id': 'https://noocodec.dev/schemas/cartographer/EnrichedShipment',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -51,7 +53,7 @@ export const EnrichedShipmentSchema = {
     'timezone':          { 'type': 'string' },
     'jurisdiction':      { 'type': 'string', 'enum': ['GDPR', 'UK-GDPR', 'CCPA', 'LGPD', 'APPI', 'baseline', 'international-waters'] },
     // Macro continent (from a real API) — the per-region insights table buckets by this.
-    'continent':         { 'type': 'string', 'minLength': 1 },
+    'continent':         { 'type': 'string', 'enum': Continent.values },
     'region':            { 'type': 'string', 'minLength': 1 },
     'country':           { 'type': 'string', 'minLength': 1 },
     'hub':               { 'type': 'string', 'minLength': 1 },
@@ -117,7 +119,7 @@ export const EnrichedShipmentSchema = {
         'geoFlaggedForReview': { 'type': 'boolean' },
         // Source-model classification: which geo signal classify-geo-source selected.
         'geoSourceModel':    { 'type': 'string' },
-        // Whether CoordTimezone secondary lookup fired.
+        // Whether a secondary geo lookup fired.
         'geoSecondaryLookupUsed': { 'type': 'boolean' },
         'redactionRun':      { 'type': 'boolean' },
         'redactionSkipped':  { 'type': 'boolean' },

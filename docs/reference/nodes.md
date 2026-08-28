@@ -15,44 +15,25 @@ seeAlso:
 
 # Nodes
 
-## What It Is
+## Placement Surface
 
-This page documents the placement shapes that can appear inside a JSON-LD `DAG`: `SingleNode`, `ScatterNode`, `GatherNode`, `EmbeddedDAGNode`, `TerminalNode`, and `PhaseNode`.
+These placement shapes are the JSON-LD building blocks that can appear inside a `DAG`: `SingleNode`, `ScatterNode`, `GatherNode`, `EmbeddedDAGNode`, `TerminalNode`, and `PhaseNode`.
 
-Use it when authoring, validating, rendering, or debugging the graph document that points at registered node implementations.
+This reference is for authoring, validating, rendering, or debugging the graph document that points at registered node implementations.
 
-## How It Works
+## Schema and Contract References
 
-A registered `NodeInterface` is the unit of work. A registered `DAG` is the unit of composition. A placement is one appearance of that unit inside a DAG document; one registered node or DAG can appear in multiple placements, and each placement owns a canonical placement IRI, display name, routing, state mapping, scatter policy, gather barrier, phase role, or terminal outcome.
-
-`TerminalNode` and `GatherNode` are placement-only and reference no registered node. DAG composition always uses the `dag` field: literal DAG IRIs and dynamic `DagReference` values share that same JSON-LD surface. `EmbeddedDAGNode` invokes that referenced DAG once; `ScatterNode` invokes the referenced body per source item; `GatherNode` owns fan-in from producer placements.
-
-## Diagrams, Examples, and Outputs
-
-Placement shapes are easiest to read beside real DAG diagrams. These pages show the same JSON-LD placements rendered into Mermaid or the runnable browser graph:
+These references cover the same placement shapes in schema form, contract form, and execution-policy form:
 
 - [Reference: Entities](./entities) - JSON Schema sources for every placement
 - [Reference: Contracts](./contracts) - `NodeInterface`, the contract a placement references
 - [Reference: Core](./core) - `GatherStrategy`, `OutcomeReducer`
 
-## What It Lets You Do
+## Placement Model
 
-The nodes reference lets applications understand every placement shape a JSON-LD DAG can contain.
+A registered `NodeInterface` is the unit of work. A registered `DAG` is the unit of composition. A placement is one appearance of that unit inside a DAG document; one registered node or DAG can appear in multiple placements, and each placement owns a canonical placement IRI, display name, routing, state mapping, scatter policy, gather barrier, phase role, or terminal outcome.
 
-Placement types: the appearances of nodes inside a `DAG`. Each placement is a discriminated union member keyed by `@type`, ships with a JSON Schema in `@studnicky/dagonizer/entities`, and resolves to a typed TS shape via `json-schema-to-ts`.
-
-A registered `NodeInterface` is referenced from a placement by its registered IRI. A "node" is the unit of work. A "placement" is its appearance inside a `DAG`. The placement `@id` is runtime identity; `name` is the display and observability label.
-
-| Placement `@type` | Schema | TS type | Purpose |
-|---|---|---|---|
-| `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementType<TOutput>` | Run one registered node; route per output |
-| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a body, emit producer records, route on aggregate outcome |
-| `GatherNode` | `GatherNodeSchema` | `GatherNode` | First-class fan-in barrier over producer records |
-| `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
-| `TerminalNode` | `TerminalNodeSchema` | `TerminalNode` | End the flow with an explicit `outcome` |
-| `PhaseNode` | `PhaseNodeSchema` | `PhaseNode` | Pre/post lifecycle hook running outside the main loop |
-
-Every schema's `$id` is `https://noocodec.dev/schemas/dagonizer/<TypeName>`.
+`TerminalNode` and `GatherNode` are placement-only and reference no registered node. DAG composition always uses the `dag` field: literal DAG IRIs and dynamic `DagReference` values share that same JSON-LD DAG-reference model. `EmbeddedDAGNode` invokes that referenced DAG once; `ScatterNode` invokes the referenced body per source item; `GatherNode` owns fan-in from producer placements.
 
 ## Code Samples
 
@@ -165,7 +146,7 @@ Generate-collect pattern (one clone per source-array item):
 | `outputs` | `Record<string, string>` | yes | Routes for the reduced outcome to placement IRIs |
 | `source` | `string` | yes | Dotted state-array path. One clone runs per item. |
 | `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
-| `execution` | `{ mode: 'item', concurrency?, throttle? } \| { mode: 'reservoir', concurrency?, reservoir }` | no | Unified concurrency-limiting policy — ONE discriminated `mode` structure instead of separate `concurrency`/`throttle`/`reservoir` knobs. Defaults to `{ mode: 'item', concurrency: 1 }` when absent. See [Execution policy](#execution-policy) below. |
+| `configuration` | `{ execution?: { batching?: BatchingInputType }, durability?: { writePoints?, foldJournalStoreKey? } }` | no | Placement policy tier. Each omitted field inherits from the DAG, dispatcher, then canonical defaults. See [Execution and durability policy](#execution-policy). |
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 | `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsType.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
@@ -175,11 +156,12 @@ whose `sources` map names one or more producer placement IRIs or entrypoint IRIs
 
 #### Execution policy
 
-`execution` groups scatter concurrency-limiting into ONE discriminated `mode`
-structure instead of three uncoordinated sibling fields:
+`configuration.execution.batching` groups scatter concurrency-limiting into one
+discriminated `mode` structure. Each field resolves independently from scatter
+placement to DAG to dispatcher to `DagConfiguration.DEFAULT`:
 
 - **`{ mode: 'item', concurrency?, throttle? }`** (the default: `{ mode: 'item', concurrency: 1 }`
-  when `execution` is absent). `concurrency` is an item-level `Semaphore`
+  after inheritance). `concurrency` is an item-level `Semaphore`
   permit count — the maximum number of clone bodies executing at once.
   `throttle`, when present (`{ concurrencyLimit: number, adaptive? }`), wraps
   dispatch through a second, independent `Throttle` concurrency window on top
@@ -198,6 +180,20 @@ structure instead of three uncoordinated sibling fields:
   variable-size batch dispatch.
 
 Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
+
+`configuration.durability.writePoints` accepts `NodeEdges`,
+`FullItemProjection`, `FoldDeltaJournal`, `WatermarkCommit`, and
+`InMemorySnapshot`. The default is `['NodeEdges', 'WatermarkCommit']`. A present
+array replaces the inherited array rather than merging with it. The default
+`foldJournalStoreKey` is `null`.
+
+`FoldDeltaJournal` requires `WatermarkCommit` and an explicit
+`configuration.durability.foldJournalStoreKey` bound in the dispatcher's
+`foldJournalStores`. Every non-empty scatter outcome must route to one
+first-class gather using `append`, `collect`, `map`, or `partition`; that gather
+must declare exactly one source, the originating scatter. Registration rejects
+missing stores, ambiguous gathers, direct terminal routes, and unsupported
+gather strategies.
 
 See [Execution tuning](/guide/execution-tuning) for when to choose scatter
 `concurrency`, throttle, adaptive concurrency, token buckets, circuit breakers,
@@ -322,7 +318,7 @@ const outcome: 'completed' | 'failed' = placement.outcome;
 | `name` | `string` | yes | Placement display label |
 | `outcome` | `'completed' \| 'failed'` | yes | Lifecycle outcome to mark on exit |
 
-No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the engine fires `state.markCompleted()` or `state.markFailed(...)` and ends the loop. The placement-level `outcome` surfaces on `ExecutionResultType.terminalOutcome`.
+No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the engine fires `state.markCompleted()` or `state.markFailed(...)` and ends the loop. The placement-level `outcome` is reported on `ExecutionResultType.terminalOutcome`.
 
 ---
 
@@ -355,7 +351,7 @@ const phase: 'pre' | 'post' = placement.phase;
 | `node` | `string` | yes | Registered `NodeInterface.name` / node IRI invoked at the phase boundary |
 | `phase` | `'pre' \| 'post'` | yes | Run before the entrypoint or after the main loop drains |
 
-No `outputs` map. Pre-phase placements run in DAG declaration order before the entrypoint; a thrown error aborts the run (lifecycle becomes `failed`, the main loop never executes). Post-phase placements run in declaration order on every exit path (completion, abort, timeout, terminal-failed, node throw); a thrown error is collected as a warning (code `POST_PHASE_FAILED`) and does not change the already-set lifecycle. Phase boundaries surface via the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer`.
+No `outputs` map. Pre-phase placements run in DAG declaration order before the entrypoint; a thrown error aborts the run (lifecycle becomes `failed`, the main loop never executes). Post-phase placements run in declaration order on every exit path (completion, abort, timeout, terminal-failed, node throw); a thrown error is collected as a warning (code `POST_PHASE_FAILED`) and does not change the already-set lifecycle. Phase boundaries are reported via the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer`.
 
 ---
 
@@ -399,9 +395,28 @@ Strategies are pluggable: register a new one with `GatherStrategies.register(str
 
 ---
 
-## Details for Nerds
+## Operational Uses
 
-Placement JSON is the stable topology contract. Runtime node instances do not serialize into the DAG; only registered node/DAG references and placement IRIs appear in placements. That keeps JSON-LD portable across browser demos, CLI runs, worker pools, plugin bundles, and persisted graph documents.
+The nodes reference lets teams understand every placement shape a JSON-LD DAG can contain.
+
+Placement types: the appearances of nodes inside a `DAG`. Each placement is a discriminated union member keyed by `@type`, ships with a JSON Schema in `@studnicky/dagonizer/entities`, and resolves to a typed TS shape via `json-schema-to-ts`.
+
+A registered `NodeInterface` is referenced from a placement by its registered IRI. A "node" is the unit of work. A "placement" is its appearance inside a `DAG`. The placement `@id` is runtime identity; `name` is the display and observability label.
+
+| Placement `@type` | Schema | TS type | Purpose |
+|---|---|---|---|
+| `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementType<TOutput>` | Run one registered node; route per output |
+| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a body, emit producer records, route on aggregate outcome |
+| `GatherNode` | `GatherNodeSchema` | `GatherNode` | First-class fan-in barrier over producer records |
+| `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
+| `TerminalNode` | `TerminalNodeSchema` | `TerminalNode` | End the flow with an explicit `outcome` |
+| `PhaseNode` | `PhaseNodeSchema` | `PhaseNode` | Pre/post lifecycle hook running outside the main loop |
+
+Every schema's `$id` is `https://noocodec.dev/schemas/dagonizer/<TypeName>`.
+
+## Runtime Notes
+
+Placement JSON is the stable topology contract. Runtime node instances do not serialize into the DAG; only registered node/DAG references and placement IRIs appear in placements. That keeps JSON-LD portable across interactive hosts, CLI runs, worker pools, plugin bundles, and persisted graph documents.
 
 Scatter and embedded DAG placements are the two places where a single placement expands into another execution scope. Scatter creates multiple clone scopes and exports producer records; embedded DAGs create one child flow and route from the child terminal outcome. `GatherNode` is the fan-in scope that folds producer records back into parent state.
 
@@ -412,5 +427,5 @@ Scatter and embedded DAG placements are the two places where a single placement 
 - [Reference: Core](./core) - `GatherStrategy`, `OutcomeReducer`
 - [DAGBuilder](../guide/builder) - fluent API for producing these placement shapes
 - [Lifecycle Phases](../guide/lifecycle-phases) - pre/post `PhaseNode` placement behavior
-- [Example 09: Terminal Nodes](../examples/09-terminals) - terminal outcomes in runnable code
+- [Example 09: Terminal Nodes](../examples/09-terminals) - terminal outcomes in host code
 - [Subclassing State](../guide/subclassing) - state shape each placement mutates

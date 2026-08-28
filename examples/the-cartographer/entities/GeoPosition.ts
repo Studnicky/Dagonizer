@@ -3,7 +3,7 @@
  * from the `GeoConsensus` country and the accumulated `GeoResolution` candidates.
  *
  * A valid point candidate (real WGS-84 lat/lng) is reverse-geocoded via
- * `OfflineGeoResolver` and checked against the consensus country: agreement
+ * `CoordinateGeoResolver` and checked against the consensus country: agreement
  * marks the point VERIFIED; disagreement is recorded as a `conflict`, not
  * silently resolved in either direction. No point candidate falls back to the
  * consensus country's centroid; no consensus at all leaves the position empty.

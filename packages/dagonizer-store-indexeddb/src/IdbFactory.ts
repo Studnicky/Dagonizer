@@ -78,11 +78,19 @@ export interface IdbObjectStoreLikeInterface {
 
 /**
  * Structural subset of IDBTransaction.
- * Only the `objectStore` accessor is needed; transaction commit is implicit
- * once all request promises resolve within the transaction lifetime.
+ *
+ * Exposes `objectStore` plus the transaction-level completion surface
+ * (`oncomplete`/`onerror`/`onabort`/`error`) that callers needing durable
+ * commit confirmation must wait on — a request's own `onsuccess` fires
+ * before the enclosing transaction has actually committed, so consumers
+ * that require durability settle on `oncomplete`, not on request success.
  */
 export interface IdbTransactionLikeInterface {
   objectStore(name: string): IdbObjectStoreLikeInterface;
+  error:      unknown;
+  oncomplete: (() => void) | null;
+  onerror:    (() => void) | null;
+  onabort:    (() => void) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +102,11 @@ export interface IdbTransactionLikeInterface {
  * Covers open-transaction, object-store creation, name lookup, and close.
  */
 export interface IdbDatabaseLikeInterface {
-  transaction(names: string | string[], mode: 'readonly' | 'readwrite'): IdbTransactionLikeInterface;
+  transaction(
+    names: string | string[],
+    mode: 'readonly' | 'readwrite',
+    options?: { durability?: 'strict' },
+  ): IdbTransactionLikeInterface;
   // Quoted key: `createObjectStore` is the W3C IndexedDB platform method name,
   // fixed by the platform contract so a real `IDBDatabase` stays structurally
   // assignable here without a cast. The string-literal key denotes an

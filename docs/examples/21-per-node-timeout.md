@@ -22,23 +22,17 @@ import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
 
 # Example 21: Per-Node Timeout
 
-## What It Is
+## Tuning Surface
 
-Per-Node Timeout gives one node its own wall-clock budget. The Dispatcher uses it to keep slow model-backed support steps from hanging the browser runner indefinitely.
+Per-Node Timeout gives one node its own wall-clock budget. The Dispatcher uses it to keep slow model-backed support steps from hanging the support flow indefinitely.
 
 Set `timeout: Timeout.ofMs(n)` on a node implementation when that operation should fail fast on its own schedule. The rest of the DAG keeps the normal run-level signal unless the caller also cancels or sets `deadlineMs`.
 
-## How It Works
-
-The engine wraps one node execution in a child signal derived from the run signal. If the timeout fires, the child signal aborts, the engine raises `NodeTimeoutError`, and the run records a structured interrupted point for that node. The parent run signal stays independent unless the caller also supplied a run-level deadline or abort signal.
-
-That scope is the useful part. A timeout on `classify-message` means that node exceeded its budget; it does not mean every other in-flight branch must inherit a cancelled run signal.
-
-## Diagrams, Examples, and Outputs
+## Timeout Flow
 
 ### DAG registration and diagram
 
-Timeout is node configuration, not a new placement shape. [The Dispatcher](./the-dispatcher) uses real engine-level node timeouts on its LLM-backed `classify-message` and `ai-compose` nodes so slow model calls are bounded in the browser runnable.
+Timeout is node configuration, not a new placement shape. [The Dispatcher](./the-dispatcher) uses real engine-level node timeouts on its LLM-backed `classify-message` and `ai-compose` nodes so slow model calls stay bounded in the support workflow.
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher timeout DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
@@ -53,19 +47,21 @@ Key difference from run-level `deadlineMs` (in `ExecuteOptions`):
 - `timeout` is scoped to one node's `execute()` only. The parent run-level signal is **not** aborted; other nodes are unaffected.
 - `deadlineMs` aborts the entire run; `timeout` aborts just the node.
 
-In the runnable Dispatcher, the timeout is attached to the node implementation. The JSON-LD placement stays ordinary; timeout behavior belongs to the registered node contract.
+In the Dispatcher runtime, the timeout is attached to the node implementation. The JSON-LD placement stays ordinary; timeout behavior belongs to the registered node contract.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Dispatcher](./the-dispatcher) to inspect the support flow that wires these timed nodes into a parked-or-complete turn.
 
-Per-node timeout lets applications bound one slow node without aborting the whole run-level signal. Use it when a model call, tool call, API adapter, or parser has its own wall-clock budget and should fail cleanly without cancelling unrelated work.
+## Topology-versus-Timing Model
 
-For product code, this keeps latency policy close to the operation that owns the risk. A support classifier can have a short budget, while a downstream operator hand-off or cleanup phase still follows its own contract.
+The engine wraps one node execution in a child signal derived from the run signal. If the timeout fires, the child signal aborts, the engine raises `NodeTimeoutError`, and the run records a structured interrupted point for that node. The parent run signal stays independent unless the caller also supplied a run-level deadline or abort signal.
+
+That scope is the useful part. A timeout on `classify-message` means that node exceeded its budget; it does not mean every other in-flight branch must inherit a cancelled run signal.
 
 ## Code Samples
 
@@ -77,7 +73,13 @@ The node snippets show the timeout on real Dispatcher nodes. The DAG snippet sho
 
 <<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
 
-## Details for Nerds
+## Operational Uses
+
+Per-node timeout lets hosts bound one slow node without aborting the whole run-level signal. It fits model calls, tool calls, API adapters, or parsers that have their own wall-clock budget and should fail cleanly without cancelling unrelated work.
+
+For product code, this keeps latency policy close to the operation that owns the risk. A support classifier can have a short budget, while a downstream operator hand-off or cleanup phase still follows its own contract.
+
+## Runtime Notes
 
 - **`timeout` on `NodeInterface`.** Set `override readonly timeout = Timeout.ofMs(n)` on the node class to activate the per-node deadline. Import `Timeout` from `@studnicky/dagonizer/runtime`. The engine arms the timer before calling `execute()` and cancels it when `execute()` resolves normally.
 - **`NodeTimeoutError`.** Thrown by the engine (not the node) when the deadline fires. Carries `nodeName` and the timeout budget for diagnostic reporting.

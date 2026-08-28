@@ -146,7 +146,7 @@ export const bookSearchScatterDAG: DAGType = new DAGBuilder(BOOK_SEARCH_SCATTER_
         'empty':   placement('rank-candidates'),
       }, {
         'name': 'book-search-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
       .gather(placement('book-search-gather'), { [placement('book-search-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {

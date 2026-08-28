@@ -20,7 +20,11 @@
 import { computed } from 'vue';
 
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
-import type { MemorySelection } from './MemoryGraph.vue';
+import type { IriSelectionType, LiteralSelectionType } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import InspectorShell from './graph/InspectorShell.vue';
+import UiMetaText from './ui/UiMetaText.vue';
+
+type MemorySelection = IriSelectionType | LiteralSelectionType;
 
 const props = defineProps<{
   store: MemoryStore;
@@ -191,11 +195,17 @@ function graphLayer(graph: string): Row['layer'] {
 </script>
 
 <template>
-  <aside v-if="selection !== null" class="triple-inspector" role="dialog" :aria-label="`Triples for ${nodeLabel}`">
-    <header class="ti-header">
+  <InspectorShell
+    v-if="selection !== null"
+    :title="nodeLabel"
+    :ariaLabel="`Triples for ${nodeLabel}`"
+    accent="var(--dagonizer-brand)"
+    width="360px"
+    @close="emit('close')"
+  >
+    <template #title>
       <span class="ti-local" :title="nodeLabel">{{ nodeLabel.length > 42 ? nodeLabel.slice(0, 40) + '…' : nodeLabel }}</span>
-      <button class="ti-close" title="Close (Esc)" @click="emit('close')">✕</button>
-    </header>
+    </template>
 
     <!-- IRI: show CURIE then full IRI. Literal: show the datatype/language. -->
     <p v-if="isIri && nodeCurie.length > 0" class="ti-curie">{{ nodeCurie }}</p>
@@ -207,7 +217,7 @@ function graphLayer(graph: string): Row['layer'] {
     <section v-for="group in grouped" :key="group.layer" :class="['ti-group', `ti-group-${group.layer}`]">
       <header class="ti-group-header">
         <span class="ti-group-name">{{ group.layer }}</span>
-        <span class="ti-group-count">{{ group.rows.length }}</span>
+        <UiMetaText class="ti-group-count" tone="default" size="xs">{{ group.rows.length }}</UiMetaText>
       </header>
       <ol class="ti-rows">
         <li v-for="row in group.rows" :key="row.key" :class="['ti-row', `ti-row-${row.direction}`]">
@@ -217,54 +227,15 @@ function graphLayer(graph: string): Row['layer'] {
         </li>
       </ol>
     </section>
-  </aside>
+  </InspectorShell>
 </template>
 
 <style scoped>
-.triple-inspector {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 360px;
-  max-width: 88%;
-  max-height: calc(100% - 20px);
-  display: flex;
-  flex-direction: column;
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--dagonizer-brand);
-  border-radius: 6px;
-  padding: 0.7rem 0.85rem;
-  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.45);
-  z-index: 6;
-  overflow-y: auto;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.78rem;
-  animation: ti-in 0.18s ease-out;
-}
-
-.ti-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 0.3rem;
-}
-
 .ti-local {
-  color: var(--dagonizer-brand);
   font-weight: 700;
   font-size: 0.92rem;
   overflow-wrap: anywhere;
 }
-
-.ti-close {
-  background: transparent;
-  border: 0;
-  color: var(--vp-c-text-3);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0 0.3rem;
-}
-.ti-close:hover { color: var(--dagonizer-brand3); }
 
 .ti-curie {
   margin: 0 0 0.15rem 0;
@@ -347,9 +318,4 @@ function graphLayer(graph: string): Row['layer'] {
 
 .ti-predicate { color: var(--vp-c-text-3); }
 .ti-target    { color: var(--vp-c-text-1); overflow-wrap: anywhere; }
-
-@keyframes ti-in {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
 </style>

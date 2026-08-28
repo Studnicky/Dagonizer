@@ -218,12 +218,16 @@ class ExecutionGraphStore {
 
   /** Drop every quad whose subject is `subject`. */
   #clearSubject(subject: TermType): void {
-    for (let i = this.#quads.length - 1; i >= 0; i -= 1) {
-      const quad = this.#quads[i];
-      if (quad !== undefined && quad.subject.value === subject.value) {
-        this.#quads.splice(i, 1);
-      }
+    // In-place compaction: one pass keeping survivors, then truncate — O(n),
+    // versus a per-match `splice` that shifts the tail on every removal.
+    let write = 0;
+    for (let read = 0; read < this.#quads.length; read += 1) {
+      const quad = this.#quads[read];
+      if (quad === undefined || quad.subject.value === subject.value) continue;
+      this.#quads[write] = quad;
+      write += 1;
     }
+    this.#quads.length = write;
   }
 
   /** Match one quad against a `SlotPatternType`. See `RdfStore.#matchQuad`. */

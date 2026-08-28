@@ -3,9 +3,9 @@
  *
  * Nodes that require LLM calls receive a DispatcherServices instance via
  * constructor injection. The interface contracts are narrow: each node
- * depends only on the operations it actually calls. `intent` is the
- * embedder-backed classification fast path; `null` means no embedder was
- * provisioned for this run and callers route to `llm.classify`.
+ * depends only on the operations it actually calls. The embedder-backed
+ * classification path provisions only when execution requests `intent` and
+ * rejects when the model or WASM runtime cannot be prepared.
  */
 
 import type { ConversationTurnType } from './DispatcherState.ts';
@@ -21,11 +21,9 @@ export interface DispatcherLlmInterface {
   classify(message: string, conversation: readonly ConversationTurnType[], signal?: AbortSignal): Promise<'routine' | 'escalate' | 'off-topic'>;
   compose(message: string, conversation: readonly ConversationTurnType[], signal?: AbortSignal): Promise<string>;
   /**
-   * Best-effort warm-up: forces the underlying model to load (or stay
-   * resident) without producing a usable reply. Never throws — callers
-   * fire this eagerly (on backend selection, at flow start) to hide
-   * cold-load latency behind the user's read/type time. A failure here
-   * must not block or fail a real classify()/compose() call.
+   * Best-effort warm-up for an explicit execution-time request. Implementations
+   * do not surface warm-up failure; classify and compose retain authoritative
+   * error behavior.
    */
   warm(signal?: AbortSignal): Promise<void>;
 }
@@ -41,9 +39,18 @@ export interface DispatcherIntentInterface {
 
 /**
  * Top-level service bag injected into every Dispatcher node that calls an LLM.
+ *
+ * `intent` is a lazy, memoized provider rather than a resolved value: the
+ * embedder provisions on first call, not at service-construction time, so a
+ * DAG run that never reaches embedder-mode classification never pays the
+ * model/WASM fetch cost. Callers use `await services.intent.load()`; repeated
+ * calls resolve to the same classifier, while provisioning failures reject.
  */
 export interface DispatcherServices {
   readonly llm: DispatcherLlmInterface;
-  readonly intent: DispatcherIntentInterface | null;
+  readonly intent: {
+    readonly displayName: string | null;
+    load(): Promise<DispatcherIntentInterface>;
+  };
   readonly execution?: BatchExecutionOptionsType;
 }

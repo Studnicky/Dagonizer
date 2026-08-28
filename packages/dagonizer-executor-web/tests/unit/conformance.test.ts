@@ -27,10 +27,11 @@ import { describe, it } from 'node:test';
 import { setImmediate, setTimeout } from 'node:timers';
 import { URL } from 'node:url';
 
-import { Dagonizer } from '@studnicky/dagonizer';
+import { Batch, Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 import { DagTask } from '@studnicky/dagonizer/container';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
+import type { TransientNodeStateResponseStateType, TransientNodeStateSelectionType } from '@studnicky/dagonizer/entities';
 import { Timeout } from '@studnicky/dagonizer/runtime';
 import {
   ConformanceRegistry,
@@ -376,6 +377,7 @@ class ZombieWorker implements WebWorkerLikeInterface {
         'variant': 'ready',
         'registryVersion': Reflect.get(message, 'registryVersion'),
         'capabilities': [],
+        'graphStateTransferFormats': ['application/n-quads'],
       };
       setImmediate(() => {
         for (const listener of this.#mainListeners) {
@@ -452,25 +454,33 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
       'validateOutputs': false,
       'outputSchemaValidator': null,
     };
+    const responseState: TransientNodeStateResponseStateType = {
+      'defaultSelection': { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] },
+      'outputSelections': {},
+    };
+    const inputState: TransientNodeStateSelectionType = { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
 
     const task1 = new DagTask(
       'p0-dag', [], 'corr-1', Timeout.none(),
-      new ConformanceState(), context,
+      new ConformanceState(), inputState, responseState, context,
     );
     const task2 = new DagTask(
       'p0-dag', [], 'corr-2', Timeout.none(),
-      new ConformanceState(), context,
+      new ConformanceState(), inputState, responseState, context,
     );
 
     // Launch both runDag calls concurrently. runDag #1 will acquire + hang
     // (zombie drops execute). runDag #2 will park (pool full: poolSize=1).
     const outcomes: Array<{ index: number; terminalOutput: string }> = [];
 
-    const p1 = container.runDag(task1).then((outcome) => {
-      outcomes.push({ 'index': 1, 'terminalOutput': outcome.terminalOutput });
+    const batch1 = Batch.from([{ 'id': 'corr-1', 'state': task1.state }]);
+    const batch2 = Batch.from([{ 'id': 'corr-2', 'state': task2.state }]);
+
+    const p1 = container.runDag(task1, batch1).then(([outcome]) => {
+      if (outcome !== undefined) outcomes.push({ 'index': 1, 'terminalOutput': outcome.terminalOutput });
     });
-    const p2 = container.runDag(task2).then((outcome) => {
-      outcomes.push({ 'index': 2, 'terminalOutput': outcome.terminalOutput });
+    const p2 = container.runDag(task2, batch2).then(([outcome]) => {
+      if (outcome !== undefined) outcomes.push({ 'index': 2, 'terminalOutput': outcome.terminalOutput });
     });
 
     // Wait for the zombie worker to be spawned and for runDag #1 to be hung

@@ -3,31 +3,29 @@
  *
  * W5 hand-off channels:
  * (a) DAG ending at a BOUND terminal publishes exactly one envelope; round-trip
- *     fixed point: restore(envelope.graphState).snapshotJsonLd() deep-equals
- *     envelope.graphState.
+ *     fixed point: restore(envelope.graphState).snapshotTransientState()
+ *     deep-equals envelope.graphState.
  * (b) DAG ending at an UNBOUND terminal publishes nothing.
  * (c) Channel whose publish rejects → run returns normal ExecutionResult with
  *     unchanged terminalOutcome, and state.errors contains HANDOFF_PUBLISH_FAILED.
  * (d) Embedded/contained child DAG ending at a terminal does NOT publish — only
  *     the top-level run publishes.
- * (e) DAGHandoffType schema validation: value-variant valid; ref-variant valid;
- *     both-present invalid; neither-present invalid; additionalProperties invalid.
+ * (e) DAGHandoffType schema validation: transient-state value valid;
+ *     non-object invalid; missing graphState invalid; additionalProperties invalid.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAGType } from '../../src/entities/index.js';
-import { GraphStateJsonLdCodec } from '../../src/graph/GraphStateJsonLdCodec.js';
-import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -38,8 +36,8 @@ import { TestNode } from '../_support/TestNode.js';
 class HandoffState extends NodeStateBase {
   counter = 0;
 
-  override clone(): this {
-    const cloned = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const cloned = super.clone(childScope);
     cloned.counter = this.counter;
     return cloned;
   }
@@ -94,11 +92,28 @@ class TestHandoffDag {
 }
 
 // ---------------------------------------------------------------------------
+const transientStateFixture = {
+  'domain': {},
+  'graphDomain': {},
+  'metadata': {},
+  'errors': [],
+  'warnings': [],
+  'retries': {},
+  'lifecycle': {
+    'variant': 'pending',
+    'startedAt': null,
+    'finishedAt': null,
+    'error': null,
+    'reason': null,
+    'correlationKey': null,
+  },
+} satisfies DAGHandoffType['graphState'];
+
 // (a) Bound terminal publishes one envelope; round-trip fixed point
 // ---------------------------------------------------------------------------
 
 void describe('handoff-channel: bound terminal', () => {
-  void it('publishes exactly one envelope with state snapshot', async () => {
+  void it('publishes exactly one envelope with transient state snapshot', async () => {
     const channel = new InMemoryChannel();
     const dag = TestHandoffDag.simple('urn:noocodec:dag:handoff-bound', 'handoff-bound', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
@@ -128,8 +143,8 @@ void describe('handoff-channel: bound terminal', () => {
     // Round-trip fixed point: restore → snapshot must equal original snapshot
     const originalSnapshot = envelope.graphState;
     const restored = new HandoffState(undefined, state.runIri);
-    await restored.restoreJsonLd(restored.runIri, originalSnapshot);
-    const restoredSnapshot = graphStateDocument(restored);
+    await restored.restoreTransientState(restored.runIri, originalSnapshot);
+    const restoredSnapshot = restored.snapshotTransientState();
     assert.deepEqual(restoredSnapshot, originalSnapshot);
   });
 
@@ -151,8 +166,7 @@ void describe('handoff-channel: bound terminal', () => {
     assert.ok('graphState' in envelope);
     if (!('graphState' in envelope)) throw new Error('expected graphState variant');
     const snap = envelope.graphState;
-    assert.ok(GraphStateJsonLdCodec.decode(snap).some((quad) =>
-      quad.predicate.value === GraphStateTerms.DAGONIZER.StateValuePredicate && quad.object.value === '1'));
+    assert.equal(snap.domain['counter'], 1);
   });
 });
 
@@ -313,7 +327,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
 // ---------------------------------------------------------------------------
 
 void describe('handoff-channel: DAGHandoffType schema', () => {
-  void it('validates a JSON-LD envelope', () => {
+  void it('validates a transient-state envelope', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -321,12 +335,12 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'graphState': { '@context': {}, '@graph': [] },
+      'graphState': transientStateFixture,
     };
     assert.ok(Validator.dagHandoff.is(envelope), 'by-value envelope should be valid');
   });
 
-  void it('rejects a by-reference envelope', () => {
+  void it('rejects a non-object graphState', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -336,10 +350,10 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'placementPath': ['parent'],
       'graphState': 's3://my-bucket/snapshots/abc123',
     };
-    assert.ok(!Validator.dagHandoff.is(envelope), 'by-ref envelope should be rejected');
+    assert.ok(!Validator.dagHandoff.is(envelope), 'string graphState should be rejected');
   });
 
-  void it('rejects an envelope with a non-JSON-LD graphState', () => {
+  void it('rejects an envelope with an invalid transient graphState payload', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -347,12 +361,12 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'graphState': 's3://bucket/key',
+      'graphState': { 'domain': {} },
     };
-    assert.ok(!Validator.dagHandoff.is(envelope), 'both fields should be invalid');
+    assert.ok(!Validator.dagHandoff.is(envelope), 'partial transient graphState should be invalid');
   });
 
-  void it('rejects an envelope with neither graphState nor graphState', () => {
+  void it('rejects an envelope with missing graphState', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
       'terminalName': 'done',
@@ -372,7 +386,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'graphState': {},
+      'graphState': transientStateFixture,
       'extraField': 'not-allowed',
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'additionalProperties should be invalid');
@@ -386,7 +400,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': 'test-dag:1',
       'placementPath': [],
-      'graphState': {},
+      'graphState': transientStateFixture,
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'empty dagName should be invalid');
   });
@@ -399,7 +413,7 @@ void describe('handoff-channel: DAGHandoffType schema', () => {
       'registryVersion': '1.0.0',
       'correlationId': '',
       'placementPath': [],
-      'graphState': {},
+      'graphState': transientStateFixture,
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'empty correlationId should be invalid');
   });

@@ -16,37 +16,31 @@ import { dag as phaseDag } from '../../examples/dags/19-phase-nodes.ts';
 
 # Lifecycle Phases
 
-## What It Is
+## Phase Placement Surface
 
 Lifecycle phases are DAG placements that run around the main graph walk. A `pre` phase runs before the entrypoint; a `post` phase runs after the main loop exits. They are useful for setup and teardown work that belongs to the execution but should not participate in routing.
 
 Phase placements are authored in the DAG, executed in declaration order, and observed by `onPhaseEnter` / `onPhaseExit` hooks.
 
-## How It Works
+## Phase Ordering Flow
 
-Phase placements are registered beside normal nodes. The dispatcher runs pre phases before the entrypoint and post phases after the main loop has a lifecycle outcome. Phase node return values do not route the graph; side effects and observability hooks are the point.
-
-`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher's protected `on*` hooks.
-
-## Diagrams, Examples, and Outputs
-
-Example 19 builds a `phase-demo` DAG with a pre setup placement, one routed main node, and a post audit placement. The JSON-LD contains all three placement types; the Mermaid view shows how phases sit beside the routed main path.
+Example 19 builds a `phase-flow` DAG with a pre setup placement, one routed main node, and a post audit placement. The JSON-LD contains all three placement types; the Mermaid view shows how phases sit beside the routed main path.
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
 <DagJsonMermaid :dag="phaseDag" title="Example 19 phase DAG" aria-label="Example 19 phase JSON-LD DAG beside Mermaid generated from it." />
 
-Open [Example 19: Phase Nodes](../examples/19-phase-nodes) for the runnable output and execution-order assertions. See [Observability](./observability) for phase hooks in dispatcher subclasses.
+Open [Example 19: Phase Nodes](../examples/19-phase-nodes) for the terminal output and execution-order assertions. See [Observability](./observability) for phase hooks in dispatcher subclasses.
 
-## What It Lets You Do
+## Pre/Post Execution Model
 
-### Use when
+Phase placements are registered beside normal nodes. The dispatcher runs pre phases before the entrypoint and post phases after the main loop has a lifecycle outcome. Phase node return values do not route the graph; side effects and observability hooks are the point.
 
-Use lifecycle phases when setup or cleanup belongs around the flow but should not participate in output routing. Pre phases seed or validate state before the entrypoint; post phases flush or release resources after every exit path.
+`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher's protected `on*` hooks.
 
 ## Code Samples
 
-### API surface
+### API
 
 | Symbol | Source | Role |
 |--------|--------|------|
@@ -56,7 +50,11 @@ Use lifecycle phases when setup or cleanup belongs around the flow but should no
 | `Dagonizer.onPhaseEnter` | `@studnicky/dagonizer` | Protected hook — fires before each phase placement |
 | `Dagonizer.onPhaseExit` | `@studnicky/dagonizer` | Protected hook — fires after each phase placement |
 
-## Details for Nerds
+## Operational Uses
+
+Lifecycle phases are for setup or cleanup that belongs around the flow but should not participate in output routing. Pre phases seed or validate state before the entrypoint; post phases flush or release resources after every exit path.
+
+## Runtime Notes
 
 ### Two arms
 
@@ -94,7 +92,7 @@ A pre-phase that threw is not appended. A post-phase that threw is not appended.
 
 ### Authoring
 
-The fluent surface lives on `DAGBuilder`:
+The fluent API lives on `DAGBuilder`:
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 

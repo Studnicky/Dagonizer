@@ -11,13 +11,20 @@ seeAlso:
 
 # Lifecycle
 
-## What It Is
+## Lifecycle Surface
 
 The lifecycle model records where a DAG run is: `pending`, `running`, `completed`, `failed`, `cancelled`, or `timed_out`.
 
-Use this page when inspecting `state.lifecycle`, writing deterministic lifecycle tests, projecting execution results, or attaching observability hooks that care about run state.
+Lifecycle is the run-state model behind `state.lifecycle`, execution-result projection, deterministic lifecycle tests, and observability hooks that care about run status rather than business progress.
 
-## How It Works
+## Execution and Hook References
+
+Lifecycle is runtime state rather than graph topology. These references show where lifecycle state appears during execution and observability:
+
+- [Reference: Execution](./execution)
+- [Reference: Dagonizer](./dagonizer) - observability hooks
+
+## Transition Model
 
 `DAGLifecycleMachine.transition()` is the state machine. It consumes explicit lifecycle events with monotonic timestamps and returns a new discriminated-union state. Runtime code stores that state on `NodeStateBase.lifecycle`.
 
@@ -69,21 +76,6 @@ const _check: DAGLifecycleEventType = {} as DAGLifecycleEventType;
 The `at` field carries the monotonic clock value for the transition. Supply `Clock.monotonicMs()` in production; supply a pinned value in tests for determinism.
 
 ---
-
-## Diagrams, Examples, and Outputs
-
-Lifecycle is runtime state rather than graph topology. The links below show where lifecycle state appears during real execution and observability:
-
-- [Reference: Execution](./execution)
-- [Reference: Dagonizer](./dagonizer) - observability hooks
-
-## What It Lets You Do
-
-The lifecycle reference lets applications distinguish successful completion from failure, cancellation, and timeout without string-parsing logs or inspecting thrown errors.
-
-`@studnicky/dagonizer/lifecycle`
-
-The lifecycle module exports the discriminated union type, the event union type, and the pure reducer machine.
 
 ## Code Samples
 
@@ -178,7 +170,13 @@ function markRunning(): void {
 }
 ```
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer/lifecycle` exports the discriminated union type, the event union type, and the pure reducer machine.
+
+That gives hosts one stable way to distinguish successful completion from failure, cancellation, and timeout without string-parsing logs or inspecting thrown errors.
+
+## Runtime Notes
 
 Lifecycle timestamps are monotonic milliseconds, not wall-clock timestamps. They are safe for duration math and deterministic tests, but they are not meant for user-facing date display.
 

@@ -1,0 +1,79 @@
+:root {
+  --dagonizer-bg: #04090d;
+  --dagonizer-bg-alt: #0d151c;
+  --dagonizer-text: #d5e0e2;
+  --dagonizer-divider: #989ba0;
+  --dagonizer-brand: #bdc0dc;
+  --dagonizer-brand2: #3ca7c9;
+  --dagonizer-brand3: #b7bcfa;
+  --dagonizer-scrollbar-thumb: #25292f;
+  --dagonizer-syntax-comment: #8f9aa0;
+  --dagonizer-syntax-operator: #719aaa;
+  --dagonizer-syntax-attribute: #d2d3e0;
+  --dagonizer-syntax-tag: #9394a0;
+  --dagonizer-syntax-constant: #bbbdc9;
+  --dagonizer-syntax-variable: #c0d2d5;
+  --dagonizer-syntax-type: #abadb9;
+  --dagonizer-syntax-function: #9697a3;
+  --dagonizer-syntax-number: #afb0bc;
+  --dagonizer-syntax-string: #8b8ee7;
+  --dagonizer-syntax-keyword: #52bee1;
+  --dagonizer-code-inline-bg: #090a15;
+  --dagonizer-info: #b6d7e4;
+  --dagonizer-danger: #9da0cd;
+  --dagonizer-warning: #b0b4db;
+  --dagonizer-success: #a5cbda;
+  --dagonizer-focus-ring: #b1b6fe;
+  --dagonizer-selection-bg: #242546;
+  --dagonizer-link: #31a2c5;
+  --dagonizer-text3: #879da1;
+  --dagonizer-text2: #b2c9cd;
+  --dagonizer-bg-soft: #0e1c28;
+  --dagonizer-bg-elv: #000000;
+  --dagonizer-link-hover: #bceafb;
+}
+
+@supports (color: color(display-p3 0 0 0)) {
+  :root {
+    --dagonizer-focus-ring: color(display-p3 0.6697 0.6774 1.0000);
+    --dagonizer-bg-elv: color(display-p3 0.0000 0.0008 0.0057);
+    --dagonizer-link-hover: color(display-p3 0.7347 0.9201 1.0000);
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --dagonizer-bg: Canvas;
+    --dagonizer-bg-alt: Canvas;
+    --dagonizer-text: CanvasText;
+    --dagonizer-divider: GrayText;
+    --dagonizer-brand: Highlight;
+    --dagonizer-brand2: Highlight;
+    --dagonizer-brand3: Highlight;
+    --dagonizer-scrollbar-thumb: GrayText;
+    --dagonizer-syntax-comment: GrayText;
+    --dagonizer-syntax-operator: GrayText;
+    --dagonizer-syntax-attribute: CanvasText;
+    --dagonizer-syntax-tag: CanvasText;
+    --dagonizer-syntax-constant: CanvasText;
+    --dagonizer-syntax-variable: CanvasText;
+    --dagonizer-syntax-type: CanvasText;
+    --dagonizer-syntax-function: CanvasText;
+    --dagonizer-syntax-number: CanvasText;
+    --dagonizer-syntax-string: CanvasText;
+    --dagonizer-syntax-keyword: CanvasText;
+    --dagonizer-code-inline-bg: CanvasText;
+    --dagonizer-info: CanvasText;
+    --dagonizer-danger: CanvasText;
+    --dagonizer-warning: CanvasText;
+    --dagonizer-success: CanvasText;
+    --dagonizer-focus-ring: CanvasText;
+    --dagonizer-selection-bg: CanvasText;
+    --dagonizer-link: CanvasText;
+    --dagonizer-text3: CanvasText;
+    --dagonizer-text2: CanvasText;
+    --dagonizer-bg-soft: CanvasText;
+    --dagonizer-bg-elv: CanvasText;
+    --dagonizer-link-hover: CanvasText;
+  }
+}

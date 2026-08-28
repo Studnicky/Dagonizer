@@ -1,0 +1,80 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('reference')), 301);
+
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/reference'), label: 'Reference' }
+] as const;
+
+const referenceTracks = [
+  {
+    eyebrow: 'Core runtime',
+    title: 'Dagonizer, runner, execution, and lifecycle',
+    body: 'Read the main runtime classes, execution contracts, and lifecycle machinery that drive graph evaluation.',
+    href: SiteLinks.site('/docs/reference/dagonizer')
+  },
+  {
+    eyebrow: 'Contracts',
+    title: 'Containers, channels, stores, and adapters',
+    body: 'Inspect the seams for worker execution, state persistence, tool integrations, and deployment-specific bindings.',
+    href: SiteLinks.site('/docs/reference/contracts')
+  },
+  {
+    eyebrow: 'Visualization',
+    title: 'Graph rendering package and browser helpers',
+    body: 'Review the visualization APIs that emit Mermaid, JSON-LD, and Cytoscape data, plus the helpers used around those outputs.',
+    href: SiteLinks.site('/docs/reference/viz')
+  }
+] as const;
+
+const referenceLinks = [
+  { href: SiteLinks.site('/docs/reference/dagonizer'), label: 'Dagonizer runtime' },
+  { href: SiteLinks.site('/docs/reference/contracts'), label: 'Contracts' },
+  { href: SiteLinks.site('/docs/reference/execution'), label: 'Execution' },
+  { href: SiteLinks.site('/docs/reference/runtime'), label: 'Runtime utilities' },
+  { href: SiteLinks.site('/docs/reference/store'), label: 'Store' },
+  { href: SiteLinks.site('/docs/reference/viz'), label: 'Visualization' }
+] as const;
+---
+
+<DocsArticleShell title="Reference" description="API and type reference for the Dagonizer runtime, contracts, nodes, stores, adapters, lifecycle, and visualization packages.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Reference"
+        description="Use the reference section when you need exported classes, interfaces, entities, and runtime contracts."
+        crumbs={crumbs}
+      />
+
+      <section class="space-y-5">
+        <UiSectionIntro
+          eyebrow="Reference tracks"
+          title="Runtime contracts grouped by responsibility"
+          description="Start with runtime execution, deployment seams, or visualization APIs depending on which part of the workflow stack you are changing."
+        />
+        <UiMarketingCardGrid client:visible items={referenceTracks} linkCards />
+      </section>
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Key reference pages">
+        <UiLinkList links={referenceLinks} />
+      </UiAsideCard>
+
+      <UiAsideCard title="Next">
+        <div class="space-y-3 text-sm leading-6 text-slate-300">
+          <p>Guide explains usage patterns, runtime behavior, and host integration in prose.</p>
+          <p>Examples show the same contracts inside complete workflows.</p>
+        </div>
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

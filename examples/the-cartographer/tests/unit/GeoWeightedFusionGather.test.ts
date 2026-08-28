@@ -1,10 +1,10 @@
 /**
  * Unit tests: GeoWeightedFusionGather accumulation + empty-case baseline.
  *
- * The gather's job is now limited to accumulating weight>0 candidates into
+ * The gather accumulates weight>0 candidates into
  * `state.geoCandidates` (reduce) and writing the baseline ResolvedGeo/GeoContext
  * when zero candidates accumulated (finalize). The layered-consensus algorithm
- * that used to live in `finalize` now runs in the downstream node chain
+ * runs in the downstream node chain
  * (`resolve-country-consensus` → `verify-point-containment` →
  * `assemble-resolved-geo`, tested in `GeoConsensusChain.test.ts`).
  *
@@ -23,6 +23,7 @@ import { CartographerState } from '../../CartographerState.ts';
 import { GatherStrategies, Batch, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { GeoResolution } from '../../entities/GeoResolution.ts';
 import type { ResolvedGeo } from '../../entities/ResolvedGeo.ts';
 
@@ -56,6 +57,12 @@ class DirectAccessor implements StateAccessorInterface {
     const lastSeg = segments[segments.length - 1];
     if (lastSeg === undefined || current === null || typeof current !== 'object') return;
     Reflect.set(current, lastSeg, value);
+  }
+
+  append(state: object, path: string, value: unknown): void {
+    const current = this.get(state, path);
+    if (Array.isArray(current)) current.push(value);
+    else this.set(state, path, [value]);
   }
 }
 
@@ -151,6 +158,74 @@ describe('GeoWeightedFusionGather', () => {
     assert.ok(strategy, 'strategy must be registered');
     assert.equal(strategy.name, 'geo-weighted-fusion');
     assert.ok(strategy instanceof GeoWeightedFusionGather, 'must be GeoWeightedFusionGather instance');
+  });
+
+  // ── transientResultSelection: honest 'full' declaration ────────────────────
+  it('declares transientResultSelection mode "full" (finalize needs cloneState.capturedErrors, which a single-field record.result cannot carry alongside candidate)', () => {
+    const strategy = GatherStrategies.resolve('geo-weighted-fusion');
+    assert.ok(strategy instanceof GeoWeightedFusionGather);
+
+    const selection = strategy.transientResultSelection();
+    assert.equal(selection.mode, 'full');
+    assert.deepEqual(selection.domainPaths, []);
+    assert.deepEqual(selection.metadataKeys, []);
+  });
+
+  // ── finalize: capturedErrors merge requires full clone state on resume ────
+  it('mergeCapturedErrors reads cloneState directly, so a snapshot→restore cycle (the durable-resume path this mode:"full" declaration guarantees) still merges every clone\'s captured errors', async () => {
+    const strategy = GatherStrategies.resolve('geo-weighted-fusion');
+    assert.ok(strategy instanceof GeoWeightedFusionGather);
+
+    const accessor = new DirectAccessor();
+    const state = new CartographerState();
+    strategy.initial(CONFIG, state, accessor);
+
+    const coordsCandidate = FixtureCandidate.of({ 'source': 'coords', 'weight': 1.0, 'country': 'DE' });
+    const coordsClone = new CartographerState();
+    accessor.set(coordsClone, 'candidate', coordsCandidate);
+    accessor.set(coordsClone, 'capturedErrors', [{ 'kind': 'RangeError', 'message': 'coords out of range' }]);
+
+    const ipCandidate = FixtureCandidate.of({ 'source': 'ip', 'weight': 0.55, 'country': 'DE' });
+    const ipClone = new CartographerState();
+    accessor.set(ipClone, 'candidate', ipCandidate);
+    accessor.set(ipClone, 'capturedErrors', [{ 'kind': 'TypeError', 'message': 'ip lookup malformed' }]);
+
+    const recordsA: GatherRecordType<NodeStateInterface>[] = [{
+      'source': 'coords', 'index': 0, 'item': undefined, 'output': 'default',
+      'terminalOutcome': 'completed', 'result': undefined, 'cloneState': coordsClone,
+    }];
+    strategy.reduce(CONFIG, Batch.from(recordsA.map((r) => ({ 'id': '0', 'state': r }))), state, accessor);
+
+    // Durable-resume boundary: snapshot the parent accumulator state (what
+    // `capturedErrors` folds into) and restore it into a fresh instance,
+    // mirroring the checkpoint/resume cycle a real run crosses between two
+    // gather batches. `capturedErrors` is part of CartographerState's declared
+    // transient-domain surface, so it round-trips; `candidate`/`geoCandidates`
+    // are not (a pre-existing CartographerState field-ownership gap tracked
+    // separately — out of scope here), so this test asserts only the
+    // errors-merge correctness this gather's `finalize()` is responsible for.
+    const snapshot = state.snapshotTransientState();
+    const resumedState = new CartographerState();
+    await resumedState.restoreTransientState(state.runIri, snapshot);
+
+    const recordsB: GatherRecordType<NodeStateInterface>[] = [{
+      'source': 'ip', 'index': 0, 'item': undefined, 'output': 'default',
+      'terminalOutcome': 'completed', 'result': undefined, 'cloneState': ipClone,
+    }];
+    strategy.reduce(CONFIG, Batch.from(recordsB.map((r) => ({ 'id': '0', 'state': r }))), resumedState, accessor);
+
+    await strategy.finalize(CONFIG, {
+      'state': resumedState,
+      'records': [...recordsA, ...recordsB],
+      'dagName': 'test',
+      'signal': new AbortController().signal,
+      'accessor': accessor,
+      'invoker': { invokeNode: async (): Promise<void> => { /* no-op */ } },
+    });
+
+    const capturedErrors = accessor.get(resumedState, 'capturedErrors');
+    assert.ok(Array.isArray(capturedErrors));
+    assert.equal(capturedErrors.length, 2, 'captured errors from both the pre-resume and post-resume clone must merge');
   });
 
   // ── reduce: accumulates weight>0 candidates into state.geoCandidates ──────

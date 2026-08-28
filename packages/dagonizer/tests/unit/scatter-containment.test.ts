@@ -18,17 +18,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer, graphStateDocument, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { stateSnapshot } from '../_support/GraphStateSupport.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = (dagIri: string, placementName: string): string => `${dagIri}/node/${placementName}`;
@@ -121,7 +123,8 @@ const runnerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'item',
-      'execution': { 'mode': 'item', 'concurrency': 1 },
+      'stateMapping': { 'input': { 'value': 'value' } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
       'container': CONTAINER_ROLE,
       'outputs': {
         'all-success': placementIri(RUNNER_DAG_IRI, 'end'),
@@ -155,7 +158,7 @@ const inProcessRunnerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': BODY_DAG_IRI },
       'source': 'items',
       'itemKey': 'item',
-      'execution': { 'mode': 'item', 'concurrency': 1 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
       'outputs': {
         'all-success': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
         'partial': placementIri('urn:noocodec:dag:scatter-inprocess', 'end'),
@@ -188,7 +191,7 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
       'body': { 'node': 'urn:noocodec:node:node-body-worker' },
       'source': 'items',
       'itemKey': 'item',
-      'execution': { 'mode': 'item', 'concurrency': 1 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
       'outputs': {
         'all-success': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
         'partial': placementIri('urn:noocodec:dag:scatter-nodebody', 'end'),
@@ -221,64 +224,67 @@ class TestContainer {
     innerDispatcher.registerDAG(bodyDag);
 
     return {
-      async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        const cloneState = task.state;
-        const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
+      async runDag(task: DagTaskType, batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        const outcomes: RunResultType[] = [];
+        for (const item of batch.items()) {
+          const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
-        if (!(cloneState instanceof ScatterContainerState)) {
-          return {
-            'terminalOutput': 'failed',
-            'errors': [{
-              'code': 'UNEXPECTED_STATE_TYPE',
-              'context': {},
-              'message': 'expected ScatterContainerState',
-              'operation': 'runDag',
-              'recoverable': false,
-              'timestamp': new Date().toISOString(),
-            }],
-            'graphState': emptyGraphStateTransfer(),
-            'intermediates': [],
-          };
-        }
-
-        try {
-          // Drain the execution iterator: collect intermediates and capture the
-          // terminal result. Execution is a PromiseLike AND AsyncIterable;
-          // iterate manually so we capture both.
-          const exec = innerDispatcher.execute(task.dagName, cloneState);
-          const iter = exec[Symbol.asyncIterator]();
-          let step = await iter.next();
-          while (!step.done) {
-            const nr = step.value;
-            intermediates.push({
-              'output': nr.output,
-              'skipped': nr.skipped,
-              'nodeName': nr.nodeName,
+          if (!(item.state instanceof ScatterContainerState)) {
+            outcomes.push({
+              'id': item.id,
+              'terminalOutput': 'failed',
+              'errors': [{
+                'code': 'UNEXPECTED_STATE_TYPE',
+                'context': {},
+                'message': 'expected ScatterContainerState',
+                'operation': 'runDag',
+                'recoverable': false,
+                'timestamp': new Date().toISOString(),
+              }],
+              'intermediates': [],
             });
-            step = await iter.next();
+            continue;
           }
-          const terminal = step.value;
-          return {
-            'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
-            'errors': [...terminal.state.errors],
-            'graphState': graphStateTransfer(terminal.state),
-            'intermediates': intermediates,
-          };
-        } catch (err: unknown) {
-          return {
-            'terminalOutput': 'failed',
-            'errors': [{
-              'code': 'CONTAINER_ERROR',
-              'context': {},
-              'message': err instanceof Error ? err.message : String(err),
-              'operation': 'runDag',
-              'recoverable': false,
-              'timestamp': new Date().toISOString(),
-            }],
-            'graphState': emptyGraphStateTransfer(),
-            'intermediates': [],
-          };
+
+          try {
+            // Drain each item's execution iterator to collect intermediates and
+            // capture its terminal result after mutating the live batch state.
+            const exec = innerDispatcher.execute(task.dagName, item.state);
+            const iter = exec[Symbol.asyncIterator]();
+            let step = await iter.next();
+            while (!step.done) {
+              const nr = step.value;
+              intermediates.push({
+                'output': nr.output,
+                'skipped': nr.skipped,
+                'nodeName': nr.nodeName,
+              });
+              step = await iter.next();
+            }
+            const terminal = step.value;
+            outcomes.push({
+              'id': item.id,
+              'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
+              'errors': [...terminal.state.errors],
+              'intermediates': intermediates,
+            });
+          } catch (err: unknown) {
+            outcomes.push({
+              'id': item.id,
+              'terminalOutput': 'failed',
+              'errors': [{
+                'code': 'CONTAINER_ERROR',
+                'context': {},
+                'message': err instanceof Error ? err.message : String(err),
+                'operation': 'runDag',
+                'recoverable': false,
+                'timestamp': new Date().toISOString(),
+              }],
+              'intermediates': [],
+            });
+          }
         }
+        return outcomes;
       },
     };
   }
@@ -307,14 +313,16 @@ void describe('Scatter dag-body container seam (W4)', () => {
   });
 
   // ── (b) Container bound: dag-body routes through container ───────────────
-  void it('scatter dag-body with container routes through container; state round-trips', async () => {
+  void it('scatter dag-body with container routes through container and mutates each batch item', async () => {
     const testContainer = TestContainer.inProcess();
 
     let runDagCallCount = 0;
+    const inputStates: DagTaskType['inputState'][] = [];
     const trackingContainer: DagContainerInterface = {
-      async runDag(task, options): Promise<DagOutcomeType> {
+      async runDag(task, batch, options): Promise<RunResultType[]> {
         runDagCallCount++;
-        return testContainer.runDag(task, options);
+        inputStates.push(task.inputState);
+        return testContainer.runDag(task, batch, options);
       },
     };
 
@@ -332,6 +340,11 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Container must have been called once per item.
     assert.strictEqual(runDagCallCount, 3, `container.runDag must be called 3 times, got ${runDagCallCount}`);
+    assert.deepStrictEqual(inputStates, Array.from({ 'length': 3 }, () => ({
+      'mode': 'selection',
+      'domainPaths': ['value'],
+      'metadataKeys': ['item', 'itemIndex'],
+    })));
 
     // result.state must be the same reference as the initial state object.
     assert.strictEqual(result.state, state, 'result.state must be the initial state object');
@@ -346,14 +359,14 @@ void describe('Scatter dag-body container seam (W4)', () => {
     let inlineNodeCalls = 0;
 
     const container: DagContainerInterface = {
-      async runDag(_task, _options): Promise<DagOutcomeType> {
+      async runDag(_task, batch, _options): Promise<RunResultType[]> {
         containerCalls++;
-        return {
+        return batch.items().map((item) => ({
+          'id': item.id,
           'terminalOutput': 'completed',
           'errors': [],
-          'graphState': emptyGraphStateTransfer(),
           'intermediates': [],
-        };
+        }));
       },
     };
 
@@ -388,8 +401,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (d) Container error → collected error, not unhandled throw ───────────
   void it('transport failure from container collects error; scatter routes to error output', async () => {
     const failContainer: DagContainerInterface = {
-      async runDag(task, _options): Promise<DagOutcomeType> {
-        return {
+      async runDag(_task, batch, _options): Promise<RunResultType[]> {
+        return batch.items().map((item) => ({
+          'id': item.id,
           'terminalOutput': 'failed',
           'errors': [{
             'code': 'TRANSPORT_FAILURE',
@@ -399,9 +413,8 @@ void describe('Scatter dag-body container seam (W4)', () => {
             'recoverable': false,
             'timestamp': new Date().toISOString(),
           }],
-          'graphState': graphStateTransfer(task.state),
           'intermediates': [],
-        };
+        }));
       },
     };
 
@@ -431,9 +444,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // The SCATTER_PROGRESS_KEY payload is keyed by scatter node name ('fan' in
   // both cases). The scatter node name is not the DAG IRI, so identical
   // checkpoint keys appear regardless of which runner DAG was used. Each
-  // ScatterProgress entry contains { placementName, inbox, ackedResults }.
-  // With gather:'discard' no mappingValues/fieldValue are present. The item
-  // payload (numbers 10/20/30) and index are deterministic across both runs.
+  // Every ScatterProgress entry contains the bounded cursor fields: mode,
+  // placementName, inbox, watermark, aheadAcked, and outcomeTally. The item
+  // payload and index are deterministic across both runs.
   // deepStrictEqual is therefore achievable and is a stronger assertion than
   // comparing lengths only.
   void it('Law 7: per-ack SCATTER_PROGRESS_KEY writes are deep-equal across in-process and contained', async () => {
@@ -466,7 +479,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
       };
 
       await dispatcher.execute(useContainer ? RUNNER_DAG_NAME : 'scatter-inprocess', state);
-      const finalSnapshot = JSON.parse(JSON.stringify(graphStateDocument(state)));
+      const finalSnapshot = JSON.parse(JSON.stringify(stateSnapshot(state)));
       return { checkpoints, finalSnapshot };
     };
 
@@ -482,10 +495,8 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Each checkpoint write must be deep-equal. The scatter node name is 'fan'
     // in both DAGs so the checkpoint key is identical. The ScatterProgress
-    // payload — { placementName, inbox: ScatterInboxItem[], ackedResults:
-    // ScatterAckedResult[] } — is constructed by the parent dispatcher using
-    // the original item values from state.items ([10, 20, 30]) and sequential
-    // indices, independent of which container (or no container) ran the body.
+    // payload is constructed by the parent dispatcher from the original item
+    // values and sequential indices, independent of where the body executes.
     for (let i = 0; i < inProcess.checkpoints.length; i++) {
       assert.deepStrictEqual(
         inProcess.checkpoints[i],

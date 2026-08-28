@@ -13,10 +13,10 @@ seeAlso:
     description: 'streaming trace, live token deltas, provenance recall, and routeKey routing'
   - text: 'The Dispatcher'
     link: '../examples/the-dispatcher'
-    description: 'runnable in-browser support handoff flow'
+    description: 'support workflow with operator handoff and resume'
   - text: 'Example 29: Agent DAG with JSON-LD'
     link: '../examples/29-agent-dag'
-    description: 'runnable DAGBuilder topology with concrete agent nodes'
+    description: 'DAGBuilder topology with concrete agent nodes'
 ---
 
 <script setup lang="ts">
@@ -25,30 +25,18 @@ import {
   reactRoutingDAG,
   reactTraceDAG,
   supportDispatcherDAG,
-} from '../.vitepress/theme/exampleDags.ts';
+} from '../exampleDags.ts';
 </script>
 
 # Chat Event Orchestration
 
-## What It Is
+## Conversation Workflow Model
 
-Chat event orchestration is the host pattern for agent applications: register the DAG once, then run a fresh execution for every inbound message, queue event, browser action, or HTTP request turn.
+Chat event orchestration is the host pattern for agent runtimes: register the DAG once, then run a fresh execution for every inbound message, queue event, browser action, or HTTP request turn.
 
 The DAG remains the canonical assembly. `DAGBuilder` emits your graph as JSON-LD, `Dagonizer` registers it, `DagRunner` seeds and projects state, and `EventTrigger` or `RequestTrigger` adapts the outside world into `runner.run(...)`.
 
-## How It Works
-
-The host owns transport concerns. The DAG owns control flow. Each inbound event becomes:
-
-1. A raw host message or request.
-2. A typed runner input.
-3. A fresh state instance with correlation data, user text, and injected context.
-4. One `dispatcher.execute(dagIri, state, options)` call through `DagRunner`.
-5. A projected output returned to the host, published to a socket, or written to a stream.
-
-Long-lived subscriptions use `EventTrigger`. Request/response APIs use `RequestTrigger`. Both surfaces run the same registered DAG; they differ only in how the host decides when to fire.
-
-## Diagrams, Examples, and Outputs
+## Conversation Topologies
 
 The inner loop is a ReAct-style agent DAG authored with plain `DAGBuilder`: build request, call model, normalize the response, dispatch tools through scatter, collect observations, and loop until the assistant response is final.
 
@@ -56,7 +44,7 @@ The inner loop is a ReAct-style agent DAG authored with plain `DAGBuilder`: buil
 
 <DagJsonMermaid :dag="reactAgentDAG" title="Agent event loop DAG" aria-label="Agent event loop JSON-LD DAG beside Mermaid generated from it." />
 
-The Dispatcher runnable shows how a real in-browser support flow surrounds that style of agent work: classify an inbound message, compose a response or park for an operator, converge on `send-response`, and end the turn.
+The Dispatcher shows how a support runtime surrounds that style of agent work: classify an inbound message, compose a response or park for an operator, converge on `send-response`, and end the turn.
 
 <<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
 
@@ -72,31 +60,31 @@ The ReAct memory and routing examples show the two pieces chat hosts usually nee
 
 <DagJsonMermaid :dag="reactRoutingDAG" title="Routed stream sink DAG" aria-label="Routed stream sink JSON-LD DAG beside Mermaid generated from it." />
 
-## What It Lets You Do
+## Trigger and Projection Boundary
 
-Use this pattern when an app needs to accept chat events from several host shapes without making the DAG depend on sockets, HTTP frameworks, queues, or UI components.
+The host owns transport concerns. The DAG owns control flow. Each inbound event becomes:
 
-The same agent graph can serve:
+1. A raw host message or request.
+2. A typed runner input.
+3. A fresh state instance with correlation data, user text, and injected context.
+4. One `dispatcher.execute(dagIri, state, options)` call through `DagRunner`.
+5. A projected output returned to the host, published to a socket, or written to a stream.
 
-- A browser demo button through a request-like trigger.
-- A WebSocket or event-bus subscription through `EventTrigger`.
-- An HTTP route through `RequestTrigger`.
-- A CLI or worker command through the same `DagRunner` subclass.
-- Concurrent conversations through per-run `conversationId` or `routeKey` fields on state.
+Long-lived subscriptions use `EventTrigger`. Request/response APIs use `RequestTrigger`. Both trigger types run the same registered DAG; they differ only in how the host decides when to fire.
 
 ## Code Samples
 
 ### Author the agent DAG
 
-The framework does not own a prebuilt agent loop. Use `DAGBuilder` to author the graph your application needs, then register concrete node subclasses referenced by that JSON-LD. Core gives you the assembly language (`DAGBuilder` and JSON-LD), the registry, and the host trigger surfaces; your application owns the topology.
+The framework does not own a prebuilt agent loop. Use `DAGBuilder` to author the graph your host needs, then register concrete node subclasses referenced by that JSON-LD. Core gives you the assembly language (`DAGBuilder` and JSON-LD), the registry, and the host trigger APIs; your host owns the topology.
 
-[Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) is the runnable reference for this section. It shows the full agent loop, explicit placement IRIs, the first-class `GatherNode` after tool scatter, and the registered tool DAG candidates. The diagram above is generated from that same source, so the topology and prose share one grimoire instead of a hand-copied spell.
+[Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) is the concrete workflow for this section. It shows the full agent loop, explicit placement IRIs, the first-class `GatherNode` after tool scatter, and the registered tool DAG candidates. The same DAG definition also generates the diagram, so topology and prose stay aligned instead of drifting apart.
 
-The tool scatter reads `safeWorkset`, dispatches each item through a dynamic `DagReference`, gathers `output` into `toolOutputs` via a `GatherNode`, and loops through `collect-results -> build-request`. State field names are application-owned; DAG and placement identity stays IRI-owned.
+The tool scatter reads `safeWorkset`, dispatches each item through a dynamic `DagReference`, gathers `output` into `toolOutputs` via a `GatherNode`, and loops through `collect-results -> build-request`. State field names are host-owned; DAG and placement identity stays IRI-owned.
 
-### Put host code behind `DagRunner`
+### Put transport code behind `DagRunner`
 
-`DagRunner` is the only place the host converts inbound input into state and final state into output.
+`DagRunner` is the only place the host boundary converts inbound input into state and final state into output.
 
 ```typescript
 import { DagRunner } from '@studnicky/dagonizer/runner';
@@ -203,9 +191,21 @@ class ChatRequestTrigger extends RequestTrigger<ChatHttpRequest, ChatTurnInput, 
 }
 ```
 
-`RequestTrigger.fire(request)` returns the runner's projected output. This is the right fit for browser demos, server routes, chat webhooks, and turn-based APIs.
+`RequestTrigger.fire(request)` returns the runner's projected output. This fits browser actions, server routes, chat webhooks, and turn-based APIs.
 
-## Details for Nerds
+## Operational Uses
+
+This pattern keeps one chat DAG usable across several host shapes without making the graph depend on sockets, HTTP frameworks, queues, or UI components.
+
+The same agent graph can serve:
+
+- A browser UI action through a request-like trigger.
+- A WebSocket or event-bus subscription through `EventTrigger`.
+- An HTTP route through `RequestTrigger`.
+- A CLI or worker command through the same `DagRunner` subclass.
+- Concurrent conversations through per-run `conversationId` or `routeKey` fields on state.
+
+## Runtime Notes
 
 ### Event trigger vs. request trigger
 
@@ -221,7 +221,7 @@ The DAG should not care which trigger invokes it. If the topology changes when t
 
 Every concurrent chat run needs a stable key on state: `conversationId`, `runId`, tenant id, or route key. Nodes read that key when they emit progress, stream model tokens, or write trace records.
 
-The [ReAct routing example](../examples/react-agent-routing) demonstrates the sink side. One shared stream sink receives chunks from multiple conversations, and the routing DAG scatters over those chunks by `routeKey` so the transcripts do not bleed together.
+The [ReAct routing example](../examples/react-agent-routing) covers the sink side. One shared stream sink receives chunks from multiple conversations, and the routing DAG scatters over those chunks by `routeKey` so the transcripts do not bleed together.
 
 ### Abort and deadline propagation
 
@@ -240,5 +240,5 @@ The [ReAct routing example](../examples/react-agent-routing) demonstrates the si
 - [Conversational Agents](./conversational) - turn structure, HITL, and the agent-loop node responsibilities
 - [Runner](../reference/runner) - `DagRunner`, `EventTrigger`, and `RequestTrigger` API reference
 - [ReAct Agent](./react-agent) - trace streaming, token streaming, provenance recall, and route-key demultiplexing
-- [The Dispatcher](../examples/the-dispatcher) - runnable in-browser support flow
-- [Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) - runnable `DAGBuilder` agent DAG
+- [The Dispatcher](../examples/the-dispatcher) - support workflow with operator handoff and resume
+- [Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) - `DAGBuilder` agent DAG

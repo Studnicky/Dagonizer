@@ -7,7 +7,7 @@ seeAlso:
     description: 'fluent authoring API; build() returns canonical JSON-LD'
   - text: 'Schema and JSON loading'
     link: './schema'
-    description: 'Ajv validation surface at the ingest boundary'
+    description: 'Ajv validation at the ingest boundary'
   - text: 'Architecture'
     link: '../architecture'
     description: 'JSON-LD canonical wire format in the framework architecture'
@@ -17,7 +17,7 @@ seeAlso:
 nextSteps:
   - text: 'Example 03: Tool Schemas'
     link: '../examples/03-schema'
-    description: 'runnable load-and-round-trip example'
+    description: 'load-and-round-trip workflow example'
   - text: 'Checkpoint and Resume'
     link: './checkpoint'
     description: 'serialize in-flight DAG state alongside the topology'
@@ -32,21 +32,13 @@ import { dag as schemaDag } from '../../examples/dags/03-schema.ts';
 
 # JSON-LD Export and Import
 
-## What It Is
+## Document Model
 
 JSON-LD is Dagonizer's workflow document format, not a reporting export. `DAGBuilder.build()` returns a JSON-LD-shaped object, `DAGDocument.load()` validates external JSON-LD into that object, and `DAGDocument.serialize()` writes it back out for storage or transport.
 
 Every DAG carries `@context`, `@id`, and `@type`, so the same file can be consumed by Dagonizer, checked by JSON Schema, rendered as a graph, or inspected by RDF tooling. The DAG `@id` is the registry identity; `name` is the display and observability label.
 
-## How It Works
-
-`DAGBuilder.build()` returns the same JSON-LD-shaped object that `DAGDocument.serialize`, `DAGDocument.load`, schema validation, visualization, and the dispatcher consume. Every placement carries `@type`, every DAG carries `@context` and `@id`, and the graph can round-trip without losing execution semantics.
-
-Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or projection layer. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that round-trips through `DAGDocument.serialize` and `DAGDocument.load`. Every DAG carries `@context`, `@id`, and `@type` so RDF stores, schema validators, and generic JSON-LD processors read the shape natively without an adapter.
-
-RDF 1.2 is the semantic substrate used across topology, node contracts, execution, state, checkpoints, provenance, and memory. `DAGDocument.load()` remains the typed JSON-LD 1.1 authoring boundary for DAG documents; graph-backed runtime state uses the shared `Rdf12JsonLdCodec` and the shared context/prefix registry. See [RDF 1.2](../reference/rdf-12) for the parser-backed path.
-
-## Diagrams, Examples, and Outputs
+## Loaded Document and Round-Trip
 
 Example 03 starts from a JSON-LD string, loads it through `DAGDocument.load`, and executes the resulting DAG. The diagram is generated from that loaded object:
 
@@ -56,18 +48,18 @@ Example 03 starts from a JSON-LD string, loads it through `DAGDocument.load`, an
 
 <DagJsonMermaid :dag="schemaDag" title="Example 03 loaded JSON-LD DAG" aria-label="Example 03 JSON-LD DAG beside Mermaid generated from it." />
 
-Use the runnable pages and references around this one:
+The adjacent pages and references around this one show the same JSON-LD boundary in other forms:
 
 - [Example 03: Tool Schemas](../examples/03-schema) shows the JSON-LD literal, the load boundary, and the run output.
 - [DAGBuilder](./builder) shows the code-authoring path that produces the same shape.
-- [Schema and JSON Loading](./schema) explains the Ajv validation surface.
-- [Visualization](./visualization) shows how JSON-LD DAGs render to Mermaid on guide pages and Cytoscape on runnable demo pages.
+- [Schema and JSON Loading](./schema) explains the Ajv validation at the ingest boundary.
+- [Visualization](./visualization) shows how JSON-LD DAGs render to Mermaid on guide pages and Cytoscape in interactive hosts.
 
-## What It Lets You Do
+## Serialization Contract
 
-### Use when
+`DAGBuilder.build()` returns the same JSON-LD-shaped object that `DAGDocument.serialize`, `DAGDocument.load`, schema validation, visualization, and the dispatcher consume. There is no projection layer between authoring and execution: every placement carries `@type`, every DAG carries `@context` and `@id`, and the graph round-trips without losing execution semantics. RDF stores, schema validators, and generic JSON-LD processors can inspect the same document without an adapter.
 
-Use JSON-LD when a DAG must leave TypeScript source: plugin packages, persisted workflow definitions, docs diagrams, runtime loading, graph tooling, or cross-service transport. The JSON-LD document is the canonical assembly, not an export-only artifact.
+RDF 1.2 is the semantic substrate used across topology, node contracts, execution, state, checkpoints, provenance, and memory. `DAGDocument.load()` remains the typed JSON-LD 1.1 authoring boundary for DAG documents; graph-backed runtime state uses the shared `Rdf12JsonLdCodec` and the shared context/prefix registry. See [RDF 1.2](../reference/rdf-12) for the parser-backed path.
 
 ## Code Samples
 
@@ -84,7 +76,11 @@ Use JSON-LD when a DAG must leave TypeScript source: plugin packages, persisted 
 - Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoints`, `nodes`).
 - Invalid `@type` discriminator on any placement.
 
-## Details for Nerds
+## Operational Uses
+
+JSON-LD is the transport and storage form for DAGs that need to leave TypeScript source: plugin packages, persisted workflow definitions, rendered diagrams, runtime loading, graph tooling, or cross-service transport. The document is the canonical assembly, not an export-only artifact.
+
+## Runtime Notes
 
 ### The canonical shape
 
@@ -100,7 +96,7 @@ Example 03 embeds a full JSON-LD DAG as a string and feeds it through the ingest
 
 <<< @/../examples/dags/03-schema.ts#dag-literal
 
-Placement `@id`s are explicit absolute IRIs. A project may choose a nested convention such as `urn:noocodec:dag:demo/node/transform`, but the framework never derives identity from `name`.
+Placement `@id`s are explicit absolute IRIs. A project may choose a nested convention such as `urn:noocodec:dag:example-flow/node/transform`, but the framework never derives identity from `name`.
 
 ### `@type` vocabulary
 
@@ -180,18 +176,18 @@ For HTTP transport, pass the JSON string to `DAGDocument.load(json)` at the inge
 Because every field carries a canonical IRI through `@context`, a Dagonizer DAG is a valid RDF graph. Generic JSON-LD processors can extract triples without knowing anything about Dagonizer:
 
 ```
-<urn:noocodec:dag:demo>
+<urn:noocodec:dag:example-flow>
   rdf:type                              dag:DAG ;
-  dag:name                              "demo" ;
+  dag:name                              "example-flow" ;
   dag:version                           "1" ;
-  dag:entrypoints                       [ dag:main "urn:noocodec:dag:demo/node/transform" ] ;
-  dag:nodes                             <urn:noocodec:dag:demo/node/transform> .
+  dag:entrypoints                       [ dag:main "urn:noocodec:dag:example-flow/node/transform" ] ;
+  dag:nodes                             <urn:noocodec:dag:example-flow/node/transform> .
 
-<urn:noocodec:dag:demo/node/transform>
+<urn:noocodec:dag:example-flow/node/transform>
   rdf:type                              dag:SingleNode ;
   dag:name                              "transform" ;
   dag:node                              "transform" ;
-  dag:outputs                           [ dag:success "urn:noocodec:dag:demo/node/end" ] .
+  dag:outputs                           [ dag:success "urn:noocodec:dag:example-flow/node/end" ] .
 ```
 
 This is the same data the engine consumes. No separate ontology model, no projection. Applications that want to query DAGs as RDF (SHACL validation, SPARQL queries over a fleet of stored DAGs) get it for free by treating the JSON document as JSON-LD.
@@ -201,10 +197,10 @@ RDF 1.2 Basic Encoding documents are parsed through the RDF 1.2 helper instead o
 ## Related Concepts
 
 - [DAGBuilder](./builder) - fluent authoring API; build() returns canonical JSON-LD
-- [Schema and JSON loading](./schema) - Ajv validation surface at the ingest boundary
+- [Schema and JSON loading](./schema) - Ajv validation at the ingest boundary
 - [Architecture](../architecture) - JSON-LD canonical wire format in the framework architecture
 - [Entities](../reference/entities) - every @type and its required field set
-- [Example 03: Tool Schemas](../examples/03-schema) - runnable load-and-round-trip example
+- [Example 03: Tool Schemas](../examples/03-schema) - load-and-round-trip example
 - [Checkpoint and Resume](./checkpoint) - serialize in-flight DAG state alongside the topology
 - [Reference, Entities](../reference/entities)
 - [Reference, Validation](../reference/validation)

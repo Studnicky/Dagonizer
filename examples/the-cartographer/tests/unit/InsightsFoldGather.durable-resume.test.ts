@@ -58,6 +58,12 @@ class DirectAccessor implements StateAccessorInterface {
     if (lastSeg === undefined || current === null || typeof current !== 'object') return;
     Reflect.set(current, lastSeg, value);
   }
+
+  append(state: object, path: string, value: unknown): void {
+    const current = this.get(state, path);
+    if (Array.isArray(current)) current.push(value);
+    else this.set(state, path, [value]);
+  }
 }
 
 // ── FixtureShipment ───────────────────────────────────────────────────────────
@@ -203,9 +209,9 @@ class GatherHarness {
     strategy.reduce(CONFIG, batchA, stateA, accessor);
 
     // Snapshot stateA then restore into a fresh CartographerState instance
-    const snapshot = stateA.snapshotJsonLd();
+    const snapshot = stateA.snapshotTransientState();
     const stateB = new CartographerState();
-    await stateB.restoreJsonLd(stateA.runIri, snapshot);
+    await stateB.restoreTransientState(stateA.runIri, snapshot);
 
     // Second pass on restored state — no initial() call (resume path: accumulators
     // are restored from checkpoint, not reset)
@@ -228,15 +234,15 @@ class GatherHarness {
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
-// 6 deterministic items: 2 per region (Europe, Asia, Americas)
+// 6 deterministic items: 2 per region (Europe, Asia, North America)
 
 const ITEMS: EnrichedShipment[] = [
   FixtureShipment.of({ 'shipmentId': 'SHP-001', 'scanSeq': 1, 'continent': 'Europe',   'epochMs': 1_700_000_001_000, 'legKm': 100, 'subtotalUsdMinor': 5000, 'shippingUsdMinor': 1200, 'routing': { ...CartographerState.defaultRouting(), 'etaRun': true } }),
   FixtureShipment.of({ 'shipmentId': 'SHP-002', 'scanSeq': 1, 'continent': 'Europe',   'epochMs': 1_700_000_002_000, 'legKm': 200, 'subtotalUsdMinor': 6000, 'shippingUsdMinor': 1400, 'routing': { ...CartographerState.defaultRouting(), 'etaRun': true } }),
   FixtureShipment.of({ 'shipmentId': 'SHP-003', 'scanSeq': 1, 'continent': 'Asia',     'epochMs': 1_700_000_003_000, 'legKm': 300, 'subtotalUsdMinor': 7000, 'shippingUsdMinor': 1600, 'routing': CartographerState.defaultRouting() }),
   FixtureShipment.of({ 'shipmentId': 'SHP-004', 'scanSeq': 1, 'continent': 'Asia',     'epochMs': 1_700_000_004_000, 'legKm': 400, 'subtotalUsdMinor': 8000, 'shippingUsdMinor': 1800, 'routing': CartographerState.defaultRouting() }),
-  FixtureShipment.of({ 'shipmentId': 'SHP-005', 'scanSeq': 1, 'continent': 'Americas', 'epochMs': 1_700_000_005_000, 'legKm': 500, 'subtotalUsdMinor': 9000, 'shippingUsdMinor': 2000, 'routing': CartographerState.defaultRouting() }),
-  FixtureShipment.of({ 'shipmentId': 'SHP-006', 'scanSeq': 1, 'continent': 'Americas', 'epochMs': 1_700_000_006_000, 'legKm': 600, 'subtotalUsdMinor': 10000,'shippingUsdMinor': 2200, 'routing': CartographerState.defaultRouting() }),
+  FixtureShipment.of({ 'shipmentId': 'SHP-005', 'scanSeq': 1, 'continent': 'North America', 'epochMs': 1_700_000_005_000, 'legKm': 500, 'subtotalUsdMinor': 9000, 'shippingUsdMinor': 2000, 'routing': CartographerState.defaultRouting() }),
+  FixtureShipment.of({ 'shipmentId': 'SHP-006', 'scanSeq': 1, 'continent': 'North America', 'epochMs': 1_700_000_006_000, 'legKm': 600, 'subtotalUsdMinor': 10000,'shippingUsdMinor': 2200, 'routing': CartographerState.defaultRouting() }),
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -249,6 +255,17 @@ describe('InsightsFoldGather durable-resume contract', () => {
     assert.ok(strategy instanceof InsightsFoldGather, 'must be InsightsFoldGather instance');
   });
 
+  // ── transientResultSelection: honest 'full' declaration ────────────────────
+  it('declares transientResultSelection mode "full" (reduce() reads record.cloneState directly, never record.result, and the feeding scatter declares no resultField)', () => {
+    const strategy = GatherStrategies.resolve('insights-fold');
+    assert.ok(strategy instanceof InsightsFoldGather);
+
+    const selection = strategy.transientResultSelection();
+    assert.equal(selection.mode, 'full');
+    assert.deepEqual(selection.domainPaths, []);
+    assert.deepEqual(selection.metadataKeys, []);
+  });
+
   it('full run produces correct region shipmentCount', async () => {
     const strategy = GatherStrategies.resolve('insights-fold');
     assert.ok(strategy instanceof InsightsFoldGather);
@@ -258,20 +275,21 @@ describe('InsightsFoldGather durable-resume contract', () => {
     await GatherHarness.run(strategy, state, accessor, ITEMS);
 
     const fingerprint = InsightsFingerprint.of(state);
+    assert.equal(state.processedCountExact, 6, 'exact processed count must track every folded item');
     assert.equal(fingerprint.totalShipmentCount, 6, 'all 6 items must be counted');
     assert.equal(fingerprint.journeyCount, 6, 'all 6 distinct journeys must be finalized');
 
     const europeSummary = fingerprint.regionSummaries.find((r) => r.region === 'Europe');
     const asiaSummary   = fingerprint.regionSummaries.find((r) => r.region === 'Asia');
-    const americasSummary = fingerprint.regionSummaries.find((r) => r.region === 'Americas');
+    const northAmericaSummary = fingerprint.regionSummaries.find((r) => r.region === 'North America');
 
     assert.ok(europeSummary,    'Europe region must be present');
     assert.ok(asiaSummary,      'Asia region must be present');
-    assert.ok(americasSummary,  'Americas region must be present');
+    assert.ok(northAmericaSummary, 'North America region must be present');
 
     assert.equal(europeSummary.shipmentCount,   2, 'Europe: 2 shipments');
     assert.equal(asiaSummary.shipmentCount,     2, 'Asia: 2 shipments');
-    assert.equal(americasSummary.shipmentCount, 2, 'Americas: 2 shipments');
+    assert.equal(northAmericaSummary.shipmentCount, 2, 'North America: 2 shipments');
   });
 
   it('sampleRecords keeps the newest 200 records in FIFO order', async () => {
@@ -289,6 +307,7 @@ describe('InsightsFoldGather durable-resume contract', () => {
 
     await GatherHarness.run(strategy, state, accessor, items);
 
+    assert.equal(state.processedCountExact, 205);
     assert.equal(state.sampleRecords.length, 200);
     assert.equal(state.sampleRecords[0]?.shipmentId, 'SHP-005');
     assert.equal(state.sampleRecords[199]?.shipmentId, 'SHP-204');
@@ -308,6 +327,7 @@ describe('InsightsFoldGather durable-resume contract', () => {
     const resumedState = await GatherHarness.resume(strategy, accessor, ITEMS.slice(0, 3), ITEMS.slice(3));
     const resumed = InsightsFingerprint.of(resumedState);
 
+    assert.equal(resumedState.processedCountExact, 6, 'exact processed count must survive snapshot → restore → resume');
     assert.equal(resumed.totalShipmentCount, baseline.totalShipmentCount,
       'total shipmentCount must match after resume');
     assert.equal(resumed.journeyCount, baseline.journeyCount,
@@ -343,9 +363,9 @@ describe('InsightsFoldGather durable-resume contract', () => {
     assert.ok(stateA.journeyAccumulators.size > 0, 'journeyAccumulators must be non-empty after first reduce');
 
     // Snapshot and restore
-    const snapshot = stateA.snapshotJsonLd();
+    const snapshot = stateA.snapshotTransientState();
     const stateB = new CartographerState();
-    await stateB.restoreJsonLd(stateA.runIri, snapshot);
+    await stateB.restoreTransientState(stateA.runIri, snapshot);
 
     // Confirm restored state has the accumulated insights
     assert.ok(stateB.insights.size > 0, 'restored insights must be non-empty');

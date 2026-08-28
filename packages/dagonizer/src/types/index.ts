@@ -39,7 +39,7 @@ export type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 export type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 export type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
-export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
+export type { DagTaskType } from './DagTask.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ErrorMatcherType } from '../contracts/ErrorMatcherType.js';
 export type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
@@ -187,7 +187,6 @@ export type {
 // ---------------------------------------------------------------------------
 
 export type {
-  ScatterAckedResultType,
   ScatterInboxItemType,
   ScatterProgressType,
   StoredScatterProgressType,
@@ -216,7 +215,6 @@ export type { DagHostOptionsType } from '../container/DagHost.js';
 
 export type { InMemoryChannelOptionsType } from '../channels/InMemoryChannel.js';
 export type { StreamChannelInterface, StreamChannelOptionsType } from '../channels/StreamChannel.js';
-export type { StreamCursorOptionsType } from '../channels/StreamCursor.js';
 
 // ---------------------------------------------------------------------------
 // Streaming contracts

@@ -211,13 +211,17 @@ export const reservoirDag: DAGType = {
       body:        { node: 'urn:noocodec:node:score' },
       source:      'items',
       itemKey:     'item',
-      execution: {
-        mode:       'reservoir',
-        concurrency: 4,
-        reservoir: {
-          keyField: 'route',  // accessor path on each source item → the partition key
-          capacity: 10,       // release a batch when 10 items accumulate per key
-          idleMs:   500,      // flush partial batches after 500 ms idle
+      configuration: {
+        execution: {
+          batching: {
+            mode:       'reservoir',
+            concurrency: 4,
+            reservoir: {
+              keyField: 'route',  // accessor path on each source item → the partition key
+              capacity: 10,       // release a batch when 10 items accumulate per key
+              idleMs:   500,      // flush partial batches after 500 ms idle
+            },
+          },
         },
       },
       outputs: {

@@ -1,0 +1,122 @@
+/**
+ * Shared D-pad chrome for all visualization surfaces.
+ *
+ * Parameterization:
+ *   --dagonizer-dpad-surface
+ *   --dagonizer-dpad-stroke
+ *   --dagonizer-dpad-accent
+ *   --dagonizer-dpad-text
+ *   --dagonizer-dpad-overlay
+ *   --dagonizer-dpad-hud-surface
+ *   --dagonizer-dpad-hud-stroke
+ *   --dagonizer-dpad-hud-text
+ *   --dagonizer-dpad-hud-muted
+ *   --dagonizer-dpad-hud-accent
+ *
+ * All sizing/layout stays constant so every usage reads as the same control.
+ */
+
+.dagonizer-dpad-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.dagonizer-dpad-anchor {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+}
+
+.dagonizer-dpad-anchor--hover {
+  opacity: 0.55;
+  transition: opacity 0.18s ease;
+  cursor: default;
+}
+
+.dagonizer-dpad-anchor--hover:hover,
+.dagonizer-dpad-anchor--visible {
+  opacity: 1;
+}
+
+.dagonizer-dpad-anchor--modal {
+  z-index: 10;
+  bottom: calc(2.2rem + 10px);
+}
+
+.dagonizer-dpad-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--dagonizer-dpad-hud-surface, rgba(0, 0, 0, 0.55));
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--dagonizer-dpad-hud-stroke, var(--vp-c-divider, #2e3748));
+  border-radius: 4px;
+  font-family: var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.7rem;
+  color: var(--dagonizer-dpad-hud-text, var(--vp-c-text-2, #ccd6f6));
+  pointer-events: none;
+}
+
+.dagonizer-dpad-hud-level {
+  color: var(--dagonizer-dpad-hud-accent, var(--dagonizer-brand2, #22e8ff));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dagonizer-dpad-hud-hint {
+  color: var(--dagonizer-dpad-hud-muted, var(--vp-c-text-3, #96a4c2));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.62rem;
+}
+
+.dagonizer-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  grid-template-rows: repeat(3, 32px);
+  gap: 4px;
+  background: var(--dagonizer-dpad-overlay, rgba(0, 0, 0, 0.30));
+  padding: 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.dagonizer-dpad-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dagonizer-dpad-surface, var(--vp-c-bg-alt, #0e1525));
+  border: 1px solid var(--dagonizer-dpad-stroke, var(--vp-c-divider, #2e3748));
+  border-radius: 4px;
+  color: var(--dagonizer-dpad-text, var(--vp-c-text-1, #eef3f7));
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  touch-action: none;
+}
+
+.dagonizer-dpad-btn:hover:not(:disabled) {
+  background: var(--vp-c-bg, #020306);
+  border-color: var(--dagonizer-dpad-accent, var(--dagonizer-brand, #22e8ff));
+  color: var(--dagonizer-dpad-accent, var(--dagonizer-brand, #22e8ff));
+}
+
+.dagonizer-dpad-btn:focus-visible {
+  outline: 2px solid var(--dagonizer-dpad-accent, var(--dagonizer-brand, #22e8ff));
+  outline-offset: 1px;
+}
+
+.dagonizer-dpad-btn--disabled,
+.dagonizer-dpad-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

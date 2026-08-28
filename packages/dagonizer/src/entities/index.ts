@@ -24,6 +24,8 @@
  * value in a sibling `jt.ts`. The schema bodies and `$id`s do not change.
  */
 
+export { DagConfiguration } from './configuration/index.js';
+
 // ---------------------------------------------------------------------------
 // dag
 // ---------------------------------------------------------------------------
@@ -47,7 +49,7 @@ export { GatherNodeDefaults, GatherNodeSchema } from './dag/GatherNode.js';
 export type { GatherNodeType, GatherPolicyType } from './dag/GatherNode.js';
 
 export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
-export type { ScatterNodeType, ScatterThrottleOptionsType, ScatterExecutionOptionsType, ScatterExecutionPolicyType } from './dag/ScatterNode.js';
+export type { ScatterNodeType } from './dag/ScatterNode.js';
 
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNodeType } from './dag/EmbeddedDAGNode.js';
@@ -160,11 +162,25 @@ export type { BackoffStrategyType } from './runtime/BackoffStrategy.js';
 export { ExecutorIntermediateSchema } from './executor/ExecutorIntermediate.js';
 export type { ExecutorIntermediateType } from './executor/ExecutorIntermediate.js';
 
+export {
+  TransientNodeStateSchema,
+  TransientNodeStateResponseStateSchema,
+  TransientNodeStateSelectionSchema,
+} from './executor/TransientNodeState.js';
+export type {
+  TransientNodeStateType,
+  TransientNodeStateResponseStateType,
+  TransientNodeStateSelectionType,
+} from './executor/TransientNodeState.js';
+
+export { GraphStateInlineSchema, GraphStateTransferSchema } from './executor/GraphStateTransferSchema.js';
+export type { GraphStateTransferType, GraphStateInlineType, GraphStateReferenceType, GraphStateSharedType, GraphStateInlineDeltaType, GraphStateDeltaReferenceType } from './executor/GraphStateTransferSchema.js';
+
 export { ExecutionRequestSchema } from './executor/ExecutionRequest.js';
-export type { ExecutionRequestType } from './executor/ExecutionRequest.js';
+export type { ExecutionRequestType, ExecutionRequestItemType } from './executor/ExecutionRequest.js';
 
 export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
-export type { ExecutionResponseType } from './executor/ExecutionResponse.js';
+export type { ExecutionResponseType, ExecutionResponseItemType } from './executor/ExecutionResponse.js';
 
 export { BridgeMessage, BridgeMessageSchema } from './executor/BridgeMessage.js';
 export type { BridgeMessageType } from './executor/BridgeMessage.js';
@@ -194,13 +210,11 @@ export type { DAGHandoffType } from './handoff/DAGHandoff.js';
 
 export {
   ScatterInboxItemSchema,
-  ScatterAckedResultSchema,
   ScatterProgressSchema,
   StoredScatterProgressSchema,
 } from './scatter/ScatterProgress.js';
 export type {
   ScatterInboxItemType,
-  ScatterAckedResultType,
   ScatterProgressType,
   StoredScatterProgressType,
 } from './scatter/ScatterProgress.js';

@@ -4,6 +4,9 @@
 
 ### Patch Changes
 
+- Provides the SQLite RDF 1.2 graph provider with durable reopen,
+  append-delta journaling, compaction, and opt-in durable child graphs.
+
 - Updated dependencies [63a6261]
   - @studnicky/dagonizer@2.0.0
 

@@ -1,0 +1,13 @@
+{
+	"pid": 34042,
+	"port": 4338,
+	"url": "http://127.0.0.1:4338",
+	"urls": {
+		"local": [
+			"http://127.0.0.1:4338/"
+		],
+		"network": []
+	},
+	"background": true,
+	"startedAt": "2026-07-19T01:47:38.735Z"
+}

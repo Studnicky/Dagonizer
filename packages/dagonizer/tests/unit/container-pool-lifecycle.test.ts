@@ -17,7 +17,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -33,19 +32,18 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
-import { Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
+import { Batch, Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
 import type {
   DagContainerOptionsType,
-  DagOutcomeType,
-  DagTaskInterface,
+  DagTaskType,
   DagContainerInterface,
   NodeContextType,
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 import { DagContainerBase, DagHost } from '@studnicky/dagonizer/container';
-import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import type { PoolEntryType, RunResultType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 
 
@@ -53,8 +51,10 @@ import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // Registry module URL
 // ---------------------------------------------------------------------------
 
-const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
+const REGISTRY_MODULE_URL = fileURLToPath(new URL(
+  'ConformanceRegistry.js',
+  import.meta.resolve('@studnicky/dagonizer/testing'),
+));
 
 // ---------------------------------------------------------------------------
 // TestWorker / TestLoopbackContainer
@@ -121,15 +121,17 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal DagTaskInterface implementation for direct runDag() calls
+// Minimal DagTaskType implementation for direct runDag() calls
 // ---------------------------------------------------------------------------
 
-class MinimalTask implements DagTaskInterface {
+class MinimalTask implements DagTaskType {
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
+  readonly inputState = FULL_INPUT_STATE;
+  readonly responseState = FULL_RESPONSE_STATE;
   readonly context: NodeContextType;
 
   constructor(correlationId: string) {
@@ -139,16 +141,6 @@ class MinimalTask implements DagTaskInterface {
     this.timeout = Timeout.none();
     this.state = new NodeStateBase();
     this.context = NodeContext.create(CONFORMANCE_DAG.law1, '', new AbortController().signal);
-  }
-
-  toRequest() {
-    return {
-      'dagName': this.dagName,
-      'placementPath': this.placementPath,
-      'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
-      'timeoutMs': this.timeout.toWire(),
-      'correlationId': this.correlationId,
-    };
   }
 }
 
@@ -292,7 +284,9 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       const _ch1 = await container.acquireForTest();
 
       // Start a runDag() that will park (no free slot).
-      const runDagPromise: Promise<DagOutcomeType> = container.runDag(new MinimalTask('g3-parked'));
+      const task = new MinimalTask('g3-parked');
+      const batch = Batch.from([{ 'id': 'g3-parked', 'state': task.state }]);
+      const runDagPromise: Promise<RunResultType[]> = container.runDag(task, batch);
 
       // Let the parked acquire register.
       await new Promise<void>((r) => setImmediate(r));
@@ -300,7 +294,8 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       // Destroy — must unblock all waiters. _ch1 is intentionally never released.
       void container.destroy();
 
-      const outcome = await runDagPromise;
+      const [outcome] = await runDagPromise;
+      assert.ok(outcome !== undefined);
       assert.strictEqual(outcome.terminalOutput, 'failed', 'parked runDag must fail after destroy');
       assert.ok(outcome.errors.length > 0, 'must carry at least one error');
     } finally {
@@ -325,26 +320,20 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
 
       // Create a task whose signal we can fire.
       class AbortableTask extends NodeStateBase {}
-      const abortTask: DagTaskInterface = {
+      const abortTask: DagTaskType = {
         'dagName': CONFORMANCE_DAG.law1,
         'placementPath': ['urn:dagonizer:placement:test'],
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
+        'inputState': FULL_INPUT_STATE,
+        'responseState': FULL_RESPONSE_STATE,
         'context': NodeContext.create(CONFORMANCE_DAG.law1, '', controller.signal),
-        toRequest() {
-          return {
-            'dagName': this.dagName,
-            'placementPath': this.placementPath,
-            'items': [{ 'id': this.correlationId, 'graphState': graphStateTransfer(this.state) }],
-            'timeoutMs': this.timeout.toWire(),
-            'correlationId': this.correlationId,
-          };
-        },
       };
 
+      const abortBatch = Batch.from([{ 'id': 'con1-abort', 'state': abortTask.state }]);
       const start = Date.now();
-      const runDagPromise = container.runDag(abortTask);
+      const runDagPromise = container.runDag(abortTask, abortBatch);
 
       // Let the waiter park.
       await new Promise<void>((r) => setImmediate(r));
@@ -352,7 +341,8 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
       // Abort — must unblock the parked waiter immediately (no free slot).
       controller.abort();
 
-      const outcome = await runDagPromise;
+      const [outcome] = await runDagPromise;
+      assert.ok(outcome !== undefined);
       const elapsed = Date.now() - start;
 
       // Must resolve without waiting for the slot (well under the 2s grace period).
@@ -390,6 +380,7 @@ void describe('DagContainerBase — destroy() fails in-flight dispatch promises 
 
       // Allow the execute message to travel through the channel to DagHost before
       // calling destroy (so ChannelDispatch has a pending entry).
+      // Real timers are intentional: the loopback host/channel handoff runs on the platform event loop.
       await new Promise<void>((r) => setTimeout(r, 30));
 
       // destroy() must fail the in-flight pending entry, not hang.
@@ -420,7 +411,10 @@ void describe('DagContainerBase — double-destroy idempotency (G4)', () => {
     const container = new TestLoopbackContainer(1);
     await container.destroy();
 
-    const outcome = await container.runDag(new MinimalTask('post-destroy'));
+    const task = new MinimalTask('post-destroy');
+    const batch = Batch.from([{ 'id': 'post-destroy', 'state': task.state }]);
+    const [outcome] = await container.runDag(task, batch);
+    assert.ok(outcome !== undefined);
     assert.strictEqual(outcome.terminalOutput, 'failed');
     assert.ok(outcome.errors.length > 0);
   });

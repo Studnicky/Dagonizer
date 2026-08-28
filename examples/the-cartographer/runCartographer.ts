@@ -37,6 +37,7 @@
 import { CartographerState } from './CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
+import { CARTOGRAPHER_IRIS } from './cartographerIds.ts';
 import { cartographerBundle, cartographerResumeBundle, cartographerWorkersBundle } from './dag.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
 import { GeoSourceResolveDAG } from './embedded-dags/GeoSourceResolveDAG.ts';
@@ -112,11 +113,24 @@ class AbortingCartographer extends ObservedCartographer {
     super.onNodeEnd(nodeName, output, state, placementPath);
     // Count completions of aggregate-event inside the process-stream scatter.
     // aggregate-event is the last enrichment node before the scatter body terminal.
-    if (nodeName === 'aggregate-event' && placementPath.includes('process-stream')) {
+    // Match on the local segment: embedded-DAG nesting qualifies both nodeName
+    // and placementPath entries (e.g. 'dag:stream-event/node/pipeline-position-ping'),
+    // so exact equality against the bare local names never matches once the node
+    // is nested inside a per-type pipeline embed.
+    const isAggregateEvent = AbortingCartographer.#localSegment(nodeName) === 'aggregate-event';
+    const isInProcessStream = placementPath.some(
+      (entry) => AbortingCartographer.#localSegment(entry) === 'process-stream',
+    );
+    if (isAggregateEvent && isInProcessStream) {
       if (++this.#count >= this.#threshold) {
         this.#controller.abort();
       }
     }
+  }
+
+  static #localSegment(qualifiedName: string): string {
+    const parts = qualifiedName.split('/');
+    return parts[parts.length - 1] ?? qualifiedName;
   }
 
   get signal(): AbortSignal {
@@ -131,9 +145,9 @@ const RESUME_EVENT_COUNT = 40;
 /**
  * Number of scatter item completions (aggregate-event inside process-stream)
  * after which the interrupted run aborts. cartographerResumeDAG uses the same
- * producer-feed/open-gather topology as the main DAG, then processes
- * canonicalEvents in item mode so the abort signal fires between pulls and
- * leaves a non-zero StreamCursor value.
+ * producer-feed/source-intake topology as the main DAG, then processes
+ * source-payload items in item mode so the abort signal fires between pulls
+ * and leaves a non-zero StreamCursor value.
  */
 const ABORT_AFTER_ITEMS = 8;
 
@@ -185,14 +199,14 @@ class InsightsFingerprint {
  * CartographerResumableScenario: self-contained abort→cursor→resume verification.
  *
  * Uses `cartographerResumeDAG` (no reservoir) so abort fires mid-scatter after
- * the five producer feed DAGs have converged through the canonical open gather.
+ * the five producer feed DAGs have converged through the source-intake gather.
  *
- *   Baseline — Full feed/open-gather pass over all RESUME_EVENT_COUNT canonical
- *              events (no abort). Produces the reference InsightsFingerprint.
+ *   Baseline — Full feed/source-intake pass over all RESUME_EVENT_COUNT source
+ *              payload items (no abort). Produces the reference InsightsFingerprint.
  *   Step A   — Interrupted run: abort after ABORT_AFTER_ITEMS aggregate-event
  *              completions; read durable cursor from checkpoint.
- *   Step B   — Resume: restore from firstState's graph JSON-LD (carries accumulator,
- *              canonicalEvents, and checkpoint) and resume process-stream.
+ *   Step B   — Resume: restore from firstState's transient snapshot (carries
+ *              accumulator and checkpoint) and resume process-stream.
  *              Assert cursor > 0 and resumeResult.cursor === null (completed).
  *   Proof    — Compare InsightsFingerprint of resumed state to baseline fingerprint.
  *              Equal → exactly-once; unequal → throw with full diff.
@@ -228,7 +242,7 @@ class CartographerResumableScenario {
     baselineState.useStreamingSource = true;
     baselineState.eventCount = RESUME_EVENT_COUNT;
     baselineState.streamCount = RESUME_EVENT_COUNT;
-    await baselineDispatcher.execute('urn:noocodec:dag:cartographer-resume', baselineState);
+    await baselineDispatcher.execute(CARTOGRAPHER_IRIS.dag.cartographerResume, baselineState);
     const baselineFingerprint = InsightsFingerprint.of(baselineState.insights);
     logger.info('CartographerResumableScenario', 'baseline', `Baseline streamed run folded ${baselineState.insights.size} region(s).`);
 
@@ -253,7 +267,7 @@ class CartographerResumableScenario {
     let interruptedCursor: string | null = null;
     try {
       const interruptedResult = await abortingDispatcher.execute(
-        'cartographer-resume', firstState, { 'signal': interruptAc.signal },
+        CARTOGRAPHER_IRIS.dag.cartographerResume, firstState, { 'signal': interruptAc.signal },
       );
       interruptedCursor = interruptedResult.cursor;
     } catch (err) {
@@ -261,7 +275,10 @@ class CartographerResumableScenario {
     }
 
     // Read the durable process-stream cursor from the interrupted checkpoint.
-    const cursor = StreamCursor.resumeAfter(firstState, 'process-stream');
+    // ScatterCheckpoint keys its entries by the scatter's full placement IRI
+    // (scatter['@id']), not the bare local node name.
+    const processStreamPlacementIri = CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographerResume, 'process-stream');
+    const cursor = StreamCursor.resumeAfter(firstState, processStreamPlacementIri);
     logger.info(
       'CartographerResumableScenario', 'interrupted',
       `Interrupted after ${ABORT_AFTER_ITEMS} items. execution cursor='${String(interruptedCursor)}' process-stream cursor=${cursor}`,
@@ -273,20 +290,20 @@ class CartographerResumableScenario {
     }
 
     // ── Step B: Resume ───────────────────────────────────────────────────────
-    // Restore from the interrupted snapshot — this is the faithful cross-process
-    // restart path: the partial insights accumulator AND the SCATTER_PROGRESS_KEY
-    // checkpoint are both carried by the graph restore.
+    // Restore from the interrupted transient snapshot — this is the faithful
+    // cross-process restart path: the partial insights accumulator AND the
+    // SCATTER_PROGRESS_KEY checkpoint are both carried by the restored state.
     // Acked items (below the watermark) already contributed to state.insights and
     // are NOT replayed by the engine; the accumulator carry ensures their folds
     // survive. Un-acked items in the durable inbox are replayed by the engine.
     const resumeDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
 
     const resumeState = new CartographerState();
-    await resumeState.restoreJsonLd(firstState.runIri, firstState.snapshotJsonLd());
+    await resumeState.restoreTransientState(firstState.runIri, firstState.snapshotTransientState());
     resumeState.useStreamingSource = true;
     resumeState.eventCount = RESUME_EVENT_COUNT;
     resumeState.streamCount = RESUME_EVENT_COUNT;
-    const resumeResult = await resumeDispatcher.resume('urn:noocodec:dag:cartographer-resume', resumeState, 'process-stream');
+    const resumeResult = await resumeDispatcher.resume(CARTOGRAPHER_IRIS.dag.cartographerResume, resumeState, processStreamPlacementIri);
 
     logger.info(
       'CartographerResumableScenario', 'resume',
@@ -577,17 +594,8 @@ for (const r of sampleProcessed) {
 // encodes the lane name, not the wire format; use sampleRecords directly
 // as a representative distribution indicator).
 const distinctFormats = new Set<string>();
-if (Array.isArray(state.sources)) {
-  for (const item of state.sources) {
-    distinctFormats.add(item.format);
-  }
-}
-// Fall back to eventConfig format mix labels when no compatibility source array
-// is present.
-if (distinctFormats.size === 0) {
-  for (const cfg of state.eventConfig) {
-    for (const mix of cfg.formatMix) distinctFormats.add(mix.format);
-  }
+for (const cfg of state.eventConfig) {
+  for (const mix of cfg.formatMix) distinctFormats.add(mix.format);
 }
 
 logger.result(`  Total scans folded (exact, from insights accumulator): ${totalScans.toLocaleString()}`);
@@ -741,7 +749,7 @@ logger.result(`    • ip   (gateway IP only):         ${String(modelIp).padStar
 logger.result(`    • none (no signal):               ${String(modelNone).padStart(5)}`);
 logger.result('');
 logger.result(`  coords+IP enriched (dual modality): ${coordsPlusIp}`);
-logger.result(`  CoordTimezone secondary lookup fired: ${secondaryLookupFired}`);
+logger.result(`  Secondary geo lookup fired: ${secondaryLookupFired}`);
 logger.result('');
 logger.result(`  geo-lookup:  RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG avoided)`);
 logger.result(`  ip-geolocate (freeipapi.com): RAN ${ipgeoRun}  ·  SKIPPED ${ipgeoSkip}`);

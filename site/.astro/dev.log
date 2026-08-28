@@ -1,0 +1,31 @@
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Generated 0ms","label":"types","level":"info"}
+{"message":"connected.","label":"vite","level":"info"}
+{"message":"Syncing content","label":"content","level":"info"}
+{"message":"Astro config changed","label":"content","level":"info"}
+{"message":"Clearing content store","label":"content","level":"info"}
+{"message":"\n update  ▶ New version of Astro available: 7.1.1\n  Run pnpm dlx @astrojs/upgrade to update\n","label":"SKIP_FORMAT","level":"warn"}
+{"message":"Synced content","label":"content","level":"info"}
+{"message":"Port 4323 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4324 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4325 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4326 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4327 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4328 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4329 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4330 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4331 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4332 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4333 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4334 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4335 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4336 is in use, trying another one...","label":"vite","level":"info"}
+{"message":"Port 4337 is in use, trying another one...","label":"vite","level":"info"}
+{"message":" astro  v7.0.9 ready in 2390 ms\n┃ Local    http://127.0.0.1:4338/Dagonizer/","label":"SKIP_FORMAT","level":"info"}
+{"message":"watching for file changes...","label":null,"level":"info"}
+{"message":"[200] / 26ms","label":null,"level":"info"}
+{"message":"[200] /examples/the-archivist/ 1104ms","label":null,"level":"info"}
+{"message":"[200] /examples/the-archivist/ 4ms","label":null,"level":"info"}
+{"message":"[200] /examples/the-cartographer/ 30ms","label":null,"level":"info"}
+{"message":"[200] /examples/the-dispatcher/ 31ms","label":null,"level":"info"}
+{"message":"[200] / 2ms","label":null,"level":"info"}

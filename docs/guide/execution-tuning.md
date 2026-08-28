@@ -5,41 +5,39 @@ description: 'How to tune Dagonizer execution with substrate concurrency, thrott
 
 # Execution Tuning
 
-## What It Is
+## Tuning Surface
 
 Execution tuning is the set of controls you reach for after the graph shape is right. The DAG still says what should happen; tuning controls how aggressively it happens: concurrency, throttling, retries, deadlines, coalescing, timing, and provider resilience.
 
-The important rule is to tune at execution boundaries instead of adding fake nodes. Scatter fan-out, batch item execution, adapters, HTTP tools, stream channels, progress delivery, and observer sinks all expose focused knobs for the work they own.
+Execution is tuned at execution boundaries instead of through fake nodes. Scatter fan-out, batch item execution, adapters, HTTP tools, stream channels, progress delivery, and observer sinks all expose focused knobs for the work they own.
 
-## How It Works
+## Runtime Control Points
 
-Tuning lives at execution boundaries: scatter policies, batch execution options, adapter calls, tool transports, stream channels, and observer delivery. Each surface accepts focused primitives such as semaphores, throttles, token buckets, retry policies, and composed abort signals.
+These workflows and focused references show the control points in live execution contexts:
 
-Dagonizer exposes tuning at the execution boundaries where it changes behavior:
-scatter fan-out, batch item execution, LLM adapters, tool HTTP transport, stream channels, progress delivery, and observability. These surfaces use substrate primitives directly, so applications tune the same concepts everywhere instead of wrapping nodes in raw `Promise.all`.
-
-## Diagrams, Examples, and Outputs
-
-Execution tuning is mostly runtime policy, so this page uses a decision table and focused snippets instead of a new diagram. Use the runnable examples to see each tuning surface in context:
-
-- [The Archivist](../examples/the-archivist) - browser runnable for agent memory, tools, and retries
-- [The Cartographer](../examples/the-cartographer) - browser runnable for streaming, scatter/gather, and plugin-style DAG parts
-- [The Dispatcher](../examples/the-dispatcher) - browser runnable for routing, handoff, and operational control
+- [The Archivist](../examples/the-archivist) - workflow for agent memory, tools, and retries
+- [The Cartographer](../examples/the-cartographer) - workflow for streaming, scatter/gather, and plugin-style DAG parts
+- [The Dispatcher](../examples/the-dispatcher) - workflow for routing, handoff, and operational control
 - [Example 12: Worker Containers](../examples/12-workers) - container-backed scatter execution
 - [Example 20: Streaming Execution](../examples/20-streaming) - progress from the execution stream
 - [Example 22: Retry Timing and Salvage](../examples/22-backoff-strategies) - retry timing separate from retry topology
 
-## What It Lets You Do
+## Boundary-level Controls
 
-### Use when
+Tuning lives at execution boundaries: scatter policies, batch execution options, adapter calls, tool transports, stream channels, and observer delivery. Each boundary accepts focused primitives such as semaphores, throttles, token buckets, retry policies, and composed abort signals.
 
-Use execution tuning when the graph shape is correct but the host needs stronger control over concurrency, rate limits, retries, coalescing, or deadlines. These knobs tune execution behavior without adding fake nodes to the DAG.
+Dagonizer exposes tuning at the execution boundaries where it changes behavior:
+scatter fan-out, batch item execution, LLM adapters, tool HTTP transport, stream channels, progress delivery, and observability. These boundaries use substrate primitives directly, so hosts tune the same concepts everywhere instead of wrapping nodes in raw `Promise.all`.
 
 ## Code Samples
 
-The snippets below show where tuning lives: scatter execution policy, adapter resilience, timing sinks, coalescing, stream backpressure, and progress delivery.
+The code samples cover where tuning lives: scatter execution policy, adapter resilience, timing sinks, coalescing, stream backpressure, and progress delivery.
 
-## Details for Nerds
+## Operational Uses
+
+Execution tuning applies once the graph shape is correct but the host needs stronger control over concurrency, rate limits, retries, coalescing, or deadlines. These knobs change execution behavior without adding fake nodes to the DAG.
+
+## Runtime Notes
 
 ### Decision table
 
@@ -97,7 +95,7 @@ Reservoir mode batches by key and uses `concurrency` at batch granularity. It ha
 
 ### Adapter and tool resilience
 
-Adapters and HTTP tools accept substrate resilience instances directly. Construct them in application code and pass them to the boundary that owns the provider call.
+Adapters and HTTP tools accept substrate resilience instances directly. Construct them in host code and pass them to the boundary that owns the provider call.
 
 ```ts
 import { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
@@ -119,7 +117,7 @@ For adapters, the circuit breaker wraps the whole logical call, the token bucket
 
 ### Timing
 
-Use substrate `Timing` when a run needs operation-level timing context. Pass an application-owned timing sink into the boundaries that perform work:
+Use substrate `Timing` when a run needs operation-level timing context. Pass a host-owned timing sink into the boundaries that perform work:
 
 ```ts
 import { Timing } from '@studnicky/timing';
@@ -150,8 +148,8 @@ Start with `execution.concurrency` only. Add `throttle` when active work needs a
 ## Related Concepts
 
 - [Architecture](../architecture) - system-level model for JSON-LD DAG orchestration
-- [The Archivist](../examples/the-archivist) - browser demo for memory, tools, and retries
-- [The Cartographer](../examples/the-cartographer) - streaming data-pipeline demo for scatter, gather, and plugins
+- [The Archivist](../examples/the-archivist) - workflow for memory, tools, and retries
+- [The Cartographer](../examples/the-cartographer) - streaming data-pipeline runner for scatter, gather, and plugins
 - [Example 12: Worker Containers](../examples/12-workers) shows container-backed scatter execution.
 - [Example 20: Streaming Execution](../examples/20-streaming) shows progress from the execution stream.
 - [Example 22: Retry Timing and Salvage](../examples/22-backoff-strategies) shows retry timing separate from retry topology.

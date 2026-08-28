@@ -28,6 +28,10 @@
  *     ├─ describe-book     ──► describe-extract ──► [compose-retry-loop]
  *     │                             (inline: decide+4scouts+pickBestMatch+merge+record+gate+recall)
  *     │
+ *     ├─ book-detail       ──► resolve-book-detail
+ *     │                             ├─ resolved   ──► [compose-retry-loop] (no fresh search; grounded on the resolved prior candidate)
+ *     │                             └─ unresolved ──► [book-search-scatter] (on-topic-search) (fallback: no confident match)
+ *     │
  *     ├─ recommend         ──► recommend-extract ──►  [compose-retry-loop] (success) ──► respond-to-visitor ──► END
  *     │                             (inline: decide+4scouts+rankByRating+merge+record+gate+recall)        ▲
  *     │                                                             ▲
@@ -139,7 +143,7 @@ const nodes = {
   'preRunSetup': new PlaceholderNode<ArchivistState, 'ready'>('urn:noocodec:node:pre-run-setup', ['ready']),
   'parkForInput': new PlaceholderNode<ArchivistState, 'parked' | 'resumed'>('urn:noocodec:node:park-for-input', ['parked', 'resumed']),
   'recallContext': new PlaceholderNode<ArchivistState, 'recalled'>('urn:noocodec:node:recall-context', ['recalled']),
-  'classifyIntent': new PlaceholderNode<ArchivistState, 'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage'>('urn:noocodec:node:classify-intent', ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage']),
+  'classifyIntent': new PlaceholderNode<ArchivistState, 'lookup-author' | 'find-reviews' | 'describe-book' | 'book-detail' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage'>('urn:noocodec:node:classify-intent', ['lookup-author', 'find-reviews', 'describe-book', 'book-detail', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage']),
   'classifyIntentSalvage': new PlaceholderNode<ArchivistState, 'done'>('urn:noocodec:node:classify-intent-salvage', ['done']),
   'extractQuery': new PlaceholderNode<ArchivistState, 'success' | 'retry' | 'salvage'>('urn:noocodec:node:extract-query', ['success', 'retry', 'salvage']),
   'extractQuerySalvage': new PlaceholderNode<ArchivistState, 'done'>('urn:noocodec:node:extract-query-salvage', ['done']),
@@ -148,6 +152,7 @@ const nodes = {
   'buildBookWorksets': new PlaceholderNode<ArchivistState, 'ready'>('urn:noocodec:node:build-book-worksets', ['ready']),
   'rankByRating': new PlaceholderNode<ArchivistState, 'ranked'>('urn:noocodec:node:rank-by-rating', ['ranked']),
   'pickBestMatch': new PlaceholderNode<ArchivistState, 'picked'>('urn:noocodec:node:pick-best-match', ['picked']),
+  'resolveBookDetail': new PlaceholderNode<ArchivistState, 'resolved' | 'unresolved'>('urn:noocodec:node:resolve-book-detail', ['resolved', 'unresolved']),
   'mergeCandidates': new PlaceholderNode<ArchivistState, 'ranked' | 'empty'>('urn:noocodec:node:merge-candidates', ['ranked', 'empty']),
   'recordFindings': new PlaceholderNode<ArchivistState, 'recorded'>('urn:noocodec:node:record-findings', ['recorded']),
   'hasCitationsGate': new PlaceholderNode<ArchivistState, 'pass' | 'fail'>('urn:noocodec:node:has-citations-gate', ['pass', 'fail']),
@@ -199,6 +204,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'lookup-author':        placement('author-search'),
         'find-reviews':         placement('reviews-extract'),
         'describe-book':        placement('describe-extract'),
+        'book-detail':          placement('resolve-book-detail'),
         'recommend-similar':    placement('recommend-similar'),
         'recall-memories':      placement('memory-recall'),
         'on-topic':             placement('on-topic-search'),
@@ -294,7 +300,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('reviews-rank'),
       }, {
         'name': 'reviews-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('reviews-gather'), { [placement('reviews-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {
@@ -344,7 +350,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('recommend-rank'),
       }, {
         'name': 'recommend-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('recommend-gather'), { [placement('recommend-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {
@@ -379,7 +385,7 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
         'empty':   placement('compose-empty'),
       }, {
         'name': 'describe-scatter',
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
   .gather(placement('describe-gather'), { [placement('describe-scatter')]: {} }, { 'strategy': 'tool-candidate-merge' }, {
@@ -392,6 +398,21 @@ export const archivistDAG: DAGType = new DAGBuilder(ARCHIVIST_DAG_IRI, '6.0', di
       .node(placement('describe-record'), nodes.recordFindings,   { 'recorded': placement('describe-gate') }, display('describe-record'))
       .node(placement('describe-gate'),   nodes.hasCitationsGate, { 'pass': placement('describe-recall'), 'fail': placement('compose-empty') }, display('describe-gate'))
       .node(placement('describe-recall'), nodes.recallPastVisits, { 'recalled': placement('compose-loop') }, display('describe-recall'))
+
+      // ── book-detail branch ───────────────────────────────────────────────────
+      // Deterministic resolution against books already surfaced this
+      // conversation (state.shortlist / state.priorCandidates /
+      // state.recalledContext.recentCandidates); no fresh catalog search.
+      // 'resolved' narrows state.shortlist to the one matched book and goes
+      // straight to compose-loop, where composeResponse dispatches
+      // 'book-detail' to the same grounded single-book describeBook prompt
+      // as describe-book. 'unresolved' (no confident match) falls back to
+      // the ordinary on-topic search branch so the visitor is never
+      // stonewalled by a resolution miss.
+      .node(placement('resolve-book-detail'), nodes.resolveBookDetail, {
+        'resolved':   placement('compose-loop'),
+        'unresolved': placement('on-topic-search'),
+      }, display('resolve-book-detail'))
 
       // ── recommend-similar branch ─────────────────────────────────────────────
       // recommendSimilar seeds state.terms from prior-run shortlist memory.

@@ -8,33 +8,23 @@ seeAlso:
 
 # Errors
 
-## What It Is
+## Error Surface
 
 `DAGError` is Dagonizer's structured runtime error. It carries a stable `code`, optional structured `context`, retryable classification, cause-chain support, and JSON serialization.
 
-Use this page when converting dispatcher failures into logs, telemetry, retries, HTTP responses, UI diagnostics, or test assertions.
+Applications branch on `code` and `context` to turn dispatcher failures into logs, telemetry, retries, HTTP responses, UI diagnostics, and test assertions.
 
-## How It Works
-
-Dagonizer uses one error class distinguished by `error.code`, not a subclass tree. Validation, configuration, execution, timeout, not-found, and container failures all surface through `DAGError` with context tailored to the failure.
-
-Use `instanceof DAGError` to identify package errors, then branch on `code` and inspect `context`.
-
-## Diagrams, Examples, and Outputs
+## Validation and Runtime References
 
 Errors are runtime outcomes rather than graph shape. Validation errors and dispatcher errors connect through these references:
 
 - [Reference: Validation](./validation)
 
-## What It Lets You Do
+## Error Model
 
-The errors reference lets applications classify dispatcher and runtime failures by stable error code and structured context.
+Dagonizer uses one error class distinguished by `error.code`, not a subclass tree. Validation, configuration, execution, timeout, not-found, and container failures all use `DAGError` with context tailored to the failure.
 
-`@studnicky/dagonizer/errors`
-
-All errors thrown by the dispatcher are `DAGError` instances. `DAGError` is a single class distinguished by its `code` string — not a class hierarchy. Every throw site constructs `DAGError` with a `code` (`CONFIGURATION_ERROR`, `EXECUTION_ERROR`, `NOT_FOUND_ERROR`, `VALIDATION_ERROR`, `NODE_TIMEOUT`, or the container-specific `DAG_CONTAINER_ERROR`); callers distinguish by `error.code`, not `instanceof` on a subclass. Structured per-error data (e.g. a timed-out node's name and budget) lives in `context`.
-
-`DAGError` extends `@studnicky/errors`'s `ModuleError`, gaining cause-chain traversal (`findCauseOfType`, `getCauseChain`, `hasCauseOfType`) and a `retryable` classification.
+Use `instanceof DAGError` to identify package errors, then branch on `code` and inspect `context`.
 
 ## Code Samples
 
@@ -135,11 +125,19 @@ if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {
 }
 ```
 
-## Details for Nerds
+## Operational Uses
+
+All dispatcher-thrown package errors are `DAGError` instances. The class stays flat; the stable branch point is `error.code`, with structured per-error data carried in `context`.
+
+That keeps error handling uniform across registration failures, validation failures, runtime failures, and timeout/container failures without forcing callers into a subclass tree.
+
+`DAGError` extends `@studnicky/errors`'s `ModuleError`, gaining cause-chain traversal (`findCauseOfType`, `getCauseChain`, `hasCauseOfType`) and a `retryable` classification.
+
+## Runtime Notes
 
 Error `code` values are the stable branch point. Error messages are for people; context is for tools.
 
-Retryable classification belongs on the error, but retry policy decides what to do with it. A retryable error may still be aborted by deadline, circuit breaker, or application policy.
+Retryable classification belongs on the error, but retry policy decides what to do with it. A retryable error may still be aborted by deadline, circuit breaker, or host policy.
 
 ## Related Concepts
 

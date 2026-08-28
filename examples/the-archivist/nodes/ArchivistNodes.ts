@@ -36,6 +36,7 @@ import { RecallMemoriesNode }        from './recallMemories.ts';
 import { RecallPastVisitsNode }      from './recallPastVisits.ts';
 import { RecommendSimilarNode }      from './recommendSimilar.ts';
 import { RecordFindingsNode }        from './recordFindings.ts';
+import { ResolveBookDetailNode }     from './resolveBookDetail.ts';
 import {
   ComposeEmptyResponseNode,
   DeclineOffTopicNode,
@@ -82,6 +83,7 @@ export class ArchivistNodes {
 
   readonly groupByYear:       GroupByYearNode;
   readonly pickBestMatch:     PickBestMatchNode;
+  readonly resolveBookDetail: ResolveBookDetailNode;
   readonly rankByRating:      RankByRatingNode;
   readonly mergeCandidates:   MergeCandidatesNode;
   readonly buildBookWorksets: BuildBookWorksetsNode;
@@ -121,6 +123,7 @@ export class ArchivistNodes {
 
     this.groupByYear       = new GroupByYearNode();
     this.pickBestMatch     = new PickBestMatchNode();
+    this.resolveBookDetail = new ResolveBookDetailNode();
     this.rankByRating      = new RankByRatingNode();
     this.mergeCandidates   = new MergeCandidatesNode();
     this.buildBookWorksets = new BuildBookWorksetsNode();
@@ -150,7 +153,7 @@ export class ArchivistNodes {
       this.preRunSetup,
       this.parkForInput,
       this.recallContext, this.classifyIntent, this.extractQuery, this.decideTools,
-      this.buildBookWorksets,
+      this.buildBookWorksets, this.resolveBookDetail,
       this.rankByRating, this.pickBestMatch, this.mergeCandidates, this.recordFindings,
       this.hasCitationsGate, this.groupByYear, this.recallPastVisits, this.recommendSimilar,
       this.recallMemories, this.composeMemoryResponse, this.respondToVisitor,

@@ -206,7 +206,7 @@ export const incrementalDag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:shout' },
       "source":    'words',
       "itemKey":   'word',
-      "execution": { "mode": "item", "concurrency": 1 },                     // serial so fold ordering is deterministic
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 1 } } },  // serial so fold ordering is deterministic
       "outputs": {
         'all-success': 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
         "partial": 'urn:noocodec:dag:gather-demo:incremental/node/fold-incremental',
@@ -255,7 +255,7 @@ export const batchDag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:shout' },
       "source":    'words',
       "itemKey":   'word',
-      "execution": { "mode": "item", "concurrency": 1 },
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 1 } } },
       "outputs": {
         'all-success': 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',
         "partial": 'urn:noocodec:dag:gather-demo:batch/node/fold-batch',

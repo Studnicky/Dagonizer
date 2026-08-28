@@ -72,9 +72,9 @@ void describe('ScatterOptions.resolve — static factory', () => {
     assert.equal(resolved.reducer, 'any-success');
   });
 
-  void it('leaves execution, inputs, and container absent when omitted', () => {
+  void it('leaves configuration, inputs, and container absent when omitted', () => {
     const resolved = ScatterOptions.resolve({});
-    assert.equal(resolved.execution, undefined);
+    assert.equal(resolved.configuration, undefined);
     assert.equal(resolved.inputs, undefined);
     assert.equal(resolved.container, undefined);
   });
@@ -119,8 +119,7 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
     assert.equal(scatterNode.reducer, 'any-success');
   });
 
-  void it('omits execution, container, and stateMapping from produced ScatterNode when caller omits them', () => {
-    // Node-body scatter omitting execution and inputs.
+  void it('omits configuration, container, and stateMapping from produced ScatterNode when caller omits them', () => {
     const dag = new DAGBuilder(NO_OPTIONALS_DAG_IRI, '1', { 'name': 'no-optionals' })
       .scatter(NO_OPTIONALS_FAN_IRI, 'items', noop, {
         'all-success': NO_OPTIONALS_END_IRI,
@@ -133,7 +132,7 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
 
     const scatterNode = dag.nodes.find(Placement.isScatter);
     assert.ok(scatterNode !== undefined, 'ScatterNode present');
-    assert.equal('execution' in scatterNode, false, 'execution absent when not provided');
+    assert.equal('configuration' in scatterNode, false, 'configuration absent when not provided');
     assert.equal('stateMapping' in scatterNode, false, 'stateMapping absent when inputs not provided');
 
     // Dag-body scatter omitting container: container key must be absent.
@@ -175,7 +174,7 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
         'error':   BUILDER_CHECK_END_IRI,
         'empty':   BUILDER_CHECK_END_IRI,
       }, {
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
         'name': 'fan-out',
       })
@@ -190,8 +189,8 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
     if (!('node' in scatterNode.body)) throw new Error('unreachable — asserted above');
     assert.equal(scatterNode.body.node, 'urn:noocodec:node:noop');
     assert.equal(scatterNode.source, 'providers');
-    assert.ok(scatterNode.execution !== undefined && scatterNode.execution.mode === 'item', 'execution is item mode');
-    assert.equal(scatterNode.execution?.concurrency, 4);
+    assert.equal(scatterNode.configuration?.execution?.batching?.mode, 'item');
+    assert.equal(scatterNode.configuration?.execution?.batching?.concurrency, 4);
     assert.equal('gather' in scatterNode, false);
     assert.equal(scatterNode.reducer, 'any-success');
   });
@@ -208,7 +207,7 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
           'empty': RESERVOIR_PRESENT_END_IRI,
         },
         {
-          'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 100, 'idleMs': 500 } },
+          'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 100, 'idleMs': 500 } } } },
           'name': 'fan',
         })
       .terminal(RESERVOIR_PRESENT_END_IRI, { 'name': 'end' })
@@ -216,8 +215,9 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
 
     const scatterNode = dag.nodes.find(Placement.isScatter);
     assert.ok(scatterNode !== undefined, 'ScatterNode present');
-    assert.ok(scatterNode.execution !== undefined && scatterNode.execution.mode === 'reservoir', 'execution is reservoir mode');
-    const reservoir = scatterNode.execution.reservoir;
+    assert.equal(scatterNode.configuration?.execution?.batching?.mode, 'reservoir');
+    const reservoir = scatterNode.configuration?.execution?.batching?.reservoir;
+    assert.ok(reservoir !== undefined && reservoir !== null);
     assert.equal(reservoir.keyField, 'user.id');
     assert.equal(reservoir.capacity, 100);
     assert.equal(reservoir.idleMs, 500);
@@ -233,7 +233,7 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
           'empty': RESERVOIR_NO_IDLE_END_IRI,
         },
         {
-          'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'tenantId', 'capacity': 50 } },
+          'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'tenantId', 'capacity': 50 } } } },
           'name': 'fan',
         })
       .terminal(RESERVOIR_NO_IDLE_END_IRI, { 'name': 'end' })
@@ -241,14 +241,15 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
 
     const scatterNode = dag.nodes.find(Placement.isScatter);
     assert.ok(scatterNode !== undefined, 'ScatterNode present');
-    assert.ok(scatterNode.execution !== undefined && scatterNode.execution.mode === 'reservoir', 'execution is reservoir mode');
-    const reservoir = scatterNode.execution.reservoir;
+    assert.equal(scatterNode.configuration?.execution?.batching?.mode, 'reservoir');
+    const reservoir = scatterNode.configuration?.execution?.batching?.reservoir;
+    assert.ok(reservoir !== undefined && reservoir !== null);
     assert.equal(reservoir.keyField, 'tenantId');
     assert.equal(reservoir.capacity, 50);
     assert.equal('idleMs' in reservoir, false, 'idleMs absent when not provided');
   });
 
-  void it('execution absent from ScatterNode when caller omits it (wire-identical to pre-execution shape)', () => {
+  void it('configuration is absent from ScatterNode when caller omits it', () => {
     const dag = new DAGBuilder(NO_RESERVOIR_DAG_IRI, '1', { 'name': 'no-reservoir' })
       .scatter(NO_RESERVOIR_FAN_IRI, 'items', noop,
         {
@@ -263,10 +264,10 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
 
     const scatterNode = dag.nodes.find(Placement.isScatter);
     assert.ok(scatterNode !== undefined, 'ScatterNode present');
-    assert.equal('execution' in scatterNode, false, 'execution key absent when not provided');
+    assert.equal('configuration' in scatterNode, false, 'configuration key absent when not provided');
   });
 
-  void it('Validator.scatterNode accepts a scatter with execution.mode reservoir', () => {
+  void it('Validator.scatterNode accepts a scatter with execution.batching.mode reservoir', () => {
     const node = {
       '@id': 'urn:noocodec:dag:test/node/fan',
       '@type':   'ScatterNode',
@@ -276,7 +277,7 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
       'outputs': { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
       'itemKey': 'currentItem',
       'reducer': 'aggregate',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 10 } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 10 } } } },
     };
     // Must not throw.
     const result = Validator.scatterNode.validate(node);
@@ -294,7 +295,7 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
       'outputs': { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
       'itemKey': 'currentItem',
       'reducer': 'aggregate',
-      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 0 } },
+      'configuration': { 'execution': { 'batching': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'user.id', 'capacity': 0 } } } },
     };
     assert.throws(
       () => Validator.scatterNode.validate(node),
@@ -302,7 +303,7 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
     );
   });
 
-  void it('Validator.scatterNode rejects execution with both throttle and reservoir (schema structurally forbids the combination)', () => {
+  void it('Validator.scatterNode accepts inactive throttle fields beside reservoir configuration', () => {
     const node = {
       '@id': 'urn:noocodec:dag:test/node/fan',
       '@type':   'ScatterNode',
@@ -312,12 +313,12 @@ void describe('DAGBuilder.scatter — execution.reservoir option', () => {
       'outputs': { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
       'itemKey': 'currentItem',
       'reducer': 'aggregate',
-      'execution': {
+      'configuration': { 'execution': { 'batching': {
         'mode': 'reservoir',
         'reservoir': { 'keyField': 'user.id', 'capacity': 10 },
         'throttle': { 'concurrencyLimit': 2 },
-      },
+      } } },
     };
-    assert.throws(() => Validator.scatterNode.validate(node));
+    assert.equal(Validator.scatterNode.validate(node)['@type'], 'ScatterNode');
   });
 });

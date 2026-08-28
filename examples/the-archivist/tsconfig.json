@@ -10,6 +10,7 @@
     "lib":              ["ES2024", "DOM", "DOM.Iterable"]
   },
   "include": [
+    "vue-shims.d.ts",
     "main.ts",
     "runArchivist.ts",
     "vite.config.ts",

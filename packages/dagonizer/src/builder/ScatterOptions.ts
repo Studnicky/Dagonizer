@@ -16,9 +16,8 @@
  *
  * Three fields are intentionally left optional:
  *
- *   ⦿ `execution`  — defaults to `{ mode: 'item', concurrency: 1 }` at
- *                     runtime (`ScatterNodeDefaults.executionPolicy`); there
- *                     is no meaningful static default to materialise at build time.
+ *   ⦿ `configuration` — absence means the placement inherits the DAG and
+ *                       dispatcher policy tiers.
  *   ⦿ `inputs`     — absence is semantically meaningful ("no clone seeding");
  *                     materialising an empty `stateMapping` object changes the
  *                     wire shape without adding information.
@@ -77,7 +76,7 @@ export class ScatterOptions {
     partial: ScatterOptionsType<TState>,
   ): ResolvedScatterOptionsType<TState> {
     // Resolve only the statically-defaultable fields via spread; all other
-    // fields (execution, inputs, container) pass through from partial.
+    // fields pass through from the caller's placement declaration.
     const { itemKey, reducer } = {
       ...SCATTER_OPTION_DEFAULTS,
       ...(partial.itemKey !== undefined ? { 'itemKey': partial.itemKey } : {}),

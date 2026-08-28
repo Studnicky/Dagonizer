@@ -15,29 +15,18 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../exampleDags.ts';
 </script>
 
 # Example 07: Retry Flow
 
-## What It Is
+## Retry Surface
 
-Retry Flow is The Archivist showing its work when a model call, parser, or quality gate needs another attempt. A node routes a `retry` output that loops back through the DAG, bounded by state, or routes `salvage` to deterministic recovery.
+Retry in The Archivist is visible flow control for model calls, parsers, and quality gates that need another attempt. A node routes a `retry` output that loops back through the DAG, bounded by state, or routes `salvage` to deterministic recovery.
 
 The important part is visibility. Retry is not a hidden `while` loop in the dispatcher and not an exception swallowed inside a node; it is a named edge in the graph that appears in JSON-LD, Mermaid, traces, and checkpoints.
 
-## How It Works
-
-When a node fails its own deadline or an LLM call throws, it makes a flow decision rather than swallowing the failure: it routes a `retry` output that loops back in the DAG, bounded by a counter on the state, or routes `salvage` to a deterministic recovery node once the budget is spent. The node never fabricates a result to take the happy path, and there is no hidden retry loop inside the dispatcher.
-
-The same shape appears in two places:
-
-1. **Self-loop retry.** Each agent node (`extract-query`, `decide-tools`, `rank-candidates`, the composers) routes `retry` to itself and `salvage` to a recovery node.
-2. **Two-node retry loop.** `validate-response` routes `retry` back to `compose-response` when a draft fails the quality gate, bounded by the same `compose` budget.
-
-Both are loop edges in the topology. The dispatcher always sees a named output; nothing throws.
-
-## Diagrams, Examples, and Outputs
+## Retry and Salvage Flow
 
 ### DAG registration and diagram
 
@@ -51,11 +40,16 @@ In [The Archivist](./the-archivist) retry is a flow shape. The `compose-retry-lo
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Flow-loop versus Policy Model
 
-Retry flow lets applications represent recovery as visible graph topology instead of hidden exception handling. Use it when a model call, parser, or validation step can make another attempt, but the DAG must still show the loop, budget, and salvage path explicitly.
+When a node fails its own deadline or an LLM call throws, it makes a flow decision rather than swallowing the failure: it routes a `retry` output that loops back in the DAG, bounded by a counter on the state, or routes `salvage` to a deterministic recovery node once the budget is spent. The node never fabricates a result to take the happy path, and there is no hidden retry loop inside the dispatcher.
 
-This is useful for model-backed products because retry policy becomes debuggable. An application author can read the graph and see the recovery story, then trace exactly which placement retried, how many attempts remain, and where salvage rejoins the flow.
+The same shape appears in two places:
+
+1. **Self-loop retry.** Each agent node (`extract-query`, `decide-tools`, `rank-candidates`, the composers) routes `retry` to itself and `salvage` to a recovery node.
+2. **Two-node retry loop.** `validate-response` routes `retry` back to `compose-response` when a draft fails the quality gate, bounded by the same `compose` budget.
+
+Both are loop edges in the topology. The dispatcher always sees a named output; nothing throws.
 
 ## Code Samples
 
@@ -77,7 +71,13 @@ The `retry` output is a self-edge; `salvage` routes to a recovery node that perf
 
 <<< @/../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts
 
-## Details for Nerds
+## Operational Uses
+
+Retry flow lets teams represent recovery as visible graph topology instead of hidden exception handling. It fits model calls, parsers, or validation steps that can make another attempt while the DAG still needs to show the loop, budget, and salvage path explicitly.
+
+This is useful for model-backed products because retry policy becomes debuggable. A workflow author can read the graph and see the recovery story, then trace exactly which placement retried, how many attempts remain, and where salvage rejoins the flow.
+
+## Runtime Notes
 
 - **The retry budget on the conceptual root.** `state.recordAttempt(key)`, `state.retriesFor(key)`, `state.withinRetryBudget(key, max)`, and `state.clearAttempts(key)` live on `NodeStateBase`, keyed by `context.nodeName`, and ride along in the snapshot; a budget survives checkpoint/resume.
 - **Retry is a loop edge.** `retry` routes back to the same placement (a self-edge) or, for the compose loop, from `validate-response` to `compose-response`. The bound lives in state; the loop lives in the DAG. No special loop placement type, no acyclic constraint.
@@ -86,7 +86,7 @@ The `retry` output is a self-edge; `salvage` routes to a recovery node that perf
 
 For per-operation retry with backoff (a flaky network call inside a tool or adapter), see `RetryPolicy` in the [Retry guide](../guide/retry).
 
-See this in action in the [Archivist live demo](./the-archivist).
+The same retry loop is visible in [The Archivist](./the-archivist).
 
 ## Related Concepts
 

@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
 
-import { FileGraphDataset } from '@studnicky/dagonizer-store-file';
-
 import { N3GraphDataset } from '../../src/adapter/N3GraphDataset.js';
+import type { QuadType } from '../../src/contracts/TripleStoreInterface.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { GraphRetentionManager, GraphStateJsonLdCodec, GraphStateTransferCodec, InMemoryGraphDataset, InMemoryGraphStateTransferStore } from '../../src/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+
+const toAsync = async function* <T>(values: Iterable<T>): AsyncIterable<T> {
+  for (const value of values) {
+    yield value;
+  }
+};
 
 void describe('GraphStateTransferCodec', () => {
   const transferIdentity = (runIri: string, graphIri: string) => ({
@@ -17,7 +20,6 @@ void describe('GraphStateTransferCodec', () => {
     'placementPath': [`${graphIri}/placement`],
     'placementIri': `${graphIri}/placement`,
     'stateGraphIri': graphIri,
-    'jsonLd': { '@context': GraphStateTerms.JSON_LD_CONTEXT, '@graph': [] },
   });
   void it('round-trips RDF 1.2 triple terms and named graphs', () => {
     const graph = DagGraphTerms.namedNode('urn:dagonizer:run:test#state');
@@ -78,21 +80,20 @@ void describe('GraphStateTransferCodec', () => {
     assert.deepEqual(GraphStateJsonLdCodec.decode(document), source);
   });
 
-  void it('restores a Node.js boundary transfer from JSON-LD before N-Quads', async () => {
-    const runIri = 'urn:state:jsonld-transfer';
+  void it('restores a Node.js boundary transfer from inline N-Quads payload', async () => {
+    const runIri = 'urn:state:nquads-transfer';
     const graphIri = `${runIri}#state`;
     const source = [{
       "subject": DagGraphTerms.namedNode(runIri),
-      "predicate": DagGraphTerms.namedNode('urn:state:jsonld:value'),
-      "object": DagGraphTerms.literal('from-jsonld'),
+      "predicate": DagGraphTerms.namedNode('urn:state:nquads:value'),
+      "object": DagGraphTerms.literal('from-nquads'),
       "graph": DagGraphTerms.namedNode(graphIri),
     }];
-    const transfer = {
-      ...GraphStateTransferCodec.inline(runIri, [graphIri], source, transferIdentity(runIri, graphIri)),
-      "jsonLd": GraphStateJsonLdCodec.encode(source),
-    };
+    const transfer = GraphStateTransferCodec.inlineSync([{ runIri, 'quads': source }]);
     const state = new NodeStateBase(new InMemoryGraphDataset(), runIri);
-    await GraphStateTransferCodec.restore(state, transfer);
+    const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': runIri, runIri }], null);
+    assert.ok(part !== undefined);
+    await state.restoreGraph(part.runIri, part.quads);
     assert.deepEqual([...state.graphDataset.match({ "graph": DagGraphTerms.namedNode(graphIri) })], source);
   });
 
@@ -106,25 +107,169 @@ void describe('GraphStateTransferCodec', () => {
     assert.equal(GraphStateTransferCodec.decode(chunks.join('')).length, 2);
   });
 
-  void it('applies an inline transfer through the shared graph dataset port', () => {
+  void it('applies an inline transfer through the shared graph dataset port', async () => {
     const source = [{
       "subject": DagGraphTerms.namedNode('urn:run'),
       "predicate": DagGraphTerms.namedNode('urn:key'),
       "object": DagGraphTerms.literal('value'),
       "graph": DagGraphTerms.namedNode('urn:run#state'),
     }];
-    const transfer = GraphStateTransferCodec.inline('urn:run', ['urn:run#state'], source, transferIdentity('urn:run', 'urn:run#state'));
+    const transfer = GraphStateTransferCodec.inlineSync([{ 'runIri': 'urn:run', 'quads': source }]);
     const dataset = new InMemoryGraphDataset();
-    GraphStateTransferCodec.apply(dataset, transfer);
+    const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': 'urn:run', 'runIri': 'urn:run' }], null);
+    assert.ok(part !== undefined);
+    const restored: QuadType[] = [];
+    for await (const quad of part.quads) restored.push(quad);
+    dataset.add(restored);
 
-    if (transfer.mode === 'inline-nquads') {
-      assert.equal(transfer.dagIri, 'urn:run#dag');
-      assert.equal(transfer.stateGraphIri, 'urn:run#state');
-      assert.equal(transfer.quadCount, 1);
-      assert.ok(transfer.byteSize > 0);
-      assert.match(transfer.createdAt, /^\d{4}-\d{2}-\d{2}T/);
-    }
+    assert.equal(transfer.transport, 'inline-nquads');
+    assert.deepEqual(transfer.graphIris, ['urn:run#state']);
+    assert.equal(transfer.quadCount, 1);
+    assert.ok(transfer.byteSize > 0);
     assert.deepEqual([...dataset.match({ "graph": DagGraphTerms.namedNode('urn:run#state') })], source);
+  });
+
+  void it('rejects empty and independently duplicated item identities', () => {
+    const firstRunIri = 'urn:identity:first';
+    const secondRunIri = 'urn:identity:second';
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [{ 'id': '', 'runIri': firstRunIri }]),
+      /item id must be non-empty/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [{ 'id': 'first', 'runIri': '' }]),
+      /item run IRI must be non-empty/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'duplicate', 'runIri': firstRunIri },
+        { 'id': 'duplicate', 'runIri': secondRunIri },
+      ]),
+      /duplicate item id/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': firstRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ]),
+      /duplicate item run IRI/u,
+    );
+  });
+
+  void it('requires transfer graph IRIs to be a duplicate-free exact item graph set', () => {
+    const firstRunIri = 'urn:graph-identity:first';
+    const secondRunIri = 'urn:graph-identity:second';
+    const firstGraphIri = GraphStateTerms.runGraphIri(firstRunIri);
+    const secondGraphIri = GraphStateTerms.runGraphIri(secondRunIri);
+    const items = [
+      { 'id': 'first', 'runIri': firstRunIri },
+      { 'id': 'second', 'runIri': secondRunIri },
+    ];
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, firstGraphIri] }, items),
+      /duplicate graph IRIs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri] }, items),
+      /do not exactly match item run graphs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, secondGraphIri, 'urn:graph-identity:extra#state'] }, items),
+      /do not exactly match item run graphs/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity({ ...transfer, 'graphIris': [firstGraphIri, 'urn:graph-identity:other#state'] }, items),
+      /do not exactly match item run graphs/u,
+    );
+  });
+
+  void it('requires response identity pairs to exactly equal request pairs', () => {
+    const firstRunIri = 'urn:response-identity:first';
+    const secondRunIri = 'urn:response-identity:second';
+    const requestItems = [
+      { 'id': 'first', 'runIri': firstRunIri },
+      { 'id': 'second', 'runIri': secondRunIri },
+    ];
+    const transfer = GraphStateTransferCodec.inlineSync([
+      { 'runIri': firstRunIri, 'quads': [] },
+      { 'runIri': secondRunIri, 'quads': [] },
+    ]);
+
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(
+        { ...transfer, 'graphIris': [GraphStateTerms.runGraphIri(firstRunIri)] },
+        [{ 'id': 'first', 'runIri': firstRunIri }],
+        requestItems,
+      ),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(
+        GraphStateTransferCodec.inlineSync([
+          { 'runIri': firstRunIri, 'quads': [] },
+          { 'runIri': secondRunIri, 'quads': [] },
+          { 'runIri': 'urn:response-identity:extra', 'quads': [] },
+        ]),
+        [...requestItems, { 'id': 'extra', 'runIri': 'urn:response-identity:extra' }],
+        requestItems,
+      ),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': secondRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ], requestItems),
+      /response identities do not exactly match request identities/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'duplicate', 'runIri': firstRunIri },
+        { 'id': 'duplicate', 'runIri': secondRunIri },
+      ], requestItems),
+      /duplicate item id/u,
+    );
+    assert.throws(
+      () => GraphStateTransferCodec.validateIdentity(transfer, [
+        { 'id': 'first', 'runIri': firstRunIri },
+        { 'id': 'second', 'runIri': firstRunIri },
+      ], requestItems),
+      /duplicate item run IRI/u,
+    );
+  });
+
+  void it('rejects undeclared graphs in full and delta payloads before partition restore', async () => {
+    const runIri = 'urn:payload-identity:run';
+    const undeclaredQuad = {
+      'subject': DagGraphTerms.namedNode('urn:payload-identity:subject'),
+      'predicate': DagGraphTerms.namedNode('urn:payload-identity:predicate'),
+      'object': DagGraphTerms.literal('undeclared'),
+      'graph': DagGraphTerms.namedNode('urn:payload-identity:extra#state'),
+    };
+    const items = [{ 'id': 'item', runIri }];
+    const fullTransfer = GraphStateTransferCodec.inlineSync([{ runIri, 'quads': [undeclaredQuad] }]);
+    const deltaTransfer = GraphStateTransferCodec.delta([
+      { runIri, 'additions': [], 'deletions': [undeclaredQuad] },
+    ], 'urn:payload-identity:base');
+
+    await assert.rejects(
+      () => GraphStateTransferCodec.restore(fullTransfer, items, null),
+      /payload contains undeclared graph/u,
+    );
+    await assert.rejects(
+      () => GraphStateTransferCodec.restore(deltaTransfer, items, null),
+      /payload contains undeclared graph/u,
+    );
   });
 
   void it('treats repeated semantic assertions as exact-set-idempotent', () => {
@@ -364,113 +509,6 @@ void describe('GraphStateTransferCodec', () => {
     assert.equal(first.revision(), cached);
   });
 
-  void it('reopens the durable file adapter from canonical N-Quads', () => {
-    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
-    const path = `${directory}/state.nq`;
-    try {
-      const source = new FileGraphDataset(path);
-      const graph = DagGraphTerms.namedNode('urn:file:graph');
-      source.add([{
-        "subject": DagGraphTerms.namedNode('urn:file:subject'),
-        "predicate": DagGraphTerms.namedNode('urn:file:predicate'),
-        "object": DagGraphTerms.literal('durable'),
-        graph,
-      }]);
-
-      const reopened = new FileGraphDataset(path);
-      assert.equal(reopened.count({ "graph": graph }), 1);
-      assert.equal([...reopened.match({ "graph": graph })][0]?.object.value, 'durable');
-      assert.equal(reopened.count({ "graph": DagGraphTerms.namedNode(GraphStateTerms.revisionGraphIri()) }), 4);
-      assert.match(reopened.revision(), /^graph-rev-[0-9a-f]{64}$/);
-    } finally {
-      rmSync(directory, { "recursive": true, "force": true });
-    }
-  });
-
-  void it('keeps durable revisions stable across blank-node reopen and write', () => {
-    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
-    const path = `${directory}/blank-state.nq`;
-    try {
-      const source = new FileGraphDataset(path);
-      const graph = DagGraphTerms.namedNode('urn:file:blank:graph');
-      source.add([{
-        "subject": { "termType": 'BlankNode', "value": 'source' },
-        "predicate": DagGraphTerms.namedNode('urn:file:blank:predicate'),
-        "object": DagGraphTerms.literal('durable'),
-        graph,
-      }]);
-
-      const reopened = new FileGraphDataset(path);
-      reopened.assert(
-        DagGraphTerms.namedNode('urn:file:blank:subject'),
-        DagGraphTerms.namedNode('urn:file:blank:predicate'),
-        DagGraphTerms.literal('after-reopen'),
-        graph,
-      );
-      assert.equal(reopened.count({ "graph": graph }), 2);
-    } finally {
-      rmSync(directory, { "recursive": true, "force": true });
-    }
-  });
-
-  void it('persists durable RDF 1.2 triple terms and recomputes their revision', () => {
-    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
-    const path = `${directory}/triple-term-state.nq`;
-    try {
-      const source = new FileGraphDataset(path);
-      const graph = DagGraphTerms.namedNode('urn:file:triple-term:graph');
-      const triple = DagGraphTerms.tripleTerm(
-        DagGraphTerms.namedNode('urn:file:triple-term:subject'),
-        DagGraphTerms.namedNode('urn:file:triple-term:predicate'),
-        { "termType": 'BlankNode', "value": 'inner' },
-      );
-      source.assert(
-        DagGraphTerms.namedNode('urn:file:triple-term:annotation'),
-        DagGraphTerms.namedNode('urn:file:triple-term:reifies'),
-        triple,
-        graph,
-      );
-
-      const reopened = new FileGraphDataset(path);
-      assert.equal(reopened.count({ "graph": graph }), 1);
-      assert.match(reopened.revision(), /^graph-rev-[0-9a-f]{64}$/u);
-    } finally {
-      rmSync(directory, { "recursive": true, "force": true });
-    }
-  });
-
-  void it('journals direct durable writes without rewriting the snapshot', () => {
-    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
-    const path = `${directory}/journaled-state.nq`;
-    try {
-      const dataset = new FileGraphDataset(path);
-      const graph = DagGraphTerms.namedNode('urn:file:journal:graph');
-      dataset.assert(
-        DagGraphTerms.namedNode('urn:file:journal:subject:0'),
-        DagGraphTerms.namedNode('urn:file:journal:predicate'),
-        DagGraphTerms.literal('0'),
-        graph,
-      );
-      dataset.flush();
-      const snapshot = readFileSync(path, 'utf8');
-      for (let index = 1; index < 4; index += 1) {
-        dataset.assert(
-          DagGraphTerms.namedNode(`urn:file:journal:subject:${index}`),
-          DagGraphTerms.namedNode('urn:file:journal:predicate'),
-          DagGraphTerms.literal(String(index)),
-          graph,
-        );
-      }
-      assert.equal(readFileSync(path, 'utf8'), snapshot);
-      assert.equal(existsSync(`${path}.journal`), true);
-      dataset.flush();
-      assert.equal(existsSync(path), true);
-      assert.equal(existsSync(`${path}.journal`), false);
-    } finally {
-      rmSync(directory, { "recursive": true, "force": true });
-    }
-  });
-
   void it('rolls back N3 graph transactions when a write fails', () => {
     const dataset = new N3GraphDataset();
     const graph = DagGraphTerms.namedNode('urn:transaction:graph');
@@ -484,28 +522,6 @@ void describe('GraphStateTransferCodec', () => {
       throw new Error('transaction failed');
     }), /transaction failed/u);
     assert.equal(dataset.count({ "graph": graph }), 0);
-  });
-
-  void it('rolls back durable graph transactions before the commit boundary', () => {
-    const directory = mkdtempSync(`${tmpdir()}/dagonizer-graph-`);
-    const path = `${directory}/transaction.nq`;
-    try {
-      const dataset = new FileGraphDataset(path);
-      const graph = DagGraphTerms.namedNode('urn:file:transaction:graph');
-      assert.throws(() => dataset.transact((transaction) => {
-        transaction.assert(
-          DagGraphTerms.namedNode('urn:file:transaction:subject'),
-          DagGraphTerms.namedNode('urn:file:transaction:predicate'),
-          DagGraphTerms.literal('partial'),
-          graph,
-        );
-        throw new Error('durable transaction failed');
-      }), /durable transaction failed/u);
-      assert.equal(dataset.count({ "graph": graph }), 0);
-      assert.equal(new FileGraphDataset(path).count({ "graph": graph }), 0);
-    } finally {
-      rmSync(directory, { "recursive": true, "force": true });
-    }
   });
 
   void it('rejects a durable graph transaction against a stale revision', () => {
@@ -528,10 +544,14 @@ void describe('GraphStateTransferCodec', () => {
       "graph": DagGraphTerms.namedNode('urn:ref:run#state'),
     }];
     const store = new InMemoryGraphStateTransferStore('urn:transfer:local');
-    const transfer = await GraphStateTransferCodec.reference(store, 'urn:ref:run', ['urn:ref:run#state'], source, transferIdentity('urn:ref:run', 'urn:ref:run#state'));
+    const transfer = await GraphStateTransferCodec.reference(store, [{ 'runIri': 'urn:ref:run', 'quads': toAsync(source) }], transferIdentity('urn:ref:run', 'urn:ref:run#state'));
     const destination = new InMemoryGraphDataset();
 
-    await GraphStateTransferCodec.applyExternal(destination, transfer, store);
+    const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': 'urn:ref:run', 'runIri': 'urn:ref:run' }], store);
+    assert.ok(part !== undefined);
+    const quads: QuadType[] = [];
+    for await (const quad of part.quads) quads.push(quad);
+    destination.add(quads);
 
     assert.equal(destination.count({ "graph": DagGraphTerms.namedNode('urn:ref:run#state') }), 1);
   });
@@ -551,11 +571,15 @@ void describe('GraphStateTransferCodec', () => {
       graph,
     };
     const store = new InMemoryGraphStateTransferStore('urn:transfer:delta');
-    const snapshot = await GraphStateTransferCodec.reference(store, 'urn:delta:run', [graph.value], base, transferIdentity('urn:delta:run', graph.value));
-    const transfer = GraphStateTransferCodec.delta('urn:delta:run', snapshot.graphSnapshotRef, [addition], base, transferIdentity('urn:delta:run', graph.value));
+    const snapshot = await GraphStateTransferCodec.reference(store, [{ 'runIri': 'urn:delta:run', 'quads': toAsync(base) }], transferIdentity('urn:delta:run', graph.value));
+    const transfer = GraphStateTransferCodec.delta([{ 'runIri': 'urn:delta:run', 'additions': [addition], 'deletions': [] }], snapshot.graphSnapshotRef);
     const destination = new InMemoryGraphDataset();
 
-    await GraphStateTransferCodec.applyExternal(destination, transfer, store);
+    const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': 'urn:delta:run', 'runIri': 'urn:delta:run' }], store);
+    assert.ok(part !== undefined);
+    const quads: QuadType[] = [];
+    for await (const quad of part.quads) quads.push(quad);
+    destination.add(quads);
 
     assert.equal(destination.count({ "graph": graph }), 1);
     assert.equal(destination.count({ "object": addition.object, "graph": graph }), 1);
@@ -576,43 +600,53 @@ void describe('GraphStateTransferCodec', () => {
       graph,
     };
     const store = new InMemoryGraphStateTransferStore('urn:transfer:delta-ref');
-    const snapshot = await GraphStateTransferCodec.reference(store, 'urn:delta-ref:run', [graph.value], base, transferIdentity('urn:delta-ref:run', graph.value));
-    const transfer = GraphStateTransferCodec.deltaReference('urn:delta-ref:run', snapshot.graphSnapshotRef, [addition], base, transferIdentity('urn:delta-ref:run', graph.value));
+    const snapshot = await GraphStateTransferCodec.reference(store, [{ 'runIri': 'urn:delta-ref:run', 'quads': toAsync(base) }], transferIdentity('urn:delta-ref:run', graph.value));
+    const transfer = GraphStateTransferCodec.delta([{ 'runIri': 'urn:delta-ref:run', 'additions': [addition], 'deletions': [] }], snapshot.graphSnapshotRef, { 'reference': true });
     const destination = new InMemoryGraphDataset();
 
-    await GraphStateTransferCodec.applyExternal(destination, transfer, store);
+    const [part] = await GraphStateTransferCodec.restore(transfer, [{ 'id': 'urn:delta-ref:run', 'runIri': 'urn:delta-ref:run' }], store);
+    assert.ok(part !== undefined);
+    const quads: QuadType[] = [];
+    for await (const quad of part.quads) quads.push(quad);
+    destination.add(quads);
 
     assert.equal(destination.count({ "graph": graph }), 1);
     assert.equal(destination.count({ "object": addition.object, "graph": graph }), 1);
   });
 
   void it('requires an active scoped lease for shared graph reads', async () => {
-    const source = new InMemoryGraphDataset();
-    const graph = DagGraphTerms.namedNode('urn:shared:graph');
-    source.add([{
+    const runIri = 'urn:shared:run';
+    const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri));
+    const sourceQuad = {
       "subject": DagGraphTerms.namedNode('urn:shared:subject'),
       "predicate": DagGraphTerms.namedNode('urn:shared:predicate'),
       "object": DagGraphTerms.literal('shared'),
       graph,
-    }]);
-    const store = new InMemoryGraphStateTransferStore('urn:transfer:shared', async function* (graphIris) {
-      for (const graphIri of graphIris) yield* source.exportGraph(DagGraphTerms.namedNode(graphIri));
-    });
-    const transfer = await GraphStateTransferCodec.shared(store, 'urn:shared:run', [graph.value], 10_000, transferIdentity('urn:shared:run', graph.value));
+    };
+    const store = new InMemoryGraphStateTransferStore('urn:transfer:shared');
+    const transfer = await GraphStateTransferCodec.shared(store, [{ runIri, 'quads': toAsync([sourceQuad]) }], 10_000);
     const destination = new InMemoryGraphDataset();
+    const items = [{ 'id': runIri, runIri }];
 
-    await GraphStateTransferCodec.applyExternal(destination, transfer, store);
+    const [part] = await GraphStateTransferCodec.restore(transfer, items, store);
+    assert.ok(part !== undefined);
+    const quads: QuadType[] = [];
+    for await (const quad of part.quads) quads.push(quad);
+    destination.add(quads);
     assert.equal(destination.count({ "graph": graph }), 1);
     await store.releaseLease({ "endpoint": transfer.endpoint, "token": transfer.lease, "graphIris": transfer.graphIris, "expiresAt": Number.POSITIVE_INFINITY });
-    await assert.rejects(() => GraphStateTransferCodec.applyExternal(new InMemoryGraphDataset(), transfer, store), /expired or unknown/);
+    await assert.rejects(() => GraphStateTransferCodec.restore(transfer, items, store), /expired or unknown/);
   });
 
   void it('discards an incomplete snapshot artifact during cancellation cleanup', async () => {
     const store = new InMemoryGraphStateTransferStore('urn:transfer:cleanup');
-    const transfer = await GraphStateTransferCodec.reference(store, 'urn:cleanup:run', ['urn:cleanup:run#state'], [], transferIdentity('urn:cleanup:run', 'urn:cleanup:run#state'));
+    const transfer = await GraphStateTransferCodec.reference(store, [{ 'runIri': 'urn:cleanup:run', 'quads': toAsync([]) }], transferIdentity('urn:cleanup:run', 'urn:cleanup:run#state'));
 
     await GraphStateTransferCodec.discard(store, transfer.graphSnapshotRef);
 
-    await assert.rejects(() => GraphStateTransferCodec.applyExternal(new InMemoryGraphDataset(), transfer, store), /Unknown graph snapshot reference/);
+    await assert.rejects(
+      () => GraphStateTransferCodec.restore(transfer, [{ 'id': 'urn:cleanup:run', 'runIri': 'urn:cleanup:run' }], store),
+      /Unknown graph snapshot reference/,
+    );
   });
 });

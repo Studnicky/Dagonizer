@@ -7,32 +7,22 @@ seeAlso:
     description: 'how the dispatcher, contracts, and plugins interlock'
   - text: 'The Archivist'
     link: '../examples/the-archivist'
-    description: 'in-browser demo wiring adapters, tools, and patterns together'
+    description: 'workflow combining adapters, tools, and patterns in one DAG stack'
 ---
 
 <script setup lang="ts">
-import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ingestSourceDAG, normalizeCsvDAG, normalizeJsonDAG } from '../exampleDags.ts';
 </script>
 
 # Plugins
 
-## What It Is
+## Plugin Assembly
 
 Plugins package reusable Dagonizer parts without creating a second execution model. A plugin can ship nodes, DAG JSON-LD, namespace context, and exported DAG IRIs. The host registers the plugin once, then composes those exported DAGs exactly like locally-authored child DAGs, tool DAGs, or runtime-selected `DagReference` candidates.
 
 Adapters, tools, and patterns are still plugin tiers, but the main assembly rule is simpler: if a reusable flow can be embedded, ship it as a DAG.
 
-## How It Works
-
-A plugin declares an ID, optional context, nodes, DAGs, and exports. `registerPlugin` scopes and registers those parts into the same registries used by local bundles. Higher-level DAGs reference plugin DAG IRIs through normal `EmbeddedDAGNode`, scatter DAG body, or dynamic `DagReference` placements; there is no plugin-specific execution path.
-
-Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@studnicky/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
-
-::: warning Beta
-The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable.
-:::
-
-## Diagrams, Examples, and Outputs
+## Registered Flows
 
 The Cartographer packages source-normalization child DAGs as a plugin. The ingest DAG embeds those plugin-provided DAG IRIs through normal `EmbeddedDAGNode` placements:
 
@@ -43,17 +33,23 @@ The Cartographer packages source-normalization child DAGs as a plugin. The inges
 <DagJsonMermaid :dag="normalizeJsonDAG" title="plugin-provided normalize-json DAG" aria-label="Plugin-provided JSON normalization JSON-LD DAG beside Mermaid generated from it." />
 
 - [Architecture](../architecture) - how the dispatcher, contracts, and plugins interlock
-- [The Archivist](../examples/the-archivist) - in-browser demo wiring adapters, tools, and patterns together
-- [Example 33: Plugin-Defined DAGs](../examples/33-plugin) - Cartographer normalization plugin in a runnable DAG
-- [The Cartographer](../examples/the-cartographer) - browser runner that registers the normalization plugin before execution
+- [The Archivist](../examples/the-archivist) - workflow combining adapters, tools, and patterns in one DAG stack
+- [Example 33: Plugin-Defined DAGs](../examples/33-plugin) - Cartographer normalization plugin registered into a parent workflow
+- [The Cartographer](../examples/the-cartographer) - workflow registering the normalization plugin before execution
 
-## What It Lets You Do
+## Registration Contract
 
-Use plugins when reusable nodes, DAGs, adapters, tools, or abstract patterns should be packaged independently and installed into a higher-level DAG. Plugin-defined DAGs, hand-authored embedded DAGs, tools-as-DAGs, and dynamic DAG references use the same registry and the same JSON-LD assembly interface.
+A plugin declares an ID, optional context, nodes, DAGs, and exports. `registerPlugin` scopes and registers those parts into the same registries used by local bundles. Higher-level DAGs reference plugin DAG IRIs through normal `EmbeddedDAGNode`, scatter DAG body, or dynamic `DagReference` placements; there is no plugin-specific execution path.
+
+Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath API on the main `@studnicky/dagonizer` package; each API stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
+
+<UiCallout kind="warning" title="Beta">
+  <p>The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (<code>./adapter</code>, <code>./tool</code>, <code>./patterns</code>) are stable.</p>
+</UiCallout>
 
 ## Code Samples
 
-The snippets below show the public plugin tiers, the high-level plugin definition helper, and the registry/discovery utilities.
+The code samples cover the public plugin tiers, the high-level plugin definition helper, and the registry/discovery utilities.
 
 ### Plugin tiers
 
@@ -61,7 +57,7 @@ The snippets below show the public plugin tiers, the high-level plugin definitio
 |------|------------------|----------|-------|
 | **Adapters** | `@studnicky/dagonizer/adapter` | `@studnicky/dagonizer-adapter-*` (8) | Concrete drop-in classes |
 | **Tools** | `@studnicky/dagonizer/tool` (+ `/adapter`) | `@studnicky/dagonizer-tool-*` (3) | Concrete classes implementing `ToolInterface<TInput, TOutput>` |
-| **Patterns** | `@studnicky/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@studnicky/dagonizer-patterns-*` (3) | Abstract base classes applications extend |
+| **Patterns** | `@studnicky/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@studnicky/dagonizer-patterns-*` (3) | Abstract base classes hosts extend |
 
 ### `@studnicky/dagonizer/adapter`
 
@@ -85,7 +81,7 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 #### Writing an adapter
 
-Extend `BaseAdapter` and implement the one abstract method, `performChat`. The adapter below is complete and runnable — it echoes the last user message instead of calling a provider, so it needs no network:
+Extend `BaseAdapter` and implement the one abstract method, `performChat`. The adapter below is a complete example implementation — it echoes the last user message instead of calling a provider, so it needs no network:
 
 <<< @/../examples/dags/custom-adapter.ts#custom-adapter
 
@@ -93,11 +89,11 @@ A production adapter fills `performChat` with a real HTTP call; retry, error cla
 
 ### `@studnicky/dagonizer/tool`
 
-The tool subpath exposes a small surface for external-service wrappers:
+The tool subpath exposes a small API for external-service wrappers:
 
 | Symbol | Role |
 |--------|------|
-| `ToolInterface<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, options?)` |
+| `ToolInterface<TInput, TOutput>` | Contract: `definition` (the JSON-Schema shape shown to the LLM) + `execute(input, options?)` |
 | `ToolError` | Error type with `classification.reason` |
 | `HttpTransport` | Built-in retry, timeout, abort propagation, optional token bucket / circuit breaker composition, JSON parsing for HTTP-backed tools |
 
@@ -146,25 +142,29 @@ MonadicNode<TState, TOutput>                       (root: main package)
 
 <<< @/../examples/dags/pattern-node.ts#pattern-node
 
-The pattern handles LLM dispatch, retry, abort propagation, and contract field forwarding. The lines above are everything the application writes. The `pattern-node` example runs this `IntentClassifier` inside a DAG against an in-process LLM; run it with `npx tsx examples/pattern-node.ts`.
+The pattern handles LLM dispatch, retry, abort propagation, and contract field forwarding. The lines above are everything the host writes. The `pattern-node` example runs this `IntentClassifier` inside a DAG against an in-process LLM; run it with `npx tsx examples/pattern-node.ts`.
 
 ### Why three subpaths
 
 Each contract subpath is independently consumable:
 
-- An **adapter package** depends on `@studnicky/dagonizer/adapter` only; never pulls in the pattern surface.
+- An **adapter package** depends on `@studnicky/dagonizer/adapter` only; never pulls in the patterns package.
 - A **tool package** depends on `@studnicky/dagonizer/tool` + `/adapter` (for `ToolDefinition`); never pulls in patterns.
 - A **pattern package** depends on `@studnicky/dagonizer/patterns` (root) + occasionally `/adapter` (RAG patterns need LLM types) + `/tool` (ScoutNode references `Tool`).
 
 Applications install only what they use. The dependency graph stays acyclic.
 
-## Details for Nerds
+## Operational Uses
+
+Use plugins when reusable nodes, DAGs, adapters, tools, or abstract patterns should be packaged independently and installed into a higher-level DAG. Plugin-defined DAGs, hand-authored embedded DAGs, tools-as-DAGs, and dynamic DAG references use the same registry and the same JSON-LD assembly interface.
+
+## Runtime Notes
 
 ### Plugin loader
 
 #### `PluginInterface`
 
-A plugin package implements `PluginInterface` — a stable `id` plus `register(dispatcher)` — to install its nodes and DAGs onto any dispatcher. The receiver is typed as `PluginReceiverType`, a narrow view that only exposes `registerBundle`. The plugin cannot reach any other dispatcher surface.
+A plugin package implements `PluginInterface` — a stable `id` plus `register(dispatcher)` — to install its nodes and DAGs onto any dispatcher. The receiver is typed as `PluginReceiverType`, a narrow view that only exposes `registerBundle`. The plugin cannot reach any other dispatcher API.
 
 ```ts
 import type { PluginInterface, PluginReceiverType, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
@@ -190,7 +190,7 @@ export class NormalizePlugin implements PluginInterface {
 
 `defineDagonizerPlugin()` is the high-level authoring helper for plugin packages. It returns a valid `PluginInterface` plus typed `exports` that point at DAG IRIs inside the plugin bundle.
 
-Use it when the plugin packages reusable DAGs:
+`defineDagonizerPlugin()` packages reusable DAGs behind one plugin definition:
 
 ```ts
 import { defineDagonizerPlugin } from '@studnicky/dagonizer/plugin';
@@ -217,7 +217,7 @@ The `id` is the plugin package/specifier owner for its context prefixes. The exp
 
 Authoring rule:
 
-- If an application can embed it, it should be a DAG.
+- If a workflow can embed it, it should be a DAG.
 - If a plugin ships it, it exports the DAG IRI or CURIE.
 - There is no separate plugin runtime object graph.
 
@@ -256,9 +256,9 @@ const registry = new Map(dispatcher.listDAGs().map(dag => [DagGraphProjector.dag
 const allDagIris = PluginDiscovery.walk(myDag, registry);
 ```
 
-Dynamic `DagReference` candidates are projected into the graph and participate in discovery. Literal DAG references and dynamic candidate DAGs use the same graph query path, so plugin DAGs and local DAGs stay on one registry surface.
+Dynamic `DagReference` candidates are projected into the graph and participate in discovery. Literal DAG references and dynamic candidate DAGs use the same graph query path, so plugin DAGs and local DAGs stay on one registry interface.
 
-When applications want to render or inspect a whole reachable forest, the registry should be keyed by expanded DAG IRI, not by plugin object identity. That keeps plugin DAGs and local DAGs on the same interface and matches the graph projection used by validation and JSON-LD rendering.
+When hosts want to render or inspect a whole reachable forest, the registry should be keyed by expanded DAG IRI, not by plugin object identity. That keeps plugin DAGs and local DAGs on the same interface and matches the graph projection used by validation and JSON-LD rendering.
 
 #### `PluginLoader` — type-safe dynamic import
 
@@ -301,8 +301,8 @@ Run: `npx tsx examples/33-plugin.ts`
 
 ## Related Concepts
 
-- [Example 33: Plugin-Defined DAGs](../examples/33-plugin) - the smallest runnable plugin registration and embedding path
-- [The Cartographer](../examples/the-cartographer) - browser demo registering plugin-defined normalization DAGs before execution
+- [Example 33: Plugin-Defined DAGs](../examples/33-plugin) - focused plugin registration and embedding path
+- [The Cartographer](../examples/the-cartographer) - workflow registering plugin-defined normalization DAGs before execution
 - [IRI Identity](./iri-identity) - prefix expansion rules that keep independently-authored plugins from colliding
 - [DAGBuilder](./builder) - the `.embed()` API used by plugin-host DAGs
 - [Reference: Contracts](../reference/contracts) - plugin, bundle, node, store, and adapter contracts

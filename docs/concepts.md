@@ -2,12 +2,12 @@
 title: 'Concepts'
 description: 'Core vocabulary for Dagonizer: batch-native nodes, JSON-LD DAGs, placement kinds, routing, lifecycle, state, scatter/gather, and checkpoint resume.'
 seeAlso:
-  - text: 'The Archivist demo'
+  - text: 'The Archivist'
     link: './examples/the-archivist'
-    description: 'these concepts in a running LLM-agent flow'
-  - text: 'The Cartographer demo'
+    description: 'these concepts in an executable LLM-agent workflow'
+  - text: 'The Cartographer'
     link: './examples/the-cartographer'
-    description: 'these concepts in a running data-orchestration / ETL flow'
+    description: 'these concepts in an executable data-orchestration / ETL flow'
   - text: 'Architecture'
     link: './architecture'
     description: 'internals and submodule layout'
@@ -24,19 +24,19 @@ seeAlso:
 
 # Concepts
 
-## What It Is
+## Vocabulary Surface
 
-Use this page as the vocabulary map for the rest of the docs. It defines the nouns that appear everywhere else: node, DAG, placement, state, lifecycle, dispatcher, execution, route, scatter, checkpoint, and composition.
+These terms define the runtime and API vocabulary: node, DAG, placement, state, lifecycle, dispatcher, execution, route, scatter, checkpoint, and composition.
 
-Dagonizer is domain-agnostic. The Archivist uses these concepts for an LLM-agent flow; the Cartographer uses the same concepts for streaming ETL; the Dispatcher uses them for human-in-the-loop support routing. The words do not change when the domain changes, which is the point: once you understand the graph vocabulary, every demo becomes easier to read.
+Dagonizer is domain-agnostic. The Archivist uses these concepts for an LLM-agent flow; the Cartographer uses the same concepts for streaming ETL; the Dispatcher uses them for human-in-the-loop support routing. The words do not change when the domain changes, which is the point: once you understand the graph vocabulary, every workflow page becomes easier to read.
 
-## How It Works
+## Core Terms
 
 ### DAG
 
 A **DAG** is a JSON-LD document that declares one or more labeled `entrypoints` and a list of placement IRIs with their routing. It is plain data: store it in a file, a database row, or a configuration service. Load it through `DAGDocument.load(json)`; that is the DAG document ingest boundary and it validates against `DAGSchema` before the dispatcher sees the graph. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed and keyed by absolute IRI.
 
-The Archivist DAG spans dozens of placements covering intent classification, tool-registry DAG references, embedded search sub-DAGs, compose retry loops, and persistence. Its `@context`, `@id`, and `@type` discriminator make it both a runtime artifact and a Linked Data document. The IRI is the binding rune; `name` is the label humans read in logs, diagrams, and observability output.
+The Archivist DAG spans dozens of placements covering intent classification, tool-registry DAG references, embedded search sub-DAGs, compose retry loops, and persistence. Its `@context`, `@id`, and `@type` discriminator make it both a runtime artifact and a Linked Data document. The IRI is the runtime identity; `name` is the label humans read in logs, diagrams, and observability output.
 
 ### Placement
 
@@ -47,7 +47,7 @@ Six kinds:
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
 - **`scatter`**: isolates one state clone per item in a source array or stream, runs a registered node or DAG body in each clone, records per-item outcomes, and routes by aggregate reducer. Scatter is the fork; it does not secretly own the join.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
-- **`gather`**: buffers records from producer placement IRIs or entrypoint IRIs, applies a gather strategy, and routes once its policy is satisfied. Use `GatherNode` for scatter fan-in, multi-entry intake, or any join that deserves to appear in the graph rather than lurking in the reeds.
+- **`gather`**: buffers records from producer placement IRIs or entrypoint IRIs, applies a gather strategy, and routes once its policy is satisfied. Use `GatherNode` for scatter fan-in, multi-entry intake, or any join that deserves to appear in the graph rather than hiding in application glue.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: a single placement that wraps one registered node with a lifecycle attachment. `phase: 'pre'` runs the node before the DAG entrypoint; `phase: 'post'` runs the node after the main loop drains on every exit path. Pre-phase errors abort the run; post-phase errors are collected as warnings and do not change the already-set lifecycle. Phase placements carry no `outputs` and cannot route to other placements.
 
@@ -113,7 +113,7 @@ Resume is durable via an **inbox/work-queue**. An item stays checkpointed (un-ac
 
 "Streaming is configuration, not a duplicate code path." The same scatter placement that fans over a static array also fans over a live feed; the only change is the type of the `source` value.
 
-The Cartographer demo exercises this pattern: multi-format satellite tracking feeds are streamed through per-format ingest sub-DAGs with bounded concurrency and durable-inbox resume.
+The Cartographer workflow exercises this pattern: multi-format satellite tracking feeds are streamed through per-format ingest sub-DAGs with bounded concurrency and durable-inbox resume.
 
 ### Scatter outcome reducers
 
@@ -136,7 +136,7 @@ Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a 
 
 The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires.
 
-## Diagrams, Examples, and Outputs
+## Mental Model
 
 This diagram is the small map to keep in your head while reading the vocabulary. The details below fill in each box.
 
@@ -157,15 +157,15 @@ flowchart LR
   checkpoint --> dispatcher
 ```
 
-The runnable demos make the same vocabulary visible in different ways: Archivist shows model calls, memory, retries, and tool use; Cartographer shows streaming ingest, scatter/gather, geo enrichment, and redaction; Dispatcher shows routing, parking, resume, and handoff.
+The larger examples expose the same vocabulary in different domains: Archivist shows model calls, memory, retries, and tool use; Cartographer shows streaming ingest, scatter/gather, geo enrichment, and redaction; Dispatcher shows routing, parking, resume, and handoff.
 
-## What It Lets You Do
+## Operational Uses
 
-Use this page to translate the rest of the docs. When an example says “scatter,” you should know it means isolated clone execution plus gather. When a guide says “embedded DAG,” you should know it means a registered subflow invoked as a placement. When a reference page says “Execution,” you should know it is both awaitable and iterable.
+This vocabulary keeps the architecture, guides, examples, and integrations aligned. When a flow says “scatter,” it means isolated clone execution plus gather. When a flow says “embedded DAG,” it means a registered subflow invoked as a placement. When code refers to `Execution`, it means one value that is both awaitable and iterable.
 
 That vocabulary is useful outside the docs too. It gives teams a shared language for reviewing AI agents, data pipelines, and operational workflows: graph shape, node contract, state mutation, route, terminal outcome, checkpoint, and resume. Those words are concrete enough to test and diagram.
 
-## Code Samples
+## Contracts in Code
 
 ### Node
 
@@ -283,11 +283,11 @@ There is no `apply` / `applyIncremental` split and no `IncrementalGatherStrategy
 
 Authored via the `inputs` option on `.scatter()` or `.embed()` for embedded-DAG placements. Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies. Gather does not clone; it folds records already produced by placement IRIs.
 
-## Details for Nerds
+## Composition Context
 
 ### Composing Dagonizer with other runtimes
 
-Dagonizer is a one-process DAG dispatcher. It pairs naturally with runtimes that own the surfaces it deliberately does not: durable cross-process state, event-driven UI, distributed work scheduling.
+Dagonizer is a one-process DAG dispatcher. It pairs naturally with runtimes that own the responsibilities it deliberately does not: durable cross-process state, event-driven UI, distributed work scheduling.
 
 #### Dagonizer plus Temporal or durable workflow engines
 
@@ -307,7 +307,7 @@ Pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a reg
 
 #### Dagonizer plus BullMQ or job queues
 
-BullMQ owns the distributed work surface: cross-process scheduling, rate limiting, prioritization, worker scaling, Redis-backed persistence. Dagonizer owns the per-job graph that each worker executes.
+BullMQ owns distributed work scheduling: cross-process scheduling, rate limiting, prioritization, worker scaling, Redis-backed persistence. Dagonizer owns the per-job graph that each worker executes.
 
 Shared: typed jobs, retry semantics, structured failures.
 

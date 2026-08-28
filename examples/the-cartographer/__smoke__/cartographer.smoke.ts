@@ -19,13 +19,13 @@
  *                         geoModalities, etc).
  *
  * Topology (cartographer DAG):
- *   five data-type entrypoints → five producer feed DAGs
- *     → gather('intake-gather', canonical-feed)
- *     → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' }, concurrency: 16)
+ *   five data-type entrypoints → five producer stream-feed DAGs
+ *     → gather('intake-gather', source-intake)
+ *     → scatter('process-stream', 'source-payload', { dag: 'stream-event' }, concurrency: 16)
  *     → gather('fold-insights', strategy: insights-fold)
  *     → summarize → done
  *
- * Each producer feed DAG emits validated canonical events.
+ * Each producer stream-feed DAG emits validated source payloads.
  * The insights-fold gather folds each clone's state.enriched into the three bounded
  * accumulators as clones complete. state.records stays empty in this topology.
  *
@@ -91,6 +91,7 @@ await SmokeRunner.check('cartographer intake is fed by source-specific feed DAGs
   const entrypoints = Object.entries(cartographerDAG.entrypoints);
   assert.equal(entrypoints.length, 5, `Expected five data-type entrypoints, got ${entrypoints.length}`);
   assert.ok(!cartographerDAG.nodes.some((node) => node['@type'] === 'PhaseNode'), 'Cartographer DAG must not use a seed pre-phase');
+  assert.deepEqual(cartographerDAG.configuration?.durability?.writePoints, ['NodeEdges', 'WatermarkCommit']);
 
   for (const source of CARTOGRAPHER_IRIS.intakeEventTypes) {
     const feedPlacement = CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, source);
@@ -99,18 +100,37 @@ await SmokeRunner.check('cartographer intake is fed by source-specific feed DAGs
     assert.ok(feedNode, `Expected feed placement for ${source}`);
     assert.equal(feedNode['@type'], 'EmbeddedDAGNode');
     if (feedNode['@type'] !== 'EmbeddedDAGNode') assert.fail('feed placement must be an EmbeddedDAGNode');
-    assert.equal(feedNode.dag, CARTOGRAPHER_IRIS.feedDagIri(source));
+    assert.equal(feedNode.dag, CARTOGRAPHER_IRIS.streamFeedDagIri(source));
   }
 
   const gather = cartographerDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather'));
   assert.ok(gather, 'Expected intake-gather placement');
   assert.equal(gather['@type'], 'GatherNode');
   if (gather['@type'] !== 'GatherNode') assert.fail('intake-gather must be a GatherNode');
-  assert.deepEqual(gather.sources, CARTOGRAPHER_IRIS.feedSources(CARTOGRAPHER_IRIS.dag.cartographer));
-  assert.equal(gather.gather.strategy, 'canonical-feed');
+  assert.deepEqual(
+    gather.sources,
+    Object.freeze(
+      Object.fromEntries(
+        CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+          CARTOGRAPHER_IRIS.feedPlacementIri(CARTOGRAPHER_IRIS.dag.cartographer, eventType),
+          { 'resultField': 'sourceFeed' },
+        ]),
+      ),
+    ),
+  );
+  assert.equal(gather.gather.strategy, 'source-intake');
   const gatherIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'intake-gather'));
   const scatterIndex = cartographerDAG.nodes.findIndex((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
   assert.ok(gatherIndex >= 0 && scatterIndex > gatherIndex, 'process-stream scatter must run after intake-gather');
+  const scatter = cartographerDAG.nodes.find((node) => node['@id'] === CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_IRIS.dag.cartographer, 'process-stream'));
+  assert.ok(scatter, 'Expected process-stream placement');
+  assert.equal(scatter['@type'], 'ScatterNode');
+  if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
+  assert.equal(scatter.source, 'source-payload');
+  assert.ok('dag' in scatter.body, 'process-stream must use a DAG body');
+  assert.equal(scatter.body.dag, CARTOGRAPHER_IRIS.dag.streamEvent);
+  assert.equal(scatter.itemKey, 'source-payload');
+  assert.deepEqual(scatter.configuration?.durability?.writePoints, []);
 });
 
 await SmokeRunner.check('source streams fan in from all event kinds', async () => {

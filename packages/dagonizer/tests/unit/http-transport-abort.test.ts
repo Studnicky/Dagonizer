@@ -107,6 +107,7 @@ void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
     const controller = new AbortController();
 
     // Abort after a short delay (well under the base backoff of 400ms)
+    // Real timers are intentional: this verifies an in-flight transport backoff is interrupted by the platform signal.
     setTimeout(() => { controller.abort(); }, 50);
 
     const start = Date.now();
@@ -246,6 +247,81 @@ void describe('HttpTransport — substrate resilience knobs', () => {
     assert.equal(result.ok, true);
     assert.equal(callCount, 2);
     assert.equal(tokenBucket.acquisitions, 1);
+  });
+
+  void it('honors a Retry-After: <seconds> header over blind exponential backoff', async () => {
+    let callCount = 0;
+    const start = Date.now();
+
+    const result = await FetchPatch.with(
+      async () => {
+        callCount++;
+        if (callCount === 1) {
+          return new Response('rate limited', { 'status': 429, 'headers': { 'retry-after': '0' } });
+        }
+        return new Response(JSON.stringify({ 'ok': true }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
+      },
+      () => HttpTransport.getJson<{ ok: boolean }>(
+        'https://example.test/api',
+        KeyValidatorFixture.of<{ ok: boolean }>(['ok']),
+        // A large blind-backoff config: if Retry-After: 0 is ignored, this
+        // test takes >=3s and fails the elapsed-time assertion below.
+        { 'maxRetries': 1, 'baseBackoffMs': 3_000, 'maxBackoffMs': 3_000 },
+      ),
+    );
+
+    const elapsed = Date.now() - start;
+    assert.equal(result.ok, true);
+    assert.equal(callCount, 2);
+    assert.ok(elapsed < 1_000, `expected the server's Retry-After: 0 to win over the 3s blind backoff, took ${String(elapsed)}ms`);
+  });
+
+  void it('falls back to exponential backoff when no Retry-After header is present', async () => {
+    let callCount = 0;
+    const start = Date.now();
+
+    await assert.rejects(
+      () => FetchPatch.with(
+        async () => {
+          callCount++;
+          return new Response('rate limited', { 'status': 429 });
+        },
+        () => HttpTransport.request('https://example.test/api', {}, { 'maxRetries': 1, 'baseBackoffMs': 200, 'maxBackoffMs': 200 }),
+      ),
+      (err: unknown): err is ToolError => {
+        if (!(err instanceof ToolError)) return false;
+        assert.equal(err.reason, 'RATE_LIMIT');
+        assert.equal(err.retryAfterMs, null);
+        return true;
+      },
+    );
+
+    const elapsed = Date.now() - start;
+    assert.equal(callCount, 2);
+    assert.ok(elapsed >= 190, `expected the configured 200ms backoff to still apply, took ${String(elapsed)}ms`);
+  });
+
+  void it('parses an HTTP-date Retry-After header into a bounded millisecond delay', async () => {
+    let callCount = 0;
+    const retryDate = new Date(Date.now() + 100).toUTCString();
+
+    const result = await FetchPatch.with(
+      async () => {
+        callCount++;
+        if (callCount === 1) {
+          return new Response('rate limited', { 'status': 429, 'headers': { 'retry-after': retryDate } });
+        }
+        return new Response(JSON.stringify({ 'ok': true }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
+      },
+      () => HttpTransport.getJson<{ ok: boolean }>(
+        'https://example.test/api',
+        KeyValidatorFixture.of<{ ok: boolean }>(['ok']),
+        { 'maxRetries': 1, 'baseBackoffMs': 3_000, 'maxBackoffMs': 3_000 },
+      ),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(callCount, 2);
   });
 
   void it('open circuit breaker rejects without invoking fetch', async () => {

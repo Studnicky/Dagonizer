@@ -14,7 +14,7 @@ seeAlso:
 nextSteps:
   - text: 'Example 06: Cancellation'
     link: '../examples/06-cancellation'
-    description: 'runnable AbortController and deadlineMs example'
+    description: 'caller abort and deadline flow'
 ---
 
 <script setup lang="ts">
@@ -23,38 +23,30 @@ import { dag as cancellationDag } from '../../examples/dags/06-cancellation.ts';
 
 # Cancellation
 
-## What It Is
+## Cancellation Contract
 
 Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts a caller signal and an optional `deadlineMs`; both compose into the signal every node receives as `context.signal`.
 
-The goal is not to crash the run. The goal is to stop safely, return a structured `ExecutionResult`, preserve `interruptedAt`, and keep a cursor when the run can be resumed.
+Cancellation stops the run safely, returns a structured `ExecutionResult`, preserves `interruptedAt`, and keeps a cursor when the run can be resumed.
 
-## How It Works
+## Abort and Deadline Flow
 
-The dispatcher composes all cancellation inputs into one signal and passes it through `NodeContextType`. Nodes and runtime helpers propagate that signal into adapters, tools, schedulers, and retry policies. When it fires, the dispatcher records `interruptedAt`, keeps `cursor` when resume is possible, and returns a normal `ExecutionResult`.
-
-Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts two optional fields in the `execute()` and `resume()` options object: a caller-supplied `signal` and a `deadlineMs` budget. Internally the two compose via `Signal.compose({ signal, deadlineMs })` and the result lands on `context.signal` for every node.
-
-## Diagrams, Examples, and Outputs
-
-Example 06 runs a slow DAG twice: once with a caller abort and once with a deadline. The topology is intentionally small so the lifecycle result is easy to read:
+Example 06 runs a slow DAG twice: once with a caller abort and once with a deadline. The topology isolates interrupt behavior on one slow branch so the lifecycle result stays explicit:
 
 <DagJsonMermaid :dag="cancellationDag" title="Example 06 cancellation DAG" aria-label="Example 06 cancellation JSON-LD DAG beside Mermaid generated from it." />
 
 - [Retry](./retry) - RetryPolicy.run honors context.signal so retries abort cleanly
 - [Checkpoint and Resume](./checkpoint) - abort and persist the cursor; resume continues from that point
 - [Observability](./observability) - onError fires when an abort or deadline interrupts a node
-- [Example 06: Cancellation](../examples/06-cancellation) - runnable AbortController and deadlineMs example
+- [Example 06: Cancellation](../examples/06-cancellation) - caller abort and deadline flow
 
-## What It Lets You Do
+## Signal Propagation
 
-### Use when
-
-Use cancellation when a caller must stop work safely: a browser tab closes, an HTTP request disconnects, a queue lease expires, or a host-level deadline fires. The goal is to interrupt execution with a structured lifecycle result and a resumable cursor, not to let nodes throw arbitrary errors.
+The dispatcher composes caller `signal` and `deadlineMs` into one `AbortSignal` via `Signal.compose({ signal, deadlineMs })` and places the result on `context.signal` for every node. Nodes and runtime helpers propagate that signal into adapters, tools, schedulers, and retry policies. When it fires, the dispatcher stops scheduling new placements, records `interruptedAt`, preserves `cursor` when resume is possible, and returns a structured `ExecutionResult`.
 
 ## Code Samples
 
-The snippets below show the call-site options, the cancellation-aware node, and the cursor checks Example 06 asserts.
+The code samples cover caller options, the cancellation-aware node, and the cursor checks Example 06 asserts.
 
 ### `signal` and `deadlineMs`
 
@@ -112,7 +104,11 @@ The dispatcher uses `Signal.compose(...)` to merge cancellation concerns. Caller
 
 This is equivalent to passing both as `signal` plus `deadlineMs`. Pick whichever form fits the call site.
 
-## Details for Nerds
+## Operational Uses
+
+Cancellation is the contract for callers that must stop work safely: a browser tab closes, an HTTP request disconnects, a queue lease expires, or a host-level deadline fires. Execution interrupts with a structured lifecycle result and a resumable cursor instead of letting nodes throw arbitrary errors.
+
+## Runtime Notes
 
 ### Runtime contract
 
@@ -123,6 +119,6 @@ Cancellation is cooperative at the node boundary. The dispatcher can stop before
 - [Retry](./retry) - RetryPolicy.run honors context.signal so retries abort cleanly
 - [Checkpoint and Resume](./checkpoint) - abort and persist the cursor; resume continues from that point
 - [Observability](./observability) - onError fires when an abort or deadline interrupts a node
-- [Example 06: Cancellation](../examples/06-cancellation) - runnable AbortController and deadlineMs example
+- [Example 06: Cancellation](../examples/06-cancellation) - caller abort and deadline flow
 - [`@studnicky/signal`, `Signal`](https://github.com/Studnicky/noocodec-substrate/tree/main/packages/signal)
 - [Reference, Contracts, `ExecuteOptionsType`](../reference/contracts)

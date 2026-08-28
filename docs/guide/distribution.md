@@ -17,18 +17,31 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerWorkersDAG, streamEventDAG } from '../.vitepress/theme/exampleDags.ts';
+import { cartographerWorkersDAG, streamEventDAG } from '../exampleDags.ts';
 </script>
 
 # Distribution and Cloud
 
-## What It Is
+## Distribution Model
 
 Distribution is how a Dagonizer host moves work across threads, processes, workers, or other hosts without changing the DAG document. The graph still names placements and routes; deployment code binds logical container roles and handoff channels to concrete infrastructure.
 
 There are two scales: in-fleet containment for worker-style isolation, and cross-host handoff for envelope-driven resume on another host.
 
-## How It Works
+## Worker and Handoff Flows
+
+The Cartographer worker example shows a parent DAG delegating scatter body work to a worker-bound sub-DAG. Both diagrams below come from the same worker example DAGs:
+
+<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
+
+<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Stream-event worker body JSON-LD DAG beside Mermaid generated from it." />
+
+- [Architecture](../architecture) - execution model, container seam, hand-off binding
+- [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via InMemoryChannel
+- [Example 12: Worker Containers](../examples/12-workers) - scatter-dag-body over a WorkerThreadContainer pool
+- [Reference: Contracts](../reference/contracts) - DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface
+
+## Container and Channel Contract
 
 Distribution is placement-level. A scatter or embedded DAG declares a logical container role, and the host binds that role to a `DagContainerInterface`. Cross-host hand-off serializes state plus cursor into a `DAGHandoff` envelope and lets another host resume the registered DAG.
 
@@ -41,30 +54,15 @@ Dagonizer has two distribution scales. They solve different problems and compose
 
 The DAG is always the unit of distribution. A single node never travels to a container or a remote host.
 
-## Diagrams, Examples, and Outputs
-
-The Cartographer worker example shows a parent DAG delegating scatter body work to a worker-bound sub-DAG. Both diagrams below are generated from the runnable worker example:
-
-<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
-
-<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Stream-event worker body JSON-LD DAG beside Mermaid generated from it." />
-
-- [Architecture](../architecture) - execution model, container seam, hand-off binding
-- [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via InMemoryChannel
-- [Example 12: Worker Containers](../examples/12-workers) - scatter-dag-body over a WorkerThreadContainer pool
-- [Reference: Contracts](../reference/contracts) - DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface
-
-## What It Lets You Do
-
-### Use when
-
-Use distribution when one DAG needs to run across threads, worker processes, or separate hosts without changing the canonical JSON-LD graph. Choose containment for in-fleet isolation; choose hand-off when state and cursor must cross a transport boundary.
-
 ## Code Samples
 
-The snippets below show container role binding, registry-module loading, and cross-host handoff envelopes.
+The code samples cover container role binding, registry-module loading, and cross-host handoff envelopes.
 
-## Details for Nerds
+## Deployment Uses
+
+Distribution covers cases where one DAG runs across threads, worker processes, or separate hosts without changing the canonical JSON-LD graph. Containment handles in-fleet isolation; hand-off handles cases where state and cursor cross a transport boundary.
+
+## Runtime Notes
 
 ### In-fleet containment
 
@@ -107,9 +105,9 @@ Cross-process containers (fork, cluster, spawn, worker) dynamic-import a registr
 
 A node's dependencies never cross the isolation boundary — the isolate's registry module constructs each node with its dependencies (derived from the init message's `servicesConfig`) inside the isolate. If an isolate requires a network connection, it opens it locally; the parent does not proxy requests.
 
-::: warning Trust boundary
-The `registryModule` path passed to a container backend is dynamically imported inside the isolate with full module privileges. Pass only operator-controlled paths. Accepting a `registryModule` value from untrusted input (user data, external queue messages) creates a remote code execution vector.
-:::
+<UiCallout kind="warning" title="Trust boundary">
+  <p>The <code>registryModule</code> path passed to a container backend is dynamically imported inside the isolate with full module privileges. Pass only operator-controlled paths. Accepting a <code>registryModule</code> value from untrusted input (user data, external queue messages) creates a remote code execution vector.</p>
+</UiCallout>
 
 ---
 
@@ -141,7 +139,7 @@ A publish failure collects a `HANDOFF_PUBLISH_FAILED` error on the run's state; 
 
 A serverless function receives a `DAGHandoff` envelope, restores state, runs the DAG to completion, and lets the bound egress channels publish the next envelope. The function itself requires no Dagonizer-specific runtime; it is a plain `Dagonizer` instance.
 
-The egress channel implements `HandoffChannelInterface`. The channel below backs the contract with a real in-process queue — a complete, runnable implementation. Production replaces the array push with an SQS / Pub/Sub / RabbitMQ SDK call; the method signature is identical:
+The egress channel implements `HandoffChannelInterface`. The channel below backs the contract with a real in-process queue. Production replaces the array push with an SQS / Pub/Sub / RabbitMQ SDK call; the method signature is identical:
 
 <<< @/../examples/dags/serverless-handler.ts#queue-channel
 
@@ -188,7 +186,7 @@ Dagonizer guarantees graph-envelope fidelity and `correlationId` uniqueness with
 
 **Graph references.** When a negotiated graph-reference strategy is selected, the receiver fetches the N-Quads graph through the configured graph transfer adapter. The receiver owns endpoint authorization and allowlist responsibility.
 
-**Incoming state from workers.** Graph-state transfers are validated by the graph codec and identity checks before import. Domain accessors still validate values at their application boundary.
+**Incoming state from workers.** Graph-state transfers are validated by the graph codec and identity checks before import. Domain accessors still validate values at their host boundary.
 
 ---
 
@@ -202,5 +200,5 @@ Dagonizer guarantees graph-envelope fidelity and `correlationId` uniqueness with
 - [Architecture](../architecture) - execution model, container seam, hand-off binding
 - [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via InMemoryChannel
 - [Example 12: Worker Containers](../examples/12-workers) - scatter-dag-body over a WorkerThreadContainer pool
-- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - worker roles and body DAGs in the Cartographer demo
+- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - worker roles and body DAGs in the Cartographer workflow
 - [Reference: Contracts](../reference/contracts) - DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface

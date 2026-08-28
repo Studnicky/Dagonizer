@@ -15,31 +15,25 @@ seeAlso:
 
 # Core
 
-## What It Is
+## Gather and Reducer Contract
 
 Core contains the pluggable execution primitives behind first-class gather nodes and scatter aggregate routing: `GatherStrategy`, `GatherStrategies`, `OutcomeReducer`, `OutcomeReducers`, gather records, and default reducers.
 
-Use this page when built-in gather or reducer policy does not match the domain merge, ranking, quorum, or routing decision your DAG needs.
+These primitives are the extension seam when built-in gather or reducer policy does not match the domain merge, ranking, quorum, or routing decision a DAG needs.
 
-## How It Works
+## Flow and Registry References
 
-Scatter runs isolated clone work and emits producer records. `GatherNode` placements use gather strategies to merge producer records back into the parent. Outcome reducers decide which output route an aggregate scatter placement emits.
-
-JSON-LD stores gather strategy names on `GatherNode.gather` and reducer names on `ScatterNode.reducer`; the core registries resolve those names to concrete implementations. That keeps graph documents portable while still allowing domain-specific merge and routing behavior.
-
-## Diagrams, Examples, and Outputs
-
-Core primitives are easiest to see in scatter-then-gather examples. These pages show strategy and reducer names in real DAG documents:
+Core primitives are easiest to see in scatter-then-gather flows. These references show strategy and reducer names inside real DAG documents and the dispatcher that resolves them:
 
 - [Reference: Contracts](./contracts) - `StateAccessor`, `NodeInterface`, `ExecuteOptionsType`
 - [Reference: Dagonizer](./dagonizer) - wires `GatherStrategies.resolve` and `OutcomeReducers.resolve`
 - [Reference: Entities](./entities) - `GatherConfig`, `GatherStrategyName`
 
-## What It Lets You Do
+## Strategy Resolution Model
 
-The core reference lets applications extend scatter behavior with custom gather strategies and outcome reducers.
+Scatter runs isolated clone work and emits producer records. `GatherNode` placements use gather strategies to merge producer records back into the parent. Outcome reducers decide which output route an aggregate scatter placement emits.
 
-Pluggable execution primitives. Ship through `@studnicky/dagonizer/core`.
+JSON-LD stores gather strategy names on `GatherNode.gather` and reducer names on `ScatterNode.reducer`; the core registries resolve those names to concrete implementations. That keeps graph documents portable while still allowing domain-specific merge and routing behavior.
 
 ## Code Samples
 
@@ -89,7 +83,7 @@ The dispatcher resolves a strategy by `name` (the `GatherNode.gather.strategy` f
 | Member | Description |
 |--------|-------------|
 | `abstract name` | Wire-shape identifier; matches `GatherConfig.strategy`. |
-| `retainsRecordsForFinalize` | When `true`, the engine retains every acked record across resume (retained checkpoint). When `false` (default), checkpoint is O(1) with respect to item count. |
+| `retainsRecordsForFinalize` | When `true`, the strategy needs the full record set at `finalize` and the scatter writes no per-item checkpoint progress at all — a crash or resume re-runs the entire scatter source from the start (verified by `packages/dagonizer/tests/unit/scatter-bounded-memory.test.ts`, "retaining gather writes no progress and reruns the complete replayable input on resume"). It is not incremental persistence of retained records; resume is full replay, correct only when item execution is idempotent. When `false` (default), checkpoint is O(1) with respect to item count and resumes from a watermark instead of replaying. |
 | `initial(config, state, accessor)` | Called once when the gather barrier initializes. Default: no-op. |
 | `abstract reduce(config, batch, state, accessor)` | Fold a batch of producer records into state. Called per-batch during streaming or once with all results for bulk strategies. |
 | `finalize(config, execution)` | End-of-gather work after all clones complete. Default: no-op. |
@@ -159,7 +153,7 @@ const names: readonly string[] = GatherStrategies.list();
 | `resolve(name)` | Return the strategy by name. Throws `DAGError` when not registered. |
 | `list()` | Names of every registered strategy, in registration order. |
 | `unregister(name)` | Remove a strategy by name. No-op when absent. Used in test `afterEach` to undo `register` calls. |
-| `reset()` | Restore the registry to the built-in strategies, discarding application-registered entries. |
+| `reset()` | Restore the registry to the built-in strategies, discarding host-registered entries. |
 
 ### OutcomeReducer
 
@@ -218,7 +212,13 @@ const names: readonly string[] = OutcomeReducers.list();
 | `resolve(name)` | Return the reducer by name. Throws `DAGError` when not registered. |
 | `list()` | Names of every registered reducer, in registration order. |
 
-## Details for Nerds
+## Operational Uses
+
+Custom gather strategies let callers define how scatter clone records fold back into parent state. Outcome reducers let callers decide which route token an aggregate scatter placement emits after clone execution finishes.
+
+The graph stays portable because JSON-LD stores only strategy and reducer names; the dispatcher resolves those names to registered implementations at runtime.
+
+## Runtime Notes
 
 Custom gather strategies receive the execution accessor and gather records, not the dispatcher internals. Custom outcome reducers receive aggregate outcome records and return a route token. Both extension points are named registry entries so JSON-LD can reference them without serializing implementation code.
 
@@ -231,4 +231,4 @@ Call `reset()` in tests when a suite registers custom strategies or reducers and
 - [Reference: Entities](./entities) - `GatherConfig`, `GatherStrategyName`
 - [DAGBuilder](../guide/builder) - placements that use `GatherNode.gather.strategy` and `ScatterNode.reducer`
 - [State Accessors](../guide/state-accessor) - strategies receive the dispatcher's accessor
-- [Example: Scatter Extensions](../examples/scatter-extensions) - custom gather and reducer registration in runnable code
+- [Example: Scatter Extensions](../examples/scatter-extensions) - custom gather and reducer registration in host code

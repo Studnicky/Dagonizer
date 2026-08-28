@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 
+import { GRAPH_STATE_TRANSFER_FORMATS } from '../../src/contracts/GraphStateTransferFormat.js';
 import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import { BridgeMessageSchema } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
@@ -36,7 +37,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
-import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -55,7 +56,7 @@ import { emptyGraphStateTransfer } from '../_support/GraphStateSupport.js';
 void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity via validator round-trips', () => {
   // ── InlineNodeErrorShape ≡ NodeErrorSchema ───────────────────────────────
 
-  void it('a value valid per NodeErrorSchema is accepted in the result.response.errors array', () => {
+  void it('a value valid per NodeErrorSchema is accepted in result.response.items[0].errors', () => {
     const validNodeError = {
       'code': 'FETCH_FAILED',
       'context': {},
@@ -69,14 +70,19 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     assert.ok(Validator.nodeError.is(validNodeError),
       'canonical NodeErrorSchema must accept the fixture');
 
-    // Confirm the inline shape inside BridgeMessageType result.response.errors also accepts it.
+    // Confirm the inline shape inside BridgeMessageType result.response.items[*].errors also accepts it.
     const resultMsg = {
       'variant': 'result',
       'response': {
         'correlationId': 'test-1',
-        'items': [{ 'id': 'test-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
-        'errors': [validNodeError],
-        'intermediates': [],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-1']),
+        'items': [{
+          'id': 'test-1',
+          'runIri': 'urn:dagonizer:run:test-1',
+          'terminalOutcome': 'completed',
+          'errors': [validNodeError],
+          'intermediates': [],
+        }],
       },
     };
     assert.ok(Validator.bridgeMessage.is(resultMsg),
@@ -103,9 +109,14 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-2',
-        'items': [{ 'id': 'test-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
-        'errors': [withExtra],
-        'intermediates': [],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-2']),
+        'items': [{
+          'id': 'test-2',
+          'runIri': 'urn:dagonizer:run:test-2',
+          'terminalOutcome': 'completed',
+          'errors': [withExtra],
+          'intermediates': [],
+        }],
       },
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
@@ -129,9 +140,14 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'variant': 'result',
       'response': {
         'correlationId': 'test-3',
-        'items': [{ 'id': 'test-3', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
-        'errors': [missingTimestamp],
-        'intermediates': [],
+        'graphState': emptyInlineTransfer(['urn:dagonizer:run:test-3']),
+        'items': [{
+          'id': 'test-3',
+          'runIri': 'urn:dagonizer:run:test-3',
+          'terminalOutcome': 'completed',
+          'errors': [missingTimestamp],
+          'intermediates': [],
+        }],
       },
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
@@ -144,7 +160,9 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const validRequest = {
       'dagName': 'pipeline',
       'placementPath': ['parent', 'child'],
-      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer() }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-1']),
+      'responseState': FULL_RESPONSE_STATE,
+      'items': [{ 'id': 'corr-1', 'runIri': 'urn:dagonizer:run:corr-1' }],
       'timeoutMs': 5000,
       'correlationId': 'corr-1',
     };
@@ -164,7 +182,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     const withExtra = {
       'dagName': 'pipeline',
       'placementPath': [],
-      'items': [{ 'id': 'corr-x', 'graphState': {} }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-x']),
+      'items': [{ 'id': 'corr-x', 'runIri': 'urn:dagonizer:run:corr-x' }],
       'timeoutMs': null,
       'correlationId': 'corr-x',
       'nodeName': 'step1',   // additionalProperties: false must reject this
@@ -186,9 +205,14 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a value valid per ExecutionResponseSchema is accepted in the result.response branch', () => {
     const validResponse = {
       'correlationId': 'corr-1',
-      'items': [{ 'id': 'corr-1', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'completed' }],
-      'errors': [],
-      'intermediates': [{ 'output': 'ok', 'skipped': false, 'nodeName': 'step1' }],
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-1']),
+      'items': [{
+        'id': 'corr-1',
+        'runIri': 'urn:dagonizer:run:corr-1',
+        'terminalOutcome': 'completed',
+        'errors': [],
+        'intermediates': [{ 'output': 'ok', 'skipped': false, 'nodeName': 'step1' }],
+      }],
     };
 
     assert.ok(Validator.executionResponse.is(validResponse),
@@ -205,13 +229,18 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('a response with extra field on intermediate item is rejected by both', () => {
     const withExtra = {
       'correlationId': 'corr-2',
-      'items': [{ 'id': 'corr-2', 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'failed' }],
-      'errors': [],
-      'intermediates': [{
-        'output': 'done',
-        'skipped': false,
-        'nodeName': 'step1',
-        'extra': 99,   // additionalProperties: false on items
+      'graphState': emptyInlineTransfer(['urn:dagonizer:run:corr-2']),
+      'items': [{
+        'id': 'corr-2',
+        'runIri': 'urn:dagonizer:run:corr-2',
+        'terminalOutcome': 'failed',
+        'errors': [],
+        'intermediates': [{
+          'output': 'done',
+          'skipped': false,
+          'nodeName': 'step1',
+          'extra': 99,   // additionalProperties: false on items
+        }],
       }],
     };
 
@@ -226,7 +255,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'BridgeMessageType result branch must reject extra field on intermediates item (inline shape ≡ canonical)');
   });
 
-  // ── Schema property/required keys are identical ──────────────────────────
+  // ── Serialized schema structures are identical ──────────────────────────
 
   void it('NodeErrorSchema and InlineNodeErrorShape declare the same required fields', () => {
     // Extract inline shape from BridgeMessageSchema. The result branch is at
@@ -235,7 +264,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
     assert.equal(resultBranch.properties.variant.const, 'result', 'index 5 must be the result branch');
 
-    const inlineErrShape = resultBranch.properties.response.properties.errors.items;
+    const inlineErrShape = resultBranch.properties.response.properties.items.items.properties.errors.items;
 
     const canonicalRequired = [...NodeErrorSchema.required].sort();
     const inlineRequired    = [...inlineErrShape.required].sort();
@@ -247,40 +276,52 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     );
   });
 
-  void it('ExecutionRequestSchema and InlineExecutionRequestShape declare the same required fields', () => {
-    // The execute branch is at index 1 in the oneOf tuple.
+  void it('ExecutionRequestSchema members serialize identically in execute.request', () => {
     const executeBranch = BridgeMessageSchema.oneOf[1];
     assert.ok(executeBranch !== undefined, 'execute branch must exist in BridgeMessageSchema.oneOf');
     assert.equal(executeBranch.properties.variant.const, 'execute', 'index 1 must be the execute branch');
 
     const inlineReqShape = executeBranch.properties.request;
+    const canonicalReqShape = {
+      'type': ExecutionRequestSchema.type,
+      'required': ExecutionRequestSchema.required,
+      'properties': ExecutionRequestSchema.properties,
+      'additionalProperties': ExecutionRequestSchema.additionalProperties,
+    };
 
-    const canonicalRequired = [...ExecutionRequestSchema.required].sort();
-    const inlineRequired    = [...inlineReqShape.required].sort();
-
-    assert.deepEqual(
-      inlineRequired,
-      canonicalRequired,
-      'InlineExecutionRequestShape.required must match ExecutionRequestSchema.required',
+    assert.equal(
+      JSON.stringify(inlineReqShape),
+      JSON.stringify(canonicalReqShape),
+      'execute.request must serialize identically to the canonical request members',
     );
   });
 
-  void it('ExecutionResponseSchema and InlineExecutionResponseShape declare the same required fields', () => {
-    // The result branch is at index 5 in the oneOf tuple.
+  void it('ExecutionResponseSchema members serialize identically in result.response', () => {
     const resultBranch = BridgeMessageSchema.oneOf[5];
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
     assert.equal(resultBranch.properties.variant.const, 'result', 'index 5 must be the result branch');
 
     const inlineRespShape = resultBranch.properties.response;
+    const canonicalRespShape = {
+      'type': ExecutionResponseSchema.type,
+      'required': ExecutionResponseSchema.required,
+      'properties': ExecutionResponseSchema.properties,
+      'additionalProperties': ExecutionResponseSchema.additionalProperties,
+    };
 
-    const canonicalRequired = [...ExecutionResponseSchema.required].sort();
-    const inlineRequired    = [...inlineRespShape.required].sort();
-
-    assert.deepEqual(
-      inlineRequired,
-      canonicalRequired,
-      'InlineExecutionResponseShape.required must match ExecutionResponseSchema.required',
+    assert.equal(
+      JSON.stringify(inlineRespShape),
+      JSON.stringify(canonicalRespShape),
+      'result.response must serialize identically to the canonical response members',
     );
+  });
+
+  void it('init and ready negotiate the canonical supported graph-state formats', () => {
+    const initFormats = BridgeMessageSchema.oneOf[0].properties.graphStateTransferFormats.items.enum;
+    const readyFormats = BridgeMessageSchema.oneOf[4].properties.graphStateTransferFormats.items.enum;
+
+    assert.strictEqual(initFormats, GRAPH_STATE_TRANSFER_FORMATS);
+    assert.strictEqual(readyFormats, GRAPH_STATE_TRANSFER_FORMATS);
   });
 });
 

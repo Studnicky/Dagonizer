@@ -94,7 +94,11 @@ class KillAfterOneContainer implements DagContainerInterface {
     this.#killed = false;
   }
 
-  async runDag(task: Parameters<DagContainerInterface['runDag']>[0]): ReturnType<DagContainerInterface['runDag']> {
+  async runDag(
+    task: Parameters<DagContainerInterface['runDag']>[0],
+    batch: Parameters<DagContainerInterface['runDag']>[1],
+    options?: Parameters<DagContainerInterface['runDag']>[2],
+  ): ReturnType<DagContainerInterface['runDag']> {
 
     if (this.#killed) {
       // Worker pool already terminated: throw so executeItem rejects.
@@ -102,7 +106,7 @@ class KillAfterOneContainer implements DagContainerInterface {
     }
 
     // Route the first call through the real container.
-    const outcome = await this.#inner.runDag(task);
+    const outcome = await this.#inner.runDag(task, batch, options);
 
     // After the first call completes (first item acked in spawnWorker.then),
     // destroy the worker pool synchronously so the next call has no workers.
@@ -405,13 +409,9 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     const fanIri = `${CONFORMANCE_DAG.law8}/node/fan`;
     const fan = progress[fanIri];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
-    // The map gather is compactable, so its checkpoint is bounded mode: the
-    // acked count is watermark + ahead-acked window. Non-compactable gathers
-    // retain the full ackedResults array. Both express the same acked count.
-    const ackedBefore = fan === undefined ? 0
-      : fan.mode === 'bounded'
-        ? fan.watermark + fan.aheadAcked.length
-        : fan.ackedResults.length;
+    const ackedBefore = fan.watermark + fan.aheadAcked.length;
+    const talliedBefore = Object.values(fan.outcomeTally).reduce((total, count) => total + count, 0);
+    assert.equal(talliedBefore, ackedBefore, 'outcome tally must account for every acknowledged item');
     assert.ok(ackedBefore >= 1, `at least item 10 must ack before the kill, got ${ackedBefore} acked`);
     assert.ok(ackedBefore < 3, `not all items may have acked (item 20 died), got ${ackedBefore} acked`);
 

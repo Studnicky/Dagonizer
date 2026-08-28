@@ -1,0 +1,503 @@
+@import "tailwindcss";
+@import "./dagonizer-palette.css";
+@import "@studnicky/dagonizer/viz/Dpad.css";
+@import "@studnicky/dagonizer/viz/ModalShell.css";
+@import "@studnicky/dagonizer/viz/CodeSample.css";
+@import "@studnicky/dagonizer/viz/ViewerActions.css";
+@import "@studnicky/dagonizer/viz/ViewerOverlay.css";
+@import "@studnicky/dagonizer/viz/explorer.css";
+@theme {
+  --color-dagon-cyan: var(--dagonizer-brand2);
+  --color-dagon-violet: var(--dagonizer-brand3);
+  --color-dagon-ink: var(--dagonizer-bg-alt);
+  --color-dagon-panel: var(--dagonizer-bg-elv);
+  --color-dagon-line: var(--dagonizer-divider);
+}
+
+:root {
+  color-scheme: dark;
+  --vp-font-family-display:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  --vp-font-family-base:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+  --vp-c-bg: var(--dagonizer-bg);
+  --vp-c-bg-alt: var(--dagonizer-bg-alt);
+  --vp-c-bg-elv: var(--dagonizer-bg-elv);
+  --vp-c-bg-soft: var(--dagonizer-bg-soft);
+  --vp-c-text-1: var(--dagonizer-text);
+  --vp-c-text-2: var(--dagonizer-text2);
+  --vp-c-text-3: var(--dagonizer-text3);
+  --vp-c-divider: var(--dagonizer-divider);
+  --vp-c-border: var(--dagonizer-divider);
+  --vp-c-brand-1: var(--dagonizer-link);
+  --vp-c-brand-2: var(--dagonizer-brand2);
+  --vp-c-brand-3: var(--dagonizer-brand3);
+  --vp-c-danger-1: var(--dagonizer-danger);
+  --vp-code-bg: var(--dagonizer-code-inline-bg);
+  --vp-code-color: var(--dagonizer-link);
+  --dagonizer-cyan: var(--dagonizer-brand2);
+  --dagonizer-violet: var(--dagonizer-brand3);
+  --dagonizer-gold: var(--dagonizer-brand3);
+  --dagonizer-silver: var(--dagonizer-brand);
+  --dagonizer-surface-radius: 6px;
+  --dagonizer-surface-border: 1px solid var(--dagonizer-divider);
+  --dagonizer-surface-bg: var(--dagonizer-bg-alt);
+  --dagonizer-surface-bg-deep: var(--dagonizer-bg-elv);
+  --dagonizer-surface-pad: 1rem 1.1rem;
+
+  /* Hex-tech shape language — see DESIGN_LANGUAGE_REFERENCES.md before
+     changing any of this. Two distinct categories, not one shape for
+     everything:
+     1. Fixed-size elements (icon chips, logo mount, grid tiles) get a TRUE
+        regular hexagon via .hex-cell below (equal sides, equal 120°
+        angles, locked aspect-ratio) — see --dagonizer-hex-clip/-hex-ratio.
+     2. Variable-width elements (buttons, nav, tags, panels — anything
+        whose box must flex with its content) stay plain rectangles; a
+        regular hexagon cannot stretch to fit them without clipping text
+        or leaving empty space. They keep the metallic border-image bezel
+        only, no clip-path. */
+  --dagonizer-chrome-border-width: 1px;
+  --dagonizer-hex-bezel-width: 2px;
+  --dagonizer-pad-lg: 2rem;
+  --dagonizer-pad-md: 1.25rem;
+  --dagonizer-pad-sm: 0.75rem;
+
+  /* Pointy-top regular hexagon: width:height = cos(30deg) ≈ 0.866, equal
+     sides, equal 120° interior angles. Only ever pair with a box whose
+     aspect-ratio is locked to --dagonizer-hex-ratio. */
+  --dagonizer-hex-ratio: 0.866;
+  --dagonizer-hex-clip: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+
+  --site-bg:
+    radial-gradient(circle at top, color-mix(in srgb, var(--dagonizer-brand) 14%, transparent), transparent 28%),
+    radial-gradient(
+      circle at 85% 20%,
+      color-mix(in srgb, var(--dagonizer-brand2) 16%, transparent),
+      transparent 24%
+    ),
+    linear-gradient(180deg, var(--dagonizer-bg) 0%, var(--dagonizer-bg-alt) 42%, var(--dagonizer-bg) 100%);
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--dagonizer-bg);
+}
+
+::selection {
+  background: var(--dagonizer-selection-bg);
+  color: var(--dagonizer-text);
+}
+
+body {
+  min-height: 100vh;
+  background: var(--site-bg);
+  color: var(--dagonizer-text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.grid-noise {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--dagonizer-divider) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--dagonizer-divider) 8%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95), transparent 92%);
+}
+
+.hero-orbit {
+  animation: hero-orbit 16s linear infinite;
+}
+
+.hero-pulse {
+  animation: hero-pulse 5.6s ease-in-out infinite;
+}
+
+/* Hex-tech shape language — see the two-category rule in the :root block
+   above and in DESIGN_LANGUAGE_REFERENCES.md. Metallic gradient rendered
+   via border-image (not background-clip — that only touches the border
+   stroke, so it never fights a consumer's own Tailwind bg-* utility on the
+   same element, and never smears unevenly across wrapped multi-line text
+   the way a background-clip:text gradient does). Metal belongs on
+   borders/dividers/icons — things that are actually metal on the mark —
+   never on body/heading text. */
+
+/* Category 2: variable-width elements. Plain rectangles, metallic border
+   only, NO hexagon clip-path — a regular hexagon cannot stretch to fit
+   flexible-width text content. */
+.hex-shell,
+.hex-tile,
+.hex-chrome,
+.hex-tag {
+  border: var(--dagonizer-chrome-border-width) solid;
+  border-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--dagonizer-divider) 84%, transparent) 0%,
+    color-mix(in srgb, var(--dagonizer-text3) 34%, var(--dagonizer-divider)) 24%,
+    color-mix(in srgb, var(--dagonizer-text2) 18%, var(--dagonizer-divider)) 50%,
+    color-mix(in srgb, var(--dagonizer-text3) 28%, var(--dagonizer-divider)) 76%,
+    color-mix(in srgb, var(--dagonizer-divider) 88%, transparent) 100%
+  ) 1;
+}
+
+.hex-tag {
+  border-width: var(--dagonizer-chrome-border-width);
+}
+
+/* Category 1: fixed-size elements only (icon chips, logo mount, grid
+   tiles). A TRUE regular hexagon — equal sides, equal 120° angles — which
+   requires the element's own box to already be locked to
+   --dagonizer-hex-ratio (set aspect-ratio: var(--dagonizer-hex-ratio) on
+   the consumer, this class does not set it for you since a fixed width
+   or height must come from the specific layout). */
+.hex-cell {
+  clip-path: var(--dagonizer-hex-clip);
+  border: var(--dagonizer-hex-bezel-width) solid;
+  border-image: linear-gradient(
+    135deg,
+    var(--dagonizer-divider) 0%,
+    var(--dagonizer-text2) 20%,
+    var(--dagonizer-text) 35%,
+    var(--dagonizer-divider) 50%,
+    color-mix(in srgb, var(--dagonizer-divider) 40%, black) 58%,
+    var(--dagonizer-divider) 72%,
+    var(--dagonizer-text2) 88%,
+    var(--dagonizer-text) 100%
+  ) 1;
+}
+
+/* Honeycomb tessellation for a row of fixed-size .hex-cell tiles — per
+   DESIGN_LANGUAGE_REFERENCES.md Reference 1. Each child must itself use
+   .hex-cell (locked aspect-ratio). Negative right-margin pulls adjacent
+   hexagons' points together so edges nearly meet; alternating rows offset
+   vertically by half a tile height if the set wraps to more than one row. */
+.hex-honeycomb {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  --dagonizer-honeycomb-size: 5rem;
+}
+
+.hex-honeycomb > * {
+  width: var(--dagonizer-honeycomb-size);
+  flex: 0 0 auto;
+  margin-right: calc(var(--dagonizer-honeycomb-size) * -0.145);
+  margin-bottom: calc(var(--dagonizer-honeycomb-size) * -0.2165);
+}
+
+.hex-honeycomb > *:nth-child(2n) {
+  margin-top: calc(var(--dagonizer-honeycomb-size) * 0.433);
+}
+
+/* Faceted hex-gem marker — DESIGN_LANGUAGE_REFERENCES.md Reference 5,
+   adapted from a 12-facet circular badge to a 6-facet true hexagon.
+   Simulates alternating-lit facets via a single conic-gradient (one color
+   stop per 60deg side) instead of 6 separate absolutely-positioned facet
+   elements, plus a diagonal glossy sweep, clipped to the true hexagon
+   shape. Fixed-size only, per the two-category rule — this is a marker/
+   icon accent next to a text link, never the link's own clipped shape. */
+.hex-gem {
+  clip-path: var(--dagonizer-hex-clip);
+  background:
+    linear-gradient(
+      135deg,
+      transparent 40%,
+      color-mix(in srgb, var(--dagonizer-text) 50%, transparent) 48%,
+      var(--dagonizer-text) 50%,
+      color-mix(in srgb, var(--dagonizer-text) 50%, transparent) 52%,
+      transparent 60%
+    ),
+    conic-gradient(
+      from 90deg,
+      var(--dagonizer-text2) 0deg 60deg,
+      var(--dagonizer-text) 60deg 120deg,
+      var(--dagonizer-divider) 120deg 180deg,
+      color-mix(in srgb, var(--dagonizer-divider) 55%, black) 180deg 240deg,
+      var(--dagonizer-divider) 240deg 300deg,
+      var(--dagonizer-text) 300deg 360deg
+    );
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: filter 250ms ease;
+}
+
+.hex-gem:hover {
+  filter: brightness(1.35);
+}
+
+.hex-divider {
+  border: none;
+  border-top: var(--dagonizer-chrome-border-width) solid transparent;
+  border-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--dagonizer-divider) 84%, transparent) 0%,
+    color-mix(in srgb, var(--dagonizer-text3) 26%, var(--dagonizer-divider)) 28%,
+    color-mix(in srgb, var(--dagonizer-text2) 12%, var(--dagonizer-divider)) 50%,
+    color-mix(in srgb, var(--dagonizer-text3) 26%, var(--dagonizer-divider)) 72%,
+    color-mix(in srgb, var(--dagonizer-divider) 84%, transparent) 100%
+  ) 1;
+  position: relative;
+}
+
+.hex-divider::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: var(--dagonizer-text);
+  border: var(--dagonizer-chrome-border-width) solid var(--dagonizer-divider);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.docs-content {
+  color: var(--dagonizer-text2);
+  font-size: 0.985rem;
+  line-height: 1.8;
+}
+
+.docs-content > :first-child {
+  margin-top: 0;
+}
+
+.docs-content :where(h1, h2, h3, h4, h5, h6) {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--dagonizer-text);
+}
+
+.docs-content h1 {
+  font-size: 2rem;
+}
+
+.docs-content h2 {
+  font-size: 1.55rem;
+}
+
+.docs-content h2.doc-heading-secondary {
+  margin-top: 1.5rem;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--dagonizer-text3);
+}
+
+.docs-content h3 {
+  font-size: 1.2rem;
+}
+
+.docs-content :where(p, ul, ol, blockquote, pre, table) {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.docs-content :where(ul, ol) {
+  padding-left: 1.35rem;
+}
+
+.docs-content li + li {
+  margin-top: 0.35rem;
+}
+
+.docs-content a {
+  color: var(--dagonizer-link);
+  text-decoration: none;
+}
+
+.docs-content a:hover {
+  color: var(--dagonizer-link-hover);
+}
+
+.docs-content code {
+  border: 1px solid var(--dagonizer-divider);
+  background: var(--dagonizer-code-inline-bg);
+  padding: 0.12rem 0.34rem;
+  border-radius: 0.45rem;
+  color: var(--dagonizer-brand);
+  font-size: 0.92em;
+}
+
+.docs-content pre {
+  overflow-x: auto;
+  border: 1px solid var(--dagonizer-divider);
+  background: var(--dagonizer-bg-elv);
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.docs-content pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.docs-content blockquote {
+  border-left: 3px solid color-mix(in srgb, var(--dagonizer-brand) 45%, transparent);
+  padding-left: 1rem;
+  color: var(--dagonizer-text3);
+}
+
+.docs-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.docs-content th,
+.docs-content td {
+  border: 1px solid var(--dagonizer-divider);
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docs-content th {
+  color: var(--dagonizer-text);
+  background: var(--dagonizer-bg-elv);
+}
+
+.doc-diagram {
+  margin: 1.5rem 0 2rem;
+  border: var(--dagonizer-surface-border);
+  border-radius: 1rem;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dagonizer-bg-elv) 98%, transparent),
+    color-mix(in srgb, var(--dagonizer-bg-alt) 98%, transparent)
+  );
+  box-shadow: 0 18px 54px color-mix(in srgb, var(--dagonizer-bg) 34%, transparent);
+}
+
+.doc-diagram-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--dagonizer-divider);
+  background: color-mix(in srgb, var(--dagonizer-bg-alt) 72%, transparent);
+}
+
+.doc-diagram-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--dagonizer-text);
+}
+
+.doc-diagram-eyebrow {
+  color: var(--dagonizer-brand);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.doc-diagram-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.doc-diagram-panel,
+.doc-diagram-stack {
+  min-width: 0;
+}
+
+.doc-diagram-figure,
+.doc-diagram-stack .doc-diagram-panel {
+  margin: 0;
+  border: 0;
+}
+
+.doc-diagram-figure {
+  border-bottom: 1px solid var(--dagonizer-divider);
+}
+
+.doc-diagram-title {
+  display: block;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--dagonizer-divider);
+  color: var(--dagonizer-text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--dagonizer-bg-elv) 74%, transparent);
+}
+
+.doc-diagram-panel + .doc-diagram-panel {
+  border-top: 1px solid var(--dagonizer-divider);
+}
+
+.doc-diagram-frame {
+  min-height: 23rem;
+}
+
+/*
+ * Once MermaidExplorer.enhance() mounts, it adds `.dag-mermaid-frame`
+ * (explorer.css) alongside this class on the same element. That rule sets
+ * the bounded, clipped viewport the transform-based zoom/pan camera and
+ * D-pad require (`position: relative`, `overflow: hidden`, a fixed
+ * `height`); `.doc-diagram-frame` must not fight it with its own overflow,
+ * height, or padding, or the camera math and the D-pad's anchor position
+ * both break.
+ */
+
+.doc-diagram-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.doc-diagram-status {
+  margin: 0;
+  color: var(--dagonizer-text3);
+}
+
+.doc-diagram-panel pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--dagonizer-bg) 76%, transparent);
+}
+
+@keyframes hero-orbit {
+  from {
+    transform: rotate(0deg) translateX(6px) rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(6px) rotate(-360deg);
+  }
+}
+
+@keyframes hero-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.72;
+  }
+
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}

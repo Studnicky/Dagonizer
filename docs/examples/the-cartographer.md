@@ -23,79 +23,23 @@ seeAlso:
 
 ## What It Is
 
-The Cartographer is a runnable demo: a real browser-executed DAG application, not a decorative diagram. It is a deterministic data-orchestration pipeline powered by Dagonizer: multi-source fan-in, branching conditional routing, offline country-coder geo-resolution, GDPR redaction, and continent insights. It uses the same engine as the Archivist, applied to ETL instead of LLM agents.
+The Cartographer is a shipment and event workflow around the registered DAG bundle. It streams multi-source intake through conditional routing, offline geo resolution, GDPR redaction, and continent-level aggregation on the same runtime contract the other examples use.
 
-Use it to see data-pipeline work stay inspectable, resumable, and honest about skipped work. The graph shows which branches run, which branches are skipped, and which embedded DAGs own each transformation.
+The runtime couples that DAG bundle with worker-backed execution, compare panes, and insight projection so the deterministic pipeline stays visible while it runs.
 
-## Runnable Demo
+## Runnable Example
 
-<ClientOnly>
-  <CartographerRunner />
-</ClientOnly>
+Open [The Cartographer](/examples/the-cartographer) to run the workflow and inspect its execution surfaces directly.
 
 Click **Run** to stream 100 synthetic tracking events through the full pipeline by default. The **DAG Topology** pane lights nodes as worker-backed scatter clones execute; **Stream**, **Insights**, and **Compare** show the live records, routing savings, and before/after payloads. Larger stress runs are available in the **Configuration** tab.
 
-## How It Works
+## Flow and Runtime Behavior
 
-The runner wires real node classes, real DAG documents, and browser UI observers together. The visual panes listen to dispatcher lifecycle events, so the page shows execution rather than replaying a canned animation.
+The Cartographer runtime runs the DAGs directly. The stream feed, insight tables, compare panes, and DAG state all come from live execution output.
 
-### Architecture
+### Runtime behavior
 
-Five producer feed DAGs, one open gather, and one shared enrichment scatter:
-
-```
-cartographer (top-level)
-  entrypoints: position-ping | facility-scan | sensor-reading | customs-event | delivery-confirmation
-  ├─ dag-feed-position-ping         ─┐
-  ├─ dag-feed-facility-scan         ─┤
-  ├─ dag-feed-sensor-reading        ─┤  each producer feed DAG:
-  ├─ dag-feed-customs-event         ─┤    feed-* → scatter('unpack-normalize', sourceFeed, { dag: 'ingest-source' })
-  └─ dag-feed-delivery-confirmation ─┘      → collect-normalized → merge-events → canonicalEvents
-  gather('intake-gather', canonical-feed)  ← open fan-in over producer feed DAG outputs
-  scatter('process-stream', 'canonicalEvents',
-          { dag: 'event-pipeline-typed' },
-          gather: insights-fold,             ← fold into state.insights / state.journeys / state.sampleRecords
-          container: 'cpu',                  ← browser demo: WebWorkerContainer role
-          execution: { mode: 'reservoir', concurrency: 16, reservoir: { keyField: 'eventType', capacity } })
-    └─ event-pipeline-typed                  ← route-event-type-variant
-         ├─ position-ping       ──► pipeline-position-ping    (parse → geo-pipeline → enrich-leg → aggregate)
-         ├─ sensor-reading      ──► pipeline-sensor-reading   (parse → geo-pipeline → cold-chain → enrich-leg → aggregate)
-         ├─ customs-event       ──► pipeline-customs-event    (parse → geo-pipeline → customs-dwell → enrich-leg → aggregate)
-         ├─ facility-scan       ──► pipeline-facility-scan    (parse → geo-pipeline → canonicalize-facility
-         │                                                      → order-enrichment → gdpr-compliance → aggregate)
-         └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
-                                                                    → confirm-delivery → gdpr-compliance → aggregate)
-         Each per-type pipeline embeds:
-           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (six embedded resolver DAG entrypoints → geo-weighted-fusion GatherNode → resolve-country-consensus → [consensus: verify-point-containment → assemble-resolved-geo → resolve-timezone] | [no-consensus: flag-geo-for-review]) | apply-geo
-           gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
-  embed('summarize-insights', 'insights-summary',
-        container: 'io')                     ← browser demo: separate WebWorkerContainer role
-    └─ insights-summary
-         summarize → done
-  done
-```
-
-The `insights-fold` gather accumulates each clone's `state.enriched` into three bounded
-accumulators (`state.insights`, `state.journeys`, `state.sampleRecords`) as clones
-complete. The producer feed fan-in also leaves the gathered canonical events on
-`state.canonicalEvents` so the Compare pane can show the normalized inputs that
-enter the shared enrichment pipeline.
-
-The browser demo runs the `process-stream` scatter body through container role
-`cpu` and the `summarize-insights` embedded DAG through container role `io`.
-`CartographerWorkerContainer` extends `WebWorkerContainer` to spawn a
-statically-bundled worker entry so Vite can chunk the registry. The reservoir
-`capacity` is a UI-controlled knob: the runner calls
-`CartographerWorkersDag.bundle(clampedBatchCapacity)` on each run so the batch
-size tracks the visitor's setting without mutating shared constants.
-
-## Diagrams, Examples, and Outputs
-
-The live demo is the main diagram. Its graph, state panes, traces, memory views, backend selectors, and outputs are all evidence from the running system.
-
-### What this proves
-
-The Cartographer proves Dagonizer is not only an agent framework. The same JSON-LD DAG model, scatter/gather machinery, embedded DAGs, worker containers, checkpoint semantics, and visualization surfaces run deterministic ETL/data-orchestration workloads in the browser.
+The Cartographer shows how Dagonizer handles non-agent workflows. The same JSON-LD DAG model, scatter/gather machinery, embedded DAGs, worker containers, checkpoint semantics, and visualization APIs run deterministic ETL and streaming workloads in the browser.
 
 It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist).
 Only the node domain differs: agent reasoning vs data enrichment. The DAG topology,
@@ -107,19 +51,68 @@ coordinates resolved to a real continent/country, and raw PII fields redacted
 to their pseudonymised forms. The routing savings table shows how many node
 executions the conditional branching avoided.
 
-## What It Lets You Do
+## How It Works
 
-Use the Cartographer when you want to see Dagonizer without an LLM anywhere in the loop. It is a streaming data pipeline with typed inputs, bounded fan-out, conditional routing, worker-backed processing, and aggregate outputs.
+The interactive host registers real node classes, DAG documents, worker containers, and observers. The visual panes listen to dispatcher lifecycle events and folded output, so the runtime view reflects the actual execution path directly.
 
-For application teams, this page answers a different practical question than the Archivist: can the same graph engine handle ETL-shaped work with real branching, backpressure, and data-quality decisions? Yes, and the panels show the skipped work as clearly as the completed work.
+### Architecture
 
-### What to try
+Five producer feed DAGs, one open gather, and one shared streaming-enrichment scatter:
 
-Click **Run** and watch the stream, DAG, and panels while synthetic shipment events move through parsing, geo-resolution, GDPR compliance, worker-backed stream processing, and insight aggregation. Compare the routing-savings table with the highlighted DAG path.
+```
+cartographer (top-level)
+  entrypoints: position-ping | facility-scan | sensor-reading | customs-event | delivery-confirmation
+  ├─ dag-feed-position-ping         ─┐
+  ├─ dag-feed-facility-scan         ─┤
+  ├─ dag-feed-sensor-reading        ─┤  each producer feed DAG:
+  ├─ dag-feed-customs-event         ─┤    feed-<type> opens that producer's lazy
+  └─ dag-feed-delivery-confirmation ─┘      payload stream onto state.sourceFeed → done
+  gather('intake-gather', source-intake)   ← open fan-in; merges each clone's stream
+                                              into the top-level state['source-payload']
+  scatter('process-stream', 'source-payload',
+          { dag: 'stream-event' },
+          gather: insights-fold,             ← fold into state.insights / state.journeys / state.sampleRecords
+          container: 'cpu',                  ← host runtime: WebWorkerContainer role
+          execution: { mode: 'reservoir', concurrency: 16, reservoir: { keyField: 'eventType', capacity } })
+    └─ stream-event                          ← decode-payload → route-event-type-variant
+         ├─ position-ping       ──► pipeline-position-ping    (parse → geo-pipeline → enrich-leg → aggregate)
+         ├─ sensor-reading      ──► pipeline-sensor-reading   (parse → geo-pipeline → cold-chain → enrich-leg → aggregate)
+         ├─ customs-event       ──► pipeline-customs-event    (parse → geo-pipeline → customs-dwell → enrich-leg → aggregate)
+         ├─ facility-scan       ──► pipeline-facility-scan    (parse → geo-pipeline → canonicalize-facility
+         │                                                      → order-enrichment → gdpr-compliance → aggregate)
+         └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
+                                                                    → confirm-delivery → gdpr-compliance → aggregate)
+         Each per-type pipeline embeds:
+           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (six embedded resolver DAG entrypoints → geo-weighted-fusion GatherNode → resolve-country-consensus → [consensus: verify-point-containment → assemble-resolved-geo → resolve-timezone] | [no-consensus: flag-geo-for-review]) | apply-geo
+           gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
+  embed('summarize-insights', 'insights-summary',
+        container: 'io')                     ← host runtime: separate WebWorkerContainer role
+    └─ insights-summary
+         summarize → done
+  done
+```
+
+`stream-event` shares its routing and per-type pipeline embeds with
+`event-pipeline-typed`, an earlier scatter body kept registered as a
+compatibility path; `process-stream` targets `stream-event` directly.
+
+The `insights-fold` gather accumulates each clone's `state.enriched` into three bounded
+accumulators (`state.insights`, `state.journeys`, `state.sampleRecords`) as clones
+complete. The producer feed fan-in also leaves the merged source-payload batches on
+`state['source-payload']` so the Compare pane can show the inputs that
+enter the shared enrichment pipeline.
+
+The runtime runs the `process-stream` scatter body through container role
+`cpu` and the `summarize-insights` embedded DAG through container role `io`.
+`CartographerWorkerContainer` extends `WebWorkerContainer` to spawn a
+statically-bundled worker entry so Vite can chunk the registry. The reservoir
+`capacity` is a UI-controlled knob: the runner calls
+`CartographerWorkersDag.bundle(clampedBatchCapacity)` on each run so the batch
+size tracks the visitor's setting without mutating shared constants.
 
 ## Code Samples
 
-The Cartographer source shows the data-pipeline side of the same engine. Start with the top-level DAGs, then inspect the routing nodes, state/services, entity shapes, and CLI runner that make the browser demo deterministic.
+The Cartographer source shows the data-pipeline side of the same engine. Start with the top-level DAGs, then inspect the routing nodes, state/services, entity shapes, and CLI runner that make the pipeline deterministic.
 
 ### Branching conditional routing
 
@@ -274,19 +267,20 @@ Factory that assembles the `CartographerServices` record for the chosen backend.
 
 ### Key nodes
 
-#### `producerFeeds` and `CanonicalFeedGather` — producer DAG fan-in
+#### `producerFeeds` and `SourceIntakeGather` — producer DAG fan-in
 
-Each data-type entrypoint targets its own producer feed DAG. That DAG opens the
-producer-local source feed, scatters each source payload through `ingest-source`
-for decompress/parse/normalize/validate, merges the validated events, and emits
-`canonicalEvents`. The top-level `canonical-feed` gather is the open fan-in that
-flattens those producer DAG outputs into the single shared enrichment pipeline.
+Each data-type entrypoint targets its own producer stream-feed DAG. That DAG
+opens the producer-local source stream, scatters each source payload through
+`ingest-source` for decompress/parse/normalize/validate, and returns source
+payload batches to the top-level `intake-gather` placement. The `source-intake`
+gather is the open fan-in that merges those producer DAG outputs into the
+single shared `source-payload` collection the enrichment scatter reads.
 
 <<< ../../examples/the-cartographer/nodes/producerFeeds.ts#producer-feed-nodes
 
 <<< ../../examples/the-cartographer/embedded-dags/ProducerFeedDAG.ts#producer-feed-dags
 
-<<< ../../examples/the-cartographer/core/CanonicalFeedGather.ts#canonical-feed-gather
+<<< ../../examples/the-cartographer/core/SourceIntakeGather.ts#source-intake-gather
 
 #### `canonicalizeCore` — timestamp and location normalization
 
@@ -307,7 +301,7 @@ shipping/ETA figures all land here.
 
 #### `summarizeInsights` — finalize insight views
 
-In the streaming path (the browser demo and any caller using `insights-fold`) the
+In the streaming path (the Cartographer workflow and any caller using `insights-fold`) the
 `insights-fold` gather accumulates `state.insights`, `state.journeys`, and
 `state.sampleRecords` incrementally as each clone completes, so `summarizeInsights`
 is a pure pass-through — it detects the pre-populated maps and routes `success`
@@ -363,7 +357,17 @@ npx tsx examples/the-cartographer/runCartographer.ts --events 50
 
 <<< ../../examples/the-cartographer/runCartographer.ts#run-cartographer
 
-## Details for Nerds
+## Operational Uses
+
+The Cartographer shows Dagonizer with no LLM in the loop. It is a streaming data pipeline with typed inputs, bounded fan-out, conditional routing, worker-backed processing, and aggregate outputs.
+
+The same runtime handles ETL-shaped work with real branching, backpressure, and data-quality decisions, and the host keeps skipped work as visible as completed work.
+
+### Exercise the flow
+
+Click **Run** and watch the stream, DAG, and panels while synthetic shipment events move through parsing, geo-resolution, GDPR compliance, worker-backed stream processing, and insight aggregation. Compare the routing-savings table with the highlighted DAG path.
+
+## Runtime Notes
 
 ### The thesis
 
@@ -407,7 +411,7 @@ country/timezone/locale tables locally.
 
 ## Related Concepts
 
-Read these next when you want to connect Cartographer behavior to scatter, embedded DAGs, workers, streaming, and plugin-defined reusable flows.
+These related pages connect Cartographer behavior to scatter, embedded DAGs, workers, streaming, and plugin-defined reusable flows.
 
 - [The Archivist](./the-archivist) - LLM agent orchestration on the same engine
 - [Concepts](../concepts) - Dagonizer vocabulary the Cartographer exercises
@@ -419,15 +423,15 @@ Read these next when you want to connect Cartographer behavior to scatter, embed
 
 These numbered examples are the small-form counterparts to Cartographer behavior:
 
-| Example | Principle in the runnable Cartographer |
+| Example | Principle in the Cartographer workflow |
 |---------|-----------------------------------------|
-| [Example 04C: Container-Bound Scatter](./04c-scatter-workers) | `process-stream` is a scatter placement with a container role; the example page isolates the worker-bound body shape. |
+| [Example 04C: Container-Bound Scatter](./04c-scatter-workers) | `process-stream` is a scatter placement with a container role; the numbered example isolates the worker-bound body shape. |
 | [Example 12: Worker Containers](./12-workers) | The shared typed event pipeline runs through the same `DagContainerInterface` seam when container roles are bound. |
 | [Example 13: Multi-Backend Roles](./13-multibackend) | `process-stream` binds to `cpu` and `summarize-insights` binds to `io` in the browser Cartographer runner while the parent DAG stays JSON-LD. |
 | [Example 14: Gather Strategies](./14-gather-strategies) | Cartographer’s `InsightsFoldGather` and first-class `geo-weighted-fusion` gather show scatter-local folds and embedded-producer fan-in. |
 | [Example 15: Incremental Gather](./15-incremental-gather) | The insights panel updates through incremental fold semantics rather than waiting for a final batch merge. |
 | [Example 16: Scatter Resume](./16-scatter-resume) | The durable-inbox model is the checkpoint substrate for long-running stream scatters. |
 | [Example 17: Async Scatter Source](./17-scatter-async-source) | `seed` can provide sources as an async stream; bounded scatter pulls only as capacity opens. |
-| [Example 27: Runtime DAG Dispatch](./27-recursion) | Dynamic `DagReference` dispatch belongs here if hierarchical route expansion enters the demo. |
+| [Example 27: Runtime DAG Dispatch](./27-recursion) | Dynamic `DagReference` dispatch belongs here if hierarchical route expansion enters the workflow. |
 | [Example 33: Plugin-Defined DAGs](./33-plugin) | Plugin packaging belongs here for normalization pipelines (`NormalizeCsvDAG`, `NormalizeJsonDAG`, etc.) so plugins and embedded DAGs stay one interface. |
 | [Examples 34-36: Streaming Substrate](./34-stream-channel) | Intake stream assembly, resumable cursors, and DagStreamProducer are the substrate beneath Cartographer’s event stream. |

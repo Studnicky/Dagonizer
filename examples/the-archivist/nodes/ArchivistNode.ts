@@ -46,6 +46,7 @@ export const NODE_VARIANTS: Readonly<Record<string, NodeVariant>> = {
   'recommend-similar':     'deterministic',
   'rank-by-rating':        'deterministic',
   'pick-best-match':       'deterministic',
+  'resolve-book-detail':   'deterministic',
   // Non-deterministic: every LLM-driven step
   'classify-intent':       'non-deterministic',
   'decide-tools':          'non-deterministic',

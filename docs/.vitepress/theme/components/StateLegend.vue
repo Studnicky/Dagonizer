@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiLegendTitle from './ui/UiLegendTitle.vue';
 /**
  * StateLegend: five chips showing the DAG's visual states.
  *
@@ -27,7 +28,7 @@ const chips: readonly StateChip[] = [
 
 <template>
   <aside class="state-legend" aria-label="DAG state legend">
-    <span class="state-legend-title">states</span>
+    <UiLegendTitle align="center">states</UiLegendTitle>
     <span
       v-for="chip in chips"
       :key="chip.key"
@@ -43,16 +44,6 @@ const chips: readonly StateChip[] = [
   flex-direction: column;
   align-items: stretch;
   gap: 0.3rem;
-}
-
-.state-legend-title {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-  text-align: center;
-  margin-bottom: 0.1rem;
 }
 
 .state-chip {

@@ -15,17 +15,26 @@ seeAlso:
 
 # Checkpoint Persistence
 
-## What It Is
+## Persistence Model
 
 Checkpoint persistence is the durable graph-state path for checkpointed execution. RDF/N-Quads is the default graph serialization for node state, lifecycle, relationships, transfer, and retention, while context-bound JSON-LD is the intermediate representation exposed to Node.js boundaries. `Checkpoint` carries both views of the same graph state: JSON-LD for Node.js restoration and N-Quads for streaming, hashing, and adapter persistence.
 
-Use it when a checkpoint must survive process memory: browser parking, serverless resume, queue hand-off, crash recovery, or any execution that may continue in a different host.
+Checkpoint persistence fits checkpoints that must survive process memory: browser parking, serverless resume, queue hand-off, crash recovery, or any execution that may continue in a different host.
 
-## How It Works
+## Persistence Lifecycle
+
+Persistence is not DAG topology, so a sequence diagram carries the checkpoint API lifecycle while the source snippets cover the store-backed flows.
+
+- [Checkpoint](./checkpoint) - the codec layer (`Checkpoint.capture` and `Checkpoint.load`)
+- [Subclassing State](./subclassing) - domain fields survive through graph facts and JSON-LD
+- [Cancellation](./cancellation) - produce a checkpointable result by aborting an in-flight flow
+- [Example 23: Checkpoint Store](../examples/23-checkpoint-store) runs the store-backed recall path.
+
+## Store Contract
 
 `Checkpoint` owns encoding and validation. `CheckpointStore` owns storage. `ckpt.persist(store, key)` serializes the checkpoint and calls the store; `Checkpoint.recall(store, key)` reads, parses, validates, and returns a checkpoint ready for state/store restore.
 
-`CheckpointStore` is the three-method adapter contract for persistence backends. `Checkpoint` handles the codec (turning an `ExecutionResult` into a `CheckpointData` record and back); persistence is the application's responsibility behind this contract.
+`CheckpointStore` is the three-method adapter contract for persistence backends. `Checkpoint` handles the codec (turning an `ExecutionResult` into a `CheckpointData` record and back); persistence is the host's responsibility behind this contract.
 
 ### Persist + recall lifecycle
 
@@ -50,31 +59,16 @@ flowchart TB
 
 The diagram traces method invocations across the save and resume halves. It is not a Dagonizer DAG; it is a sequence over the codec API.
 
-## Diagrams, Examples, and Outputs
-
-Persistence is not DAG topology, so this page uses a sequence diagram for the checkpoint API lifecycle and source snippets for the runnable store examples.
-
-- [Checkpoint](./checkpoint) - the codec layer (`Checkpoint.capture` and `Checkpoint.load`)
-- [Subclassing State](./subclassing) - domain fields survive through graph facts and JSON-LD
-- [Cancellation](./cancellation) - produce a checkpointable result by aborting an in-flight flow
-- [Example 23: Checkpoint Store](../examples/23-checkpoint-store) runs the store-backed recall path.
-
-## What It Lets You Do
-
-### Use when
-
-Use checkpoint persistence when a checkpoint must survive process memory. This is the backing-store layer for browser parking, serverless resumes, queue hand-offs, crash recovery, and any flow where `Checkpoint.capture` is not enough by itself.
-
 ## Code Samples
 
-### API surface
+### API
 
 | Symbol | Source | Role |
 |--------|--------|------|
 | `CheckpointStore` | `@studnicky/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
 | `Snapshottable` | `@studnicky/dagonizer/contracts` | Capability contract: `snapshot()`, `restore()`. Required by `Checkpoint.capture` and `restoreStores`. |
 | `StoreSnapshotType` | `@studnicky/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
-| `MemoryCheckpointStore` | `@studnicky/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
+| `MemoryCheckpointStore` | `@studnicky/dagonizer/checkpoint` | In-memory reference implementation (tests, short-lived local runs) |
 | `ckpt.persist(store, key)` | instance method | Serializes and writes via the store |
 | `Checkpoint.recall(store, key)` | `@studnicky/dagonizer/checkpoint` | Reads, parses, validates, wraps |
 
@@ -96,7 +90,11 @@ export {};
 
 `Checkpoint.recall` runs the JSON through `Validator.checkpoint.validate(parsed)` before wrapping it. Tampered or version-mismatched payloads throw `ValidationError`. The same goes for `Checkpoint.load` (which `recall` composes with).
 
-## Details for Nerds
+## Operational Uses
+
+Checkpoint persistence is the backing-store layer for checkpoints that must survive process memory. It covers browser parking, serverless resumes, queue hand-offs, crash recovery, and any flow where `Checkpoint.capture` is not enough by itself.
+
+## Runtime Notes
 
 ### Persist with `ckpt.persist`
 
@@ -112,7 +110,7 @@ export {};
 
 ### Implementing a custom store
 
-Implement the three methods against the backend. The store below backs the contract with a real `Map` — a complete, runnable implementation:
+Implement the three methods against the backend. The store below backs the contract with a real `Map` — a complete reference implementation:
 
 <<< @/../examples/dags/custom-checkpoint-store.ts#custom-store
 
@@ -122,7 +120,7 @@ The `custom-checkpoint-store` example exercises the full `save` → `load` → `
 
 ### Named stores and `Snapshottable`
 
-`Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshotType>` and `restore(snapshot: StoreSnapshotType): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
+`Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` contract. Any object that implements `snapshot(): Promise<StoreSnapshotType>` and `restore(snapshot: StoreSnapshotType): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
 <<< @/../examples/dags/custom-checkpoint-store.ts#snapshottable
 
@@ -132,7 +130,7 @@ The `custom-checkpoint-store` example exercises the full `save` → `load` → `
 
 ## RDF graph state
 
-`NodeStateBase` is graph-backed. Its ordinary state fields, metadata, lifecycle, retry counters, warnings, errors, placement events, and run identity are represented as RDF facts in a run-scoped named graph while the public node API remains the familiar `NodeStateInterface` surface.
+`NodeStateBase` is graph-backed. Its ordinary state fields, metadata, lifecycle, retry counters, warnings, errors, placement events, and run identity are represented as RDF facts in a run-scoped named graph while the public node API remains the familiar `NodeStateInterface` contract.
 
 Use `GraphStateTransferCodec` for graph-aware checkpoint and container boundaries. N-Quads is the required transfer form; `GraphStateTransferCodec.reference` stores a named-graph snapshot behind a reference, `GraphStateTransferCodec.shared` issues scoped shared-graph authority, and `GraphStateTransferCodec.delta` carries additive/deletion deltas. Optional transfer modes are capability-negotiated; inline N-Quads is implicit and is not listed as a capability.
 

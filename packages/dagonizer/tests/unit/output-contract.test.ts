@@ -37,12 +37,14 @@ import { TestDag } from '../_support/TestDag.js';
 class ContractState extends NodeStateBase {
   value: number;
   name: string;
+  items: number[];
 
   constructor() {
     super();
     // Initialise in declaration order — V8 shape stability.
     this.value = 0;
     this.name  = '';
+    this.items = [];
   }
 }
 
@@ -54,6 +56,7 @@ const PARENT_BAD_OUTPUT_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-o
 const PARENT_BAD_INPUT_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-input';
 const TEST_BATCH_VIOLATING_DAG_IRI = 'urn:noocodec:dag:output-contract-batch-violating';
 const TEST_BATCH_VIOLATING_OFF_DAG_IRI = 'urn:noocodec:dag:output-contract-batch-violating-off';
+const TEST_SCATTER_VIOLATING_DAG_IRI = 'urn:noocodec:dag:output-contract-scatter-violating';
 const PARENT_BAD_OUTPUT_OFF_DAG_IRI = 'urn:noocodec:dag:output-contract-parent-bad-output-off';
 
 /**
@@ -259,6 +262,26 @@ class BatchViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   }
 }
 
+/** Records scatter clone states so the per-item output-contract error is observable. */
+class ScatterViolatingNode extends ViolatingNode {
+  readonly emittedStates: ContractState[];
+
+  constructor() {
+    super();
+    this.emittedStates = [];
+  }
+
+  override async execute(
+    batch: Batch<ContractState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'done' | 'error', ContractState>> {
+    for (const item of batch) {
+      this.emittedStates.push(item.state);
+    }
+    return super.execute(batch, context);
+  }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void describe('outputSchema contract — validateOutputs toggle', () => {
@@ -286,7 +309,46 @@ void describe('outputSchema contract — validateOutputs toggle', () => {
     // Item re-routed to 'error' → 'end-fail' terminal → failed outcome.
     assert.equal(result.terminalOutcome, 'failed', 'output contract violation must route to failed');
     const contractErrors = state.errors.filter((e) => e.code === 'outputContractViolation');
-    assert.ok(contractErrors.length > 0, 'state must contain outputContractViolation error');
+    assert.deepEqual(
+      contractErrors.map((error) => error.code),
+      ['outputContractViolation'],
+      'single-node violation must collect exactly the output-contract error code',
+    );
+  });
+
+  void it('(a.1) re-routes every scatter item to error and collects outputContractViolation', async () => {
+    const node = new ScatterViolatingNode();
+    const dag = new DAGBuilder(TEST_SCATTER_VIOLATING_DAG_IRI, '1', { 'name': 'test-scatter-violating' })
+      .scatter(placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'scatter'), 'items', node, {
+        'all-success': placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end'),
+        'partial': placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end'),
+        'all-error': placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end-fail'),
+        'empty': placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end'),
+      }, {
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
+        'name': 'scatter',
+      })
+      .terminal(placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end'), { 'name': 'end' })
+      .terminal(placementIri(TEST_SCATTER_VIOLATING_DAG_IRI, 'end-fail'), { 'name': 'end-fail', 'outcome': 'failed' })
+      .build();
+
+    const dispatcher = new Dagonizer<ContractState>({ 'validateOutputs': true });
+    dispatcher.registerNode(node);
+    dispatcher.registerDAG(dag);
+
+    const state = new ContractState();
+    state.items = [1, 2];
+    const result = await dispatcher.execute(TEST_SCATTER_VIOLATING_DAG_IRI, state);
+
+    assert.equal(result.terminalOutcome, 'failed', 'scatter output violations must take the all-error route');
+    assert.equal(node.emittedStates.length, 2, 'every scatter item must emit through validation');
+    for (const emittedState of node.emittedStates) {
+      assert.deepEqual(
+        emittedState.errors.map((error) => error.code),
+        ['outputContractViolation'],
+        'each invalid scatter emission must collect the output-contract error code',
+      );
+    }
   });
 
   // (b) validateOutputs: true + conforming → routes normally ─────────────────

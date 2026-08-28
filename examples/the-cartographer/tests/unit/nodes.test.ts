@@ -16,6 +16,7 @@ import { Batch } from '@studnicky/dagonizer';
 import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
+import { EnrichedShipmentGuard } from '../../entities/EnrichedShipment.ts';
 
 import { ValidateCoordsNode } from '../../nodes/validateCoords.ts';
 import { RouteGeoNode } from '../../nodes/routeGeo.ts';
@@ -24,6 +25,9 @@ import { ColdChainCheckNode } from '../../nodes/coldChainCheck.ts';
 import { CustomsDwellNode } from '../../nodes/customsDwell.ts';
 import { AggregateEventNode } from '../../nodes/aggregateEvent.ts';
 import { EnrichLegNode } from '../../nodes/enrichLeg.ts';
+import { DecodePayloadNode } from '../../nodes/decodePayload.ts';
+import { ParseVariantNode } from '../../nodes/parseVariant.ts';
+import { SelectSourceNode } from '../../nodes/ingest/selectSource.ts';
 
 const CTX: NodeContextType = {
   'dagName': 'test',
@@ -43,6 +47,74 @@ async function executeSingle<TOutput extends string>(
   }
   throw new Error(`Node ${node.name} did not route the test item`);
 }
+
+const SOURCE_PAYLOAD_FIXTURE = {
+  'sourceId': 'position-ping-json-none-1',
+  'format': 'json',
+  'compression': 'none',
+  'mappingKey': 'json-position',
+  'eventType': 'position-ping',
+  'payload': JSON.stringify({
+    'shipmentId': 'SHP-TEST-001',
+    'eventId': 'EVT-TEST-001',
+    'scanSeq': 1,
+    'latitude': 40.7128,
+    'longitude': -74.006,
+    'ipAddress': '',
+    'localeTag': 'en-US',
+    'countryCode': 'US',
+    'legFromLat': 40.7128,
+    'legFromLng': -74.006,
+    'originLat': 40.7128,
+    'originLng': -74.006,
+    'destLat': 34.0522,
+    'destLng': -118.2437,
+    'carrier': 'DHL',
+    'status': 'in transit',
+    'rawTimestamp': '2026-07-17T12:00:00.000Z',
+    'sourceCountry': 'US',
+    'sourceRegion': 'North America',
+  }),
+} as const;
+
+describe('Transient metadata cleanup', () => {
+  it('DecodePayloadNode clears source-payload metadata after decoding', async () => {
+    const state = new CartographerState();
+    state.setMetadata('source-payload', SOURCE_PAYLOAD_FIXTURE);
+
+    const node = new DecodePayloadNode();
+    const result = await executeSingle(node, state);
+
+    assert.equal(result, 'decoded');
+    assert.equal(state.getMetadata('source-payload'), undefined);
+    assert.ok(CanonicalEventVariantBuilder.is(state.getMetadata('canonical-event')));
+  });
+
+  it('ParseVariantNode clears canonical-event metadata after projection', async () => {
+    const state = new CartographerState();
+    const variant = CanonicalEventVariantBuilder.fromSourcePayload(SOURCE_PAYLOAD_FIXTURE, JSON.parse(SOURCE_PAYLOAD_FIXTURE.payload));
+    state.setMetadata('canonical-event', variant);
+
+    const node = new ParseVariantNode();
+    const result = await executeSingle(node, state);
+
+    assert.equal(result, 'parsed');
+    assert.equal(state.getMetadata('canonical-event'), undefined);
+    assert.equal(state.raw.shipmentId, 'SHP-TEST-001');
+  });
+
+  it('SelectSourceNode clears source metadata after projecting currentSource', async () => {
+    const state = new CartographerState();
+    state.setMetadata('source', SOURCE_PAYLOAD_FIXTURE);
+
+    const node = new SelectSourceNode();
+    const result = await executeSingle(node, state);
+
+    assert.equal(result, 'plain');
+    assert.equal(state.getMetadata('source'), undefined);
+    assert.equal(state.currentSource.sourceId, SOURCE_PAYLOAD_FIXTURE.sourceId);
+  });
+});
 
 // ── ValidateCoordsNode ─────────────────────────────────────────────────────────
 
@@ -471,6 +543,13 @@ describe('AggregateEventNode', () => {
 
   it('writes enriched from the normalized + geo + gdpr + pricing + shipping + eta state fields', async () => {
     const state = new CartographerState();
+    state.currentSource.payload = '{"large":"payload"}';
+    state.decodedText = 'decoded';
+    state.parsedRecords = [{ 'shipmentId': 'SHP-TEST-001' }];
+    state.mappedRecords = [{ 'shipmentId': 'SHP-TEST-001' }];
+    state.ingestedEvents = [CanonicalEventVariantBuilder.from({ 'shipmentId': 'SHP-TEST-001' })];
+    state.canonical = CanonicalEventVariantBuilder.from({ 'shipmentId': 'SHP-TEST-001' });
+    state.canonicalVariant = CanonicalEventVariantBuilder.from({ 'shipmentId': 'SHP-TEST-001' });
     state.normalized.shipmentId = 'SHP-TEST-001';
     state.normalized.scanSeq    = 3;
     state.normalized.epochMs    = 1735689600000;
@@ -514,6 +593,13 @@ describe('AggregateEventNode', () => {
     assert.equal(e.consentStatus,    'valid');
     assert.equal(e.legKm,            450);
     assert.equal(e.exception,        false); // status !== EXCEPTION
+    assert.equal(state.currentSource.payload, '');
+    assert.equal(state.decodedText, '');
+    assert.deepEqual(state.parsedRecords, []);
+    assert.deepEqual(state.mappedRecords, []);
+    assert.deepEqual(state.ingestedEvents, []);
+    assert.deepEqual(state.canonical, CanonicalEventVariantBuilder.from({}));
+    assert.deepEqual(state.canonicalVariant, CanonicalEventVariantBuilder.from({}));
   });
 
   it('marks enriched.exception true when status is EXCEPTION', async () => {
@@ -532,5 +618,20 @@ describe('AggregateEventNode', () => {
     await executeSingle(node, state);
     assert.equal(state.enriched.routing.geoLookupRun,     true);
     assert.equal(state.enriched.routing.redactionSkipped, true);
+  });
+
+  it('writes the maritime continent for water-resolved geo, accepted by EnrichedShipmentGuard', async () => {
+    const state = new CartographerState();
+    state.normalized.shipmentId = 'SHP-MARITIME-001';
+    state.geoContext.continent  = 'International Waters / Maritime';
+    state.geoContext.region     = 'International Waters';
+    state.geoContext.status     = 'water';
+    state.geoContext.jurisdiction = 'international-waters';
+    const node = new AggregateEventNode();
+    await executeSingle(node, state);
+
+    assert.equal(state.enriched.continent, 'International Waters / Maritime');
+    assert.equal(state.enriched.geoStatus, 'water');
+    assert.equal(EnrichedShipmentGuard.is(state.enriched), true);
   });
 });

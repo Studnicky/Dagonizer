@@ -1,64 +1,34 @@
 <script setup lang="ts">
-/**
- * GraphLegend: shared bottom-left legend for any graph canvas.
- *
- * Accepts a `tabs` array so the same component renders:
- *   • DAG: a single "Kinds" tab with deterministic / non-deterministic entries.
- *   • Memory: a single "Layers" tab with the four named-graph layer entries,
- *     each clickable to toggle visibility. Emits `toggle(key)` when clicked.
- *
- * Entry swatch shapes:
- *   'solid': a solid filled square (default)
- *   'dashed': an outlined square with a dashed border
- *   'square': alias for 'solid'
- *   'circle': a filled circle (pill border-radius)
- */
+import { computed } from 'vue';
 
-export interface LegendEntry {
-  readonly key:    string;
-  readonly swatch: 'solid' | 'dashed' | 'square' | 'circle';
-  readonly color:  string;
-  readonly label:  string;
-  readonly active?: boolean;
-}
-
-export interface LegendTab {
-  readonly key:     string;
-  readonly label:   string;
-  readonly entries: readonly LegendEntry[];
-}
+import { LegendMachine } from '../../../../../packages/dagonizer/src/viz/LegendMachine.ts';
+import UiLegendTitle from '../ui/UiLegendTitle.vue';
 
 const props = withDefaults(defineProps<{
-  tabs: readonly LegendTab[];
+  machine: LegendMachine;
 }>(), {});
 
-const emit = defineEmits<{
-  (event: 'toggle', key: string): void;
-}>();
-
-function isClickable(entry: LegendEntry): boolean {
-  return entry.active !== undefined;
-}
+const state = computed(() => props.machine.state());
 </script>
 
 <template>
   <aside class="graph-legend" aria-label="Graph legend">
-    <template v-for="tab in props.tabs" :key="tab.key">
-      <span class="legend-title">{{ tab.label }}</span>
+    <template v-for="section in state.sections" :key="section.key">
+      <UiLegendTitle>{{ section.label }}</UiLegendTitle>
       <button
-        v-for="entry in tab.entries"
+        v-for="entry in section.entries"
         :key="entry.key"
         type="button"
         :class="[
           'legend-entry',
-          { 'legend-entry--clickable': isClickable(entry) },
+          { 'legend-entry--clickable': props.machine.isToggleable(entry) },
           { 'legend-entry--off': entry.active === false },
         ]"
         :style="{ '--entry-color': entry.color }"
-        :aria-pressed="isClickable(entry) ? entry.active : undefined"
-        :title="isClickable(entry) ? (entry.active ? `Hide ${entry.label}` : `Show ${entry.label}`) : entry.label"
-        :disabled="!isClickable(entry)"
-        @click="isClickable(entry) && emit('toggle', entry.key)"
+        :aria-pressed="props.machine.isToggleable(entry) ? entry.active : undefined"
+        :title="props.machine.isToggleable(entry) ? (entry.active ? `Hide ${entry.label}` : `Show ${entry.label}`) : entry.label"
+        :disabled="!props.machine.isToggleable(entry)"
+        @click="props.machine.isToggleable(entry) && props.machine.toggle(entry.key)"
       >
         <span
           :class="[
@@ -88,18 +58,6 @@ function isClickable(entry: LegendEntry): boolean {
   border-radius: 4px;
   padding: 0.35rem 0.6rem;
   z-index: 4;
-}
-
-.legend-title {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-  text-align: left;
-  margin-bottom: 0.1rem;
-  padding: 0;
-  pointer-events: none;
 }
 
 .legend-entry {

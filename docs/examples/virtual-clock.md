@@ -17,22 +17,18 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { virtualClockDAG } from '../.vitepress/theme/exampleDags.ts';
+import { virtualClockDAG } from '../exampleDags.ts';
 </script>
 
 # Virtual Clock
 
-## What It Is
+## Deterministic Time Surface
 
 Virtual Clock makes time deterministic in tests. `VirtualClockProvider` and `VirtualScheduler` replace the real wall clock so timeout and retry behavior can be driven by `scheduler.advance(ms)` calls with zero real waiting.
 
 The example runs a real timeout DAG against a virtual scheduler: the node has a 200ms timeout, the test advances virtual time, and the run fails immediately in wall-clock terms.
 
-## How It Works
-
-Install the virtual clock and scheduler before executing the DAG. Runtime timers then use the virtual providers instead of real `setTimeout`, and the test advances time explicitly.
-
-## Diagrams, Examples, and Outputs
+## Timeout Flow
 
 The diagram is generated from the timeout DAG used by the CLI example.
 
@@ -44,13 +40,21 @@ The diagram is generated from the timeout DAG used by the CLI example.
 npx tsx examples/virtual-clock.ts
 ```
 
-## What It Lets You Do
+## Virtual Scheduler Model
 
-Virtual clocks let applications test retry and timeout behavior without waiting for real wall-clock time. Use them in unit tests where backoff schedules, deadlines, and scheduler-driven work need deterministic assertions.
+Install the virtual clock and scheduler before executing the DAG. Runtime timers then use the virtual providers instead of real `setTimeout`, and the test advances time explicitly.
+
+## Code Samples
+
+<<< @/../examples/virtual-clock.ts
+
+## Operational Uses
+
+Virtual clocks let teams test retry and timeout behavior without waiting for real wall-clock time. Use them in unit tests where backoff schedules, deadlines, and scheduler-driven work need deterministic assertions.
 
 `VirtualClockProvider` and `VirtualScheduler` from `@studnicky/dagonizer/testing` replace the real wall-clock. Retry backoff intervals are driven by programmatic `scheduler.advance(ms)` calls rather than actual waits, making retry behavior testable in zero elapsed wall-clock time.
 
-The example uses a flaky operation that fails on the first two attempts and succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms total virtual time). Both `ClockProvider` and `Scheduler` are restored to real time after the demonstration.
+The example uses a flaky operation that fails on the first two attempts and succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms total virtual time). Both `ClockProvider` and `Scheduler` are restored to real time after the run.
 
 ```
 Attempt 1: fails → backoff 100ms virtual
@@ -59,11 +63,7 @@ Attempt 3: succeeds
 Total virtual time: 300ms. Real wall-clock time: ~0ms.
 ```
 
-## Code Samples
-
-<<< @/../examples/virtual-clock.ts
-
-## Details for Nerds
+## Runtime Notes
 
 - **`VirtualClockProvider`.** Implements `ClockProvider` with a programmatic `now()` that advances by explicit `tick(ms)` calls. Install via `Clock.install(provider)` before constructing the dispatcher.
 - **`VirtualScheduler`.** Implements `Scheduler` with a pending-timer queue. Install via `Scheduler.install(scheduler)`. Call `scheduler.advance(ms)` to drain all timers whose deadline falls within the advanced time. No real `setTimeout` calls are made.

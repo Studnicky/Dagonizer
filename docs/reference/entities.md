@@ -11,32 +11,24 @@ seeAlso:
 
 # Entities
 
-## What It Is
+## Schema Surface
 
 Entities are the JSON Schema-backed wire shapes used by DAG documents, placements, lifecycle state, checkpoints, node results, and constants.
 
-Use this page when validating JSON-LD, typing external artifacts, inspecting schema `$id` values, or building tooling that reads and writes Dagonizer documents.
+Entities are the schema layer for validating JSON-LD, typing external artifacts, inspecting schema `$id` values, and building tooling that reads or writes Dagonizer documents.
 
-## How It Works
+## Schema and Validation References
 
-Each entity exports a JSON Schema constant and a TypeScript type derived from that schema with `json-schema-to-ts`. The schema is the source of truth; TypeScript follows the wire format.
-
-Schemas prove structure. Dispatcher registration proves semantic references against the current registry.
-
-## Diagrams, Examples, and Outputs
-
-Entities are the schema layer under DAG diagrams and validation. These pages show where the shapes are validated and narrowed:
+Entities sit under DAG ingest, checkpoint capture, lifecycle transfer, and generated tooling. These references show where schema validation stops and runtime contracts begin:
 
 - [Reference: Validation](./validation)
 - [Reference: Contracts](./contracts) - interfaces narrow these entities
 
-## What It Lets You Do
+## Schema Derivation Model
 
-The entities reference lets applications inspect every JSON Schema-derived wire type used by DAG documents, lifecycle records, checkpoints, execution results, and constants.
+Each entity exports a JSON Schema constant and a TypeScript type derived from that schema with `json-schema-to-ts`. The schema is the authoritative shape; TypeScript mirrors the wire format.
 
-`@studnicky/dagonizer/entities`
-
-JSON Schema constants for every shape in the package. Each schema is assigned a stable `$id` URI. TypeScript types are derived from schemas via `json-schema-to-ts`.
+Schemas validate structure. Dispatcher registration validates semantic references against the current registry.
 
 ## Code Samples
 
@@ -132,7 +124,7 @@ import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 
 `stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsType`.
 
-Use `EmbeddedDAGNode` when the selected DAG runs once. Use `ScatterNode` when the same `dag` reference surface runs once per source item. Use a downstream `GatherNode` when either placement contributes records to fan-in. Embedded DAGs, plugins, tools-as-DAGs, and dynamic references all use the same DAG-reference model.
+Use `EmbeddedDAGNode` when the selected DAG runs once. Use `ScatterNode` when the same `dag` reference runs once per source item. Use a downstream `GatherNode` when either placement contributes records to fan-in. Embedded DAGs, plugins, tools-as-DAGs, and dynamic references all use the same DAG-reference model.
 
 ---
 
@@ -184,7 +176,7 @@ import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
 import type { TerminalNodeType } from '@studnicky/dagonizer/entities';
 ```
 
-When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Example 09: Terminal Nodes](../examples/09-terminals) for runnable examples.
+When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Example 09: Terminal Nodes](../examples/09-terminals) for concrete terminal patterns.
 
 ---
 
@@ -301,9 +293,15 @@ import type { JsonValueType, JsonObjectType, JsonArrayType, JsonPrimitiveType } 
 
 Used for JSON-LD values crossing the Node.js and graph boundaries.
 
-## Details for Nerds
+## Operational Uses
 
-Entity schemas are the source of truth for serialized documents. If a TypeScript type and schema ever appear to disagree, fix the schema-derived type path.
+`@studnicky/dagonizer/entities` exports the JSON Schema constants for every serialized shape in the package. Each schema is assigned a stable `$id` URI, and TypeScript types are derived from those schemas via `json-schema-to-ts`.
+
+If a tool needs to read or emit Dagonizer documents without running the dispatcher, these are the wire shapes it should compile against.
+
+## Runtime Notes
+
+Entity schemas are the authoritative definitions for serialized documents. If a TypeScript type and schema ever appear to disagree, fix the schema-derived type path.
 
 Schema `$id` values are stable identifiers for validation and tooling. They are not registry keys for node execution. Runtime DAG and placement identity comes from explicit IRIs; registered node and DAG implementation lookup uses context expansion.
 

@@ -12,32 +12,24 @@ seeAlso:
 
 # Testing
 
-## What It Is
+## Deterministic Test Boundary
 
-The testing surface provides deterministic replacements for real time: `VirtualClockProvider` and `VirtualScheduler`.
+The testing package provides deterministic replacements for real time: `VirtualClockProvider` and `VirtualScheduler`.
 
-Use this page when retry, timeout, lifecycle timing, scheduled work, or deadline behavior must be asserted without waiting for wall-clock delays.
+The testing package is the deterministic time boundary for retry, timeout, lifecycle timing, scheduled work, and deadline behavior that should be asserted without waiting on wall-clock delays.
 
-## How It Works
+## Runtime Provider References
 
-Install the virtual providers before each test, drive time manually, drain scheduled tasks, and restore real providers after the test. Runtime code continues to call `Clock` and `Scheduler`; the provider swap makes the behavior deterministic.
-
-The testing utilities are for runtime behavior, not graph validation. Pair them with `Validator` or dispatcher registration tests when document shape also matters.
-
-## Diagrams, Examples, and Outputs
-
-Testing utilities are runtime providers. These references show the contracts they implement:
+Testing utilities are runtime providers. These references cover the contracts they implement:
 
 - [Reference: Runtime](./runtime) - `Clock`, `Scheduler`
 - [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`
 
-## What It Lets You Do
+## Virtual Time Model
 
-The testing reference lets applications replace real time with deterministic clock and scheduler implementations.
+Install the virtual providers before each test, drive time manually, drain scheduled tasks, and restore real providers after the test. Runtime code continues to call `Clock` and `Scheduler`; the provider swap makes the behavior deterministic.
 
-`@studnicky/dagonizer/testing`
-
-The testing subpath exports two deterministic replacements for the real-time clock and scheduler. Install them before each test; reset them after.
+The testing utilities are for runtime behavior, not graph validation. Pair them with `Validator` or dispatcher registration tests when document shape also matters.
 
 ## Code Samples
 
@@ -205,7 +197,13 @@ const _scheduler: SchedulerProviderInterface = {} as SchedulerProviderInterface;
 
 Implement this interface to create a custom test scheduler (e.g. one that records fired tasks for assertions).
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer/testing` exports deterministic replacements for the real-time clock and scheduler. Install them before each test; reset them after.
+
+That keeps retry, deadline, and scheduler behavior under test without real sleeps or flaky wall-clock assertions.
+
+## Runtime Notes
 
 Virtual providers are process-global while installed. Reset them after each test so one suite does not leak deterministic time into another.
 

@@ -1,0 +1,15 @@
+---
+import UiContentPanel from '@/components/islands/UiContentPanel.vue';
+
+interface Props {
+  title: string;
+  eyebrow?: string;
+  compact?: boolean;
+}
+
+const { title, eyebrow, compact = false } = Astro.props;
+---
+
+<UiContentPanel title={title} eyebrow={eyebrow} compact={compact}>
+  <slot />
+</UiContentPanel>

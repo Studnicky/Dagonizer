@@ -1,11 +1,9 @@
 /**
  * channel-correlation.test.ts
  *
- * Regression guard for the EventEmitter listener-accumulation bug:
- *   Before fix: DagContainerBase.runDag called channel.onMessage(handler) on
- *   every request, accumulating O(N) listeners on a pooled worker channel.
- *   After fix: ChannelDispatch installs exactly ONE channel.onMessage handler
- *   for the channel's lifetime; correlationId routing demuxes all responses.
+ * Contract coverage for the single-subscription channel correlator.
+ * ChannelDispatch installs exactly one channel.onMessage handler for the
+ * channel lifetime and correlationId routing demuxes every response.
  *
  * What this test asserts:
  *   (a) Exactly ONE underlying subscription is installed regardless of request
@@ -32,19 +30,20 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { ChannelDispatch } from '../../src/container/ChannelDispatch.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-import { emptyGraphStateTransfer, graphStateTransfer } from '../_support/GraphStateSupport.js';
+import { emptyInlineTransfer, FULL_INPUT_STATE, FULL_RESPONSE_STATE } from '../_support/GraphStateSupport.js';
 
 // ---------------------------------------------------------------------------
 // CountingChannel: wraps a MessageChannelInterface and counts onMessage calls
@@ -84,29 +83,22 @@ class CountingChannel implements MessageChannelInterface {
 class MinimalState extends NodeStateBase {}
 
 // ---------------------------------------------------------------------------
-// MinimalDagTask: minimal DagTaskInterface implementation
+// MinimalDagTask: minimal DagTaskType implementation
 // ---------------------------------------------------------------------------
 
 class CorrelationTask {
   private constructor() {}
 
-  static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
+  static of(correlationId: string, signal: AbortSignal): DagTaskType {
     return {
       'dagName': 'test-dag',
       'placementPath': ['urn:dagonizer:placement:test'],
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
+      'inputState': FULL_INPUT_STATE,
+      'responseState': FULL_RESPONSE_STATE,
       'context': NodeContext.create('test-dag', 'test-node', signal),
-      toRequest(): ExecutionRequestType {
-        return {
-          'dagName': 'test-dag',
-          'placementPath': ['urn:dagonizer:placement:test'],
-          'items': [{ 'id': correlationId, 'graphState': graphStateTransfer(new MinimalState()) }],
-          'timeoutMs': null,
-          'correlationId': correlationId,
-        };
-      },
     };
   }
 }
@@ -129,6 +121,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
 
 class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
+  #initPromise: Promise<void> | null;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {
     super({
@@ -137,18 +130,21 @@ class SingleChannelContainer extends DagContainerBase<null> {
       'init': NOOP_INIT,
     });
     this.#channel = channel;
+    this.#initPromise = null;
   }
 
   // Override acquireChannel to bypass the pool and always return the same channel.
-  protected override acquireChannel(): Promise<MessageChannelInterface> {
-    return Promise.resolve(this.#channel);
+  protected override async acquireChannel(): Promise<MessageChannelInterface> {
+    this.#initPromise ??= this.initializeChannel(this.#channel);
+    await this.#initPromise;
+    return this.#channel;
   }
 
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
   protected override composeEntry(): PoolEntryType<null> {
-    return { 'worker': null, 'channel': this.#channel, 'initialized': true };
+    return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 
   protected override attachDeathListeners(_entry: PoolEntryType<null>): void {
@@ -182,16 +178,24 @@ class FakeHost {
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        const { correlationId } = msg.request;
+        const { correlationId, items } = msg.request;
+        const item = items[0];
+        assert.ok(item !== undefined);
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${correlationId}` }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([item.runIri]),
+            'items': [{
+              'id': correlationId,
+              'runIri': item.runIri,
+              'terminalOutcome': `done-${correlationId}`,
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -204,6 +208,27 @@ class FakeHost {
 // ---------------------------------------------------------------------------
 
 void describe('channel-correlation: single subscription + correlationId demux', () => {
+
+  void it('advertises no graph format before ready and stores the exact host contract after ready', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    hostSide.onMessage((message) => {
+      if (message.variant !== 'init') return;
+      assert.deepEqual(message.graphStateTransferFormats, ['application/n-quads']);
+      hostSide.send({
+        'variant': 'ready',
+        'registryVersion': message.registryVersion,
+        'capabilities': [],
+        'graphStateTransferFormats': ['application/n-quads'],
+      });
+    });
+    const dispatch = new ChannelDispatch(parentSide);
+
+    assert.deepEqual(dispatch.graphStateTransferFormats, []);
+    assert.equal(dispatch.supportsGraphStateTransferFormat('application/n-quads'), false);
+    await dispatch.init({ ...NOOP_INIT, 'graphStateTransferFormats': ['application/n-quads'] });
+    assert.deepEqual(dispatch.graphStateTransferFormats, ['application/n-quads']);
+    assert.equal(dispatch.supportsGraphStateTransferFormat('application/n-quads'), true);
+  });
 
   void it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
@@ -226,12 +251,14 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     const REQUEST_COUNT = 30;
     const ac = new AbortController();
-    const results: DagOutcomeType[] = [];
+    const results: RunResultType[] = [];
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
-      const task = CorrelationTask.of(`req-${i}`, ac.signal);
-      const outcome = await container.runDag(task);
-      results.push(outcome);
+      const id = `req-${i}`;
+      const task = CorrelationTask.of(id, ac.signal);
+      const batch = Batch.from([{ id, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      if (outcome !== undefined) results.push(outcome);
     }
 
     // (a) Core assertion: exactly one onMessage call regardless of request count.
@@ -254,7 +281,9 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     for (let i = 0; i < REQUEST_COUNT; i++) {
       const correlationId = `req-${i}`;
       const task = CorrelationTask.of(correlationId, ac.signal);
-      const outcome = await container.runDag(task);
+      const batch = Batch.from([{ 'id': correlationId, 'state': task.state }]);
+      const [outcome] = await container.runDag(task, batch);
+      assert.ok(outcome !== undefined);
 
       // (b) Each request must receive its own correlated terminalOutput.
       assert.strictEqual(
@@ -275,29 +304,39 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
-    const pending: Array<{ correlationId: string }> = [];
+    const pending: Array<{ correlationId: string; runIri: string }> = [];
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
         hostSide.send({
           'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
+          'graphStateTransferFormats': ['application/n-quads'],
         });
       } else if (msg.variant === 'execute') {
-        pending.push({ 'correlationId': msg.request.correlationId });
+        const item = msg.request.items[0];
+        assert.ok(item !== undefined);
+        pending.push({ 'correlationId': msg.request.correlationId, 'runIri': item.runIri });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
           const secondId = pending[1]?.correlationId ?? '';
           const firstId = pending[0]?.correlationId ?? '';
+          const secondRunIri = pending[1]?.runIri ?? '';
+          const firstRunIri = pending[0]?.runIri ?? '';
           // Respond to second first, then first.
           setImmediate(() => {
             hostSide.send({
               'variant': 'result',
               'response': {
                 'correlationId': secondId,
-                'items': [{ 'id': secondId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${secondId}` }],
-                'errors': [],
-                'intermediates': [],
+                'graphState': emptyInlineTransfer([secondRunIri]),
+                'items': [{
+                  'id': secondId,
+                  'runIri': secondRunIri,
+                  'terminalOutcome': `done-${secondId}`,
+                  'errors': [],
+                  'intermediates': [],
+                }],
               },
             });
             setImmediate(() => {
@@ -305,9 +344,14 @@ void describe('channel-correlation: single subscription + correlationId demux', 
                 'variant': 'result',
                 'response': {
                   'correlationId': firstId,
-                  'items': [{ 'id': firstId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': `done-${firstId}` }],
-                  'errors': [],
-                  'intermediates': [],
+                  'graphState': emptyInlineTransfer([firstRunIri]),
+                  'items': [{
+                    'id': firstId,
+                    'runIri': firstRunIri,
+                    'terminalOutcome': `done-${firstId}`,
+                    'errors': [],
+                    'intermediates': [],
+                  }],
                 },
               });
             });
@@ -317,11 +361,18 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     });
 
     const ac = new AbortController();
+    const taskA = CorrelationTask.of('req-A', ac.signal);
+    const taskB = CorrelationTask.of('req-B', ac.signal);
+    const batchA = Batch.from([{ 'id': 'req-A', 'state': taskA.state }]);
+    const batchB = Batch.from([{ 'id': 'req-B', 'state': taskB.state }]);
     // Launch both requests concurrently.
-    const [outcomeA, outcomeB] = await Promise.all([
-      container.runDag(CorrelationTask.of('req-A', ac.signal)),
-      container.runDag(CorrelationTask.of('req-B', ac.signal)),
+    const [resultsA, resultsB] = await Promise.all([
+      container.runDag(taskA, batchA),
+      container.runDag(taskB, batchB),
     ]);
+    const [outcomeA] = resultsA;
+    const [outcomeB] = resultsB;
+    assert.ok(outcomeA !== undefined && outcomeB !== undefined);
 
     // (c) Each caller must receive its own outcome despite out-of-order delivery.
     assert.strictEqual(outcomeA.terminalOutput, 'done-req-A',
@@ -348,27 +399,37 @@ void describe('worker observability: forwarded node events reach the parent obse
     // WorkerObserver does for a contained sub-DAG), then complete the request.
     hostSide.onMessage((msg) => {
       if (msg.variant === 'init') {
-        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [], 'graphStateTransferFormats': ['application/n-quads'] });
       } else if (msg.variant === 'execute') {
-        const { correlationId } = msg.request;
+        const { correlationId, items } = msg.request;
+        const item = items[0];
+        assert.ok(item !== undefined);
         hostSide.send({
-          'variant': 'instrumentation',
+          'variant': 'instrumentationBatch',
           'correlationId': correlationId,
-          'hook': 'nodeStart',
-          'phase': '',
-          'dagName': 'inner-dag',
-          'nodeName': 'inner-step',
-          'output': null,
-          'message': '',
-          'placementPath': ['scatter-placement', 'inner-step'],
+          'items': [{
+            'correlationId': correlationId,
+            'hook': 'nodeStart',
+            'phase': '',
+            'dagName': 'inner-dag',
+            'nodeName': 'inner-step',
+            'output': null,
+            'message': '',
+            'placementPath': ['scatter-placement', 'inner-step'],
+          }],
         });
         hostSide.send({
           'variant': 'result',
           'response': {
             'correlationId': correlationId,
-            'items': [{ 'id': correlationId, 'graphState': emptyGraphStateTransfer(), 'terminalOutcome': 'done' }],
-            'errors': [],
-            'intermediates': [],
+            'graphState': emptyInlineTransfer([item.runIri]),
+            'items': [{
+              'id': correlationId,
+              'runIri': item.runIri,
+              'terminalOutcome': 'done',
+              'errors': [],
+              'intermediates': [],
+            }],
           },
         });
       }
@@ -389,7 +450,10 @@ void describe('worker observability: forwarded node events reach the parent obse
     };
 
     const ac = new AbortController();
-    const outcome = await container.runDag(CorrelationTask.of('obs-1', ac.signal), { relay });
+    const task = CorrelationTask.of('obs-1', ac.signal);
+    const batch = Batch.from([{ 'id': 'obs-1', 'state': task.state }]);
+    const [outcome] = await container.runDag(task, batch, { relay });
+    assert.ok(outcome !== undefined);
 
     assert.strictEqual(outcome.terminalOutput, 'done');
     assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');

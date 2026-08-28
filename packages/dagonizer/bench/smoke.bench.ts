@@ -15,7 +15,7 @@ const warmup = new NodeStateBase();
 for (let index = 0; index < 10; index += 1) {
   warmup.setMetadata(`warmup-${index}`, index);
   warmup.recordAttempt('warmup');
-  warmup.snapshotJsonLd();
+  warmup.snapshotTransientState();
 }
 const memoryBefore = process.memoryUsage();
 const state = new NodeStateBase();
@@ -23,7 +23,7 @@ const stateElapsedMs = BenchmarkHarness.elapsed(() => {
   for (let index = 0; index < STATE_ITERATIONS; index += 1) {
     state.setMetadata(`key-${index % 20}`, index);
     state.recordAttempt('smoke');
-    state.snapshotJsonLd();
+    state.snapshotTransientState();
   }
 });
 

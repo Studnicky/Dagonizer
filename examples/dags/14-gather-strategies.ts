@@ -115,7 +115,7 @@ export const collectDag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:tag' },
       "source":    'items',
       "itemKey":   'item',
-      "execution": { "mode": "item", "concurrency": 2 },
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },
       "outputs": {
         'all-success': 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
         "partial": 'urn:noocodec:dag:gather-demo:collect-run/node/collect-tokens',
@@ -179,7 +179,7 @@ export const discardDag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:tag' },
       "source":    'items',
       "itemKey":   'item',
-      "execution": { "mode": "item", "concurrency": 2 },
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },
       "outputs": {
         'all-success': 'urn:noocodec:dag:gather-demo:discard-run/node/end',
         "partial":     'urn:noocodec:dag:gather-demo:discard-run/node/end',

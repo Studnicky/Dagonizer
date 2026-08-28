@@ -13,31 +13,25 @@ seeAlso:
 
 # Execution
 
-## What It Is
+## Execution Handle
 
 `Execution<TState>` is the handle returned by `Dagonizer.execute()` and `Dagonizer.resume()`. It can be awaited for the final result or iterated for per-stage results.
 
-Use this page when a host needs progress updates, final state, cancellation behavior, checkpoint cursor inspection, or one clear rule for consuming a run exactly once.
+Hosts use the same `Execution<TState>` handle for progress updates, final state, cancellation behavior, checkpoint cursor inspection, and single-consumption execution.
 
-## How It Works
+## Adjacent Runtime References
 
-The execution object wraps one underlying async generator. Awaiting it drains the generator and resolves to `ExecutionResultType<TState>`. Iterating it yields `NodeResultType` values as stages complete and then marks the handle consumed.
-
-Cancellation and deadlines flow through `ExecuteOptionsType`. Checkpoint cursors are captured from yielded node results and final execution results; the execution handle itself does not own persistence.
-
-## Diagrams, Examples, and Outputs
-
-Execution is a runtime handle, not a DAG document, so this page does not add a reference-only diagram. The links below show the same handle in runnable examples and adjacent contracts:
+Execution is a runtime handle, not a DAG document, so the useful context is in the dispatcher, lifecycle, and checkpoint references around it:
 
 - [Reference: Dagonizer](./dagonizer) - `execute`, `resume`
 - [Reference: Lifecycle](./lifecycle)
 - [Reference: Checkpoint](./checkpoint)
 
-## What It Lets You Do
+## Consumption Model
 
-The execution reference lets applications consume a DAG run as both a final result and a per-stage stream. Use it when a host needs progress updates, final state, cancellation handling, or checkpoint cursor inspection from one execution handle.
+The execution object wraps one underlying async generator. Awaiting it drains the generator and resolves to `ExecutionResultType<TState>`. Iterating it yields `NodeResultType` values as stages complete and then marks the handle consumed.
 
-`Execution<TState>` is the handle returned by `Dagonizer.execute()` and `Dagonizer.resume()`. It is both an `AsyncIterable` (streaming per stage) and a `PromiseLike` (awaitable for the final result). The underlying generator runs exactly once regardless of how it is consumed.
+Cancellation and deadlines flow through `ExecuteOptionsType`. Checkpoint cursors are captured from yielded node results and final execution results; the execution handle itself does not own persistence.
 
 ## Code Samples
 
@@ -94,7 +88,7 @@ Each yielded `NodeResultType<TState>` carries:
 
 For scatter and embedded-DAG placements, the iterator first yields intermediate results for each constituent clone or inner node, then yields the group result.
 
-Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They surface via the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer` and are appended to `result.executedNodes`.
+Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They are reported through the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer` and are appended to `result.executedNodes`.
 
 ---
 
@@ -199,11 +193,17 @@ console.log(nodes, result.cursor);
 
 The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultType` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle.variant`.
 
-## Details for Nerds
+## Operational Uses
+
+`Execution<TState>` gives one host handle for both streaming node results and the final `ExecutionResultType<TState>`. It is both an `AsyncIterable` and a `PromiseLike`, and the underlying generator still runs exactly once.
+
+That makes it safe for a page, CLI, worker, or server route to stream progress and then await completion without double-running the DAG.
+
+## Runtime Notes
 
 `Execution<TState>` is single-consumption by design. The first await or iteration starts the generator; later awaits return the cached final result. That prevents double-running nodes when UI code both streams progress and awaits completion.
 
-The iterator resolves errors into the final execution result instead of throwing from the loop. Application code can keep one `for await` loop for progress, then inspect `result.state.lifecycle` and `result.cursor` to decide whether to resume, retry, or surface failure.
+The iterator resolves errors into the final execution result instead of throwing from the loop. Application code can keep one `for await` loop for progress, then inspect `result.state.lifecycle` and `result.cursor` to decide whether to resume, retry, or report failure.
 
 ## Related Concepts
 

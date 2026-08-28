@@ -1,0 +1,107 @@
+---
+import { getEntry } from 'astro:content';
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import HomeHeroSection from '@/components/islands/HomeHeroSection.vue';
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { SiteLinks } from '@/lib/links';
+import { SiteDocs } from '@/lib/docs';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments/modern-home')), 301);
+
+const doc = await getEntry('docs', 'experiments/modern-home');
+
+if (doc === undefined) {
+  throw new Error('Missing docs/experiments/modern-home.md content for the site experiments route.');
+}
+
+const pageTitle = doc.data.title ?? 'Runtime overview';
+const pageDescription =
+  doc.data.description ??
+  'Typed orchestration for agent workflows, resumable pipelines, and explicit DAG execution.';
+
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/experiments'), label: 'Runtime Overviews' },
+  { href: SiteLinks.site('/docs/experiments/modern-home'), label: pageTitle }
+] as const;
+
+const featureCards = [
+  {
+    badge: 'λ',
+    title: 'Typed graph contracts',
+    body: 'Route work through explicit ports, declared terminals, and runtime documents that stay stable under change.'
+  },
+  {
+    badge: '↻',
+    title: 'Durable resume',
+    body: 'Capture execution state, persist it outside process memory, and continue from the recorded cursor.'
+  },
+  {
+    badge: '⬡',
+    title: 'First-class graph behavior',
+    body: 'Compose scatter, gather, embedded DAGs, streaming producers, and hand-offs without hiding control flow.'
+  }
+] as const;
+
+const relatedLinks = [
+  { href: SiteLinks.site('/'), label: 'Home' },
+  { href: SiteLinks.site('/docs/architecture'), label: 'Architecture' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+---
+
+<DocsArticleShell title={pageTitle} description={pageDescription}>
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader title={pageTitle} description={pageDescription} crumbs={crumbs} />
+
+      <div class="hex-shell overflow-hidden bg-slate-950/50">
+        <HomeHeroSection
+          client:visible
+          gettingStartedHref={SiteLinks.site('/getting-started')}
+          visualizeHref={SiteLinks.site('/#visualize')}
+        />
+      </div>
+
+      <section class="space-y-5">
+        <UiSectionIntro
+          eyebrow="Runtime overview"
+          title="Core runtime capabilities in one view"
+          description="This layout concentrates Dagonizer’s core runtime model into one view: typed graph contracts, durable resume, and first-class graph behavior."
+        />
+        <UiMarketingCardGrid client:visible items={featureCards} />
+      </section>
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Runtime overview">
+        <div class="space-y-3 text-sm leading-6 text-slate-300">
+          <p>This overview keeps Dagonizer’s core runtime capabilities together on one page.</p>
+          <p>Use it when you want the short version of Dagonizer’s runtime model before diving into the full guides and examples.</p>
+        </div>
+      </UiAsideCard>
+
+      <UiAsideCard title="Source file">
+        <p class="mt-3 break-all text-sm text-slate-300">experiments/modern-home.md</p>
+        <UiActionLink
+          href={SiteDocs.edit('experiments/modern-home')}
+          target="_blank"
+          rel="noreferrer"
+          variant="text"
+          class="mt-4 justify-start px-0"
+        >
+          View source on GitHub
+        </UiActionLink>
+      </UiAsideCard>
+
+      <UiAsideCard title="Related">
+        <UiLinkList links={relatedLinks} />
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

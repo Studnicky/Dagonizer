@@ -16,6 +16,7 @@ import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 import { PlaceholderNode } from '../core/PlaceholderNode.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
+import type { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DagReferenceType } from '../entities/dag/DagReference.js';
@@ -24,7 +25,7 @@ import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherNodeType, GatherPolicyType, GatherSourceConfigType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
-import type { ScatterExecutionOptionsType, ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -78,13 +79,8 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
    * with `container` set is a validation error.
    */
   container?: string;
-  /**
-   * Concurrency-limiting policy: ONE discriminated `mode` structure instead of
-   * separate `concurrency`/`throttle`/`reservoir` knobs — the exact wire shape
-   * `ScatterNode.execution` accepts (see `ScatterNode.ts` for full semantics).
-   * Defaults to `{ mode: 'item', concurrency: 1 }` when omitted.
-   */
-  execution?: ScatterExecutionOptionsType;
+  /** Placement policy. Omitted fields inherit through the dispatcher configuration cascade. */
+  configuration?: DagConfiguration.InputType;
 }
 
 /**
@@ -125,6 +121,11 @@ export type TypedEmbeddedDAGOptionsType<
    */
   container?: string;
 }
+
+type DAGBuilderOptionsType = {
+  readonly name?: string;
+  readonly configuration?: DagConfiguration.InputType;
+};
 
 /** Dynamic DAG reference accepted by the unified builder entrypoints. */
 export type DynamicDAGReferenceInputType<TFrom extends 'state' | 'item' = 'state' | 'item'> = {
@@ -176,13 +177,15 @@ export class DAGBuilder {
   readonly #iri: string;
   readonly #name: string;
   readonly #version: string;
+  readonly #configuration: DagConfiguration.InputType | undefined;
   readonly #nodes: DAGNodeType[] = [];
   readonly #entrypoints = new Map<string, string>();
 
-  constructor(iri: string, version: string, options: { readonly name?: string } = {}) {
+  constructor(iri: string, version: string, options: DAGBuilderOptionsType = {}) {
     this.#iri = DAGBuilder.requireIri(iri, 'DAG');
     this.#name = options.name ?? DAGBuilder.displayName(this.#iri);
     this.#version = version;
+    this.#configuration = options.configuration;
   }
 
   private static requireIri(iri: string, context: string): string {
@@ -446,8 +449,7 @@ export class DAGBuilder {
       ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs } } : {}),
       // container: left optional — absence means "run in-process" (semantically meaningful).
       ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
-      // execution: left optional — default is `{ mode: 'item', concurrency: 1 }` at runtime (data-dependent).
-      ...(resolved.execution !== undefined ? { 'execution': resolved.execution } : {}),
+      ...(resolved.configuration !== undefined ? { 'configuration': resolved.configuration } : {}),
     };
 
     this.#nodes.push(scatterNode);
@@ -664,6 +666,7 @@ export class DAGBuilder {
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
+      ...(this.#configuration !== undefined ? { 'configuration': this.#configuration } : {}),
       'entrypoints': materialized.entrypoints,
       'nodes': materialized.nodes,
     };

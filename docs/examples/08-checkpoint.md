@@ -19,24 +19,18 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../exampleDags.ts';
 </script>
 
 # Example 08: Checkpoint and Resume
 
-## What It Is
+## Resume Boundary
 
 Checkpoint and Resume is the other half of cancellation: when The Archivist stops mid-conversation, the host can persist the cursor and state, then continue later without replaying the expensive upstream work.
 
 The Archivist state is graph-backed. The dispatcher records where execution stops, while the state graph carries the domain values at that moment.
 
-## How It Works
-
-`Checkpoint.capture` records the interrupted execution result, including the cursor and graph JSON-LD. A later process constructs a graph-backed `ArchivistState`, restores the checkpoint graph, and calls `dispatcher.resume(...)` at the cursor without paying for upstream scouts again.
-
-The resume path is intentionally boring in the best way: recall a checkpoint from a store, restore state with the adapter, and resume at the cursor. Postgres, Redis, S3, or memory storage all satisfy the same `CheckpointStore` boundary.
-
-## Diagrams, Examples, and Outputs
+## Checkpoint Lifecycle
 
 ### DAG registration and diagram
 
@@ -50,11 +44,11 @@ The compose / validate loop in [The Archivist](./the-archivist) is the expensive
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Capture and Restore Model
 
-Checkpoint and resume lets applications recover interrupted work without starting the whole DAG over. Use it when a flow can be cancelled, timed out, parked, or moved to another host, and the remaining work should continue from a recorded cursor.
+`Checkpoint.capture` records the interrupted execution result, including the cursor and graph JSON-LD. A later process constructs a graph-backed `ArchivistState`, restores the checkpoint graph, and calls `dispatcher.resume(...)` at the cursor without paying for upstream scouts again.
 
-For an interactive app, this is what makes long-running orchestration feel civilized. A session can pause, migrate, or fail over; users do not lose the parts of the run that already produced useful state.
+The resume path is intentionally boring in the best way: recall a checkpoint from a store, restore state with the adapter, and resume at the cursor. Postgres, Redis, S3, or memory storage all satisfy the same `CheckpointStore` boundary.
 
 ## Code Samples
 
@@ -70,7 +64,13 @@ The `#cancellation-run` region in the runner shows the execute call with `signal
 
 <<< @/../examples/the-archivist/runArchivist.ts#cancellation-run
 
-## Details for Nerds
+## Operational Uses
+
+Checkpoint and resume lets hosts recover interrupted work without starting the whole DAG over. It fits flows that can be cancelled, timed out, parked, or moved to another host while the remaining work should continue from a recorded cursor.
+
+This is what makes long-running orchestration recoverable in real systems. A session can pause, migrate, or fail over; users do not lose the parts of the run that already produced useful state.
+
+## Runtime Notes
 
 ### Persist and resume
 
@@ -78,14 +78,14 @@ The `#resume-run` region in the runner performs the actual persist and resume pa
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 
-### What it demonstrates
+### Persistence contract
 - **Graph-backed state.** `NodeStateBase` projects the domain fields into the graph during `Checkpoint.capture`; `ckpt.restoreState(adapter)` constructs the state and restores its JSON-LD graph before resuming at the cursor.
 - **`Checkpoint.capture(dagName, result)`.** Produces a `Checkpoint` instance only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
 - **`CheckpointStore` adapter contract.** `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres, Redis, or S3 without touching the dispatcher or state.
 - **`ckpt.persist(store, key)` and `Checkpoint.recall(store, key)`.** Codec plus store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
 - **`dispatcher.resume(dagName, state, cursor)`.** Starts from the recalled cursor instead of the DAG's entrypoint. The compose/validate retry budget (`state.retriesFor('compose')`, part of the snapshot) survives the round-trip so the loop is still bounded.
 
-See this in action in the [Archivist live demo](./the-archivist).
+The same checkpoint path is exposed in [The Archivist](./the-archivist).
 
 ## Related Concepts
 

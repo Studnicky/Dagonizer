@@ -13,7 +13,7 @@
  * `AnimatedDagGraph`; this component is a plain host.
  */
 
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
 import type { DAGType } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
 import type { CytoscapeGraphOptionsType } from '../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
@@ -21,7 +21,13 @@ import type { CytoscapeGraphOptionsType } from '../../../../packages/dagonizer/s
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
 import GraphLegend from './graph/GraphLegend.vue';
-import type { LegendTab } from './graph/GraphLegend.vue';
+import ViewerOverlay from './graph/ViewerOverlay.vue';
+import { CameraControls } from '../../../../packages/dagonizer/src/viz/CameraControls.ts';
+import { ViewportStatus } from '../../../../packages/dagonizer/src/viz/ViewportStatus.ts';
+import { InspectSelection } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
+import { LegendMachine } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
+import type { LegendSectionType } from '../../../../packages/dagonizer/src/viz/LegendMachine.ts';
+import type { DagNodeSelectionType } from '../../../../packages/dagonizer/src/viz/InspectSelection.ts';
 import { AnimatedDagGraph } from './viz/AnimatedDagGraph.ts';
 import type { DagVizEvent } from './viz/DagVizMachine.ts';
 
@@ -34,10 +40,12 @@ const props = defineProps<{
   initialView?: 'fit' | 'readable';
   layoutOptions?: CytoscapeGraphOptionsType['layoutOptions'];
   ariaLabel?: string;
+  selectedNode?: string | null;
 }>();
 
 const emit = defineEmits<{
   (event: 'node-click', name: string): void;
+  (event: 'select', selection: DagNodeSelectionType): void;
 }>();
 
 defineExpose({
@@ -58,8 +66,26 @@ const loading = ref(true);
 const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
 let resizeObserver: ResizeObserver | null = null;
+const dpadMachine = CameraControls.dpadMachine({
+  'can': () => graph.value !== null,
+  'getZoomLevel': () => zoomLevel.value,
+  'getHint': () => ViewportStatus.current(zoomLevel.value, 'inline', 'drag · wheel').hint,
+  'zoomIn': zoomIn,
+  'zoomOut': zoomOut,
+  'pan': (direction) => {
+    switch (direction) {
+      case 'up':    panUp(); break;
+      case 'down':  panDown(); break;
+      case 'left':  panLeft(); break;
+      case 'right': panRight(); break;
+    }
+  },
+  'centre': centerView,
+  'fit': fitScreen,
+  'expand': expandView,
+});
 
-const dagLegendTabs: readonly LegendTab[] = [
+const dagLegendSections: readonly LegendSectionType[] = [
   {
     key: 'kinds',
     label: 'Kinds',
@@ -69,6 +95,9 @@ const dagLegendTabs: readonly LegendTab[] = [
     ],
   },
 ];
+const legendMachine = new LegendMachine({
+  'getSections': () => dagLegendSections,
+});
 
 onMounted(async () => {
   // Probe cytoscape availability up-front so the loading/error UX can render
@@ -98,12 +127,16 @@ onMounted(async () => {
     ...(props.idMode       !== undefined ? { 'idMode':       props.idMode       } : {}),
     ...(props.initialView  !== undefined ? { 'initialView':  props.initialView  } : {}),
     ...(props.layoutOptions !== undefined ? { 'layoutOptions': props.layoutOptions } : {}),
-    'onNodeClick':  (name) => { emit('node-click', name); },
+    'onNodeClick':  (name) => {
+      emit('node-click', name);
+      emit('select', InspectSelection.dagNode(name));
+    },
     'onZoomChange': (level) => { zoomLevel.value = level; },
   });
 
   await instance.mount();
   graph.value = instance;
+  instance.setInspectedNode(props.selectedNode ?? null);
 
   if (typeof ResizeObserver !== 'undefined' && container !== null) {
     resizeObserver = new ResizeObserver(() => {
@@ -119,6 +152,10 @@ onBeforeUnmount(() => {
   resizeObserver = null;
   graph.value?.destroy();
   graph.value = null;
+});
+
+watch(() => props.selectedNode, (name) => {
+  graph.value?.setInspectedNode(name ?? null);
 });
 
 // ── Event forwarding ─────────────────────────────────────────────────────
@@ -184,8 +221,16 @@ function onFrameResize(): void {
     :aria-label="ariaLabel ?? 'DAG execution graph'"
     @resize="onFrameResize"
   >
-    <div v-if="loading" class="dag-loading">Loading graph…</div>
-    <div v-if="loadError" class="dag-error">Graph failed to load: {{ loadError }}</div>
+    <ViewerOverlay
+      v-if="loading"
+      kind="loading"
+      message="Loading graph…"
+    />
+    <ViewerOverlay
+      v-else-if="loadError"
+      kind="error"
+      :message="`Graph failed to load: ${loadError}`"
+    />
     <div
       v-show="!loading && !loadError"
       ref="containerRef"
@@ -196,25 +241,14 @@ function onFrameResize(): void {
     <!-- Kind legend: bottom-left corner -->
     <GraphLegend
       v-if="!loading && !loadError"
-      :tabs="dagLegendTabs"
+      :machine="legendMachine"
       class="dag-legend-pos"
     />
 
     <!-- D-pad navigation: 3x3 grid anchored to the bottom-right corner -->
-    <div v-if="!loading && !loadError" class="dag-dpad-pos">
+    <div v-if="!loading && !loadError" class="dagonizer-dpad-anchor">
       <GraphDpad
-        :zoom-level="zoomLevel"
-        :pan-enabled="true"
-        expand-title="Fullscreen"
-        @zoom-in="zoomIn"
-        @zoom-out="zoomOut"
-        @pan-up="panUp"
-        @pan-down="panDown"
-        @pan-left="panLeft"
-        @pan-right="panRight"
-        @centre="centerView"
-        @expand="expandView"
-        @fit="fitScreen"
+        :machine="dpadMachine"
       />
     </div>
   </DiagramFrame>
@@ -230,19 +264,6 @@ function onFrameResize(): void {
   background-size: var(--dagonizer-surface-grain-size, 160px 160px);
 }
 
-.dag-loading,
-.dag-error {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-  color: var(--vp-c-text-2);
-}
-
-.dag-error { color: var(--dagonizer-brand3); }
-
 /* Legend: bottom-left positioning anchor. */
 .dag-legend-pos {
   position: absolute;
@@ -251,11 +272,4 @@ function onFrameResize(): void {
   z-index: 4;
 }
 
-/* D-pad: bottom-right positioning anchor. */
-.dag-dpad-pos {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 5;
-}
 </style>

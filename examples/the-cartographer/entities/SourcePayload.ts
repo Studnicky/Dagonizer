@@ -32,7 +32,10 @@ export const SourcePayloadSchema = {
   'type': 'object',
   'required': ['sourceId', 'format', 'compression', 'mappingKey', 'eventType', 'payload'],
   'properties': {
-    'sourceId':     { 'type': 'string', 'minLength': 1 },
+    'sourceId': {
+      'type': 'string',
+      'pattern': '^(position-ping|facility-scan|sensor-reading|customs-event|delivery-confirmation)-(csv|json|ndjson|yaml)-(none|gzip)-(0|[1-9][0-9]*)$',
+    },
     'format':       { 'type': 'string', 'enum': ['csv', 'json', 'ndjson', 'yaml'] },
     'compression':  { 'type': 'string', 'enum': ['none', 'gzip'] },
     'mappingKey':   { 'type': 'string', 'minLength': 1 },

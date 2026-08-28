@@ -3,7 +3,7 @@
  * entities persisted to checkpoint metadata under `WORKSET_PROGRESS_KEY`.
  *
  * Shape summary:
- *   WorkSetItem     — one item in the work set: its id, optional source label, and graph state.
+ *   WorkSetItem     — one item in the work set: its id, optional source label, and transient state.
  *   WorkSetEntry    — all items pending at a single placement.
  *   WorkSetProgress — the full in-flight work set captured at interruption.
  *
@@ -18,7 +18,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { GraphStateJsonLdDocumentType } from '../../contracts/GraphStateJsonLd.js';
+import { TransientNodeStateSchema } from '../executor/TransientNodeState.js';
+import type { TransientNodeStateType } from '../executor/TransientNodeState.js';
 
 // ---------------------------------------------------------------------------
 // WorkSetItem
@@ -32,17 +33,17 @@ export const WorkSetItemSchema = {
   'properties': {
     'id':       { 'type': 'string' },
     'source':   { 'type': 'string', 'minLength': 1 },
-    'graphState': { 'type': 'object', 'required': ['@context', '@graph'], 'additionalProperties': true },
+    'graphState': TransientNodeStateSchema,
   },
   'additionalProperties': false,
 } as const;
 
 /**
  * One item in the work set: its stable string `id`, optional entrypoint
- * `source` label, and graph state at the point of interruption. Used by
+ * `source` label, and transient state at the point of interruption. Used by
  * `WorkSetCheckpoint` to rehydrate the pending batch on resume.
  */
-export type WorkSetItemType = Omit<FromSchema<typeof WorkSetItemSchema>, 'graphState'> & { graphState: GraphStateJsonLdDocumentType };
+export type WorkSetItemType = Omit<FromSchema<typeof WorkSetItemSchema>, 'graphState'> & { graphState: TransientNodeStateType };
 
 // ---------------------------------------------------------------------------
 // WorkSetEntry

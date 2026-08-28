@@ -42,8 +42,8 @@ export class ToolInvocationState extends NodeStateBase {
     this.setGraphStateField('output', value);
   }
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     // Initialise in declaration order — keeps the hidden class stable.
     this.input = {};
     this.output = null;

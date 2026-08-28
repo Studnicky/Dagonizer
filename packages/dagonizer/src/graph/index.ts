@@ -16,3 +16,6 @@ export { InMemoryGraphDatasetProvider } from './InMemoryGraphDatasetProvider.js'
 export { N3GraphDatasetProvider } from './N3GraphDatasetProvider.js';
 export { InMemoryGraphStateTransferStore } from './InMemoryGraphStateTransferStore.js';
 export { InMemoryTopologyStore } from './InMemoryTopologyStore.js';
+export { GraphSkolemizer } from './GraphSkolemizer.js';
+export { PersistentGraphDataset } from './PersistentGraphDataset.js';
+export { N3GraphDataset } from '../adapter/N3GraphDataset.js';

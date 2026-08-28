@@ -1,0 +1,25 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import SectionShell from '@/components/marketing/SectionShell.astro';
+import DocsBrowser from '@/components/islands/DocsBrowser.vue';
+import { SiteDocs } from '@/lib/docs';
+
+const allDocs = SiteDocs.catalog();
+const groupedSections = SiteDocs.sections();
+---
+
+<BaseLayout title="Docs">
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+    <SectionShell
+      eyebrow="Documentation"
+      title="Build, run, and inspect Dagonizer workflows."
+      description={`Browse ${(await allDocs).length} docs covering graph authoring, runtime APIs, checkpoints, visualization, agent workflows, human handoff, and streaming orchestration.`}
+    >
+      <DocsBrowser client:idle docs={await allDocs} sections={await groupedSections} />
+    </SectionShell>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

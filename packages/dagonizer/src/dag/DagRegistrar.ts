@@ -1,19 +1,119 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
+import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
+import { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
+import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 import { DAGShape } from '../validation/DAGShape.js';
 import { DAGValidator } from '../validation/DAGValidator.js';
+import { Validator } from '../validation/Validator.js';
 
 import { ContextResolver } from './ContextResolver.js';
+import { WritePointPolicy } from './WritePointPolicy.js';
+
+/** Gather strategies replayable from contribution deltas alone. */
+const REPLAYABLE_GATHER_STRATEGIES: ReadonlySet<string> = new Set(['append', 'collect', 'map', 'partition']);
 
 function isAbsoluteIri(iri: string): boolean {
   return iri.startsWith('urn:') || iri.includes('://');
+}
+
+/**
+ * Registration-time gate for `FoldDeltaJournal`. Every `ScatterNode` whose
+ * resolved write points include `FoldDeltaJournal` must have a configured
+ * fold journal store, and every outcome it routes to a first-class
+ * `GatherNode` (`empty` excluded — an empty scatter contributes no gather
+ * record) must resolve a replayable gather strategy. Throws before any
+ * registry mutation.
+ */
+function validateFoldJournalWritePoints(
+  dag: DAGType,
+  configurations: ReadonlyMap<string, DagConfiguration.ResolvedType>,
+  source: DagRegistrarSourceInterface,
+): void {
+  const dagContext = ContextResolver.contextOf(dag['@context']);
+  const placements = new Map(
+    dag.nodes.map((placement) => [ContextResolver.expand(placement['@id'], dagContext), placement]),
+  );
+  for (const node of dag.nodes) {
+    if (!Placement.isScatter(node)) continue;
+    const configuration = configurations.get(node['@id']);
+    if (configuration === undefined) {
+      throw new DAGError(`ScatterNode '${node.name}' has no resolved configuration`, {
+        'code': 'CONFIGURATION_ERROR',
+      });
+    }
+    const placementWritePoints = WritePointPolicy.resolve(`ScatterNode '${node.name}' in DAG '${dag.name}'`, configuration);
+    if (!placementWritePoints.has('FoldDeltaJournal')) continue;
+
+    const storeKey = configuration.durability.foldJournalStoreKey;
+    if (storeKey === null || source.foldJournalStores[storeKey] === undefined) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' requires a bound durability.foldJournalStoreKey for 'FoldDeltaJournal'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    const resolvedGathers = new Map<string, GatherNodeType>();
+
+    for (const [outcome, targetIri] of Object.entries(node.outputs)) {
+      if (outcome === 'empty') continue;
+      const expandedTargetIri = ContextResolver.expand(targetIri, dagContext);
+      const target = placements.get(expandedTargetIri);
+      if (target === undefined || !Placement.isGather(target)) {
+        throw new DAGError(
+          `ScatterNode '${node.name}' in DAG '${dag.name}' outcome '${outcome}' must resolve to a single first-class GatherNode; 'FoldDeltaJournal' requires a replayable gather binding`,
+          { 'code': 'CONFIGURATION_ERROR' },
+        );
+      }
+      resolvedGathers.set(expandedTargetIri, target);
+    }
+
+    if (resolvedGathers.size > 1) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' routes to multiple GatherNodes (${[...resolvedGathers.values()].map((gather) => gather.name).join(', ')}); 'FoldDeltaJournal' requires convergence on exactly one GatherNode`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    const [target] = resolvedGathers.values();
+    if (target === undefined) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' selects 'FoldDeltaJournal' but declares no non-empty outcome routed to a GatherNode; there is nothing to journal`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    const gatherSources = Object.keys(target.sources);
+    const gatherSource = gatherSources[0];
+    if (gatherSources.length !== 1 || gatherSource === undefined) {
+      throw new DAGError(
+        `GatherNode '${target.name}' in DAG '${dag.name}' must declare exactly one source for 'FoldDeltaJournal'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+    if (ContextResolver.expand(gatherSource, dagContext) !== ContextResolver.expand(node['@id'], dagContext)) {
+      throw new DAGError(
+        `GatherNode '${target.name}' in DAG '${dag.name}' must declare ScatterNode '${node.name}' as its source for 'FoldDeltaJournal'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+
+    if (!REPLAYABLE_GATHER_STRATEGIES.has(target.gather.strategy)) {
+      throw new DAGError(
+        `ScatterNode '${node.name}' in DAG '${dag.name}' routes to GatherNode '${target.name}' with gather strategy '${target.gather.strategy}', which cannot be replayed from contribution deltas; 'FoldDeltaJournal' requires one of ${[...REPLAYABLE_GATHER_STRATEGIES].join(', ')}`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+  }
 }
 
 function validateNodeContract<TNodeState extends NodeStateInterface, TOutput extends string>(
@@ -65,8 +165,20 @@ export interface DagRegistrarSourceInterface {
    * stored when no override is supplied so the engine never branches on presence.
    */
   readonly stateFactories: Map<string, ChildStateFactoryType>;
+  /** Resolved DAG policy keyed by expanded DAG IRI. */
+  readonly dagConfigurations: Map<string, DagConfiguration.ResolvedType>;
+  /** Resolved placement policy keyed by placement IRI. */
+  readonly placementConfigurations: Map<string, DagConfiguration.ResolvedType>;
+  /** Resolved DAG-level write-point policy keyed by expanded DAG IRI. */
+  readonly dagWritePoints: Map<string, ReadonlySet<WritePointType>>;
+  /** Resolved placement-level write-point policy keyed by placement IRI. */
+  readonly placementWritePoints: Map<string, ReadonlySet<WritePointType>>;
   /** Plugin module specifiers keyed by context prefix and namespace IRI. */
   readonly pluginSpecifiers: Map<string, string>;
+  /** Dispatcher-wide policy inherited by DAG and placement tiers. */
+  readonly configuration: DagConfiguration.InputType;
+  /** Runtime fold journal resources keyed by the serializable policy key. */
+  readonly foldJournalStores: Readonly<Record<string, FoldJournalStoreInterface>>;
 
   /** Resolve a bound container by role, or `null` when the role is unbound (in-process). */
   resolveContainer(role: string | undefined): DagContainerInterface | null;
@@ -81,17 +193,17 @@ export interface DagRegistrarSourceInterface {
 /**
  * DAG/node/bundle registration and the validation passes that gate it.
  *
- * Extracts the registration cluster from `Dagonizer` into a single-responsibility
- * module. Depends only on the narrow `DagRegistrarSourceInterface`; the source's
+ * Depends only on the narrow `DagRegistrarSourceInterface`; the source's
  * registries are the dispatcher's own `dags` / `nodes` / `nodeIndex` maps, so
  * registration mutates the live registries the engine modules read.
  *
- * `registerDAG` runs four gates in order before mutating the registries:
- * 1. Duplicate-IRI throw (same expanded IRI, different implementation).
- * 2. Shape pass: `DAGShape.validate(dag)` verifies the DAG-local topology.
- * 3. Registry pass: `DAGValidator.validateDAGConfig` verifies node/DAG
+ * `registerDAG` runs five gates in order before mutating the registries:
+ * 1. Schema pass: `Validator.dag.validate(dag)` verifies the complete document.
+ * 2. Duplicate-IRI throw (same expanded IRI, different implementation).
+ * 3. Shape pass: `DAGShape.validate(dag)` verifies the DAG-local topology.
+ * 4. Registry pass: `DAGValidator.validateDAGConfig` verifies node/DAG
  *    references resolve and output routing covers every registered node output.
- * 4. Container-role binding: a dispatcher that opts into containers must bind
+ * 5. Container-role binding: a dispatcher that opts into containers must bind
  *    every role its placements declare.
  *
  * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
@@ -109,8 +221,8 @@ export class DagRegistrar {
    *
    * `stateFactory` is the factory the engine calls to produce a fresh child
    * state whenever this DAG runs as an embedded or scatter body. When omitted,
-   * `ChildStateFactory.cloneParent` (clone-parent) is used — reproducing the
-   * historical semantics exactly. The factory is stored immediately so the
+   * `ChildStateFactory.cloneParent` (clone-parent) is used. The factory is stored
+   * immediately so the
    * engine never checks for its presence; every registered DAG has an entry.
    *
    * Throws `DAGError` immediately when a DAG with the same expanded IRI is
@@ -120,6 +232,7 @@ export class DagRegistrar {
    * mutating the registries.
    */
   registerDAG(dag: DAGType, stateFactory: ChildStateFactoryType = ChildStateFactory.cloneParent): void {
+    Validator.dag.validate(dag);
     // Extract and validate the DAG's own @context prefix map.
     const dagContext = ContextResolver.contextOf(dag['@context']);
     ContextResolver.validate(dagContext);
@@ -135,11 +248,38 @@ export class DagRegistrar {
     stagedDags.set(dagIri, dag);
     this.#validateDAGAgainstRegistry(dag, dagContext, this.#source.nodes, stagedDags);
     DAGValidator.validateReferenceGraph(stagedDags);
+    const dagConfiguration = DagConfiguration.resolve(this.#source.configuration, dag.configuration);
+    const dagWritePoints = WritePointPolicy.resolve(`DAG '${dag.name}'`, dagConfiguration);
+    const placementConfigurations = new Map<string, DagConfiguration.ResolvedType>();
+    for (const node of dag.nodes) {
+      placementConfigurations.set(
+        node['@id'],
+        DagConfiguration.resolve(
+          this.#source.configuration,
+          dag.configuration,
+          Placement.isScatter(node) ? node.configuration : undefined,
+        ),
+      );
+    }
+    validateFoldJournalWritePoints(dag, placementConfigurations, this.#source);
 
     this.#source.dags.set(dagIri, dag);
     this.#source.stateFactories.set(dagIri, stateFactory);
+    this.#source.dagConfigurations.set(dagIri, dagConfiguration);
+    this.#source.dagWritePoints.set(dagIri, dagWritePoints);
     for (const node of dag.nodes) {
+      const placementConfiguration = placementConfigurations.get(node['@id']);
+      if (placementConfiguration === undefined) {
+        throw new DAGError(`Placement '${node.name}' has no resolved configuration`, {
+          'code': 'CONFIGURATION_ERROR',
+        });
+      }
       this.#source.nodeIndex.set(node['@id'], node);
+      this.#source.placementConfigurations.set(node['@id'], placementConfiguration);
+      this.#source.placementWritePoints.set(
+        node['@id'],
+        WritePointPolicy.resolve(`Placement '${node.name}' in DAG '${dag.name}'`, placementConfiguration),
+      );
     }
   }
 
@@ -179,8 +319,7 @@ export class DagRegistrar {
   ): void {
     const nodeIri = node['@id'];
     if (this.#source.nodes.has(nodeIri)) {
-      // Identity check: runtime reference equality is sufficient; no cast needed
-      // since Object.is accepts any two values. Both sides are the same object.
+      // Same-instance registration is idempotent.
       if (Object.is(this.#source.nodes.get(nodeIri), node)) return;
       throw new DAGError(`Node '${node.name}' (IRI: '${nodeIri}') is already registered with a different implementation`);
     }
@@ -207,6 +346,7 @@ export class DagRegistrar {
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     const bundleContext = bundle.context ?? {};
     ContextResolver.validate(bundleContext);
+    for (const dag of bundle.dags) Validator.dag.validate(dag);
 
     const transaction = new RegistryTransaction(this.#source);
     try {
@@ -258,6 +398,10 @@ class RegistryTransaction {
   readonly #addedNodeIndexKeys: string[] = [];
   readonly #addedPluginSpecifierPrefixes: string[] = [];
   readonly #addedStateFactoryIris: string[] = [];
+  readonly #addedDagWritePointIris: string[] = [];
+  readonly #addedPlacementWritePointKeys: string[] = [];
+  readonly #addedDagConfigurationIris: string[] = [];
+  readonly #addedPlacementConfigurationKeys: string[] = [];
 
   constructor(source: DagRegistrarSourceInterface) {
     this.#source = source;
@@ -313,22 +457,58 @@ class RegistryTransaction {
       throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
     }
 
+    const dagConfiguration = DagConfiguration.resolve(this.#source.configuration, dag.configuration);
+    const dagWritePoints = WritePointPolicy.resolve(`DAG '${dag.name}'`, dagConfiguration);
+    const placementConfigurations = new Map<string, DagConfiguration.ResolvedType>();
+    for (const node of dag.nodes) {
+      placementConfigurations.set(
+        node['@id'],
+        DagConfiguration.resolve(
+          this.#source.configuration,
+          dag.configuration,
+          Placement.isScatter(node) ? node.configuration : undefined,
+        ),
+      );
+    }
+    validateFoldJournalWritePoints(dag, placementConfigurations, this.#source);
+
     this.#source.dags.set(dagIri, dag);
     this.#addedDagIris.push(dagIri);
 
     const factory = stateFactories?.[dagIri] ?? ChildStateFactory.cloneParent;
     this.#source.stateFactories.set(dagIri, factory);
     this.#addedStateFactoryIris.push(dagIri);
+    this.#source.dagConfigurations.set(dagIri, dagConfiguration);
+    this.#addedDagConfigurationIris.push(dagIri);
+    this.#source.dagWritePoints.set(dagIri, dagWritePoints);
+    this.#addedDagWritePointIris.push(dagIri);
 
     for (const node of dag.nodes) {
       const indexKey = node['@id'];
       this.#source.nodeIndex.set(indexKey, node);
       this.#addedNodeIndexKeys.push(indexKey);
+      const placementConfiguration = placementConfigurations.get(indexKey);
+      if (placementConfiguration === undefined) {
+        throw new DAGError(`Placement '${node.name}' has no resolved configuration`, {
+          'code': 'CONFIGURATION_ERROR',
+        });
+      }
+      this.#source.placementConfigurations.set(indexKey, placementConfiguration);
+      this.#addedPlacementConfigurationKeys.push(indexKey);
+      this.#source.placementWritePoints.set(
+        indexKey,
+        WritePointPolicy.resolve(`Placement '${node.name}' in DAG '${dag.name}'`, placementConfiguration),
+      );
+      this.#addedPlacementWritePointKeys.push(indexKey);
     }
   }
 
   rollback(): void {
+    for (const key of this.#addedPlacementConfigurationKeys.reverse()) this.#source.placementConfigurations.delete(key);
+    for (const key of this.#addedPlacementWritePointKeys.reverse()) this.#source.placementWritePoints.delete(key);
     for (const key of this.#addedNodeIndexKeys.reverse()) this.#source.nodeIndex.delete(key);
+    for (const iri of this.#addedDagWritePointIris.reverse()) this.#source.dagWritePoints.delete(iri);
+    for (const iri of this.#addedDagConfigurationIris.reverse()) this.#source.dagConfigurations.delete(iri);
     for (const iri of this.#addedStateFactoryIris.reverse()) this.#source.stateFactories.delete(iri);
     for (const iri of this.#addedDagIris.reverse()) this.#source.dags.delete(iri);
     for (const iri of this.#addedNodeIris.reverse()) this.#source.nodes.delete(iri);
@@ -342,6 +522,10 @@ class RegistryTransaction {
     this.#addedNodeIndexKeys.length = 0;
     this.#addedPluginSpecifierPrefixes.length = 0;
     this.#addedStateFactoryIris.length = 0;
+    this.#addedDagWritePointIris.length = 0;
+    this.#addedPlacementWritePointKeys.length = 0;
+    this.#addedDagConfigurationIris.length = 0;
+    this.#addedPlacementConfigurationKeys.length = 0;
   }
 
   #registerPluginSpecifierKey(key: string, specifier: string, label: string): void {

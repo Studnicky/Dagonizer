@@ -55,6 +55,7 @@ function delayedNode(probe: ConcurrencyProbe) {
     probe.starts += 1;
     probe.maxActive = Math.max(probe.maxActive, probe.active);
     try {
+      // Real timers are intentional: the overlap window makes real throttle concurrency observable.
       await new Promise<void>((resolve) => { setTimeout(resolve, ITEM_DELAY_MS); });
       return 'done';
     } finally {
@@ -85,11 +86,11 @@ class ThrottleTestDag {
           'body':        { 'node': 'urn:noocodec:node:delayed' },
           'source':      'items',
           'itemKey':     'item',
-          'execution': {
+          'configuration': { 'execution': { 'batching': {
             'mode': 'item',
             'concurrency': itemCount,
             ...(throttle !== null ? { 'throttle': throttle } : {}),
-          },
+          } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),

@@ -12,5 +12,5 @@ export type GraphScopeType = {
 export interface GraphDatasetProviderInterface {
   root(runIri: string): GraphDatasetInterface;
   child(parent: GraphScopeType, child: GraphScopeType): GraphDatasetInterface;
-  reopen(runIri: string): GraphDatasetInterface | undefined;
+  reopen(runIri: string): Promise<GraphDatasetInterface | undefined>;
 }

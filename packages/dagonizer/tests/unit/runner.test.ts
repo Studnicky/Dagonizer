@@ -316,6 +316,7 @@ void describe('EventTrigger', () => {
     // Allow microtasks/promises to settle before detach
     await new Promise<void>((resolve) => setImmediate(resolve));
     // Wait a bit more for run() promises to resolve
+    // Real timers are intentional: the trigger adapter dispatches callbacks through the platform event loop.
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
 
     await trigger.detach();

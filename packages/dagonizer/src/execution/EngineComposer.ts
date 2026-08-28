@@ -1,3 +1,4 @@
+import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
 import type { DagRegistrarSourceInterface } from '../dag/DagRegistrar.js';
 import { DagRegistrar } from '../dag/DagRegistrar.js';
 import type { DispatcherRelaySourceInterface } from '../observer/DispatcherHooks.js';
@@ -40,6 +41,7 @@ import { ScatterExecutor } from './ScatterExecutor.js';
  * place rather than being implied by constructor statement order on the root.
  */
 export type EngineHostType =
+  & { readonly inMemorySnapshotStore: GraphDatasetInterface }
   & DispatcherRelaySourceInterface
   & BodyRunPortInterface
   & GatherSourceInterface

@@ -6,8 +6,9 @@
  *   1. When an item is pulled from the source it enters the `inbox`
  *      (persisted in state metadata under SCATTER_PROGRESS_KEY).
  *   2. When the body completes successfully the item leaves the inbox and
- *      moves to `ackedResults`.
- *   3. On abort, the checkpoint captures both inbox and ackedResults.
+ *      advances the bounded watermark or ahead-acked window.
+ *   3. On abort, the checkpoint captures the inbox, watermark, ahead-acked
+ *      window, and outcome tally.
  *   4. On resume, inbox items are reprocessed first (they may not have
  *      finished), then the remaining source items continue from where the
  *      iterator left off. Acked items are NEVER re-executed.
@@ -18,7 +19,7 @@
  *
  * concurrency=1 so the abort fires cleanly between items:
  *
- *   Items 0–(ABORT_AFTER-1): run, ack, accumulate in ackedResults.
+ *   Items 0–(ABORT_AFTER-1): run, ack, advance the bounded watermark.
  *   Item ABORT_AFTER: node body fires abort → scatter pull loop exits
  *                     before pulling the next item → scatter throws.
  *   Items after abort: never pulled. Resume runs them fresh.

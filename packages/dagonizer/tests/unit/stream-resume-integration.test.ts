@@ -113,7 +113,7 @@ class StreamResumeDag {
           'body':        { 'node': 'urn:noocodec:node:worker' },
           'source':      'source',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', 'concurrency': concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': concurrency } } },
           'outputs': {
             'all-success': placementIri(dagIri, 'join'),
             'partial': placementIri(dagIri, 'join'),
@@ -171,6 +171,7 @@ void describe('StreamChannel.resumable + StreamCursor: deterministic streamed re
     const dispatcher = new Dagonizer<StreamResumeState>();
     const fanIri = placementIri('urn:noocodec:dag:stream-resume-integration', 'fan');
     dispatcher.registerNode(TestNode.make<StreamResumeState>('urn:noocodec:node:worker', ['success'], async (state, context) => {
+      // Real timers are intentional: the test aborts a live async stream item before checkpoint/resume.
       await new Promise<void>((resolve, reject) => {
         const handle = setTimeout(resolve, 2);
         context.signal.addEventListener('abort', () => {
@@ -211,9 +212,7 @@ void describe('StreamChannel.resumable + StreamCursor: deterministic streamed re
     assert.ok(entry !== undefined, `expected a progress entry for placement "${fanIri}"`);
 
     // 3. Not all items were acked.
-    const ackedCount = entry.mode === 'bounded'
-      ? entry.watermark + entry.aheadAcked.length
-      : entry.ackedResults.length;
+    const ackedCount = entry.watermark + entry.aheadAcked.length;
     assert.ok(
       ackedCount < TOTAL,
       `only ${ackedCount} of ${TOTAL} items should be acked after abort; ` +

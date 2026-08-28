@@ -17,7 +17,7 @@ export interface ObserverRelayInterface {
    * A worker node began. `placementPath` is the nesting path from the root
    * DAG to the node. `signal` is the PARENT dispatcher's own `AbortSignal`
    * for the container-node dispatch that produced this event (the same
-   * signal `ChannelDispatch.request()`/`requestBatch()` received) — worker
+   * signal `ChannelDispatch.request()` received) — worker
    * hook events cross a serialized message boundary and carry no
    * `AbortSignal` of their own, so the parent's node-dispatch signal is the
    * correct anchor for `DagExecutionContext.tryGet` on this side.

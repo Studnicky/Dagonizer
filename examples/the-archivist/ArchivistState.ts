@@ -12,7 +12,7 @@ import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
-import type { ReasoningStepType } from '@studnicky/dagonizer';
+import type { GraphScopeType, ReasoningStepType } from '@studnicky/dagonizer';
 import { Validator } from '@studnicky/dagonizer/validation';
 import { CandidateSchema } from '@studnicky/dagonizer-book-entities';
 
@@ -76,6 +76,7 @@ export type ArchivistIntent =
   | 'lookup-author'      // visitor named an author and wants their body of work
   | 'find-reviews'       // visitor wants opinions / reviews / what readers think
   | 'describe-book'      // visitor named a specific title and wants a description
+  | 'book-detail'        // visitor wants more detail on a book already surfaced this conversation
   | 'recommend-similar'  // visitor wants something like a previous read
   | 'recall-memories'    // visitor asked what the agent has seen / remembered
   | 'search'             // visitor named a title / author / ISBN (generic search)
@@ -195,8 +196,8 @@ export class ArchivistState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): this {
-    const copy = super.clone(); // new Constructor() + _metadata copy from base
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope); // new Constructor() + _metadata copy from base
     copy.query        = this.query;
     copy.userLanguage = this.userLanguage;
     copy.intent       = this.intent;
@@ -384,6 +385,7 @@ export class ArchivistState extends NodeStateBase {
     return v === 'lookup-author'
       || v === 'find-reviews'
       || v === 'describe-book'
+      || v === 'book-detail'
       || v === 'recommend-similar'
       || v === 'recall-memories'
       || v === 'search'

@@ -7,50 +7,48 @@ seeAlso:
     description: 'AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace'
   - text: 'Example: ReAct agent memory'
     link: '../examples/react-agent-memory'
-    description: 'working example: trace streaming via StreamChannel.driven + an outer scatter'
+    description: 'trace streaming via StreamChannel.driven plus an outer scatter'
 ---
 
 <script setup lang="ts">
-import { archivistStreamProducerDAG } from '../.vitepress/theme/exampleDags.ts';
+import { archivistStreamProducerDAG } from '../exampleDags.ts';
 </script>
 
 # Streaming Producers
 
-## What It Is
+## Producer Bridge Surface
 
 Streaming producers bridge work that is discovered over time into a DAG scatter source. `StreamChannel` turns push-style producers into bounded async iterables; scatter pulls as capacity opens; `push()` awaits when the buffer is full, so peak memory stays `O(capacity)`.
 
 `DagStreamProducer` extends the same idea to DAG-to-DAG pipelines: one DAG's execution stream can produce items for another DAG's scatter.
 
-## How It Works
+## Channel and Producer Flows
+
+Example 36 shows a `DagStreamProducer` feeding an outer scatter. The JSON-LD below is the Archivist stream-producer DAG beside Mermaid generated from it:
+
+<DagJsonMermaid :dag="archivistStreamProducerDAG" title="Archivist DagStreamProducer outer scatter" aria-label="Archivist DagStreamProducer JSON-LD DAG beside Mermaid generated from it." />
+
+- [ReAct agent: streaming + provenance recall](./react-agent) - AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace
+- [Example: ReAct agent memory](../examples/react-agent-memory) - trace streaming via StreamChannel.driven plus an outer scatter
+- [Example 34: StreamChannel Source](../examples/34-stream-channel) - push-to-pull source bridging
+- [Example 35: Stream Resume Cursor](../examples/35-stream-fanin-resume) - cursor resume for stream-backed scatter
+- [Example 36: DAG Stream Producer](../examples/36-dag-stream-producer) - one DAG feeding another
+
+## Push-to-Pull Bridge Model
 
 `StreamChannel` bridges push-style producers into the scatter pull loop. Producers push into a bounded buffer; scatter pulls from the channel as capacity opens. `DagStreamProducer` adapts an execution stream into the same source interface, so one DAG can feed another.
 
 A scatter source accepts any `AsyncIterable<T>`. `StreamChannel<T>` bridges push-style producers into that pull loop: a producer calls `await sink.push(item)` for each item it discovers; `push` awaits when the bounded buffer is full, giving the scatter time to drain a slot. Peak memory stays O(capacity) rather than O(total items) — a producer that discovers millions of items never buffers more than `capacity` of them at once.
 
-## Diagrams, Examples, and Outputs
-
-Example 36 shows a `DagStreamProducer` feeding an outer scatter. The JSON-LD below is the runnable Archivist stream-producer DAG beside Mermaid generated from it:
-
-<DagJsonMermaid :dag="archivistStreamProducerDAG" title="Archivist DagStreamProducer outer scatter" aria-label="Archivist DagStreamProducer JSON-LD DAG beside Mermaid generated from it." />
-
-- [ReAct agent: streaming + provenance recall](./react-agent) - AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace
-- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming via StreamChannel.driven + an outer scatter
-- [Example 34: StreamChannel Source](../examples/34-stream-channel) - push-to-pull source bridging
-- [Example 35: Stream Resume Cursor](../examples/35-stream-fanin-resume) - cursor resume for stream-backed scatter
-- [Example 36: DAG Stream Producer](../examples/36-dag-stream-producer) - one DAG feeding another
-
-## What It Lets You Do
-
-### Use when
-
-Use streaming producers when a scatter source is discovered over time instead of available as a complete array. This covers channels, fan-in, resumable streams, and DAGs that produce work for downstream DAGs.
-
 ## Code Samples
 
-The snippets below show the producer styles: one producer, fan-in, resumable streams, and DAG-backed producers.
+The code samples cover the producer styles: one producer, fan-in, resumable streams, and DAG-backed producers.
 
-## Details for Nerds
+## Operational Uses
+
+Streaming producers are for scatter sources that are discovered over time instead of arriving as a complete array. This covers channels, fan-in, resumable streams, and DAGs that produce work for downstream DAGs.
+
+## Runtime Notes
 
 ### StreamChannel.driven
 
@@ -194,12 +192,12 @@ state.source = StreamChannel.driven(LabelStreamProducer.of([0, 1, 2, 3, 4]));
 | `ResumableStreamProducerInterface<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/contracts` |
 | `DagStreamProducer<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/patterns` |
 
-`AgentTraceProducer` (`@studnicky/dagonizer/patterns`) is a `DagStreamProducer<ReasoningStepType>` subclass purpose-built for streaming an agent loop's ReAct reasoning trace. See [ReAct agent: streaming + provenance recall](./react-agent) for the full pattern and [Example: ReAct agent memory](../examples/react-agent-memory) for a runnable version.
+`AgentTraceProducer` (`@studnicky/dagonizer/patterns`) is a `DagStreamProducer<ReasoningStepType>` subclass purpose-built for streaming an agent loop's ReAct reasoning trace. See [ReAct agent: streaming + provenance recall](./react-agent) for the full pattern and [Example: ReAct agent memory](../examples/react-agent-memory) for the complete example flow.
 
 ## Related Concepts
 
 - [ReAct agent: streaming + provenance recall](./react-agent) - AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace
-- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming via StreamChannel.driven + an outer scatter
+- [Example: ReAct agent memory](../examples/react-agent-memory) - trace streaming via StreamChannel.driven plus an outer scatter
 - [Example 34: StreamChannel Source](../examples/34-stream-channel) shows push-to-pull source bridging.
 - [Example 35: Stream Resume Cursor](../examples/35-stream-fanin-resume) shows cursor resume.
 - [Example 36: DAG Stream Producer](../examples/36-dag-stream-producer) shows one DAG feeding another.

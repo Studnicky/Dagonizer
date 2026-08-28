@@ -8,15 +8,13 @@
  *
  * Consumer usage (inside the worker file):
  *
- *   // worker.ts (consumer's file — they own the cast at THEIR boundary)
+ *   // worker.ts
  *   import { WebWorkerEntry } from '@studnicky/dagonizer-executor-web';
- *   import type { WorkerScopeLikeInterface } from '@studnicky/dagonizer-executor-web';
  *
- *   WebWorkerEntry.start(self as unknown as WorkerScopeLikeInterface);
+ *   WebWorkerEntry.start(self);
  *
- * The `as unknown as WorkerScopeLikeInterface` cast lives in the consumer's
- * worker file because `self` (DedicatedWorkerGlobalScope) is a DOM type.
- * This package never depends on DOM lib types.
+ * The injected worker scope satisfies the package's structural contract while
+ * this package remains independent of DOM library types.
  */
 
 import { DagHost } from '@studnicky/dagonizer/container';

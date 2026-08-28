@@ -1,0 +1,24 @@
+---
+import UiPanelShell from '@/components/islands/UiPanelShell.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+---
+
+<section id="overview" class="space-y-6">
+  <UiSectionIntro
+    eyebrow="Operating model"
+    title="Keep orchestration policy in the DAG instead of smearing it across runtime glue"
+    description="Dagonizer keeps routing, checkpoints, retries, and visualization attached to the DAG document instead of splitting them across disconnected subsystems."
+  />
+
+  <div class="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+    <UiPanelShell title="What stays explicit" subtitle="Operator view">
+      <div class="space-y-3 text-sm leading-6 text-slate-300">
+        <p>Define placements, routes, and terminals as graph data instead of hiding control flow inside callbacks and handlers.</p>
+        <p>Use checkpoints, routing, retries, scatter, and fan-in as part of one runtime contract rather than separate subsystems.</p>
+        <p>Review the same workflow artifact in docs, visualization, and live execution instead of translating between representations.</p>
+      </div>
+    </UiPanelShell>
+
+    <slot />
+  </div>
+</section>

@@ -77,7 +77,7 @@ class TestScatterDag {
           'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
-          ...(options.concurrency !== undefined ? { 'execution': { 'mode': 'item' as const, 'concurrency': options.concurrency } } : {}),
+          ...(options.concurrency !== undefined ? { 'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': options.concurrency } } } } : {}),
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -254,7 +254,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const fanIri = placementIri('urn:noocodec:dag:resume-arr', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode':          'bounded' as const,
+        'mode':          'bounded',
         'placementName': fanIri,
         'inbox':         [],
         'watermark':     2,
@@ -298,7 +298,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const fanIri = placementIri('urn:noocodec:dag:resume-inbox', 'fan');
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode':          'bounded' as const,
+        'mode':          'bounded',
         'placementName': fanIri,
         'inbox':         [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
         'watermark':     1,
@@ -361,7 +361,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     const fanIri = placementIri('urn:noocodec:dag:resume-async', 'fan');
     st.setMetadata(SCATTER_PROGRESS_KEY, {
       [fanIri]: {
-        'mode':          'bounded' as const,
+        'mode':          'bounded',
         'placementName': fanIri,
         'inbox':         [{ 'index': 2, 'item': 30 }],
         'watermark':     2,
@@ -419,7 +419,7 @@ void describe('Scatter: incremental gather', () => {
           'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -522,7 +522,7 @@ void describe('Scatter: incremental gather', () => {
           'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -600,7 +600,7 @@ void describe('Scatter: incremental gather', () => {
           'body':   { 'node': 'urn:noocodec:node:worker' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 2 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
           'outputs': {
             'all-success': joinIri,
             'partial': joinIri,
@@ -634,7 +634,7 @@ void describe('Scatter: incremental gather', () => {
 });
 
 void describe('Scatter: progress shape (inbox model)', () => {
-  void it('persists inbox + ackedResults; clears on clean completion', async () => {
+  void it('persists bounded cursor progress and clears it on clean completion', async () => {
     const dispatcher = new Dagonizer<StreamState>();
     const progressSnapshots: ScatterProgressType[] = [];
     const st = new StreamState();
@@ -664,16 +664,13 @@ void describe('Scatter: progress shape (inbox model)', () => {
     // 3 items → 3 ack writes.
     assert.equal(progressSnapshots.length, 3);
 
-    // After each ack: inbox shrinks (item acked → removed), acked count grows.
-    // append is compactable (retainsRecordsForFinalize=false) → bounded checkpoint.
+    // Each acknowledgement advances the bounded cursor and removes its inbox item.
     for (let i = 0; i < progressSnapshots.length; i++) {
       const snap = progressSnapshots[i];
       assert.ok(snap !== undefined);
       // With concurrency=1, items complete in order so watermark advances
       // contiguously; aheadAcked stays empty.
-      const totalAcked = snap.mode === 'bounded'
-        ? snap.watermark + snap.aheadAcked.length
-        : snap.ackedResults.length;
+      const totalAcked = snap.watermark + snap.aheadAcked.length;
       assert.equal(totalAcked, i + 1,
         `after ack ${i + 1}, total acked should be ${i + 1}`);
       // inbox should be empty (concurrency=1, item acked immediately after body).
@@ -693,9 +690,8 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
    * must still record the acked items (fewer than total), so a resume can
    * reprocess the remainder.
    *
-   * The pull-loop exits when signal.aborted is true, the throw fires before
-   * ScatterCheckpoint.clear(), the run returns with cursor='fan', and the
-   * checkpoint contains the partial ackedResults.
+   * The pull-loop exits when signal.aborted is true, the run returns with
+   * cursor='fan', and the checkpoint contains bounded cursor progress.
    */
   void it('aborted scatter over async-iterable source preserves checkpoint — resume sees remaining items', async () => {
     const TOTAL_ITEMS = 50;
@@ -714,6 +710,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
         for (const item of batch) {
+          // Real timers are intentional: this creates the live event-loop cancellation window for streaming scatter items.
           await new Promise<void>((resolve, reject) => {
             const handle = setTimeout(resolve, 2);
             context.signal.addEventListener('abort', () => {
@@ -760,12 +757,8 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const entry = stored[placementIri('urn:noocodec:dag:abort-async-50', 'fan')];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
-    // 3. Not all items were acked — fewer than total. If the pull-loop ignored
-    //    signal.aborted, the acked count would equal TOTAL_ITEMS (silent data-loss).
-    // append is compactable → bounded checkpoint.
-    const ackedCount = entry.mode === 'bounded'
-      ? entry.watermark + entry.aheadAcked.length
-      : entry.ackedResults.length;
+    // 3. Not all items were acknowledged.
+    const ackedCount = entry.watermark + entry.aheadAcked.length;
     assert.ok(
       ackedCount < TOTAL_ITEMS,
       `only ${ackedCount} of ${TOTAL_ITEMS} items should be acked after abort; ` +

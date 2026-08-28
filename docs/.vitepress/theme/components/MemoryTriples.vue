@@ -12,6 +12,10 @@
 import { computed } from 'vue';
 import type { Quad } from 'n3';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
+import PanelHeader from './ui/PanelHeader.vue';
+import StateSurface from './ui/StateSurface.vue';
+import UiMetaText from './ui/UiMetaText.vue';
+import UiPaneSurface from './ui/UiPaneSurface.vue';
 
 const props = defineProps<{
   store: MemoryStore;
@@ -59,11 +63,12 @@ function renderObject(q: Quad): string {
 </script>
 
 <template>
-  <section class="memory-triples">
-    <header class="triples-header">
-      <h4>RDF memory</h4>
-      <span class="triples-count">{{ rows.length }} {{ rows.length === 1 ? 'triple' : 'triples' }}</span>
-    </header>
+  <UiPaneSurface class="memory-triples" padding="md" min-height="220px">
+    <PanelHeader title="RDF memory">
+      <template #meta>
+        <UiMetaText tone="accent">{{ rows.length }} {{ rows.length === 1 ? 'triple' : 'triples' }}</UiMetaText>
+      </template>
+    </PanelHeader>
 
     <ol v-if="rows.length > 0" class="triples-list">
       <li v-for="row in rows" :key="row.key" class="triple">
@@ -73,42 +78,11 @@ function renderObject(q: Quad): string {
       </li>
     </ol>
 
-    <p v-else class="triples-empty">No triples written yet.</p>
-  </section>
+    <StateSurface v-else kind="empty">No triples written yet.</StateSurface>
+  </UiPaneSurface>
 </template>
 
 <style scoped>
-.memory-triples {
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 0.7rem 0.85rem;
-  display: flex;
-  flex-direction: column;
-  min-height: 220px;
-}
-
-.triples-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.55rem;
-}
-
-.triples-header h4 {
-  margin: 0;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-}
-
-.triples-count {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  color: var(--dagonizer-brand2);
-}
-
 .triples-list {
   list-style: none;
   padding: 0;
@@ -136,14 +110,6 @@ function renderObject(q: Quad): string {
 .t-subject   { color: var(--dagonizer-brand);  overflow-wrap: anywhere; }
 .t-predicate { color: var(--vp-c-text-3); overflow-wrap: anywhere; }
 .t-object    { color: var(--vp-c-text-1); overflow-wrap: anywhere; }
-
-.triples-empty {
-  margin: auto 0;
-  text-align: center;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  font-size: 0.78rem;
-}
 
 @keyframes triple-in {
   from { opacity: 0; transform: translateY(-2px); }

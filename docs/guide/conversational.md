@@ -13,7 +13,7 @@ seeAlso:
     description: 'inject IO adapters via node constructors'
   - text: 'Example 29: Agent DAG'
     link: '../examples/29-agent-dag'
-    description: 'working example of the 8-node agent loop with stub LLM'
+    description: 'the 8-node agent loop with a stub LLM and explicit tool scatter'
   - text: 'ReAct agent: streaming + provenance recall'
     link: './react-agent'
     description: 'the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall'
@@ -26,26 +26,20 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { reactAgentDAG, supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+import { reactAgentDAG, supportDispatcherDAG } from '../exampleDags.ts';
 </script>
 
 # Conversational Agents
 
-## What It Is
+## Conversation Workflow Model
 
-Conversational applications are still workflows. A user message enters state, nodes classify intent or fill slots, the DAG either replies, parks for a human, dispatches tools, or loops through another model call. Dagonizer keeps those turn decisions visible as JSON-LD topology instead of hiding them in callback stacks.
+Conversational flows are still workflows. A user message enters state, nodes classify intent or fill slots, the DAG either replies, parks for a human, dispatches tools, or loops through another model call. Dagonizer keeps those turn decisions visible as JSON-LD topology instead of hiding them in callback stacks.
 
-This guide covers three conversation shapes that appear in the runnable examples: request/response turns, human-in-the-loop parking, and the reusable agent loop.
+Three conversation shapes recur across the runtime: request/response turns, human-in-the-loop parking, and the reusable agent loop.
 
-## How It Works
+## Conversation Topologies
 
-Conversational flows keep serializable domain progress on state and put ephemeral IO handles behind metadata, stores, triggers, or host code. A turn either completes with a response, parks with a cursor, or streams through a producer/channel surface while the DAG remains the explicit control-flow graph.
-
-Interactive DAGs — those that prompt users, wait for responses, escalate to humans, or stream results — present a challenge: the input/output cannot flow through serializable `state.params` when it is ephemeral (a live socket, a request/response pair, an SSE stream, a queue item). This guide documents two proven patterns for threading non-serializable IO through a DAG.
-
-## Diagrams, Examples, and Outputs
-
-The runnable examples show two complementary conversational shapes. The ReAct loop is the reusable agent graph; the Dispatcher support flow shows park-and-correlate handoff:
+Two registered topologies anchor this guide: the reusable ReAct loop and the support workflow that parks, correlates, and resumes operator handoff:
 
 <DagJsonMermaid :dag="reactAgentDAG" title="ReAct agent loop DAG" aria-label="ReAct agent loop JSON-LD DAG beside Mermaid generated from it." />
 
@@ -54,21 +48,25 @@ The runnable examples show two complementary conversational shapes. The ReAct lo
 - [State & metadata](./shared-state) - use state.metadata as the inter-node IO bus
 - [Checkpoint & resume](./checkpoint) - persist and reload state across process boundaries
 - [Dependency injection](./services) - inject IO adapters via node constructors
-- [Example 29: Agent DAG](../examples/29-agent-dag) - working example of the 8-node agent loop with stub LLM
-- [The Dispatcher](../examples/the-dispatcher) - runnable support handoff and operator response flow
-- [ReAct Agent Memory](../examples/react-agent-memory) - runnable trace streaming and provenance recall
+- [Example 29: Agent DAG](../examples/29-agent-dag) - the 8-node agent loop with a stub LLM and explicit tool scatter
+- [The Dispatcher](../examples/the-dispatcher) - support handoff and operator response flow
+- [ReAct Agent Memory](../examples/react-agent-memory) - trace streaming and provenance recall
 
-## What It Lets You Do
+## Turn, Park, and Stream Model
 
-### Use when
+Conversational flows keep serializable domain progress on state and put ephemeral IO handles behind metadata, stores, triggers, or transport glue. A turn either completes with a response, parks with a cursor, or streams through a producer/channel integration while the DAG remains the explicit control-flow graph.
 
-Use this guide when a DAG interacts with people, live transports, or turn-based agent loops. It covers slot filling, human escalation, request/response boundaries, streaming, and the canonical agent topology.
+Interactive DAGs that prompt users, wait for responses, escalate to humans, or stream results cannot move ephemeral IO through serializable `state.params`. Two patterns handle that boundary for live sockets, request/response pairs, SSE streams, and queue items.
 
 ## Code Samples
 
-The sections below describe the implementation shapes behind the runnable examples. Prefer the linked demos for copy/paste starting points; use the sketches here to understand the design tradeoffs.
+The patterns below isolate the execution and transport tradeoffs behind request/response turns and parked handoff flows.
 
-## Details for Nerds
+## Operational Uses
+
+The workflow shapes below cover DAGs that interact with people, live transports, or turn-based agent loops: slot filling, human escalation, request/response boundaries, streaming, and the canonical agent topology.
+
+## Runtime Notes
 
 ### Overview
 
@@ -782,7 +780,7 @@ dispatcher.registerBundle(tools.bundle());
 - [State & metadata](./shared-state) - use state.metadata as the inter-node IO bus
 - [Checkpoint & resume](./checkpoint) - persist and reload state across process boundaries
 - [Dependency injection](./services) - inject IO adapters via node constructors
-- [Example 29: Agent DAG](../examples/29-agent-dag) - working example of the 8-node agent loop with stub LLM
+- [Example 29: Agent DAG](../examples/29-agent-dag) - the 8-node agent loop with a stub LLM and explicit tool scatter
 - [Chat Event Orchestration](./chat-event-orchestration) - run one registered agent DAG per inbound event or request turn
 - [ReAct agent: streaming + provenance recall](./react-agent) - the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall
 - [Lifecycle phases](./lifecycle-phases) - understand when a DAG completes vs. when it pauses

@@ -8,8 +8,8 @@
  *      check is performed; an advisory is logged if the ratio exceeds a threshold.
  *
  *   2. NO FULL-SET MATERIALIZATION — sampleRecords.length <= 200, journeys.size
- *      <= 100 after the large run. insights shipmentCount sums to ~N proving
- *      all scans flowed through the fold with no records array.
+ *      <= 100 after the large run. insights shipmentCount exactly matches the
+ *      accepted enriched-record count with no records array.
  *
  *   3. CORRECTNESS — small run (N=210) cross-checks region exactness, lane
  *      coverage, and journey reconstruction.
@@ -26,7 +26,7 @@
  *   immediately after each per-clone `reduce` fold. Peak heap is therefore dominated
  *   by the bounded fold accumulators on the gather strategy, not by retained clone
  *   states. InsightsFoldGather accumulators are bounded: sampleRecords <=200,
- *   journeys <=100, insights ~6-8 continent keys — Proof 2 asserts all three.
+ *   journeys <=100, insights <= Continent.values.length — Proof 2 asserts all three.
  *
  *   At the scales used here (N_SMALL=2000, N_LARGE=8000):
  *     - sampleRecords, journeys, and insights are bounded (Proof 2 asserts).
@@ -42,6 +42,7 @@ import { CartographerState } from '../CartographerState.ts';
 import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
 import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
+import { Continent } from '../entities/Continent.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
 // ── Constants (mirror InsightsFoldGather caps) ─────────────────────────────────
@@ -178,10 +179,10 @@ Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — jo
   );
 });
 
-Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — insights ≤ 10 continent keys`, () => {
+Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — insights ≤ ${Continent.values.length} continent keys`, () => {
   assert.ok(
-    runLargeHeap.state.insights.size <= 10,
-    `insights.size=${runLargeHeap.state.insights.size} exceeds continent-level cap (expected ~6-8 keys)`,
+    runLargeHeap.state.insights.size <= Continent.values.length,
+    `insights.size=${runLargeHeap.state.insights.size} exceeds continent-level cap (expected at most ${Continent.values.length} keys)`,
   );
 });
 
@@ -207,15 +208,15 @@ Harness.check(`journeys is capped at ${MAX_SAMPLE_JOURNEYS} after ${N_LARGE.toLo
   );
 });
 
-Harness.check(`insights shipmentCount sum is ~${N_LARGE.toLocaleString()} — all scans flowed through`, () => {
+Harness.check('insights shipmentCount sum matches accepted enriched throughput', () => {
   let total = 0;
   for (const [, r] of stateLarge.insights) total += r.shipmentCount;
-  // Allow ~15% drop for invalid-coord rejects and geo failures.
-  const threshold = Math.floor(N_LARGE * 0.7);
-  assert.ok(
-    total > threshold,
-    `Expected shipmentCount sum > ${threshold} (${N_LARGE.toLocaleString()} scans), got ${total}`,
+  assert.equal(
+    total,
+    stateLarge.processedCountExact,
+    `insights shipmentCount sum ${total} must equal processedCountExact ${stateLarge.processedCountExact}`,
   );
+  assert.ok(total > 0, 'accepted enriched throughput must be non-zero');
   console.log(`  insights shipmentCount total: ${total.toLocaleString()} across ${stateLarge.insights.size} regions`);
 });
 
@@ -236,7 +237,7 @@ Harness.check('insights map is populated with at least one region', () => {
   assert.ok(stateRef.insights.size > 0, `Expected insights entries, got 0`);
 });
 
-Harness.check('insights contains the International Waters / Maritime bucket', () => {
+Harness.check('insights contains the International Waters / Maritime regional bucket', () => {
   assert.ok(
     stateRef.insights.has('International Waters / Maritime'),
     `Expected 'International Waters / Maritime' in insights, keys: ${[...stateRef.insights.keys()].join(', ')}`,
@@ -280,13 +281,14 @@ Harness.check('at least one journey has >=2 scans (multi-scan reconstruction wor
   );
 });
 
-Harness.check('insights shipmentCount sum matches scan throughput for reference run', () => {
+Harness.check('insights shipmentCount sum matches accepted reference throughput', () => {
   let total = 0;
   for (const [, r] of stateRef.insights) total += r.shipmentCount;
   assert.ok(total > 0, `shipmentCount sum is 0 — no scans folded into insights`);
-  assert.ok(
-    total >= stateRef.journeys.size,
-    `insights shipmentCount (${total}) must be >= journeys.size (${stateRef.journeys.size})`,
+  assert.equal(
+    total,
+    stateRef.processedCountExact,
+    `insights shipmentCount sum ${total} must equal processedCountExact ${stateRef.processedCountExact}`,
   );
   console.log(`  reference run: ${total} scans folded, ${stateRef.journeys.size} journeys sampled`);
 });

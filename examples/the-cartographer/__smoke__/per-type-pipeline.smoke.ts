@@ -14,6 +14,7 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 import { CartographerState } from '../CartographerState.ts';
+import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { PositionPingEvent } from '../entities/events/PositionPingEvent.ts';
@@ -93,11 +94,11 @@ class SmokeRunner {
    * The per-type pipeline DAGs read the canonical-event from metadata
    * (parseVariant calls state.getMetadata('canonical-event')).
    */
-  static async run(dagName: string, variant: CanonicalEventVariant): Promise<EnrichedShipment> {
+  static async run(dagIri: string, variant: CanonicalEventVariant): Promise<EnrichedShipment> {
     const state = new CartographerState();
     state.setMetadata('canonical-event', variant);
     state.canonicalVariant = variant;
-    const execution = dispatcher.execute(dagName, state, {});
+    const execution = dispatcher.execute(dagIri, state, {});
     for await (const _stage of execution) { /* drain stages */ }
     await execution;
     return state.enriched;
@@ -105,7 +106,7 @@ class SmokeRunner {
 
   /** Returns a Set of placement names from a DAG's nodes array. */
   static placementNames(dag: DAGType): Set<string> {
-    return new Set(dag.nodes.map((n) => n.name));
+    return new Set(dag.nodes.map((node) => node['@id'].slice(node['@id'].lastIndexOf('/node/') + 6)));
   }
 }
 
@@ -293,39 +294,39 @@ await SmokeRunner.check('(5b) delivery-confirmation DAG node-set: facility/order
 // ── End-to-end execution checks ────────────────────────────────────────────────
 
 await SmokeRunner.check('(1c) position-ping: pipeline produces non-empty shipmentId and legKm >= 0', async () => {
-  const enriched = await SmokeRunner.run('pipeline-position-ping', positionPingVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelinePositionPing, positionPingVariant);
   assert.ok(enriched.shipmentId.length > 0, `position-ping: enriched.shipmentId must be non-empty`);
   assert.ok(enriched.legKm >= 0, `position-ping: enriched.legKm must be >= 0 (got ${enriched.legKm})`);
 });
 
 await SmokeRunner.check('(1d) position-ping: no pricing (subtotalUsdMinor === 0, shippingUsdMinor === 0)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-position-ping', positionPingVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelinePositionPing, positionPingVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `position-ping must have subtotalUsdMinor === 0 (no order lane)`);
   assert.strictEqual(enriched.shippingUsdMinor, 0, `position-ping must have shippingUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(2c) sensor-reading: pipeline produces enriched record (shipmentId non-empty)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-sensor-reading', sensorReadingVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineSensorReading, sensorReadingVariant);
   assert.ok(enriched.shipmentId.length > 0, `sensor-reading: enriched.shipmentId must be non-empty`);
 });
 
 await SmokeRunner.check('(2d) sensor-reading: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-sensor-reading', sensorReadingVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineSensorReading, sensorReadingVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `sensor-reading must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(3c) customs-event: pipeline produces enriched record (shipmentId non-empty)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-customs-event', customsEventVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineCustomsEvent, customsEventVariant);
   assert.ok(enriched.shipmentId.length > 0, `customs-event: enriched.shipmentId must be non-empty`);
 });
 
 await SmokeRunner.check('(3d) customs-event: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-customs-event', customsEventVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineCustomsEvent, customsEventVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `customs-event must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(4c) facility-scan: pricing ran (subtotalUsdMinor > 0)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineFacilityScan, facilityScanVariant);
   assert.ok(
     enriched.subtotalUsdMinor > 0,
     `facility-scan: enriched.subtotalUsdMinor must be > 0 after order-enrichment (got ${enriched.subtotalUsdMinor})`,
@@ -333,13 +334,13 @@ await SmokeRunner.check('(4c) facility-scan: pricing ran (subtotalUsdMinor > 0)'
 });
 
 await SmokeRunner.check('(4d) facility-scan: shippingUsdMinor >= 0 and shipmentId non-empty', async () => {
-  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineFacilityScan, facilityScanVariant);
   assert.ok(enriched.shipmentId.length > 0, `facility-scan: enriched.shipmentId must be non-empty`);
   assert.ok(enriched.shippingUsdMinor >= 0, `facility-scan: enriched.shippingUsdMinor must be >= 0`);
 });
 
 await SmokeRunner.check('(5c) delivery-confirmation: status === DELIVERED', async () => {
-  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, deliveryConfirmationVariant);
   assert.strictEqual(
     enriched.status,
     'DELIVERED',
@@ -348,12 +349,12 @@ await SmokeRunner.check('(5c) delivery-confirmation: status === DELIVERED', asyn
 });
 
 await SmokeRunner.check('(5d) delivery-confirmation: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, deliveryConfirmationVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `delivery-confirmation must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(5e) delivery-confirmation: recipient PII present (recipientName non-empty in redactedSample)', async () => {
-  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, deliveryConfirmationVariant);
   // After GDPR redaction the redactedSample captures the name (pre-redaction) or
   // the redacted form. Either way the enriched record carries the PII path.
   const hasPii =
@@ -382,7 +383,7 @@ const customsWithCode: CustomsEvent = {
 };
 
 await SmokeRunner.check('(3e) customs-event with countryCode routes geoSourceModel=code', async () => {
-  const enriched = await SmokeRunner.run('pipeline-customs-event', customsWithCode);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineCustomsEvent, customsWithCode);
   assert.strictEqual(
     enriched.routing.geoSourceModel,
     'code',
@@ -415,7 +416,7 @@ const deliveryWithLocale: DeliveryConfirmationEvent = {
 };
 
 await SmokeRunner.check('(5f) delivery-confirmation with localeTag routes geoSourceModel=locale', async () => {
-  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryWithLocale);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, deliveryWithLocale);
   assert.strictEqual(
     enriched.routing.geoSourceModel,
     'locale',
@@ -448,7 +449,7 @@ await SmokeRunner.check('(4e) facility-scan with coords+IP has geoSourceModel=co
       'specialCategory':        'none',
     },
   };
-  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanWithIp);
+  const enriched = await SmokeRunner.run(CARTOGRAPHER_IRIS.dag.pipelineFacilityScan, facilityScanWithIp);
   assert.strictEqual(
     enriched.routing.geoSourceModel,
     'coords',

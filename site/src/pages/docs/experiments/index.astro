@@ -1,0 +1,45 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('experiments')), 301);
+
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/experiments'), label: 'Runtime overviews' }
+] as const;
+
+const experimentLinks = [
+  { href: SiteLinks.site('/docs/experiments/modern-home'), label: 'Runtime overview' },
+  { href: SiteLinks.site(SiteLinks.route('examples/the-archivist')), label: 'The Archivist' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+---
+
+<DocsArticleShell title="Runtime Overviews" description="Short Dagonizer runtime summaries and graph references for the main workflow capabilities, examples, and guides.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Runtime Overviews"
+        description="Short summaries and graph references for Dagonizer’s runtime model, examples, and main guides."
+        crumbs={crumbs}
+      />
+
+      <UiSectionIntro
+        eyebrow="Quick references"
+        title="Short runtime overviews and graph references"
+        description="These pages collect shorter runtime summaries and graph references. Use them when you want the condensed version before diving into the full guides and examples."
+      />
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Links">
+        <UiLinkList links={experimentLinks} />
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

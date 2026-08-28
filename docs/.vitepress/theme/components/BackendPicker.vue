@@ -10,29 +10,24 @@
  * model selector whose value is emitted as a preference via
  * `update:preferredModels`.
  *
- * On mobile, gemini-nano and web-llm rows show a "Desktop only" chip
- * and are disabled in the dropdown.
+ * On mobile, browser-local and loopback-only backends are omitted.
  */
 
 import { computed, ref } from 'vue';
+import UiBadge from './ui/UiBadge.vue';
+import UiButton from './ui/UiButton.vue';
+import UiDisclosureCard from './ui/UiDisclosureCard.vue';
+import UiFormRow from './ui/UiFormRow.vue';
+import UiInput from './ui/UiInput.vue';
+import UiSelect from './ui/UiSelect.vue';
 
-import { BackendMatrix } from '../../../../examples/the-archivist/providers/index.ts';
-
-interface BackendOption {
-  readonly id: string;
-  readonly displayName: string;
-  readonly models?: readonly { readonly name: string }[];
-  readonly runnable: boolean;
-  readonly resolvedModel?: string;
-  readonly needsAction?: 'download' | 'api-key' | null;
-  readonly hint?: string;
-}
+import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 
 /** Backends that use a paste-in API key (need key input UI). */
 const KEY_BACKENDS = new Set(['gemini-api', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter']);
 
 /** Backends only available on desktop (not mobile). */
-const DESKTOP_ONLY = new Set(['gemini-nano', 'web-llm']);
+const DESKTOP_ONLY = new Set(['gemini-nano', 'web-llm', 'ollama']);
 
 /** On-device web models, pinned to the top of the dropdown. */
 const WEB_MODELS = new Set(['gemini-nano', 'web-llm']);
@@ -78,28 +73,32 @@ const KEY_META: Record<string, { label: string; placeholder: string; helpText: s
 };
 
 const props = defineProps<{
-  backends: readonly BackendOption[];
-  activeId: string;
-  apiKeys: Partial<Record<string, string>>;
-  preferredModels: Partial<Record<string, string>>;
+  backends: readonly BackendAvailability[];
+  activeId: ProviderId | null | '';
+  apiKeys: Partial<Record<ProviderId, string>>;
+  preferredModels: Partial<Record<ProviderId, string>>;
   isMobile?: boolean;
   disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (event: 'update:activeId', value: string): void;
-  (event: 'update:apiKeys', value: Partial<Record<string, string>>): void;
-  (event: 'update:preferredModels', value: Partial<Record<string, string>>): void;
+  (event: 'update:activeId', value: ProviderId): void;
+  (event: 'update:apiKeys', value: Partial<Record<ProviderId, string>>): void;
+  (event: 'update:preferredModels', value: Partial<Record<ProviderId, string>>): void;
 }>();
 
 /** Per-backend reveal state for password inputs. */
 const revealMap = ref<Record<string, boolean>>({});
 
 /** Visible backend IDs for the current device context. */
-const visibleIds = computed(() => new Set<string>(BackendMatrix.browserVisible(props.isMobile ?? false)));
+const visibleIds = computed(() => new Set(
+  props.backends
+    .filter((backend) => props.isMobile !== true || !DESKTOP_ONLY.has(backend.id))
+    .map((backend) => backend.id),
+));
 
 /** On-device web models first, then every other backend alphabetical by displayName. */
-const sortedBackends = computed<readonly BackendOption[]>(() => {
+const sortedBackends = computed<readonly BackendAvailability[]>(() => {
   const list = props.backends.filter((b) => visibleIds.value.has(b.id));
   list.sort((a, b) => {
     const aWeb = WEB_MODELS.has(a.id);
@@ -115,53 +114,47 @@ const keyBackends = computed(() =>
   props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
 
-function isDesktopOnly(id: string): boolean {
+function isDesktopOnly(id: ProviderId): boolean {
   return props.isMobile === true && DESKTOP_ONLY.has(id);
 }
 
-function onSelect(event: Event): void {
-  emit('update:activeId', (event.target as HTMLSelectElement).value);
+function onSelect(value: string): void {
+  const selected = sortedBackends.value.find((backend) => backend.id === value)?.id;
+  if (selected !== undefined) emit('update:activeId', selected);
 }
 
-function onKey(id: string, event: Event): void {
-  const value = (event.target as HTMLInputElement).value;
+function onKey(id: ProviderId, value: string): void {
   emit('update:apiKeys', { ...props.apiKeys, [id]: value });
 }
 
-function onModelSelect(id: string, event: Event): void {
-  const value = (event.target as HTMLSelectElement).value;
+function onModelSelect(id: ProviderId, value: string): void {
   updatePreferredModel(id, value);
 }
 
-function onModelInput(id: string, event: Event): void {
-  const value = (event.target as HTMLInputElement).value;
+function onModelInput(id: ProviderId, value: string): void {
   updatePreferredModel(id, value);
 }
 
-function updatePreferredModel(id: string, value: string): void {
-  const next: Partial<Record<string, string>> = {};
-  for (const [key, current] of Object.entries(props.preferredModels)) {
-    if (key !== id && typeof current === 'string' && current.trim().length > 0) {
-      next[key] = current.trim();
-    }
-  }
+function updatePreferredModel(id: ProviderId, value: string): void {
+  const next: Partial<Record<ProviderId, string>> = { ...props.preferredModels };
+  delete next[id];
   if (value.trim().length > 0) next[id] = value.trim();
   emit('update:preferredModels', next);
 }
 
-function toggleReveal(id: string): void {
+function toggleReveal(id: ProviderId): void {
   revealMap.value = { ...revealMap.value, [id]: !(revealMap.value[id] ?? false) };
 }
 
-function keyFor(id: string): string {
+function keyFor(id: ProviderId): string {
   return props.apiKeys[id] ?? '';
 }
 
-function preferredModelFor(id: string): string {
+function preferredModelFor(id: ProviderId): string {
   return props.preferredModels[id] ?? '';
 }
 
-function modelHelp(backend: BackendOption): string {
+function modelHelp(backend: BackendAvailability): string {
   if (backend.resolvedModel !== undefined && backend.resolvedModel.length > 0) {
     return `Auto selects ${backend.resolvedModel}`;
   }
@@ -174,13 +167,11 @@ function modelHelp(backend: BackendOption): string {
     <header class="backend-banner">
       <label class="backend-field">
         <span class="backend-prefix">backend</span>
-        <select
-          id="backend-picker-select"
-          name="backend-picker-select"
-          class="backend-select"
-          :value="activeId"
+        <UiSelect
+          :model-value="activeId ?? ''"
           :disabled="disabled === true"
-          @change="onSelect"
+          select-class="backend-select"
+          @update:model-value="onSelect"
         >
           <option
             v-for="entry in sortedBackends"
@@ -190,7 +181,7 @@ function modelHelp(backend: BackendOption): string {
           >
             {{ entry.displayName }}{{ isDesktopOnly(entry.id) ? ' (desktop only)' : entry.runnable ? '' : ' (needs setup)' }}
           </option>
-        </select>
+        </UiSelect>
       </label>
     </header>
 
@@ -208,28 +199,26 @@ function modelHelp(backend: BackendOption): string {
     </p>
 
     <!-- Per-backend config rows: active toggle, key input, and discovered model selector. -->
-    <details
+    <UiDisclosureCard
       v-for="backend in sortedBackends"
       :key="backend.id"
       class="backend-key"
       :open="activeId === backend.id || backend.runnable"
     >
-      <summary class="backend-key-summary">
+      <template #summary>
         {{ KEY_META[backend.id]?.label ?? backend.displayName }}
-        <span v-if="isDesktopOnly(backend.id)" class="desktop-chip">Desktop only</span>
-        <span v-else-if="backend.runnable" class="key-status key-status--set">set</span>
-        <span v-else class="key-status key-status--missing">not set</span>
-      </summary>
-      <div class="backend-row">
-        <span class="backend-row-label">Use this backend</span>
-        <button
-          type="button"
+        <UiBadge v-if="isDesktopOnly(backend.id)" tone="warning">Desktop only</UiBadge>
+        <UiBadge v-else-if="backend.runnable" tone="info">set</UiBadge>
+        <UiBadge v-else tone="warning">not set</UiBadge>
+      </template>
+      <UiFormRow class="backend-row" label="Use this backend" data-as="div">
+        <UiButton
           class="backend-use"
-          :class="{ 'backend-use--active': activeId === backend.id }"
+          :variant="activeId === backend.id ? 'primary' : 'secondary'"
           :disabled="disabled === true || !backend.runnable"
           @click="emit('update:activeId', backend.id)"
-        >{{ activeId === backend.id ? 'Active' : 'Use' }}</button>
-      </div>
+        >{{ activeId === backend.id ? 'Active' : 'Use' }}</UiButton>
+      </UiFormRow>
       <p class="backend-key-help">
         {{ KEY_META[backend.id]?.helpText ?? backend.hint ?? '' }}
         <a
@@ -240,33 +229,27 @@ function modelHelp(backend: BackendOption): string {
         >Get a free key.</a>
       </p>
       <div v-if="KEY_BACKENDS.has(backend.id)" class="key-row">
-        <input
-          :id="`backend-key-${backend.id}`"
-          :name="`backend-key-${backend.id}`"
-          class="key-input"
-          :value="keyFor(backend.id)"
+        <UiInput
+          :model-value="keyFor(backend.id)"
           :type="revealMap[backend.id] ? 'text' : 'password'"
           :placeholder="KEY_META[backend.id]?.placeholder ?? '…'"
-          autocomplete="off"
-          spellcheck="false"
           :disabled="disabled === true"
-          @input="onKey(backend.id, $event)"
+          input-class="key-input"
+          @update:model-value="onKey(backend.id, $event)"
         />
-        <button
-          type="button"
+        <UiButton
           class="key-toggle"
-          :title="revealMap[backend.id] ? 'Hide key' : 'Reveal key'"
-          :aria-pressed="revealMap[backend.id] ?? false"
+          variant="ghost"
+          size="sm"
           @click="toggleReveal(backend.id)"
-        >{{ revealMap[backend.id] ? '🙈' : '👁' }}</button>
+        >{{ revealMap[backend.id] ? '🙈' : '👁' }}</UiButton>
       </div>
-      <label v-if="backend.models !== undefined && backend.models.length > 0" class="model-row">
-        <span class="backend-row-label">Model</span>
-        <select
-          class="model-select"
-          :value="preferredModelFor(backend.id)"
+      <UiFormRow v-if="backend.models !== undefined && backend.models.length > 0" class="model-row" label="Model">
+        <UiSelect
+          :model-value="preferredModelFor(backend.id)"
           :disabled="disabled === true"
-          @change="onModelSelect(backend.id, $event)"
+          select-class="model-select"
+          @update:model-value="onModelSelect(backend.id, $event)"
         >
           <option value="">{{ modelHelp(backend) }}</option>
           <option
@@ -274,23 +257,19 @@ function modelHelp(backend: BackendOption): string {
             :key="model.name"
             :value="model.name"
           >{{ model.name }}</option>
-        </select>
-      </label>
+        </UiSelect>
+      </UiFormRow>
       <div v-else-if="backend.id === 'ollama'" class="key-row model-text-row">
-        <input
-          id="backend-key-ollama-model"
-          name="backend-key-ollama-model"
-          class="key-input"
+        <UiInput
+          :model-value="preferredModelFor('ollama')"
           type="text"
-          :value="preferredModelFor('ollama')"
           placeholder="optional preferred installed model"
-          autocomplete="off"
-          spellcheck="false"
           :disabled="disabled === true"
-          @input="onModelInput('ollama', $event)"
+          input-class="key-input"
+          @update:model-value="onModelInput('ollama', $event)"
         />
       </div>
-    </details>
+    </UiDisclosureCard>
 
   </div>
 </template>
@@ -326,37 +305,7 @@ function modelHelp(backend: BackendOption): string {
 }
 
 .backend-select {
-  background: var(--vp-c-bg-elv);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  padding: 0.35rem 0.6rem;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.82rem;
-  cursor: pointer;
   min-width: 260px;
-}
-
-.backend-select:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.backend-key {
-  background: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 0.65rem 0.85rem;
-  font-size: 0.85rem;
-}
-
-.backend-key-summary {
-  cursor: pointer;
-  color: var(--dagonizer-brand);
-  font-weight: 700;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .backend-key-help {
@@ -396,36 +345,6 @@ function modelHelp(backend: BackendOption): string {
   border-bottom-style: solid;
 }
 
-.key-status {
-  font-size: 0.68rem;
-  font-weight: 600;
-  border-radius: 3px;
-  padding: 0.1rem 0.35rem;
-  letter-spacing: 0.04em;
-}
-
-.key-status--set {
-  background: rgba(74, 222, 128, 0.15);
-  color: var(--dagonizer-brand2);
-  border: 1px solid var(--dagonizer-brand2);
-}
-
-.key-status--missing {
-  background: rgba(212, 166, 73, 0.12);
-  color: var(--dagonizer-brand3);
-  border: 1px solid var(--dagonizer-brand3);
-}
-
-.desktop-chip {
-  font-size: 0.68rem;
-  font-weight: 600;
-  border-radius: 3px;
-  padding: 0.1rem 0.35rem;
-  background: rgba(148, 163, 184, 0.15);
-  color: var(--vp-c-text-3);
-  border: 1px solid var(--vp-c-divider);
-  letter-spacing: 0.04em;
-}
 
 .key-row {
   display: grid;
@@ -435,58 +354,17 @@ function modelHelp(backend: BackendOption): string {
 
 .backend-row,
 .model-row {
-  display: grid;
-  grid-template-columns: minmax(7rem, auto) 1fr;
-  align-items: center;
-  gap: 0.55rem;
   margin-top: 0.65rem;
-}
-
-.backend-row-label {
-  color: var(--vp-c-text-3);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .backend-use {
   justify-self: start;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--vp-c-text-2);
-  padding: 0.18rem 0.65rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-}
-
-.backend-use--active {
-  border-color: var(--dagonizer-brand2);
-  color: var(--dagonizer-brand2);
-  background: rgba(34, 232, 255, 0.08);
-}
-
-.backend-use:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .model-select {
   min-width: 0;
   width: 100%;
-  padding: 0.42rem 0.55rem;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.78rem;
 }
-
-.model-select:focus { outline: none; border-color: var(--dagonizer-brand); }
-.model-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .model-text-row {
   margin-top: 0.65rem;
@@ -494,37 +372,12 @@ function modelHelp(backend: BackendOption): string {
 
 .key-input {
   width: 100%;
-  padding: 0.5rem 0.6rem;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.82rem;
   letter-spacing: 0.05em;
 }
 
-.key-input:focus { outline: none; border-color: var(--dagonizer-brand); }
-.key-input:disabled { opacity: 0.6; cursor: not-allowed; }
-
 .key-toggle {
   width: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-1);
-  cursor: pointer;
   font-size: 1.05rem;
-  transition: border-color 0.12s ease, color 0.12s ease;
 }
-
-.key-toggle:hover {
-  border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
 
 </style>

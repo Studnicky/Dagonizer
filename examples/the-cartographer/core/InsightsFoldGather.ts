@@ -3,11 +3,10 @@
  *
  * Folds each scatter clone's `state.enriched` (an EnrichedShipment) into THREE
  * BOUNDED accumulators that live in parent state (via accessor), rather than in
- * instance fields. Every accumulator is read, mutated, and written back via
- * accessor.get/set so the pattern survives process restart: on resume, already-acked
- * items' contributions remain in the checkpoint; the instance holds zero mutable state.
+ * instance fields. Each gather batch reads the bounded accumulators, folds all
+ * records, and writes each accumulator back once through the state accessor.
  *
- *   (a) state.insights             — EXACT per-region rollup (bounded: ~6-8 continent keys).
+ *   (a) state.insights             — EXACT per-region rollup (bounded by the number of Continent.values entries).
  *   (b) state.journeyAccumulators  — BOUNDED per-journey in-progress accumulators (cap: MAX_SAMPLE_JOURNEYS).
  *   (c) state.journeys             — FINALIZED per-journey map, written by finalize().
  *   (d) state.sampleRecords        — CAPPED FIFO ring of recent scans (cap: MAX_SAMPLE_RECORDS).
@@ -26,7 +25,7 @@ import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
-import { CircularBuffer } from '@studnicky/circular-buffer';
+import type { TransientNodeStateSelectionType } from '@studnicky/dagonizer';
 
 import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
@@ -87,6 +86,11 @@ class JourneyAccumulatorMap {
 // ── InsightsFoldGather ────────────────────────────────────────────────────────
 
 type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
+type SampleRingState = {
+  records: EnrichedShipment[];
+  cursor: number;
+  wrapped: boolean;
+};
 
 export class InsightsFoldGather extends GatherStrategy {
   private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: import('../CartographerState.ts').RegionInsights) => void>> = {
@@ -102,6 +106,19 @@ export class InsightsFoldGather extends GatherStrategy {
   readonly name = 'insights-fold';
   readonly '@id' = 'urn:noocodec:node:insights-fold';
 
+  // `reduce()` below always reads `record.cloneState` directly
+  // (`accessor.get(record.cloneState, 'enriched'/'capturedErrors')`) — it never
+  // reads `record.result`. The `process-stream` scatter that feeds this gather
+  // declares no `resultField` for its source (see the write-up in `dag.ts`
+  // above `CARTOGRAPHER_RESUME_SCATTER_WRITE_POINTS`): a journaled/compacted
+  // entry would carry neither a derivable contribution nor a `result` and
+  // fails `GatherRecordProgress` schema validation. `mode: 'full'` is the
+  // honest declaration — this gather requires the retained clone state (or the
+  // live clone within one continuous execution), never a result-only replay.
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
+  }
+
   // ── initial: reset accumulators in state ─────────────────────────────────
 
   override initial(
@@ -111,12 +128,15 @@ export class InsightsFoldGather extends GatherStrategy {
   ): void {
     accessor.set(state, 'insights',             new Map<string, RegionInsights>());
     accessor.set(state, 'journeyAccumulators',  new Map<string, JourneyAccumulator>());
+    accessor.set(state, 'processedCountExact',  0);
     accessor.set(state, 'sampleRecords',        []);
+    accessor.set(state, 'sampleRecordsCursor',  0);
+    accessor.set(state, 'sampleRecordsWrapped', false);
     accessor.set(state, 'errorRollup',          ErrorRollup.empty());
     accessor.set(state, 'journeys',             new Map());
   }
 
-  // ── reduce: per-clone fold (batch.size === 1) ─────────────────────────────
+  // ── reduce: batch fold with one state write per accumulator ───────────────
 
   override reduce(
     _config: GatherConfigType,
@@ -124,6 +144,34 @@ export class InsightsFoldGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
+    const rawProcessedCount = accessor.get(state, 'processedCountExact');
+    let processedCount = typeof rawProcessedCount === 'number' ? rawProcessedCount : 0;
+
+    const rawInsights = accessor.get(state, 'insights');
+    const regionMap = RegionInsightsMap.is(rawInsights)
+      ? rawInsights
+      : new Map<string, RegionInsights>();
+
+    const rawJourneyAccumulators = accessor.get(state, 'journeyAccumulators');
+    const journeyMap = JourneyAccumulatorMap.is(rawJourneyAccumulators)
+      ? rawJourneyAccumulators
+      : new Map<string, JourneyAccumulator>();
+
+    const rawSample = accessor.get(state, 'sampleRecords');
+    const sampleRecords = Array.isArray(rawSample)
+      ? rawSample.filter(EnrichedShipmentGuard.is)
+      : [];
+    const cursorRaw = accessor.get(state, 'sampleRecordsCursor');
+    const wrappedRaw = accessor.get(state, 'sampleRecordsWrapped');
+    const sampleRing: SampleRingState = {
+      'records': sampleRecords,
+      'cursor': typeof cursorRaw === 'number' ? cursorRaw : sampleRecords.length,
+      'wrapped': typeof wrappedRaw === 'boolean' ? wrappedRaw : false,
+    };
+
+    const rawRollup = accessor.get(state, 'errorRollup');
+    const errorRollup = ErrorRollup.is(rawRollup) ? rawRollup : ErrorRollup.empty();
+
     for (const item of batch) {
       const record: GatherRecordType = item.state;
 
@@ -131,16 +179,25 @@ export class InsightsFoldGather extends GatherStrategy {
       // flow scatter→gather as data, independent of whether the clone produced a
       // usable enriched record. A clone whose coords were out of range still
       // carries its captured RangeError even if enrichment degraded.
-      this.foldErrors(record.cloneState, state, accessor);
+      this.foldErrors(record.cloneState, accessor, errorRollup);
 
       const rawEnriched = accessor.get(record.cloneState, 'enriched');
       if (!EnrichedShipmentGuard.is(rawEnriched) || !rawEnriched.shipmentId) continue;
       const enriched: EnrichedShipment = rawEnriched;
 
-      this.foldRegion(enriched, state, accessor);
-      this.foldJourney(enriched, state, accessor);
-      this.pushSampleRing(enriched, state, accessor);
+      processedCount++;
+      this.foldRegion(enriched, regionMap);
+      this.foldJourney(enriched, journeyMap);
+      this.pushSampleRing(enriched, sampleRing);
     }
+
+    accessor.set(state, 'processedCountExact', processedCount);
+    accessor.set(state, 'insights', regionMap);
+    accessor.set(state, 'journeyAccumulators', journeyMap);
+    accessor.set(state, 'sampleRecords', sampleRing.records);
+    accessor.set(state, 'sampleRecordsCursor', sampleRing.cursor);
+    accessor.set(state, 'sampleRecordsWrapped', sampleRing.wrapped);
+    accessor.set(state, 'errorRollup', errorRollup);
   }
 
   // ── finalize: build state.journeys from bounded accumulators ─────────────
@@ -208,6 +265,25 @@ export class InsightsFoldGather extends GatherStrategy {
 
     execution.accessor.set(execution.state, 'journeys', built);
     // Region insights are exact in state.insights already; finalize does not touch them.
+
+    const rawSample = execution.accessor.get(execution.state, 'sampleRecords');
+    if (Array.isArray(rawSample)) {
+      const cursorRaw = execution.accessor.get(execution.state, 'sampleRecordsCursor');
+      const wrappedRaw = execution.accessor.get(execution.state, 'sampleRecordsWrapped');
+      const cursor = typeof cursorRaw === 'number' ? cursorRaw : 0;
+      const wrapped = typeof wrappedRaw === 'boolean' ? wrappedRaw : false;
+
+      let sampleRecords: EnrichedShipment[] = rawSample.filter(EnrichedShipmentGuard.is);
+      if (sampleRecords.length > MAX_SAMPLE_RECORDS) {
+        sampleRecords = sampleRecords.slice(sampleRecords.length - MAX_SAMPLE_RECORDS);
+      }
+      if (wrapped && sampleRecords.length === MAX_SAMPLE_RECORDS) {
+        sampleRecords = sampleRecords.slice(cursor).concat(sampleRecords.slice(0, cursor));
+      }
+      execution.accessor.set(execution.state, 'sampleRecords', sampleRecords);
+    }
+    execution.accessor.set(execution.state, 'sampleRecordsCursor', 0);
+    execution.accessor.set(execution.state, 'sampleRecordsWrapped', false);
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -215,35 +291,24 @@ export class InsightsFoldGather extends GatherStrategy {
   /** Fold one clone's captured errors into the bounded parent rollup. */
   private foldErrors(
     cloneState: NodeStateInterface,
-    state: NodeStateInterface,
     accessor: StateAccessorInterface,
+    rollup: ReturnType<typeof ErrorRollup.empty>,
   ): void {
     const rawErrors = accessor.get(cloneState, 'capturedErrors');
     if (!GeoErrorRecord.isArray(rawErrors) || rawErrors.length === 0) return;
-    const rawRollup = accessor.get(state, 'errorRollup');
-    const rollup = ErrorRollup.is(rawRollup) ? rawRollup : ErrorRollup.empty();
     for (const error of rawErrors) {
       ErrorRollup.fold(rollup, error);
     }
-    // Write the rollup back to parent state after folding. The rollup is bounded
-    // to O(distinct source+variant groups) regardless of event count.
-    accessor.set(state, 'errorRollup', rollup);
   }
 
-  /** Fold one enriched scan into the per-region accumulator and update parent state. */
+  /** Fold one enriched scan into the per-region accumulator. */
   private foldRegion(
     enriched: EnrichedShipment,
-    state: NodeStateInterface,
-    accessor: StateAccessorInterface,
+    regionMap: Map<string, RegionInsights>,
   ): void {
     const key = enriched.geoStatus === 'water'
       ? 'International Waters / Maritime'
       : enriched.continent;
-
-    const rawInsights = accessor.get(state, 'insights');
-    const regionMap: Map<string, RegionInsights> = RegionInsightsMap.is(rawInsights)
-      ? rawInsights
-      : new Map<string, RegionInsights>();
 
     let entry = regionMap.get(key);
     if (entry === undefined) {
@@ -294,24 +359,14 @@ export class InsightsFoldGather extends GatherStrategy {
       InsightsFoldGather.sizeTierDispatch[enriched.sizeTier](entry);
     }
 
-    // Write the internal map back to parent state after every mutation.
-    // The map is bounded to ~6-8 continent keys regardless of event count.
-    accessor.set(state, 'insights', regionMap);
   }
 
   /** Fold one enriched scan into the bounded per-journey accumulator. */
   private foldJourney(
     enriched: EnrichedShipment,
-    state: NodeStateInterface,
-    accessor: StateAccessorInterface,
+    journeyMap: Map<string, JourneyAccumulator>,
   ): void {
     const id = enriched.shipmentId;
-
-    const rawJourneyAccumulators = accessor.get(state, 'journeyAccumulators');
-    const journeyMap: Map<string, JourneyAccumulator> = JourneyAccumulatorMap.is(rawJourneyAccumulators)
-      ? rawJourneyAccumulators
-      : new Map<string, JourneyAccumulator>();
-
     const existing = journeyMap.get(id);
 
     const scan: JourneyScan = {
@@ -354,7 +409,6 @@ export class InsightsFoldGather extends GatherStrategy {
         existing.subtotalUsdMinor = enriched.subtotalUsdMinor;
         existing.shippingUsdMinor = enriched.shippingUsdMinor;
       }
-      accessor.set(state, 'journeyAccumulators', journeyMap);
       return;
     }
 
@@ -381,34 +435,29 @@ export class InsightsFoldGather extends GatherStrategy {
       'shippingUsdMinor':  enriched.routing.etaRun ? enriched.shippingUsdMinor : 0,
     };
     journeyMap.set(id, acc);
-    accessor.set(state, 'journeyAccumulators', journeyMap);
   }
 
-  /** Push one enriched record into the FIFO sample ring and update parent state. */
+  /** Push one enriched record into the FIFO sample ring. */
   private pushSampleRing(
     enriched: EnrichedShipment,
-    state: NodeStateInterface,
-    accessor: StateAccessorInterface,
+    sampleRing: SampleRingState,
   ): void {
-    const rawSample = accessor.get(state, 'sampleRecords');
-    const sampleRing = CircularBuffer.create<EnrichedShipment>({
-      'capacity': MAX_SAMPLE_RECORDS,
-      'overflow': 'overwrite',
-    });
-    if (Array.isArray(rawSample)) {
-      for (const s of rawSample) {
-        if (EnrichedShipmentGuard.is(s)) sampleRing.push(s);
+    if (sampleRing.records.length < MAX_SAMPLE_RECORDS) {
+      sampleRing.records.push(enriched);
+      sampleRing.cursor = sampleRing.records.length === MAX_SAMPLE_RECORDS
+        ? 0
+        : sampleRing.records.length;
+      if (sampleRing.records.length === MAX_SAMPLE_RECORDS) {
+        sampleRing.wrapped = false;
       }
+    } else {
+      sampleRing.records[sampleRing.cursor] = enriched;
+      sampleRing.cursor = (sampleRing.cursor + 1) % MAX_SAMPLE_RECORDS;
+      sampleRing.wrapped = true;
     }
-    sampleRing.push(enriched);
-    const sampleRecords: EnrichedShipment[] = [];
-    let record = sampleRing.shift();
-    while (record !== undefined) {
-      sampleRecords.push(record);
-      record = sampleRing.shift();
-    }
-    accessor.set(state, 'sampleRecords', sampleRecords);
   }
+
+  
 }
 
 // ── Module-load registration ──────────────────────────────────────────────────

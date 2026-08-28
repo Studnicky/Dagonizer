@@ -1,27 +1,22 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue';
 import Spinner from './Spinner.vue';
+import UiBadge from './ui/UiBadge.vue';
+import UiButton from './ui/UiButton.vue';
+import UiSelect from './ui/UiSelect.vue';
+import UiTextarea from './ui/UiTextarea.vue';
+import { terminalBadgeTone } from './ui/theme';
 
-/**
- * SendForm: textarea + action button side-by-side.
- *
- *   ┌──────────────────────────────────────────────────────────┬──────────┐
- *   │ textarea                                                 │ ▶ / ✕   │
- *   └──────────────────────────────────────────────────────────┴──────────┘
- *
- * While idle the action button sends the query (▶). While a run is
- * in-progress it flips to a Cancel button (✕, red styling) and emits
- * `cancel` instead of `ask`. Enter (without Shift) sends; Shift-Enter
- * inserts a newline.
- *
- * The reset action lives in the footer to keep the primary affordance
- * unambiguous.
- */
-
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   query: string;
   running: boolean;
   terminalVariant: 'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
-}>();
+  sampleQueries?: readonly string[];
+  placeholder?: string;
+}>(), {
+  'sampleQueries': () => [],
+  'placeholder': 'Describe a book, ask for a recommendation, or search by title…',
+});
 
 const emit = defineEmits<{
   (event: 'update:query', value: string): void;
@@ -30,8 +25,14 @@ const emit = defineEmits<{
   (event: 'reset'): void;
 }>();
 
-function onInput(event: Event): void {
-  emit('update:query', (event.target as HTMLTextAreaElement).value);
+const selectedSample = ref('');
+
+async function onSampleSelect(value: string): Promise<void> {
+  if (value.length === 0) return;
+  selectedSample.value = value;
+  emit('update:query', value);
+  await nextTick();
+  selectedSample.value = '';
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -44,55 +45,60 @@ function onKey(event: KeyboardEvent): void {
     }
   }
 }
-
-function onActionClick(): void {
-  if (props.running) {
-    emit('cancel');
-  } else {
-    emit('ask');
-  }
-}
 </script>
 
 <template>
   <footer class="send-form">
     <div class="send-row">
-      <textarea
-        id="archivist-send-input"
-        name="archivist-send-input"
-        class="send-input"
-        :value="query"
+      <UiTextarea
+        :model-value="query"
         :disabled="running"
-        placeholder="Describe a book, ask for a recommendation, or search by title…"
-        rows="2"
-        autocomplete="off"
-        @input="onInput"
+        :placeholder="placeholder"
+        :rows="2"
+        textarea-class="send-input"
+        @update:model-value="emit('update:query', $event)"
         @keydown="onKey"
       />
-      <button
-        :class="['send-btn', { 'send-btn-cancel': running, 'send-btn-running': running }]"
-        :disabled="!running && query.trim().length === 0"
-        :title="running ? 'Cancel the current run (Esc / Enter)' : 'Ask the Archivist (Enter)'"
-        :aria-label="running ? 'Cancel' : 'Ask the Archivist'"
-        @click="onActionClick"
-      >
-        <Spinner v-if="running" />
-        <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
-      </button>
+      <div class="send-actions">
+        <label v-if="sampleQueries.length > 0" class="send-samples">
+          <span class="send-samples-label">Sample query</span>
+          <UiSelect
+            :model-value="selectedSample"
+            :disabled="running"
+            select-class="send-samples-select"
+            @update:model-value="onSampleSelect"
+          >
+            <option value="" disabled>Choose a sample…</option>
+            <option v-for="sample in sampleQueries" :key="sample" :value="sample">{{ sample }}</option>
+          </UiSelect>
+        </label>
+        <UiButton
+          :variant="running ? 'danger' : 'primary'"
+          size="icon"
+          :class="[{ 'send-btn-running': running }]"
+          :disabled="!running && query.trim().length === 0"
+          :aria-label="running ? 'Cancel request' : 'Send message'"
+          @click="running ? emit('cancel') : emit('ask')"
+        >
+          <template #leading><Spinner v-if="running" /></template>
+          <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
+        </UiButton>
+      </div>
     </div>
 
     <div class="send-footer">
       <span
         v-if="terminalVariant !== 'pending'"
-        :class="['send-status', `send-status-${terminalVariant}`]"
-      >{{ terminalVariant }}</span>
+        class="send-status"
+      ><UiBadge :tone="terminalBadgeTone(terminalVariant)" size="md">{{ terminalVariant }}</UiBadge></span>
 
-      <button
+      <UiButton
         class="send-reset"
+        variant="ghost"
+        size="sm"
         :disabled="running"
-        title="Clear conversation (memory persists)"
         @click="emit('reset')"
-      >reset conversation</button>
+      >reset conversation</UiButton>
     </div>
   </footer>
 </template>
@@ -111,28 +117,32 @@ function onActionClick(): void {
   align-items: stretch;
 }
 
-.send-input {
-  width: 100%;
-  resize: vertical;
-  padding: 0.7rem 0.85rem;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  font-family: var(--vp-font-family-base);
-  font-size: 0.96rem;
-  line-height: 1.45;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  min-height: 64px;
+.send-input { min-height: 64px; }
+
+.send-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
 }
 
-.send-input:focus {
-  outline: none;
-  border-color: var(--dagonizer-brand);
-  box-shadow: 0 0 0 2px rgba(34, 232, 255, 0.18);
+.send-samples {
+  display: flex;
+  width: clamp(11rem, 24vw, 18rem);
 }
 
-.send-input:disabled { opacity: 0.7; cursor: progress; }
+.send-samples-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.send-samples-select { height: 100%; }
 
 /* Running state: pulsing cyan glow around the textarea so it's clearly
    active rather than just disabled. */
@@ -147,27 +157,6 @@ function onActionClick(): void {
   50%      { box-shadow: 0 0 0 2px rgba(34, 232, 255, 0.32), 0 0 28px -2px rgba(34, 232, 255, 0.65); }
 }
 
-.send-btn {
-  width: 64px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--dagonizer-brand);
-  color: var(--vp-c-bg-elv);
-  border: 0;
-  border-radius: 6px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 1.3rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: filter 0.12s ease, transform 0.12s ease, background 0.18s ease;
-}
-
-/* Cancel state: red accent so the visitor clearly understands the action. */
-.send-btn-cancel {
-  background: #c0392b;
-}
-
 /* Running state: a rotating ring sits behind the ✕ glyph so the
    button reads as "actively working" rather than just "click to cancel". */
 .send-btn-running {
@@ -180,10 +169,6 @@ function onActionClick(): void {
   z-index: 1;
 }
 
-.send-btn:hover:not([disabled]) { filter: brightness(1.12); transform: translateX(1px); }
-.send-btn:focus-visible { outline: 2px solid var(--dagonizer-brand); outline-offset: 2px; }
-.send-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
-
 .send-glyph { line-height: 1; }
 
 .send-footer {
@@ -193,34 +178,13 @@ function onActionClick(): void {
   padding-top: 0.1rem;
 }
 
-.send-reset {
-  margin-left: auto;
-  background: transparent;
-  color: var(--vp-c-text-3);
-  border: 0;
-  padding: 0.2rem 0.4rem;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 0.12s ease;
+.send-reset { margin-left: auto; }
+
+.send-status { display: inline-flex; }
+
+@media (max-width: 640px) {
+  .send-row { grid-template-columns: 1fr; }
+  .send-actions { justify-content: flex-end; }
+  .send-samples { flex: 1 1 auto; width: auto; }
 }
-
-.send-reset:hover:not([disabled]) { color: var(--dagonizer-brand3); }
-.send-reset[disabled] { opacity: 0.4; cursor: not-allowed; }
-
-.send-status {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.send-status-completed { background: rgba(34, 232, 255, 0.14); color: var(--dagonizer-brand); }
-.send-status-failed,
-.send-status-cancelled,
-.send-status-timed_out { background: rgba(212, 166, 73, 0.16); color: var(--dagonizer-brand3); }
 </style>

@@ -1,9 +1,11 @@
 /**
  * ArchivistSession: framework-agnostic orchestration base class.
  *
- * Owns the shared session lifecycle used by `ArchivistRunner.vue`
- * (Vue reactive refs) and `main.ts` (DOM imperative). Both frontends extend this class and override the
- * abstract seam methods to drive their respective view layers.
+ * Owns the shared session lifecycle used by `ArchivistRunner.vue` — the one
+ * Vue component both the standalone Vite app (`main.ts`) and the docs site
+ * mount. Headless test subclasses extend it directly for DAG-level
+ * assertions without a view layer. Every subclass overrides the abstract
+ * seam methods to drive its own view layer (or, for tests, to record events).
  *
  * Extension model:
  *   Subclass this class. Override the abstract `on*` methods to react to
@@ -12,8 +14,8 @@
  *
  * LLM injection seam:
  *   Pass `{ llm }` in `options` to bypass `BackendMatrix.detect` and
- *   `ProviderInstantiator`. This is the headless-test and main.ts path; the
- *   Vue runner lets the session do auto-detection via `boot()`.
+ *   `ProviderInstantiator`. This is the headless-test path; the Vue runner
+ *   lets the session do auto-detection via `boot()`.
  *
  * Tool injection seam:
  *   Override `buildRig(llm, embedder)` to supply stub tools in tests.
@@ -21,10 +23,10 @@
  *
  * Durability seam:
  *   `onRunEnd` receives the full `ExecutionResultType<ArchivistState>` and
- *   `dagName`. From these, a subclass can call `Checkpoint.capture` (for Vue
- *   checkpoint save) or `IndexedDbCheckpointStore.persist` (for main.ts HITL).
- *   HITL park info (`result.parked`) is surfaced here; the base class has no
- *   IndexedDB or localStorage dependency.
+ *   `dagName`. From these, the Vue subclass calls `Checkpoint.capture` for
+ *   its localStorage-backed checkpoint save. HITL park info
+ *   (`result.parked`) is surfaced here; the base class has no storage
+ *   dependency of its own.
  *
  * Static sample pools:
  *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants shared
@@ -106,7 +108,6 @@ export type SessionTraceVariant = 'start' | 'end' | 'note' | 'error';
  * A single structured trace entry emitted during node lifecycle events.
  *
  * Vue subclass: push to a reactive `trace` ref for TraceFeed display.
- * DOM subclass: log to console or DOM panel.
  * Headless test: collect into an array for assertion.
  */
 export interface SessionTraceEntry {
@@ -591,7 +592,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Returns the greeting text so callers can chain `sampleReply(greeting)`.
    */
   async greet(): Promise<string> {
-    const llm = this.#resolveLlm();
+    const llm = await this.#resolveLlm();
     let greeting = this.#staticGreeting();
 
     if (llm !== null) {
@@ -664,7 +665,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       throw new Error('ArchivistSession.ask: a run is already in progress; call cancel() first');
     }
 
-    const llm = this.#resolveLlm();
+    const llm = await this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.ask: no LLM available; call boot() first');
 
     const cleanQuery = ArchivistSession.#messageText(query);
@@ -746,90 +747,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    */
   cancel(): void {
     this.#abortController?.abort(new Error('cancelled by visitor'));
-  }
-
-  /**
-   * Resume a parked flow from a recalled checkpoint.
-   *
-   * Called by durability-aware subclasses (e.g. `DomArchivistSession`) after
-   * the checkpoint has been recalled and the stores have been restored via
-   * `Checkpoint.recall` + `recalled.restoreStores`. The subclass sets
-   * `state.query` before calling, injects the human text into its own DOM,
-   * and pushes visitor bubbles directly; this method handles only the session
-   * bookkeeping and the DAG execution machinery.
-   *
-   * Appends a visitor turn to the memory-backed conversation, then resumes the
-   * DAG at `cursor`. All node events and the final `onRunEnd` fire
-   * exactly as they do for `ask()`, so `onRunEnd` handles durability clean-up
-   * (clearing `hitl:pendingKey`, persisting the memory graph) in the subclass.
-   */
-  protected async resumeRun(
-    humanText: string,
-    dagName: string,
-    state: ArchivistState,
-    cursor: string,
-  ): Promise<void> {
-    if (this.#isRunning) {
-      throw new Error('ArchivistSession.resumeRun: a run is already in progress; call cancel() first');
-    }
-
-    const llm = this.#resolveLlm();
-    if (llm === null) throw new Error('ArchivistSession.resumeRun: no LLM available; call boot() first');
-
-    const visitorTurn = this.#recordConversationTurn('visitor', humanText);
-    state.conversation = this.#conversationContextFromMemory(visitorTurn ?? undefined);
-    if (visitorTurn !== null) state.query = visitorTurn.text;
-
-    this.#isRunning = true;
-    this.#abortController = new AbortController();
-
-    // Park/resume is the SAME logical run: the checkpointed `state.runId`
-    // carries forward so the prov graph continues instead of restarting.
-    // `state.reasoning` already holds every step persisted before the park
-    // (via the pre-park observer's writes); it becomes the resume
-    // observer's high-water mark so those steps are never re-persisted and
-    // the `wasInformedBy` chain continues from the true last entity rather
-    // than starting a disconnected one.
-    if (state.runId === '') {
-      throw new Error('ArchivistSession.resumeRun: restored state has no runId; cannot resume the PROV chain');
-    }
-    const runId = state.runId;
-    StateProjection.clear(runId, this.store);
-
-    const prov = new RdfProvObserver({
-      'store':             this.store,
-      'runId':             runId,
-      'dispatcherAgentId': `dispatcher:${this.activeBackend ?? 'injected'}`,
-      'clock':             this.#clock,
-      'alreadyPersistedReasoning': state.reasoning,
-    });
-
-    const rig = this.buildRig(llm, this.embedder);
-    const nodes = ArchivistNodes.build(rig.services);
-
-    const observer = new SessionObserver(this.logger, this, prov);
-    observer.registerBundle(rig.toolRegistry.bundle());
-    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
-    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
-    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
-
-    const { composeMs, webSearchMs, rankMs } = this.timeoutSettings;
-    const deadlineMs = composeMs + webSearchMs + rankMs + 5_000;
-
-    const executeOptions: ExecuteOptionsType = {
-      'signal':     this.#abortController.signal,
-      'deadlineMs': deadlineMs,
-    };
-
-    try {
-      await observer.resume(dagName, state, cursor, executeOptions);
-    } catch (err) {
-      this.onError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      await observer.destroy();
-      this.#abortController = null;
-      this.#isRunning = false;
-    }
   }
 
   #recordConversationTurn(role: ConversationTurn['role'], text: string): ConversationTurn | null {
@@ -1031,7 +948,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Called after `boot()` completes backend detection.
    *
    * Vue subclass: assign `backends.value`, set `noModel.value`.
-   * DOM subclass: update the backend dropdown DOM.
    * Headless test: capture `backends` and `noModel` for assertion.
    */
   protected abstract onBackendsReady(backends: readonly BackendAvailability[], noModel: boolean): void;
@@ -1040,7 +956,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Called when the Archivist greeting is ready (LLM-generated or static).
    *
    * Vue subclass: push to `conversation.value` as an archivist turn.
-   * DOM subclass: append a chat bubble.
    * Headless test: record for assertion.
    */
   protected abstract onGreetingReady(greeting: string): void;
@@ -1049,7 +964,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Called when a contextual visitor sample reply is ready.
    *
    * Vue subclass: render the seeded visitor turn.
-   * DOM subclass: render a visitor bubble.
    * Headless test: record for assertion; assert it differs from the greeting.
    */
   protected abstract onSampleReplyReady(reply: string): void;
@@ -1059,7 +973,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * `conversation`. Fires before the DAG begins executing.
    *
    * Vue subclass: nothing (conversation ref already updated by the session).
-   * DOM subclass: render a visitor bubble; clear the input.
    * Headless test: record for assertion.
    */
   protected abstract onVisitorTurn(query: string): void;
@@ -1069,7 +982,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Fires after the archivist turn is appended to `conversation`.
    *
    * Vue subclass: nothing (conversation ref already updated by the session).
-   * DOM subclass: render an archivist bubble.
    * Headless test: record for assertion.
    */
   protected abstract onArchivistTurn(draft: string): void;
@@ -1078,7 +990,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Called for every node lifecycle event during a run.
    *
    * Vue subclass: update `trace.value`; call `dagGraph.value?.setActive(fullId)` etc.
-   * DOM subclass: log to the console panel.
    * Headless test: collect events in an array.
    */
   protected abstract onNodeEvent(event: SessionNodeEvent): void;
@@ -1089,7 +1000,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Flow-end events carry the full `ExecutionResultType` via `event.execution`,
    * which subclasses use for:
    *   Vue: checkpoint save (read `event.cursor`); lifecycle variant display.
-   *   DOM (main.ts): HITL park persist via `Checkpoint.capture` + `IndexedDbCheckpointStore`.
    *   Headless test: assert lifecycle === 'completed'.
    */
   protected abstract onDagEvent(event: SessionDagEvent): void;
@@ -1101,8 +1011,8 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * without matching the discriminated-union `kind`.
    *
    * Durability subclass pattern:
-   *   - Vue: `if (event.cursor !== null) { saveCheckpoint(); }`
-   *   - main.ts: `if (event.execution.parked !== null) { Checkpoint.capture(...).persist(...) }`
+   *   - Vue: capture `lastResult`/`lastDagName` for the user-triggered
+   *     `saveCheckpoint()` action; bump `memoryTick` on every run end.
    */
   protected abstract onRunEnd(event: Extract<SessionDagEvent, { kind: 'flowEnd' }>): void;
 
@@ -1111,7 +1021,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * indicating that the memory store has been updated via StateProjection.
    *
    * Vue subclass: `memoryTick.value++` to trigger MemoryGraph re-render.
-   * DOM subclass: no-op (no live memory graph in standalone demo).
    * Headless test: count calls to verify projection ran.
    */
   protected abstract onMemoryChanged(): void;
@@ -1120,7 +1029,6 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Called when an unhandled error occurs during `ask()`.
    *
    * Vue subclass: push an error bubble to `conversation.value`.
-   * DOM subclass: render an error line.
    * Headless test: record for assertion.
    */
   protected abstract onError(error: Error): void;
@@ -1137,14 +1045,14 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  #resolveLlm(): LlmClientInterface | null {
+  async #resolveLlm(): Promise<LlmClientInterface | null> {
     if (this.#injectedLlm !== null) return this.#injectedLlm;
     if (this.activeBackend === null) return null;
     const preferred = this.preferredModels[this.activeBackend];
     const model = typeof preferred === 'string' && preferred.length > 0
       ? preferred
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
-    return ProviderInstantiator.instantiate(this.activeBackend, {
+    return await ProviderInstantiator.instantiate(this.activeBackend, {
       'apiKeys':  this.apiKeys,
       'model':    model,
       'language': this.visitorLanguage,

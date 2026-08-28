@@ -2,36 +2,28 @@ import type { GraphDatasetInterface } from './contracts/GraphDatasetInterface.js
 import type { GraphDatasetProviderInterface, GraphScopeType } from './contracts/GraphDatasetProviderInterface.js';
 import type { GraphStateDeltaInterface } from './contracts/GraphStateDeltaInterface.js';
 import type { GraphStateFieldDefinitionType } from './contracts/GraphStateFieldDefinition.js';
-import type { GraphStateJsonLdDocumentType } from './contracts/GraphStateJsonLd.js';
 import type { GraphStateLifecycleInterface } from './contracts/GraphStateLifecycleInterface.js';
 import type { GraphStateSnapshotInterface } from './contracts/GraphStateSnapshotInterface.js';
 import type { QuadType } from './contracts/TripleStoreInterface.js';
+import { ProgressKeys } from './entities/constants/ProgressKey.js';
+import type { TransientNodeStateSelectionType, TransientNodeStateType } from './entities/executor/TransientNodeState.js';
 import type { JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
+import type { DAGLifecycleStateDataType } from './entities/state-machines/DAGLifecycleState.js';
 import { DAGError } from './errors/DAGError.js';
 import { DagGraphTerms } from './graph/DagGraphTerms.js';
 import { GraphDatasetRevision } from './graph/GraphDatasetRevision.js';
-import { GraphStateJsonLdCodec } from './graph/GraphStateJsonLdCodec.js';
 import { GraphStateQueryService } from './graph/GraphStateQueryService.js';
 import { GraphStateTerms } from './graph/GraphStateTerms.js';
 import { InMemoryGraphDataset } from './graph/InMemoryGraphDataset.js';
+import { InMemoryGraphDatasetProvider } from './graph/InMemoryGraphDatasetProvider.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
-
-class DatasetForkProvider implements GraphDatasetProviderInterface {
-    readonly #dataset: GraphDatasetInterface;
-    constructor(dataset: GraphDatasetInterface) { this.#dataset = dataset; }
-    root(_runIri: string): GraphDatasetInterface { return this.#dataset; }
-    child(_parent: GraphScopeType, _child: GraphScopeType): GraphDatasetInterface {
-        return this.#dataset.fork();
-    }
-    reopen(_runIri: string): undefined { return undefined; }
-}
 
 const GRAPH_HAS_STATE_CELL = GraphStateTerms.DAGONIZER.HasStateCell;
 const GRAPH_KEY = GraphStateTerms.DAGONIZER.StateKey;
@@ -40,6 +32,9 @@ const GRAPH_STATE_MEMBER = GraphStateTerms.DAGONIZER.StateMember;
 const GRAPH_STATE_INDEX = GraphStateTerms.DAGONIZER.StateIndex;
 const GRAPH_WARNING_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}warning/`;
 const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
+const CHILD_EXCLUDED_STATE_KEYS: ReadonlySet<string> = new Set(
+    Object.values(ProgressKeys).map((key) => `metadata.${key}`),
+);
 
 /**
  * Shared state flowing through all nodes in a flow.
@@ -49,7 +44,7 @@ const GRAPH_ERROR_PREFIX = `${GraphStateTerms.DAGONIZER.namespace}error/`;
  * Errors are collected in state; they don't stop execution.
  *
  * The data fields (errors, warnings, metadata) mirror `NodeStateData`
- * (the graph projection exposed through the JSON-LD intermediate form).
+ * (the graph projection exposed through the explicit graph/codecs layer).
  * The `lifecycle` field here carries an in-memory `Error` on the `failed`
  * branch, which is not JSON-expressible; `NodeStateData` holds the opaque
  * wire form. See `entities/node/NodeStateData.ts` for the persistence shape.
@@ -61,11 +56,23 @@ export interface NodeStateInterface {
   /** Bind the provider that mints isolated child datasets for this state. */
   bindGraphDatasetProvider(provider: GraphDatasetProviderInterface): void;
 
-  /** Export the run graph as the Node.js JSON-LD intermediate representation. */
-  snapshotJsonLd(runIri?: string): GraphStateJsonLdDocumentType;
+  /** Bind the graph scope identifying this state's run/dag/placement position. */
+  bindGraphScope(scope: GraphScopeType): void;
 
-  /** Restore this state from the context-bound JSON-LD graph document. */
-  restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType): Promise<void>;
+  /** Export the transient envelope consumed by the graph transfer codec. */
+  snapshotTransientState(): TransientNodeStateType;
+
+  /** Export only the selected surface consumed by the graph transfer codec. */
+  snapshotTransientStateSelection(selection: TransientNodeStateSelectionType): TransientNodeStateType;
+
+  /** Restore this state from a codec-decoded transient envelope. */
+  restoreTransientState(runIri: string, snapshot: TransientNodeStateType): Promise<void>;
+
+  /** Export the run graph as quads for explicit graph/codecs consumers. */
+  snapshotGraph(runIri?: string): AsyncIterable<QuadType>;
+
+  /** Restore this state from an explicit quad stream. */
+  restoreGraph(runIri: string, quads: AsyncIterable<QuadType>): Promise<void>;
 
   /** Stable IRI identifying this state’s execution run. */
   readonly runIri: string;
@@ -81,7 +88,7 @@ export interface NodeStateInterface {
    * Returns `this` so the concrete type is preserved across the interface
    * without requiring a cast at every call site.
    */
-  clone(): this;
+  clone(childScope: GraphScopeType): this;
 
   /**
    * Collect an error in state. `context` is required on `NodeErrorType`
@@ -230,10 +237,15 @@ export interface NodeStateInterface {
 }
 
 export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInterface, GraphStateLifecycleInterface, GraphStateDeltaInterface {
-    declare ['constructor']: new () => this;
+    declare ['constructor']: new (
+        dataset: GraphDatasetInterface,
+        runIri: string,
+        graphDatasetProvider: GraphDatasetProviderInterface,
+    ) => this;
     #dataset: GraphDatasetInterface;
     #graphDatasetProvider: GraphDatasetProviderInterface;
     #runIri: string;
+    #scope: GraphScopeType;
     #lastSnapshotGraph: QuadType[] | undefined;
     #lastSnapshotRevision: string | undefined;
     #metadataProxy: Record<string, unknown>;
@@ -244,7 +256,8 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     constructor(dataset: GraphDatasetInterface = new InMemoryGraphDataset(), runIri: string = `urn:dagonizer/run/${globalThis.crypto.randomUUID()}`, graphDatasetProvider?: GraphDatasetProviderInterface) {
         this.#dataset = dataset;
         this.#runIri = runIri;
-        this.#graphDatasetProvider = graphDatasetProvider ?? new DatasetForkProvider(dataset);
+        this.#scope = { "runIri": this.#runIri, "dagIri": this.#runIri, "placementIri": '' };
+        this.#graphDatasetProvider = graphDatasetProvider ?? new InMemoryGraphDatasetProvider();
         this.getter = new MetadataGetter(this);
         this.#metadataProxy = new Proxy({}, {
             "get": (_target, key) => typeof key === 'string' ? this.getMetadata(key) : undefined,
@@ -271,14 +284,12 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     bindGraphDatasetProvider(provider: GraphDatasetProviderInterface) {
         this.#graphDatasetProvider = provider;
     }
+    bindGraphScope(scope: GraphScopeType) {
+        this.#scope = scope;
+    }
     async *snapshotGraph(runIri: string = this.#runIri) {
         this.#syncRuntimeFields();
         yield* this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)));
-    }
-    snapshotJsonLd(runIri: string = this.#runIri): GraphStateJsonLdDocumentType {
-        this.#syncRuntimeFields();
-        const quads = [...this.#dataset.exportGraph(DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(runIri)))];
-        return GraphStateJsonLdCodec.encode(quads);
     }
     async snapshotGraphDelta(runIri: string = this.#runIri) {
         this.#syncRuntimeFields();
@@ -308,9 +319,75 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         this.#runIri = runIri;
         this.#restoreRuntimeFields();
     }
-    async restoreJsonLd(runIri: string, document: GraphStateJsonLdDocumentType) {
-        const quads = GraphStateJsonLdCodec.rebase(GraphStateJsonLdCodec.decode(document), runIri);
-        await this.restoreGraph(runIri, GraphStateJsonLdCodec.asyncQuads(quads));
+    snapshotTransientState(): TransientNodeStateType {
+        const domain: Record<string, JsonValueType> = {};
+        for (const key of Object.keys(this)) {
+            if (key === 'getter')
+                continue;
+            const definition = this.#fieldDefinition(`domain.${key}`);
+            domain[key] = JsonValue.from(this.#jsonStateValue(this.graphStateValue(key, Reflect.get(this, key)), definition));
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.'))
+                continue;
+            const value = this.#readField(field.key);
+            if (value === undefined)
+                continue;
+            NodeStateBase.setPathValue(domain, field.key, JsonValue.from(this.#jsonStateValue(value, field)));
+        }
+        return this.#transientStateEnvelope(domain, null);
+    }
+    snapshotTransientStateSelection(selection: TransientNodeStateSelectionType): TransientNodeStateType {
+        if (selection.mode === 'full')
+            return this.snapshotTransientState();
+        const domain: Record<string, JsonValueType> = {};
+        const seen = new Set<string>();
+        for (const path of selection.domainPaths) {
+            if (seen.has(path))
+                continue;
+            seen.add(path);
+            if (path.includes('.')) {
+                const value = this.#readField(path);
+                if (value === undefined)
+                    continue;
+                const definition = this.#fieldDefinition(`domain.${path}`) ?? this.#fieldDefinition(path);
+                NodeStateBase.setPathValue(domain, path, JsonValue.from(this.#jsonStateValue(value, definition)));
+                continue;
+            }
+            const definition = this.#fieldDefinition(`domain.${path}`);
+            const raw = this.graphStateValue(path, Reflect.get(this, path));
+            if (raw === undefined)
+                continue;
+            domain[path] = JsonValue.from(this.#jsonStateValue(raw, definition));
+        }
+        return this.#transientStateEnvelope(domain, new Set(selection.metadataKeys));
+    }
+    async restoreTransientState(runIri: string, snapshot: TransientNodeStateType) {
+        await this.#dataset.transactAsync(async (dataset) => {
+            dataset.clearGraph(this.#graph());
+        });
+        this.#runIri = runIri;
+        this.#scope = { ...this.#scope, runIri };
+        this.#ensureRunFact();
+        for (const [key, value] of Object.entries(snapshot.domain)) {
+            const definition = this.#fieldDefinition(`domain.${key}`);
+            const nextValue = definition?.kind === 'map' ? this.#mapFromStateValue(value) : value;
+            this.#assignFieldValue(key, nextValue);
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.'))
+                continue;
+            const value = NodeStateBase.pathValue(snapshot.domain, field.key);
+            if (value === undefined)
+                continue;
+            this.#assignFieldValue(field.key, field.kind === 'map' ? this.#mapFromStateValue(value) : value);
+        }
+        for (const [key, value] of Object.entries(snapshot.graphDomain)) this.setGraphStateField(key, value);
+        for (const [key, value] of Object.entries(snapshot.metadata)) this.setMetadata(key, value);
+        for (const error of snapshot.errors) this.collectError(error);
+        for (const warning of snapshot.warnings) this.collectWarning(warning);
+        this.#restoreRetries(snapshot.retries);
+        this.#setLifecycle(this.#runtimeLifecycle(snapshot.lifecycle));
     }
     get runIri() {
         return this.#runIri;
@@ -350,20 +427,14 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
             this.#dataset.add([{ "subject": execution, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Output), "object": DagGraphTerms.literal(output), graph }]);
         }
     }
-    clone() {
+    clone(childScope: GraphScopeType) {
         // Instantiate the actual (sub)class so declared domain fields start at
         // their normal defaults. State mapping applies domain data explicitly
         // after cloning; clone itself carries only shared metadata.
-        const cloned = new this.constructor();
-        const clonedRunIri = `${this.#runIri}/clone/${crypto.randomUUID()}`;
-        cloned.#graphDatasetProvider = this.#graphDatasetProvider;
-        cloned.#dataset = this.#graphDatasetProvider.child(
-            { 'runIri': this.#runIri, 'dagIri': '', 'placementIri': '' },
-            { 'runIri': clonedRunIri, 'dagIri': '', 'placementIri': '' },
-        );
-        cloned.#runIri = clonedRunIri;
-        cloned.#ensureRunFact();
-        for (const [key, value] of this.#values()) {
+        const childDataset = this.#graphDatasetProvider.child(this.#scope, childScope);
+        const cloned = new this.constructor(childDataset, childScope.runIri, this.#graphDatasetProvider);
+        cloned.#scope = childScope;
+        for (const [key, value] of this.#values(CHILD_EXCLUDED_STATE_KEYS)) {
             if (key.startsWith('metadata.'))
                 cloned.#write(key, value);
         }
@@ -486,8 +557,8 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #graph() {
         return DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(this.#runIri));
     }
-    #values() {
-        return new GraphStateQueryService(this.#dataset, this.#runIri).entries();
+    #values(excludedKeys?: ReadonlySet<string>) {
+        return new GraphStateQueryService(this.#dataset, this.#runIri).entries(excludedKeys);
     }
     #write(key: string, value: JsonValueType) {
         this.#dataset.transact(() => {
@@ -525,10 +596,24 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         this.#clearCell(cell);
     }
     #clearCell(cell: QuadType['subject']) {
+        // Every descendant node's IRI is prefixed with `${cell.value}/` and is
+        // reachable as an object edge from the cell, so a subject-indexed
+        // traversal of the subtree touches only the cell's quads — not the whole
+        // graph, which grows unboundedly across a run.
+        const graph = this.#graph();
         const prefix = `${cell.value}/`;
-        for (const quad of [...this.#dataset.exportGraph(this.#graph())]) {
-            if (quad.subject.termType === 'NamedNode' && (quad.subject.value === cell.value || quad.subject.value.startsWith(prefix)))
+        const queue: QuadType['subject'][] = [cell];
+        const seen = new Set<string>([cell.value]);
+        while (queue.length > 0) {
+            const node = queue.pop();
+            if (node === undefined) break;
+            for (const quad of [...this.#dataset.match({ 'subject': node, graph })]) {
+                if (quad.object.termType === 'NamedNode' && quad.object.value.startsWith(prefix) && !seen.has(quad.object.value)) {
+                    seen.add(quad.object.value);
+                    queue.push(quad.object);
+                }
                 this.#dataset.delete(quad);
+            }
         }
     }
     #projectValue(cell: QuadType['subject'], value: JsonValueType, definition?: GraphStateFieldDefinitionType) {
@@ -571,6 +656,20 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
             });
             return;
         }
+        if (definition?.kind === 'map') {
+            for (const [key, item] of this.#toObjectEntries(value)) {
+                const member = DagGraphTerms.namedNode(`${valueNode.value}/property/${encodeURIComponent(key)}`);
+                const memberPredicate = DagGraphTerms.namedNode(definition?.nested?.[key]?.predicate ?? GraphStateTerms.nestedFieldIri(key));
+                this.#dataset.add([
+                    { "subject": valueNode, "predicate": DagGraphTerms.namedNode(GRAPH_STATE_MEMBER), "object": member, graph },
+                    { "subject": valueNode, "predicate": memberPredicate, "object": member, graph },
+                    { "subject": cell, "predicate": memberPredicate, "object": member, graph },
+                    { "subject": member, "predicate": DagGraphTerms.namedNode(GRAPH_KEY), "object": DagGraphTerms.literal(key), graph },
+                ]);
+                this.#projectValue(member, item);
+            }
+            return;
+        }
         for (const [key, item] of Object.entries(value)) {
             const member = DagGraphTerms.namedNode(`${valueNode.value}/property/${encodeURIComponent(key)}`);
             this.#dataset.add([
@@ -586,6 +685,12 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
         const graph = this.#graph();
         if (value === null) {
             this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.StateNull), graph }]);
+            return;
+        }
+        if (definition.kind === 'map') {
+            const valueNode = DagGraphTerms.namedNode(`${this.#runIri}/field/${encodeURIComponent(field.value)}`);
+            this.#dataset.add([{ "subject": DagGraphTerms.namedNode(this.#runIri), "predicate": field, "object": valueNode, graph }]);
+            this.#projectValue(valueNode, value, definition);
             return;
         }
         if (typeof value !== 'object' || Array.isArray(value)) {
@@ -686,6 +791,38 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     static quadKey(quad: QuadType): string {
         return JSON.stringify(quad);
     }
+    static setPathValue(target: Record<string, JsonValueType>, path: string, value: JsonValueType): void {
+        const segments = path.split('.');
+        let cursor: Record<string, JsonValueType> = target;
+        for (let i = 0; i < segments.length - 1; i++) {
+            const segment = segments[i];
+            if (segment === undefined)
+                continue;
+            const next = cursor[segment];
+            if (next === null || Array.isArray(next) || typeof next !== 'object') {
+                const created: Record<string, JsonValueType> = {};
+                cursor[segment] = created;
+                cursor = created;
+                continue;
+            }
+            cursor = next as Record<string, JsonValueType>;
+        }
+        const leaf = segments.at(-1);
+        if (leaf !== undefined)
+            cursor[leaf] = value;
+    }
+    static pathValue(source: Record<string, unknown>, path: string): unknown {
+        let cursor: unknown = source;
+        for (const segment of path.split('.')) {
+            if (!NodeStateBase.isPlainObject(cursor))
+                return undefined;
+            cursor = cursor[segment];
+        }
+        return cursor;
+    }
+    static isPlainObject(value: unknown): value is Record<string, unknown> {
+        return value !== null && !Array.isArray(value) && typeof value === 'object';
+    }
     #dispatch(event: Parameters<typeof DAGLifecycleMachine.transition>[1], targetVariant: string) {
         try {
             this.#setLifecycle(DAGLifecycleMachine.transition(this.lifecycle, event));
@@ -700,19 +837,252 @@ export class NodeStateBase implements NodeStateInterface, GraphStateSnapshotInte
     #syncRuntimeFields(): void {
         for (const key of Object.keys(this)) {
             if (key === 'getter') continue;
-            this.#write(`domain.${key}`, JsonValue.from(this.graphStateValue(key, Reflect.get(this, key))));
+            this.#write(
+              `domain.${key}`,
+              JsonValue.from(this.#jsonStateValue(this.graphStateValue(key, Reflect.get(this, key)), this.#fieldDefinition(`domain.${key}`))),
+            );
+        }
+        for (const field of this.graphStateFields()) {
+            if (!field.key.includes('.')) continue;
+            const value = this.#readField(field.key);
+            if (value === undefined) continue;
+            this.#write(
+              `domain.${field.key}`,
+              JsonValue.from(this.#jsonStateValue(value, field)),
+            );
         }
     }
 
     /** Normalize a runtime field into the JSON-shaped value stored in the graph. */
     protected graphStateValue(_key: string, value: unknown): unknown { return value; }
 
+    #readField(path: string): unknown {
+        let cursor: unknown = this;
+        for (const segment of path.split('.')) {
+            if (cursor === null || typeof cursor !== 'object') return undefined;
+            if (!Object.hasOwn(cursor, segment) && !(segment in cursor)) return undefined;
+            cursor = (cursor as Record<string, unknown>)[segment];
+        }
+        return cursor;
+    }
+
+    #toObjectEntries(value: unknown): readonly [string, JsonValueType][] {
+        if (value instanceof Map) return [...value].map(([key, item]) => [String(key), item]) as [string, JsonValueType][];
+        if (value === null || Array.isArray(value) || typeof value !== 'object') return [];
+        return Object.entries(value) as [string, JsonValueType][];
+    }
+    #transientStateEnvelope(domain: Record<string, JsonValueType>, metadataKeys: ReadonlySet<string> | null): TransientNodeStateType {
+        const graphDomain: Record<string, JsonValueType> = {};
+        const metadata: Record<string, JsonValueType> = {};
+        for (const [key, value] of this.#values()) {
+            if (key.startsWith('domain.')) {
+                graphDomain[key.slice('domain.'.length)] = value;
+                continue;
+            }
+            if (!key.startsWith('metadata.'))
+                continue;
+            const metadataKey = key.slice('metadata.'.length);
+            if (metadataKeys !== null && !metadataKeys.has(metadataKey))
+                continue;
+            metadata[metadataKey] = value;
+        }
+        return {
+            domain,
+            graphDomain,
+            metadata,
+            'errors': [...this.errors],
+            'warnings': [...this.warnings],
+            'retries': this.#retrySnapshot(),
+            'lifecycle': this.#lifecycleData(this.lifecycle),
+        };
+    }
+    #retrySnapshot(): Record<string, number> {
+        const retries: Record<string, number> = {};
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        for (const quad of this.#dataset.match({ "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "graph": this.#graph() })) {
+            if (quad.object.termType !== 'NamedNode')
+                continue;
+            const key = new GraphStateQueryService(this.#dataset, this.#runIri).objectsFor(quad.object, GraphStateTerms.DAGONIZER.AttemptKey).at(0);
+            const keyValue = key?.termType === 'Literal' ? key.value : undefined;
+            if (keyValue === undefined)
+                continue;
+            retries[keyValue] = this.retriesFor(keyValue);
+        }
+        return retries;
+    }
+    #restoreRetries(retries: Record<string, number>): void {
+        const run = DagGraphTerms.namedNode(this.#runIri);
+        for (const [key, count] of Object.entries(retries)) {
+            const attempt = DagGraphTerms.namedNode(GraphStateTerms.attemptIri(this.#runIri, key));
+            this.#dataset.add([
+                { "subject": run, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.Attempt), "object": attempt, "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptKey), "object": DagGraphTerms.literal(key), "graph": this.#graph() },
+                { "subject": attempt, "predicate": DagGraphTerms.namedNode(GraphStateTerms.DAGONIZER.AttemptCount), "object": DagGraphTerms.literal(String(count), GraphStateTerms.XSD.integer), "graph": this.#graph() },
+            ]);
+        }
+    }
+
+    #jsonStateValue(value: unknown, definition?: GraphStateFieldDefinitionType): unknown {
+        if (value === null || value === undefined) return value;
+        if (value instanceof Map) {
+            const entries: Record<string, JsonValueType> = {};
+            for (const [key, item] of value.entries()) {
+                entries[String(key)] = this.#jsonStateValue(item, definition) as JsonValueType;
+            }
+            return entries;
+        }
+        if (Array.isArray(value)) return value.map((item) => this.#jsonStateValue(item, definition));
+        if (typeof value === 'object') {
+            const entries = value as Record<string, unknown>;
+            return Object.fromEntries(
+                Object.entries(entries).map(([key, item]) => [key, this.#jsonStateValue(item)]),
+            );
+        }
+        return value;
+    }
+
     #restoreRuntimeFields(): void {
+        const queryService = new GraphStateQueryService(this.#dataset, this.#runIri);
         for (const [key, value] of this.#values()) {
             if (!key.startsWith('domain.')) continue;
             const property = key.slice('domain.'.length);
-            if (property.length > 0) Reflect.set(this, property, value);
+            const definition = this.#fieldDefinition(key);
+            if (property.length === 0) continue;
+            const nextValue = definition?.kind === 'map' ? this.#mapFromStateValue(value) : value;
+        if (nextValue === undefined) continue;
+        this.#assignFieldValue(property, nextValue);
+      }
+      for (const field of this.graphStateFields()) {
+        const value = queryService.valueForField(field);
+        if (value === undefined) continue;
+        const nextValue = field.kind === 'map' ? this.#mapFromStateValue(value) : value;
+        this.#assignFieldValue(field.key, nextValue);
         }
+  }
+
+    #mapFromStateValue(value: unknown): Map<string, JsonValueType> {
+        if (value === null || value === undefined || Array.isArray(value) || typeof value !== 'object') return new Map<string, JsonValueType>();
+        const result = new Map<string, JsonValueType>();
+        for (const [key, item] of Object.entries(value)) result.set(key, item);
+        return result;
+    }
+    #lifecycleData(lifecycle: DAGLifecycleStateType): DAGLifecycleStateDataType {
+        if (lifecycle.variant !== 'failed')
+            return lifecycle;
+        const error = lifecycle.error instanceof DAGError
+            ? {
+                'kind': 'DAGError',
+                'name': lifecycle.error.name,
+                'message': lifecycle.error.message,
+                'code': lifecycle.error.code,
+                'context': lifecycle.error.context,
+                'retryable': lifecycle.error.retryable,
+            }
+            : {
+                'kind': 'Error',
+                'name': lifecycle.error.name,
+                'message': lifecycle.error.message,
+            };
+        return { ...lifecycle, error };
+    }
+    #runtimeLifecycle(lifecycle: DAGLifecycleStateDataType): DAGLifecycleStateType {
+        switch (lifecycle.variant) {
+            case 'pending':
+                return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
+            case 'running':
+                return { 'variant': 'running', 'startedAt': lifecycle.startedAt ?? 0, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
+            case 'awaiting-input':
+                return {
+                    'variant': 'awaiting-input',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': null,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': lifecycle.correlationKey ?? '',
+                };
+            case 'completed':
+                return {
+                    'variant': 'completed',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': null,
+                };
+            case 'cancelled':
+                return {
+                    'variant': 'cancelled',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': lifecycle.reason ?? '',
+                    'correlationKey': null,
+                };
+            case 'timed_out':
+                return {
+                    'variant': 'timed_out',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': null,
+                    'reason': null,
+                    'correlationKey': null,
+                };
+            case 'failed':
+                return {
+                    'variant': 'failed',
+                    'startedAt': lifecycle.startedAt ?? 0,
+                    'finishedAt': lifecycle.finishedAt ?? lifecycle.startedAt ?? 0,
+                    'error': this.#restoreLifecycleError(lifecycle.error),
+                    'reason': null,
+                    'correlationKey': null,
+                };
+        }
+    }
+    #restoreLifecycleError(payload: DAGLifecycleStateDataType['error']): Error {
+        if (payload === null)
+            return new Error('Unknown DAG failure');
+        if (NodeStateBase.isPlainObject(payload)) {
+            if (payload['kind'] === 'DAGError' && typeof payload['code'] === 'string' && typeof payload['message'] === 'string') {
+                const context = NodeStateBase.isPlainObject(payload['context'])
+                    ? Object.fromEntries(Object.entries(payload['context']))
+                    : {};
+                return new DAGError(payload['message'], {
+                    'code': payload['code'],
+                    context,
+                    'retryable': payload['retryable'] === true,
+                });
+            }
+            if (typeof payload['message'] === 'string') {
+                const error = new Error(payload['message']);
+                if (typeof payload['name'] === 'string')
+                    error.name = payload['name'];
+                return error;
+            }
+        }
+        return new Error('Unknown DAG failure');
+    }
+
+    #assignFieldValue(property: string, value: unknown): void {
+        if (!property.includes('.')) {
+            Reflect.set(this, property, value);
+            return;
+        }
+        const segments = property.split('.');
+        let cursor: Record<string, unknown> = this as Record<string, unknown>;
+        for (let i = 0; i < segments.length - 1; i++) {
+            const segment = segments[i];
+            if (segment === undefined) continue;
+            const next = cursor[segment];
+            if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+                const created: Record<string, unknown> = {};
+                cursor[segment] = created;
+                cursor = created;
+            } else {
+                cursor = next as Record<string, unknown>;
+            }
+        }
+        const leaf = segments.at(-1);
+        if (leaf !== undefined) cursor[leaf] = value;
     }
 
 }

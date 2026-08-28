@@ -125,7 +125,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'all-error':   HETERO_SCATTER_JOIN_IRI,
         'partial':     HETERO_SCATTER_JOIN_IRI,
       }, {
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
       })
       .gather(HETERO_SCATTER_JOIN_IRI, { [HETERO_SCATTER_FAN_OUT_IRI]: {} }, { 'strategy': 'flat-merge-test' }, {
@@ -170,7 +170,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'error':   HETERO_ALL_EMPTY_FAIL_IRI,
         'empty':   HETERO_ALL_EMPTY_FAIL_IRI,
       }, {
-        'execution': { 'mode': 'item', 'concurrency': 4 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 4 } } },
         'reducer': 'any-success',
         'name': 'fan-out',
       })

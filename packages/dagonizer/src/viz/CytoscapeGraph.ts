@@ -555,6 +555,13 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
         'transition-property': 'opacity',
         'transition-duration': 280,
       } },
+      { "selector": 'node.dag-inspected', "style": {
+        'overlay-color':   '#22e8ff',
+        'overlay-opacity': 0.18,
+        'overlay-padding': 14,
+        'border-color':    '#22e8ff',
+        'border-width':    4,
+      } },
       { "selector": 'node:selected', "style": {
         'border-color': '#22e8ff',
         'border-width': 4,

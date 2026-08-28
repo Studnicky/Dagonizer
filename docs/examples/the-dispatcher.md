@@ -1,6 +1,6 @@
 ---
 title: 'The Dispatcher'
-description: 'A warm-handoff customer support demo powered by Dagonizer: HITL Park-and-Correlate, checkpoint/resume, and a trolley switch that forces human routing. Runs in your browser with Ollama or a cloud provider API key.'
+description: 'A warm-handoff customer support workflow powered by Dagonizer: HITL Park-and-Correlate, checkpoint/resume, and a trolley switch that forces human routing through an interactive operator host.'
 seeAlso:
   - text: 'The Archivist'
     link: './the-archivist'
@@ -10,7 +10,7 @@ seeAlso:
     description: 'Deterministic ETL on the same engine'
   - text: 'Example 31: HITL Park-and-Correlate'
     link: './31-hitl'
-    description: 'The primitive this demo exercises'
+    description: 'The park/resume primitive behind operator escalation'
   - text: 'Example 08: Checkpoint and Resume'
     link: './08-checkpoint'
     description: 'How Checkpoint.capture and resume() work'
@@ -23,21 +23,68 @@ seeAlso:
 
 ## What It Is
 
-The Dispatcher is a runnable demo: a real browser-executed DAG application, not a decorative diagram. It is a warm-handoff customer support demo powered by Dagonizer: HITL Park-and-Correlate, checkpoint/resume, and a trolley switch that forces human routing. It runs in your browser with Ollama or a cloud provider API key.
+The Dispatcher is a support runtime around the `support-dispatcher` DAG. It runs embedder-first classification, AI compose, park/resume, and forced-human escalation inside one registered workflow.
 
-Use it to see human review without losing DAG state or auditability. The customer flow parks with a cursor, the operator flow resumes from that cursor, and the same graph records both halves.
+The runtime exposes the boundaries around that DAG: customer message input, operator response, checkpoint capture, and resume.
 
-## Runnable Demo
+## Runnable Example
 
-<ClientOnly>
-  <DispatcherRunner />
-</ClientOnly>
+Open [The Dispatcher](/examples/the-dispatcher) to run the workflow and inspect its execution surfaces directly.
 
 Type a customer message and click **Send**. The **DAG** pane lights nodes as the flow executes and dims the branches it skips; the **Config** tab flips the trolley switch and the classification-mode toggle; the **Trace** tab lists every lifecycle event in order. When the flow parks, the right pane auto-switches to **Operator** — type a response and click **Send response** to checkpoint-and-resume the suspended execution.
 
+## Flow and Runtime Behavior
+
+The Dispatcher runtime runs `support-dispatcher` directly. The conversation, operator pane, DAG state, trace, backend configuration, and checkpoint actions all project the same execution.
+
+### Branches and gates
+
+Three exit paths, each producing a different outcome:
+
+| Path | Trigger | Terminal branch | What happens |
+|------|---------|----------------|--------------|
+| Routine | Classifier (embedder or LLM) resolves `routine`; humanMode off | `ai-compose → send-response → end` | LLM composes a reply; flow completes in one execution |
+| Escalated | Classifier resolves `escalate`, or humanMode on, or classification error | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
+| Off-topic | Classifier resolves `off-topic`, or blank message | `decline → end` | Polite refusal; flow completes immediately |
+
+In `embedder` mode (the default), the on-device embedder classifies first; the
+LLM only steps in when the embedder is unavailable or its top score misses the
+confidence floor. In `llm` mode, the LLM classifies every message directly.
+
+### Command-line scenario
+
+```bash
+npx tsx examples/32-dispatcher.ts
+```
+
+The CLI runner executes all three scenarios in sequence: routine (AI), escalated
+(park → operator reply → resume), and trolley-forced (humanMode = true). Output
+shows the lifecycle variant, escalation reason, correlation key, cursor, and
+full conversation history after each run.
+
+### Runtime behavior
+
+The Dispatcher shows HITL Park-and-Correlate in a concrete support host: a DAG can park, expose a correlation key, capture a checkpoint, wait for a human, restore state, and resume through the same JSON-LD graph.
+
+Classification runs on-device by default: an offline MiniLM embedder computes
+cosine similarity between the message and three intent anchors (`routine`,
+`escalate`, `off-topic`) — instant, with no LLM round-trip and no adapter-timeout
+exposure. The LLM composes the reply on the routine branch, and also serves as
+the classification path when the embedder is unavailable, when it isn't
+confident about a message, or when the Config toggle is set to `llm` mode. The
+trolley switch and escalation routing are deterministic overrides on top of
+whichever classifier decided.
+
+It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist)
+and [The Cartographer](./the-cartographer). The domain primitive here is the
+**HITL Park-and-Correlate** lifecycle — `state.park()` → `awaiting-input`
+lifecycle state → `Checkpoint.capture` → `dispatcher.resume()`.
+
+Switch to the **Config** tab to flip the trolley switch and see how routing changes.
+
 ## How It Works
 
-The runner wires real node classes, real DAG documents, and browser UI observers together. The visual panes listen to dispatcher lifecycle events, so the page shows execution rather than replaying a canned animation.
+The example registers nodes and DAG documents, builds runtime services, and projects lifecycle into conversation, operator, DAG, and trace state. Nothing is mocked; the interactive host drives the same `execute` and `resume` calls as the CLI example.
 
 ### Architecture
 
@@ -58,68 +105,9 @@ DAGBuilder call to satisfy TypeScript's route-exhaustiveness check, but the
 engine intercepts `'parked'` before consulting the route map. That target is
 never reached at runtime.
 
-## Diagrams, Examples, and Outputs
-
-The live demo is the main diagram. Its graph, state panes, traces, backend selectors, operator panel, and outputs are all evidence from the running system.
-
-### Branches and gates
-
-Three exit paths, each producing a different outcome:
-
-| Path | Trigger | Terminal branch | What happens |
-|------|---------|----------------|--------------|
-| Routine | Classifier (embedder or LLM) resolves `routine`; humanMode off | `ai-compose → send-response → end` | LLM composes a reply; flow completes in one execution |
-| Escalated | Classifier resolves `escalate`, or humanMode on, or classification error | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
-| Off-topic | Classifier resolves `off-topic`, or blank message | `decline → end` | Polite refusal; flow completes immediately |
-
-In `embedder` mode (the default), the on-device embedder classifies first; the
-LLM only steps in when the embedder is unavailable or its top score misses the
-confidence floor. In `llm` mode, the LLM classifies every message directly.
-
-### CLI run
-
-```bash
-npx tsx examples/32-dispatcher.ts
-```
-
-The CLI demo runs all three scenarios in sequence: routine (AI), escalated
-(park → operator reply → resume), and trolley-forced (humanMode = true). Output
-shows the lifecycle variant, escalation reason, correlation key, cursor, and
-full conversation history after each run.
-
-### What this proves
-
-The Dispatcher proves HITL Park-and-Correlate in a real browser flow: a DAG can park, expose a correlation key, capture a checkpoint, wait for a human, restore state, and resume through the same JSON-LD graph.
-
-Classification runs on-device by default: an offline MiniLM embedder computes
-cosine similarity between the message and three intent anchors (`routine`,
-`escalate`, `off-topic`) — instant, with no LLM round-trip and no adapter-timeout
-exposure. The LLM composes the reply on the routine branch, and also serves as
-the classification path when the embedder is unavailable, when it isn't
-confident about a message, or when the Config toggle is set to `llm` mode. The
-trolley switch and escalation routing are deterministic overrides on top of
-whichever classifier decided.
-
-It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist)
-and [The Cartographer](./the-cartographer). What changes is the domain primitive:
-this demo exercises the **HITL Park-and-Correlate** lifecycle — `state.park()` →
-`awaiting-input` lifecycle state → `Checkpoint.capture` → `dispatcher.resume()`.
-
-Switch to the **Config** tab to flip the trolley switch and see how routing changes.
-
-## What It Lets You Do
-
-Use the Dispatcher when you want to see the awkward middle of automation: a model can help, but a person sometimes has to decide. The graph makes that handoff explicit instead of hiding it in UI state.
-
-For application teams, this page answers the operational question: can a DAG pause, expose a correlation key, wait for an external decision, and resume without pretending the pause never happened? The demo shows the whole loop.
-
-### What to try
-
-Send a routine support message, then send a refund or billing escalation. Toggle **HUMAN GATE** to force the operator path, answer from the Operator tab, and watch the DAG resume from the parked cursor instead of restarting.
-
 ## Code Samples
 
-The Dispatcher source is small enough to read in one sitting. Start with the DAG, then inspect the parking node and CLI runner that prove the checkpoint/resume path.
+The Dispatcher source is small enough to read in one sitting. Start with the DAG, then inspect the parking node and CLI runner that exercise the checkpoint/resume path directly.
 
 ### Canonical support DAG
 
@@ -139,22 +127,32 @@ The Dispatcher source is small enough to read in one sitting. Start with the DAG
 |------|------|
 | `examples/the-dispatcher/DispatcherState.ts` | State class: `message`, `response`, `escalationReason`, `humanMode`, `conversation` |
 | `examples/the-dispatcher/dag.ts` | `supportDispatcherDAG` - canonical JSON-LD DAG |
-| `examples/the-dispatcher/nodes/ClassifyMessageNode.ts` | Keyword scan + trolley switch routing |
-| `examples/the-dispatcher/nodes/AiComposeNode.ts` | Canned AI reply (no LLM in the demo) |
+| `examples/the-dispatcher/nodes/ClassifyMessageNode.ts` | Embedder-first triage with LLM fallback and trolley-switch override |
+| `examples/the-dispatcher/nodes/AiComposeNode.ts` | LLM-backed response composition with recovery copy on error |
 | `examples/the-dispatcher/nodes/ParkForOperatorNode.ts` | HITL suspension — `state.park()` on first enter, `'ready'` on resume |
 | `examples/the-dispatcher/nodes/SendResponseNode.ts` | Appends customer + agent/operator turns to `state.conversation` |
 | `examples/the-dispatcher/nodes/DeclineNode.ts` | Polite off-topic refusal |
 | `examples/the-dispatcher/nodes/SetupNode.ts` | Pre-phase: stamps `runId` |
 | `examples/32-dispatcher.ts` | CLI runner: three scenarios |
 
-## Details for Nerds
+## Operational Uses
+
+The Dispatcher shows the awkward middle of automation: a model can help, but a person sometimes has to decide. The graph makes that handoff explicit instead of hiding it in UI state.
+
+The parked execution exposes the full handoff contract: correlation key, external decision, and resume from the saved cursor instead of a silent restart.
+
+### Exercise the flow
+
+Send a routine support message, then send a refund or billing escalation. Toggle **HUMAN GATE** to force the operator path, answer from the Operator tab, and watch the DAG resume from the parked cursor instead of restarting.
+
+## Runtime Notes
 
 ### The trolley switch
 
 `state.humanMode = true` overrides all content classification. Every message,
 regardless of its keywords, routes to the operator. This models a real-world
 "all-human" mode: night shift, compliance hold, SLA escalation. The switch is a
-boolean field on `DispatcherState` set externally (in the browser demo, the
+boolean field on `DispatcherState` set externally (in the interactive host, the
 toggle in the Config tab sets it before `execute()` fires).
 
 The classifier checks the switch first:
@@ -183,8 +181,7 @@ A second Config-tab control swaps `state.classificationMode` between
 - `'llm'` — every message is classified generatively via the active LLM
   adapter. Slower, since each message loads/queries the model.
 
-The toggle exists so the two strategies can be compared side by side in the
-demo. The trolley switch still wins over both: `humanMode = true` forces
+The toggle exposes both strategies against the same workflow. The trolley switch still wins over both: `humanMode = true` forces
 `escalate` regardless of `classificationMode`.
 
 ### The HITL flow in four steps
@@ -211,7 +208,7 @@ const json  = ckpt.toJson();  // persist to any store (localStorage, DB, etc.)
 **Step 3 — operator provides a response (out-of-band):**
 
 The operator reads the customer message from `result.state.escalationReason`
-(or the conversation) and types a response. In the browser demo this is the
+(or the conversation) and types a response. In the interactive host this is the
 text area in the Operator tab.
 
 **Step 4 — restore and resume:**
@@ -264,22 +261,22 @@ flipping the trolley switch.
 
 ## Related Concepts
 
-Read these next when you want to connect the Dispatcher demo to HITL parking, checkpoint capture, resume, and handoff.
+These related pages connect the Dispatcher flow to HITL parking, checkpoint capture, resume, and handoff.
 
 - [The Archivist](./the-archivist) - LLM agent orchestration on the same engine
 - [The Cartographer](./the-cartographer) - Deterministic ETL on the same engine
-- [Example 31: HITL Park-and-Correlate](./31-hitl) - The primitive this demo exercises
+- [Example 31: HITL Park-and-Correlate](./31-hitl) - The park/resume primitive behind operator escalation
 - [Example 08: Checkpoint and Resume](./08-checkpoint) - How Checkpoint.capture and resume() work
-- [HITL Park-and-Correlate](../guide/hitl) - Guide-level explanation of the park/resume protocol
+- [HITL Park-and-Correlate](../guide/hitl) - park/resume protocol, parked result fields, and resume lifecycle
 
 ### Dispatcher Feature Map
 
 These numbered examples are owned by the Dispatcher domain because they extend support-workflow operations around human input and external triggers:
 
-| Example | Principle in the runnable Dispatcher |
+| Example | Principle in the Dispatcher workflow |
 |---------|---------------------------------------|
 | [Example 11: Operator Hand-Off](./11-handoff) | Hand-off is the next transport step after `park-for-operator`: a parked or completed support case can publish a `DAGHandoff` envelope to another host. |
 | [Example 21: Per-Node Timeout](./21-per-node-timeout) | Timeout belongs around `ai-compose` and operator-wait boundaries so slow automation fails without aborting unrelated support runs. |
 | [Example 23: Checkpoint Store](./23-checkpoint-store) | Parked support state uses the same snapshot/store/restore path as checkpoint persistence. |
-| [Example 28: Runner and Triggers](./28-runner) | Runner triggers belong here for scheduled support automation and request-triggered support flows. |
-| [Example 31: HITL Park-and-Correlate](./31-hitl) | The browser demo is the high-level HITL implementation: `park-for-operator` pauses, stores a cursor, and resumes after a correlated decision. |
+| [Example 28: Runner and Triggers](./28-runner) | Runner triggers belong here for scheduled support automation and request-triggered support cases. |
+| [Example 31: HITL Park-and-Correlate](./31-hitl) | The Dispatcher example is the high-level HITL implementation: `park-for-operator` pauses, stores a cursor, and resumes after a correlated decision. |

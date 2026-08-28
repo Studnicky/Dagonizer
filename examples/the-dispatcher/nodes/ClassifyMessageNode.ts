@@ -13,14 +13,16 @@
  *
  * Mode dispatch (`state.classificationMode`):
  *   `'llm'`      — runs `services.llm.classify` exclusively; `services.intent`
- *                  is never consulted.
- *   `'embedder'` — when `services.intent` is provisioned, classifies via
- *                  cosine similarity against the three intent anchors — no
- *                  LLM round-trip, so trivial messages never risk the
- *                  adapter timeout. If the embedder is confident (above its
- *                  floor), its verdict routes directly. If the embedder is
- *                  unavailable (`services.intent === null`) or unconfident
- *                  (returns `null`), the node runs the LLM path.
+ *                  is never called.
+ *   `'embedder'` — calls `services.intent.load()` (provisions the embedder on
+ *                  first call, memoized thereafter) and classifies via cosine
+ *                  similarity against the three intent anchors — no LLM
+ *                  round-trip, so trivial messages never risk the adapter
+ *                  timeout. If the embedder is confident (above its floor),
+ *                  its verdict routes directly. If the embedder is
+ *                  unconfident (`classify()` returns `null`), the node runs
+ *                  the LLM classifier. Provisioning errors fail explicitly in
+ *                  the pre-phase before this node executes.
  *
  * LLM recovery and error handling:
  *   If the LLM call throws, the node escalates with a safety reason rather
@@ -38,7 +40,7 @@ import type { DispatcherServices } from '../services.ts';
 export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
   readonly name = 'classify-message';
   readonly '@id' = 'urn:noocodec:node:classify-message';
-  readonly outputs = ['routine', 'escalate', 'off-topic'] as const;
+  readonly outputs: readonly ['routine', 'escalate', 'off-topic'] = ['routine', 'escalate', 'off-topic'];
   override readonly timeout = Timeout.ofMs(60_000);
 
   readonly #services: DispatcherServices;
@@ -105,12 +107,10 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
       return this.classifyViaLlm(state, context);
     }
 
-    // Embedder mode: cosine similarity against the intent anchors, no LLM
-    // round-trip, no timeout exposure — routes to the LLM path below
-    // when the embedder is unavailable or unconfident.
-    if (this.#services.intent !== null) {
-      const result = await this.#services.intent.classify(state.message);
-      if (result !== null) return this.route(state, result.intent);
+    const intent = await this.#services.intent.load();
+    const result = await intent.classify(state.message);
+    if (result !== null) {
+      return this.route(state, result.intent);
     }
     return this.classifyViaLlm(state, context);
   }

@@ -70,6 +70,7 @@ export class ParseVariantNode extends MonadicNode<CartographerState, 'parsed' | 
       return NodeOutput.create('invalid');
     }
     const variant = raw;
+    state.deleteMetadata('canonical-event');
     state.canonicalVariant = variant;
     // Mirror onto state.canonical so routeGeo can branch on 'has-geo' / 'needs-geo'
     // and score-signals can read all geo signal fields from state.canonical.body.

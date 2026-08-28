@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 
+const CLONE_SCOPE = { 'runIri': 'urn:test:clone', 'dagIri': 'urn:test:dag', 'placementIri': 'urn:test:placement' };
+
 // ── defaultRouting ─────────────────────────────────────────────────────────────
 
 describe('CartographerState.defaultRouting', () => {
@@ -71,41 +73,39 @@ describe('CartographerState.unresolvedCandidate', () => {
 describe('CartographerState#clone', () => {
   it('produces a different object instance', () => {
     const s = new CartographerState();
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     assert.ok(c !== s);
   });
 
   it('copies eventCount to clone', () => {
     const s = new CartographerState();
     s.eventCount = 77;
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     assert.equal(c.eventCount, 77);
   });
 
   it('mutating clone.eventCount does not affect original', () => {
     const s = new CartographerState();
     s.eventCount = 10;
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     c.eventCount = 99;
     assert.equal(s.eventCount, 10);
   });
 
-  it('clone.sources array is a separate array (not shared reference)', () => {
+  it('clone clears parent intake buffers', () => {
     const s = new CartographerState();
-    s.sources = [
-      { 'sourceId': 'a', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
+    s.sourceFeed = [
+      { 'sourceId': 'position-ping-json-none-0', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
     ];
-    const c = s.clone();
-    assert.ok(Array.isArray(c.sources), 'clone.sources should be an array');
-    assert.ok(Array.isArray(s.sources), 's.sources should be an array');
-    c.sources.push({ 'sourceId': 'b', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' });
-    assert.equal(s.sources.length, 1);
+    const c = s.clone(CLONE_SCOPE);
+    assert.ok(Array.isArray(c.sourceFeed), 'clone.sourceFeed should be an array');
+    assert.equal(c.sourceFeed.length, 0);
   });
 
   it('clone.raw lineItems are a separate array', () => {
     const s = new CartographerState();
     s.raw.lineItems = [{ 'productId': 'P1', 'quantity': 1 }, { 'productId': 'P2', 'quantity': 2 }];
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     const firstRaw = c.raw.lineItems[0];
     if (firstRaw !== undefined) firstRaw.productId = 'MUTATED';
     assert.equal(s.raw.lineItems[0]?.productId, 'P1');
@@ -114,7 +114,7 @@ describe('CartographerState#clone', () => {
   it('clone.normalized lineItems are a separate array', () => {
     const s = new CartographerState();
     s.normalized.lineItems = [{ 'productId': 'P3', 'quantity': 3 }];
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     const firstNorm = c.normalized.lineItems[0];
     if (firstNorm !== undefined) firstNorm.productId = 'MUTATED';
     assert.equal(s.normalized.lineItems[0]?.productId, 'P3');
@@ -123,7 +123,7 @@ describe('CartographerState#clone', () => {
   it('clone.geoContext.countries is a separate array', () => {
     const s = new CartographerState();
     s.geoContext.countries = ['DE', 'FR'];
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     c.geoContext.countries.push('GB');
     assert.equal(s.geoContext.countries.length, 2);
   });
@@ -131,6 +131,7 @@ describe('CartographerState#clone', () => {
   it('parent scatter accumulators are reset to defaults in the clone', () => {
     const s = new CartographerState();
     s.records = [s.enriched];
+    s.processedCountExact = 12;
     s.insights.set('Europe', {
       'region': 'Europe', 'country': '', 'hub': '',
       'deliveries': 1, 'exceptions': 0, 'onTimeCount': 1, 'lateCount': 0,
@@ -139,16 +140,17 @@ describe('CartographerState#clone', () => {
       'sizeTierEnvelope': 0, 'sizeTierSmall': 1, 'sizeTierMedium': 0, 'sizeTierLarge': 0, 'sizeTierFreight': 0,
       'shipmentCount': 1,
     });
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     // Child clones should not carry parent accumulators (memory optimisation documented in CartographerState.clone)
     assert.equal(c.records.length, 0);
+    assert.equal(c.processedCountExact, 0);
     assert.equal(c.insights.size, 0);
   });
 
   it('clone.routing.geoModalities is a separate array', () => {
     const s = new CartographerState();
     s.routing = { ...CartographerState.defaultRouting(), 'geoModalities': ['gps', 'ip'] };
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     c.routing.geoModalities.push('cell');
     assert.equal(s.routing.geoModalities.length, 2);
   });
@@ -156,9 +158,57 @@ describe('CartographerState#clone', () => {
   it('clone.gdprResult.personalDataFields is a separate array', () => {
     const s = new CartographerState();
     s.gdprResult.personalDataFields = ['recipientName', 'recipientEmail'];
-    const c = s.clone();
+    const c = s.clone(CLONE_SCOPE);
     c.gdprResult.personalDataFields.push('phone');
     assert.equal(s.gdprResult.personalDataFields.length, 2);
+  });
+
+  it('snapshotTransientState keeps the durable checkpoint surface', () => {
+    const s = new CartographerState();
+    s.decodedText = 'very large source payload';
+    s.currentSource.payload = 'raw-wire-payload';
+    s.raw.shipmentId = 'RAW-ONLY';
+    s.normalized.shipmentId = 'NORM-ONLY';
+    s.enriched.shipmentId = 'ENRICHED-ONLY';
+    s.processedCountExact = 33;
+    s.capturedErrors = [{ 'source': 'gps', 'variant': 'range', 'message': 'bad coords', 'input': '' }];
+    s.setMetadata('source-payload', {
+      'sourceId': 'position-ping-json-none-0',
+      'format': 'json',
+      'compression': 'none',
+      'mappingKey': 'json-position',
+      'eventType': 'position-ping',
+      'payload': 'abc',
+    });
+
+    const snapshot = s.snapshotTransientState();
+
+    assert.equal('decodedText' in snapshot.domain, false);
+    assert.equal('currentSource' in snapshot.domain, false);
+    assert.equal('raw' in snapshot.domain, false);
+    assert.equal('normalized' in snapshot.domain, false);
+    assert.equal('enriched' in snapshot.domain, true);
+    assert.equal(snapshot.domain['processedCountExact'], 33);
+    assert.equal('capturedErrors' in snapshot.domain, true);
+    assert.deepEqual(snapshot.graphDomain, {});
+    assert.ok('source-payload' in snapshot.metadata);
+  });
+
+  it('snapshotTransientStateSelection returns the explicit worker-result surface', () => {
+    const s = new CartographerState();
+    s.decodedText = 'large scratch payload';
+    s.enriched.shipmentId = 'ENRICHED-ONLY';
+    s.capturedErrors = [{ 'source': 'gps', 'variant': 'range', 'message': 'bad coords', 'input': '' }];
+
+    const snapshot = s.snapshotTransientStateSelection({
+      'mode': 'selection',
+      'domainPaths': ['enriched', 'capturedErrors'],
+      'metadataKeys': [],
+    });
+
+    assert.deepEqual(Object.keys(snapshot.domain).sort(), ['capturedErrors', 'enriched']);
+    assert.equal('decodedText' in snapshot.domain, false);
+    assert.deepEqual(snapshot.metadata, {});
   });
 });
 

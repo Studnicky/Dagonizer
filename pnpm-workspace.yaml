@@ -1,8 +1,10 @@
 packages:
   - "packages/*"
+  - "site"
   - "examples"
   - "examples/the-archivist"
   - "examples/the-cartographer"
+  - "examples/the-dispatcher"
 
 # pnpm settings live here (read by pnpm, ignored by npm) so `npm run` does not
 # warn "Unknown project config". shamefullyHoist flattens node_modules for tools

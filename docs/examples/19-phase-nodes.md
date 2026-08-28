@@ -19,23 +19,17 @@ import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
 
 # Example 19: Phase Nodes
 
-## What It Is
+## Phase Placement Surface
 
 Phase Nodes attach setup and cleanup work around the routed DAG without pretending that work is part of normal output routing. The Dispatcher uses a `setup` pre-phase to stamp run metadata before the customer-support graph starts.
 
-Use phase nodes for cross-cutting application work that must happen before or after the graph, but should not create fake edges or fake output ports.
+Use phase nodes for cross-cutting host work that must happen before or after the graph, but should not create fake edges or fake output ports.
 
-## How It Works
-
-`pre` phase placements run before the entrypoint in declaration order. `post` phase placements run after the main loop resolves on every exit path. The node can mutate state and emit observability events, but its output does not route the graph because phase placements are outside normal node-output flow.
-
-That distinction matters for application structure. A preflight validator, run-id stamper, metrics flush, or lock release can live in the DAG document without obscuring the business graph.
-
-## Diagrams, Examples, and Outputs
+## Phase Ordering Flow
 
 ### DAG registration and diagram
 
-Phase placements sit beside the routed graph rather than participating in output routing. [The Dispatcher](./the-dispatcher) shows the smallest browser-runnable form: `setup` is a pre-phase placement that stamps per-run metadata before `classify-message`.
+Phase placements sit beside the routed graph rather than participating in output routing. [The Dispatcher](./the-dispatcher) shows the smallest support-runtime form: `setup` is a pre-phase placement that stamps per-run metadata before `classify-message`.
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher phase DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
@@ -44,14 +38,16 @@ Phase placements sit beside the routed graph rather than participating in output
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Dispatcher](./the-dispatcher) to inspect the support runner that wraps routed execution with preflight and post-run phase placements.
 
-Phase nodes let applications attach setup and cleanup work around the routed DAG without adding fake graph edges. Use them for per-run IDs, resource acquisition, input normalization, final audit writes, lock release, or metrics flushing.
+## Pre/Post Execution Model
 
-They are a better fit than normal nodes when the work is about the execution envelope rather than a decision in the domain flow.
+`pre` phase placements run before the entrypoint in declaration order. `post` phase placements run after the main loop resolves on every exit path. The node can mutate state and emit observability events, but its output does not route the graph because phase placements are outside normal node-output flow.
+
+That distinction matters for host structure. A preflight validator, run-id stamper, metrics flush, or lock release can live in the DAG document without obscuring the business graph.
 
 ## Code Samples
 
@@ -61,7 +57,13 @@ The Dispatcher bundle shows the `.phase(...)` placement beside the routed suppor
 
 <<< @/../examples/the-dispatcher/nodes/SetupNode.ts
 
-## Details for Nerds
+## Operational Uses
+
+Phase nodes let hosts attach setup and cleanup work around the routed DAG without adding fake graph edges. Use them for per-run IDs, resource acquisition, input normalization, final audit writes, lock release, or metrics flushing.
+
+They are a better fit than normal nodes when the work is about the execution envelope rather than a decision in the domain flow.
+
+## Runtime Notes
 
 - **`DAGBuilder.phase(name, 'pre', node)`.** Registers a pre-phase placement. The node runs before the entrypoint. Multiple pre-phases run in declaration order. A throw in any pre-phase aborts the run.
 - **`DAGBuilder.phase(name, 'post', node)`.** Registers a post-phase placement. The node runs after every exit path — success, abort, timeout, or failed terminal. Errors in post-phase nodes are appended as warnings on state (`state.warnings`), not re-thrown.

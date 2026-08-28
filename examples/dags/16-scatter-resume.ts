@@ -10,7 +10,8 @@
  *   3. The scatter checkpoint (stored in state metadata under
  *      SCATTER_PROGRESS_KEY) captures:
  *        - `inbox`: items pulled from the source but not yet acked.
- *        - `ackedResults`: items whose body completed successfully.
+ *        - `watermark`, `aheadAcked`, and `outcomeTally`: bounded completion
+ *          bookkeeping for acknowledged items.
  *   4. The state is snapshotted via Checkpoint.capture() and restored.
  *   5. A resumed run reprocesses inbox items first (priority), then
  *      continues the source. Already-acked items are NOT re-executed.
@@ -119,7 +120,7 @@ export const dag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:process-job' },
       "source":    'jobs',
       "itemKey":   'job',
-      "execution": { "mode": "item", "concurrency": 1 },              // serial so abort cuts cleanly mid-source
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 1 } } },  // serial so abort cuts cleanly mid-source
       "outputs": {
         'all-success': 'urn:noocodec:dag:scatter-resume/node/collect-completed',
         "partial": 'urn:noocodec:dag:scatter-resume/node/collect-completed',

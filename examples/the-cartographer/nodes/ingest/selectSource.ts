@@ -64,6 +64,7 @@ export class SelectSourceNode extends MonadicNode<CartographerState, 'compressed
       return NodeOutput.create('invalid');
     }
     state.currentSource = raw;
+    state.deleteMetadata('source');
     return NodeOutput.create(raw.compression === 'gzip' ? 'compressed' : 'plain');
   }
 }

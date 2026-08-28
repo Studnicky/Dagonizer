@@ -1,0 +1,42 @@
+---
+import UiActionLink from '@/components/marketing/UiActionLink.astro';
+import UiCtaRow from '@/components/islands/UiCtaRow.vue';
+import UiProofGrid from '@/components/islands/UiProofGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { SiteLinks } from '@/lib/links';
+
+const proofItems = [
+  {
+    label: 'Typed routes',
+    body: 'Branching, terminals, and downstream flow stay explicit in the workflow artifact.'
+  },
+  {
+    label: 'Durable resume',
+    body: 'Pause, persist, and continue from a real execution cursor instead of rebuilding context.'
+  },
+  {
+    label: 'Shared DAG document',
+    body: 'The same DAG shape drives docs, examples, visualization, and runtime execution.'
+  }
+] as const;
+---
+
+<section class="hex-shell bg-slate-950/72 px-6 py-6 shadow-[0_20px_72px_-40px_rgba(15,23,42,0.95)] backdrop-blur md:px-8 md:py-8">
+  <UiSectionIntro
+    eyebrow="Core runtime capabilities"
+    title="See the execution model, persistence model, and graph model in one place."
+    description="Dagonizer is for workflows that need explicit routing, durable pause-and-resume, and graph-native fan-out/fan-in without rebuilding that behavior from separate subsystems."
+    align="between"
+  >
+    <Fragment slot="actions">
+    <UiCtaRow>
+      <UiActionLink href={SiteLinks.site('/docs')} variant="secondary">Read the docs</UiActionLink>
+      <UiActionLink href={SiteLinks.site('/architecture')} variant="secondary">See architecture</UiActionLink>
+    </UiCtaRow>
+    </Fragment>
+  </UiSectionIntro>
+
+  <div class="mt-6">
+    <UiProofGrid title="What the runtime includes" items={proofItems} />
+  </div>
+</section>

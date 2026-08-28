@@ -1,6 +1,6 @@
 ---
 title: 'Example 11: Operator Hand-Off'
-description: 'The Dispatcher browser demo hands a parked customer support flow to an operator, captures checkpoint state, and resumes from the parked cursor.'
+description: 'The Dispatcher support workflow parks a support case, captures checkpoint state, and resumes from the parked cursor after operator input.'
 seeAlso:
   - text: 'Guide: Distribution and Cloud'
     link: '../guide/distribution'
@@ -20,55 +20,35 @@ import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
 
 # Example 11: Operator Hand-Off
 
-## What It Is
+## Operator Handoff Surface
 
-Operator Hand-Off is how an application parks a running DAG at a human boundary, stores the cursor and state, and resumes later when the operator supplies the missing input.
+Operator Hand-Off is the parked-execution boundary for human-in-the-loop work. One actor runs the DAG until it parks, persists state plus cursor, and another actor resumes from that cursor after supplying the missing input.
 
-The Dispatcher browser demo is the concrete application: a customer turn parks at `park-for-operator`, the UI captures a checkpoint, and the operator pane resumes the same DAG from the parked cursor.
+In The Dispatcher, a customer turn parks at `park-for-operator`, the workflow captures a checkpoint, and the operator pane restores the parked state before resuming the same DAG.
 
-## How It Works
-
-The first execution routes to a parked output and returns an `ExecutionResult` with `parked` metadata. The application persists the checkpoint and correlation key outside the DAG. A later actor restores state, writes the external response, and calls `dispatcher.resume(...)` from the recorded cursor. The parked node does not know whether the resumer is a browser operator, queue worker, or cloud handler.
-
-The hand-off boundary is serialized execution state, not a callback. That keeps browser demos, queue workers, webhooks, and serverless continuations on the same runtime contract.
-
-## Diagrams, Examples, and Outputs
+## Checkpointed Handoff Flow
 
 ### DAG registration and diagram
 
-The browser-runnable hand-off is [The Dispatcher](./the-dispatcher): a customer turn runs until `park-for-operator`, the execution parks with a cursor, and the operator turn resumes the same DAG from that cursor. The low-level `DAGHandoff` queue envelope remains the distribution primitive; the in-browser demo shows the same state pass-over at the user-facing escalation boundary.
+`supportDispatcherDAG` contains the full `park-for-operator -> ready -> send-response` path. The same boundary can cross a queue or service hop through `DAGHandoff`; the Dispatcher keeps that hand-off inside one support runtime while using the same parked-state contract.
 
 <DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher hand-off DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
-This example hands control from the customer-facing execution to an operator-facing continuation. The parked execution result carries the cursor and correlation key; the browser captures a checkpoint, restores state, writes the operator response, and resumes the DAG.
+The parked `ExecutionResult` carries the cursor and correlation key. The host persists that checkpoint, restores state, writes the operator response, and resumes from the recorded cursor.
 
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Dispatcher](./the-dispatcher), enable **HUMAN GATE**, send a customer message, then answer it in the Operator pane.
+Visit [The Dispatcher](./the-dispatcher), enable **HUMAN GATE**, send a customer message, then answer it in the Operator pane.
 
-## What It Lets You Do
+## Cross-actor Resume Model
 
-Operator hand-off lets applications split one workflow across actors or processes while keeping the DAG as the source of truth. Use it when a customer-facing run must stop at a boundary, preserve state and cursor, then resume from an operator, queue worker, webhook handler, or serverless continuation.
+The first execution routes to a parked output and returns an `ExecutionResult` with `parked` metadata. The host persists the checkpoint and correlation key outside the DAG. A later actor restores state, writes the external response, and calls `dispatcher.resume(...)` from the recorded cursor. The parked node does not know whether the resumer is a browser operator, queue worker, or cloud handler.
 
-### Key concept
-
-The grain of a hand-off is execution state, not a callback. The first Dispatcher call runs until the park point. The second operator action restores state from the parked result and resumes from the cursor. The parked node does not know who resumes it.
-
-```
-dispatcher.execute('urn:noocodec:dag:support-dispatcher', state)
-  │
-  └─ park-for-operator routes 'parked'
-       │
-       └─ Checkpoint.capture(...) stores state + cursor
-              │
-              └─ operator response → restore state → dispatcher.resume(...)
-```
-
-This is the browser equivalent of a serverless handler resuming work from a queue envelope: serialized state plus a cursor is the hand-off boundary.
+The hand-off boundary is serialized execution state plus cursor, not a callback. That keeps interactive hosts, queue workers, webhooks, and serverless continuations on the same runtime contract.
 
 ## Code Samples
 
@@ -89,11 +69,31 @@ Queue-backed hand-off uses the same state snapshot/cursor idea across a transpor
 
 The browser hand-off stores the parked result in memory. A distributed transport uses a `DAGHandoff` envelope and a `HandoffChannelInterface` implementation instead of the in-page operator state.
 
-<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
+<<< @/../examples/the-dispatcher/app/DispatcherRunner.vue#dispatcher-browser-resume
 
 See [Distribution and Cloud](../guide/distribution) for the serverless handler pattern, Step Functions wiring, and idempotency guidance.
 
-## Details for Nerds
+## Operational Uses
+
+Operator hand-off splits one workflow across customer and operator actors without duplicating the graph or rebuilding state by hand. The first execution stops at the park point; the second execution restores the parked snapshot and continues from the recorded cursor.
+
+### Key concept
+
+The grain of a hand-off is execution state, not a callback. The first Dispatcher call runs until the park point. The second operator action restores state from the parked result and resumes from the cursor. The parked node does not know who resumes it.
+
+```
+dispatcher.execute('urn:noocodec:dag:support-dispatcher', state)
+  │
+  └─ park-for-operator routes 'parked'
+       │
+       └─ Checkpoint.capture(...) stores state + cursor
+              │
+              └─ operator response → restore state → dispatcher.resume(...)
+```
+
+The same pattern works for queue workers, webhooks, or serverless continuations because the parked node does not depend on who resumes it.
+
+## Runtime Notes
 
 - **Parked result hand-off.** `result.parked` is the hand-off record between the customer turn and the operator turn.
 - **Snapshot fidelity.** `Checkpoint.capture` stores the state shape needed to resume after UI or process interruption.

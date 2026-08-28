@@ -128,7 +128,7 @@ export const dag: DAGType = {
       "body":         { "node": 'urn:noocodec:node:probe' },             // registered node IRI invoked per clone
       "source":       'urls',                          // state field to read the items array from
       "itemKey":      'url',                           // metadata key each item is written under
-      "execution": { "mode": "item", "concurrency": 2 },                               // max clones in-flight simultaneously
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },       // max clones in-flight simultaneously
       // Aggregate outputs: reflect final distribution, not per-clone results.
       // all-success: every clone returned 'ok'
       // partial:     mix of ok and fail

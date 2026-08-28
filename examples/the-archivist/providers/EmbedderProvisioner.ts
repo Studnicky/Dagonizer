@@ -14,12 +14,7 @@
  */
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
-import { EmbedderCascade, EmbedderRegistry } from '@studnicky/dagonizer/adapter';
 import type { AdapterCapabilitiesType, AdapterDescriptorShapeType } from '@studnicky/dagonizer/adapter';
-
-import { TransformersEmbedder } from '@studnicky/dagonizer-embedder-transformers';
-import { UniversalSentenceEncoderEmbedder } from '@studnicky/dagonizer-embedder-tensorflow';
-import { WebLlmEmbedder } from '@studnicky/dagonizer-embedder-web-llm';
 
 import { IntentClassifier } from './IntentClassifier.ts';
 
@@ -38,7 +33,7 @@ const EMBEDDER_CAPABILITIES: AdapterCapabilitiesType = {
 
 type CandidateEntry = {
   readonly descriptor: AdapterDescriptorShapeType;
-  readonly factory: () => EmbedderInterface;
+  readonly load: () => Promise<EmbedderInterface>;
 };
 
 /**
@@ -86,15 +81,24 @@ export class EmbedderProvisioner {
     return [
       {
         'descriptor': { 'provider': 'transformers', 'model': 'Xenova/all-MiniLM-L6-v2', 'capabilities': EMBEDDER_CAPABILITIES },
-        'factory': () => new TransformersEmbedder(transformersOptions),
+        'load': async () => {
+          const { TransformersEmbedder } = await import('@studnicky/dagonizer-embedder-transformers');
+          return new TransformersEmbedder(transformersOptions);
+        },
       },
       {
         'descriptor': { 'provider': 'tensorflow', 'model': 'universal-sentence-encoder', 'capabilities': EMBEDDER_CAPABILITIES },
-        'factory': () => new UniversalSentenceEncoderEmbedder(),
+        'load': async () => {
+          const { UniversalSentenceEncoderEmbedder } = await import('@studnicky/dagonizer-embedder-tensorflow');
+          return new UniversalSentenceEncoderEmbedder();
+        },
       },
       {
         'descriptor': { 'provider': 'web-llm', 'model': 'snowflake-arctic-embed-s-q0f32-MLC-b4', 'capabilities': EMBEDDER_CAPABILITIES },
-        'factory': () => new WebLlmEmbedder(),
+        'load': async () => {
+          const { WebLlmEmbedder } = await import('@studnicky/dagonizer-embedder-web-llm');
+          return new WebLlmEmbedder();
+        },
       },
     ];
   }
@@ -102,22 +106,15 @@ export class EmbedderProvisioner {
   static async #run(options: EmbedderProvisionOptionsType): Promise<EmbedderProvisionResultType> {
     try {
       const candidates = EmbedderProvisioner.#candidates(options);
-      const registry = new EmbedderRegistry();
       for (const candidate of candidates) {
-        registry.register(candidate.descriptor, candidate.factory);
+        const embedder = await candidate.load();
+        const available = await embedder.probe();
+        if (!available) continue;
+        await embedder.connect();
+        const intentClassifier = await IntentClassifier.create(embedder);
+        return { embedder, intentClassifier };
       }
-
-      const preferences = candidates.map((c) => ({
-        'provider': c.descriptor.provider,
-        'model': c.descriptor.model,
-      }));
-      const cascade = new EmbedderCascade(registry, preferences);
-
-      const embedder = await cascade.select();
-      await embedder.connect();
-
-      const intentClassifier = await IntentClassifier.create(embedder);
-      return { embedder, intentClassifier };
+      return { 'embedder': null, 'intentClassifier': null };
     } catch (err) {
       console.info('[EmbedderProvisioner] embedder unavailable; using LLM-only intent classification:', err);
       return { 'embedder': null, 'intentClassifier': null };

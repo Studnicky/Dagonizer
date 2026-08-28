@@ -1,0 +1,17 @@
+---
+import UiProofGrid from '@/components/islands/UiProofGrid.vue';
+
+interface ProofItem {
+  readonly title: string;
+  readonly body: string;
+}
+
+interface Props {
+  title: string;
+  items: readonly ProofItem[];
+}
+
+const { title, items } = Astro.props;
+---
+
+<UiProofGrid title={title} items={items} />

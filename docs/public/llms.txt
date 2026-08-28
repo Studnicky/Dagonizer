@@ -15,9 +15,9 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 - [Architecture](https://studnicky.github.io/Dagonizer/architecture): how the engine routes nodes, manages state, and composes embedded-DAGs.
 - [Concepts](https://studnicky.github.io/Dagonizer/concepts): core mental model covering nodes, placements, outputs, scatter, embedded-DAG, and state.
 
-## Live demo
+## Reference workflows
 
-- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): runnable in-browser biblio-assistant demo. Multi-source scatter, RDF memory graph, checkpoint/resume, PROV-O activity log, and DAG visualization, all driven by the live engine.
+- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): bibliographic research workflow. Multi-source scatter, RDF memory graph, checkpoint/resume, PROV-O activity log, and DAG visualization, all driven by the engine.
 
 ## Usage guide
 
@@ -48,7 +48,7 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 ## Reference
 
-- [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class, covering execute, hooks, and extension surface.
+- [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class, covering execute, hooks, and extension points.
 - [Execution](https://studnicky.github.io/Dagonizer/reference/execution): ExecutionResult, ExecuteOptions, and the execute() call contract.
 - [Nodes](https://studnicky.github.io/Dagonizer/reference/nodes): placement types (SingleNode, ScatterNode, EmbeddedDAGNode, TerminalNode, PhaseNode).
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.

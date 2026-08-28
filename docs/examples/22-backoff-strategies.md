@@ -14,24 +14,18 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../exampleDags.ts';
 </script>
 
 # Example 22: Retry Timing and Salvage
 
-## What It Is
+## Retry Timing Surface
 
-Retry Timing and Salvage separates two concerns that applications often tangle together: the DAG shows where retry and recovery can happen, while runtime services decide how long retryable work waits.
+Retry Timing and Salvage separates two concerns that teams often tangle together: the DAG shows where retry and recovery can happen, while runtime services decide how long retryable work waits.
 
 The Archivist uses this shape for model-backed response composition. Retry edges, validation loops, and salvage paths are visible in JSON-LD; deadlines, backoff, jitter, and scheduler behavior stay in runtime policy.
 
-## How It Works
-
-The DAG contains the retry and salvage edges. Runtime services decide how long a node-local operation waits before the node returns one of those outputs. State-held retry counters bound attempts, and deterministic salvage nodes convert exhausted retries into explicit graph paths rather than uncaught exceptions or fabricated success.
-
-This keeps operational tuning from rewriting the flow. You can change a backoff strategy without changing which node retries, where salvage runs, or how the parent DAG routes after recovery.
-
-## Diagrams, Examples, and Outputs
+## Retry and Salvage Flow
 
 ### DAG registration and diagram
 
@@ -39,7 +33,7 @@ Backoff strategy changes retry timing, not DAG topology. The [Archivist](./the-a
 
 <DagJsonMermaid :dag="ComposeRetryLoopDAG" title="Archivist compose retry loop" aria-label="Archivist compose retry loop JSON-LD DAG beside Mermaid generated from it." />
 
-The runnable example keeps timing policy out of the DAG literal:
+The timing policy stays out of the DAG literal:
 
 - Node-local deadlines come from the browser/CLI services context.
 - Retry budget lives on `ArchivistState`, so loops are bounded by state rather than hidden inside a node.
@@ -52,11 +46,11 @@ The runnable example keeps timing policy out of the DAG literal:
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Topology-versus-Timing Model
 
-Retry timing lets applications tune how long retryable work waits without hiding retry topology inside a node. Use it when developers need retry and salvage routes to stay visible, while runtime configuration controls delay, jitter, deadlines, and scheduler behavior.
+The DAG contains the retry and salvage edges. Runtime services decide how long a node-local operation waits before the node returns one of those outputs. State-held retry counters bound attempts, and deterministic salvage nodes convert exhausted retries into explicit graph paths rather than uncaught exceptions or fabricated success.
 
-The practical result is safer tuning. Product latency targets can change without converting explicit recovery paths into hidden adapter loops.
+This keeps operational tuning from rewriting the flow. You can change a backoff strategy without changing which node retries, where salvage runs, or how the parent DAG routes after recovery.
 
 ## Code Samples
 
@@ -72,9 +66,15 @@ The query extraction node uses the same pattern earlier in the run:
 
 <<< @/../examples/the-archivist/nodes/extractQuery.ts#retry-salvage-node
 
-## Details for Nerds
+## Operational Uses
 
-- **Retry as topology.** Retry edges are visible in JSON-LD and Mermaid, so application developers can see where loops occur and which route exits them.
+Retry timing lets hosts tune how long retryable work waits without hiding retry topology inside a node. Retry and salvage routes stay visible while runtime configuration controls delay, jitter, deadlines, and scheduler behavior.
+
+Latency targets can change without converting explicit recovery paths into hidden adapter loops.
+
+## Runtime Notes
+
+- **Retry as topology.** Retry edges are visible in JSON-LD and Mermaid, so teams can see where loops occur and which route exits them.
 - **Timing as policy.** Deadlines and backoff parameters stay in services/runtime configuration instead of changing DAG shape.
 - **Bounded attempts.** State-held counters decide whether a node retries or routes to salvage.
 - **Deterministic salvage.** Salvage/exhaustion paths still produce deterministic visitor output when the LLM path is weak.

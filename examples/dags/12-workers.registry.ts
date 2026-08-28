@@ -18,7 +18,6 @@
 
 // #region registry
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
-import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
@@ -31,7 +30,7 @@ const registry: RegistryModuleInterface = {
         "dags":  [workerDag, dag],
       },
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapter.wrap(() => new WorkState()),
+      "restoreState":    (dataset, runIri) => new WorkState(dataset, runIri),
     };
   },
 };

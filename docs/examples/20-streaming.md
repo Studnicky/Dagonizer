@@ -19,23 +19,17 @@ import { cartographerWorkersDAG } from '../../examples/the-cartographer/dag.ts';
 
 # Example 20: Streaming Execution
 
-## What It Is
+## Execution Stream Surface
 
-Streaming Execution lets an application observe node completions while the final DAG result is still pending. `Dagonizer.execute()` returns an `Execution<TState>` that can be awaited like a promise or consumed with `for await`.
+Streaming Execution lets a host observe node completions while the final DAG result is still pending. `Dagonizer.execute()` returns an `Execution<TState>` that can be awaited like a promise or consumed with `for await`.
 
 The Cartographer runner uses this to update the live graph pane as each placement completes, then awaits the same execution for the final state. One call, one run, two consumption styles.
 
-## How It Works
-
-`execute()` returns an `Execution<TState>` wrapper around one internal run. `for await` consumes node-completion stages from that run, while `await` resolves the cached final result from the same run. The caller can stream first, await later, or only await when no progress UI is needed.
-
-This is a caller API, not a different DAG shape. The JSON-LD graph, registry, routes, cancellation behavior, and final lifecycle are the same whether the caller streams progress or simply awaits completion.
-
-## Diagrams, Examples, and Outputs
+## Caller Observation Flow
 
 ### DAG registration and diagram
 
-The application chooses streaming execution to observe each node result as it completes. [The Cartographer](./the-cartographer) uses this in the live DAG pane: `dispatcher.execute()` returns an awaitable async iterable, and the runner iterates stages to light up graph nodes while the final result is still pending.
+The host chooses streaming execution to observe each node result as it completes. [The Cartographer](./the-cartographer) uses this in the live DAG pane: `dispatcher.execute()` returns an awaitable async iterable, and the runner iterates stages to light up graph nodes while the final result is still pending.
 
 <DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer streaming execution DAG" aria-label="Cartographer worker JSON-LD DAG beside Mermaid generated from it." />
 
@@ -44,24 +38,32 @@ The application chooses streaming execution to observe each node result as it co
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-## What It Lets You Do
+Visit [The Cartographer](./the-cartographer) and compare the live stream and DAG panes with the `Execution<TState>` stages above.
 
-Streaming execution lets applications observe DAG progress while the final result is still pending. Use it for live graph panes, progress bars, logs, server-sent events, and long-running browser or CLI flows where waiting for the final `ExecutionResult` hides useful intermediate state.
+## Execution Wrapper Model
 
-It pairs naturally with cancellation: a UI can show progress, keep a cancel button active, and still receive one final lifecycle result when the run completes or stops.
+`execute()` returns an `Execution<TState>` wrapper around one internal run. `for await` consumes node-completion stages from that run, while `await` resolves the cached final result from the same run. The caller can stream first, await later, or only await when no progress UI is needed.
+
+Streaming changes how the host consumes one run, not how the DAG is authored. The JSON-LD graph, registry, routes, cancellation behavior, and final lifecycle stay the same whether the host streams progress or simply awaits completion.
 
 ## Code Samples
 
 The runner snippet shows the `for await` loop that feeds the Cartographer graph UI. The DAG snippet is included to make the point explicit: streaming execution changes how the caller observes a run, not how the graph is authored.
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-streaming-execution
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-streaming-execution
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
 
-## Details for Nerds
+## Operational Uses
+
+Streaming execution lets hosts observe DAG progress while the final result is still pending. Use it for live graph panes, progress bars, logs, server-sent events, and long-running browser or CLI flows where waiting for the final `ExecutionResult` hides useful intermediate state.
+
+It pairs naturally with cancellation: a UI can show progress, keep a cancel button active, and still receive one final lifecycle result when the run completes or stops.
+
+## Runtime Notes
 
 - **`Execution<TState>` dual interface.** `execute()` returns an object that satisfies both `Promise<ExecutionResultType<TState>>` and `AsyncIterable<NodeResultType<NodeStateInterface>>`. No separate streaming method needed.
 - **Awaitable** — `await dispatcher.execute(...)` waits for the final summary (`ExecutionResultType<TState>`).

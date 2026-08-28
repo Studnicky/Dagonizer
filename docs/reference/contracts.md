@@ -17,40 +17,37 @@ seeAlso:
   - text: 'Reference: Adapters'
     link: './adapters'
     description: 'LlmAdapterInterface implementations, buffered vs. streaming, cascades'
+  - text: 'Reference: RDF 1.2'
+    link: './rdf-12'
+    description: 'how inputSchema/outputSchema and route compatibility are projected into graph triples'
 ---
 
 # Contracts
 
-## What It Is
+## Integration Surface
 
 Contracts are the extension seams Dagonizer calls: nodes, runtime providers, stores, checkpoint stores, containers, handoff channels, adapters, embedders, tools, graph primitives, and registry modules.
 
-Use this page when authoring a plugin, backend, custom node, custom store, worker container, streaming channel, or runtime integration. If Dagonizer calls into your code, the relevant shape belongs here.
+If Dagonizer calls into your code, the relevant shape belongs here: plugin packages, backends, custom nodes, custom stores, worker containers, streaming channels, and runtime integrations all compile against these contracts.
 
-## How It Works
+## Default Implementations and Extensions
 
-Contracts keep implementation detail outside JSON-LD. A DAG placement carries graph identity in `@id`, references node/DAG implementations by registered IRI, and names container roles, channels, gather strategies, or reducers. Registries and injected services bind those references to concrete code that satisfies these interfaces.
-
-The rule is practical: implement the smallest contract Dagonizer actually needs, then register or inject it at the boundary that owns it.
-
-## Diagrams, Examples, and Outputs
-
-Contracts appear throughout the runnable examples. The links below show default implementations and common extension points:
+Contracts appear throughout the focused examples and larger workflows. These references cover the default implementations and the common extension points they satisfy:
 
 - [Reference: Core](./core) - `GatherStrategy`, `OutcomeReducer` extension classes
 - [Reference: Runtime](./runtime) - default implementations of the runtime contracts
 - [Reference: Checkpoint](./checkpoint) - uses `CheckpointStore`
 - [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
 
-## What It Lets You Do
+## Binding Model
 
-The contracts reference lets applications implement extension seams without importing private internals.
+Contracts keep implementation detail outside JSON-LD. A DAG placement carries graph identity in `@id`, references node/DAG implementations by registered IRI, and names container roles, channels, gather strategies, or reducers. Registries and injected services bind those references to concrete code that satisfies these interfaces.
 
-Adapter contracts live at the root of `src/contracts/` and ship through `@studnicky/dagonizer/contracts`. Single source of truth: never re-exported from a sibling module.
+The rule is practical: implement the smallest contract Dagonizer actually needs, then register or inject it at the boundary that owns it.
 
 ## Code Samples
 
-The code below lists the interfaces, option objects, and record shapes application code and plugin packages compile against.
+The code below lists the interfaces, option objects, and record shapes consumer code and plugin packages compile against.
 
 ### Import
 
@@ -87,12 +84,13 @@ import type {
   SystemInfoInterface,
 } from '@studnicky/dagonizer/contracts';
 
-// DagOutcomeType and DagTaskInterface ship through the root barrel
+// DagOutcomeType ships through the root barrel
 import type {
   DagOutcomeType,
-  DagTaskInterface,
 } from '@studnicky/dagonizer';
 ```
+
+`DagTaskType` (the engine-side task descriptor for a contained DAG execution) is an entity-narrowing type, not a `contracts/`-tier adapter contract — see [Reference: Container](./container#class-dagtask) for its shape and the `DagTask` value class that implements it.
 
 ### NodeInterface
 
@@ -105,10 +103,14 @@ import { Timeout } from '@studnicky/dagonizer';
 interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
+  TInputSchema extends SchemaObjectType = SchemaObjectType,
+  TOutputSchemas extends Record<string, SchemaObjectType> = Record<string, SchemaObjectType>,
 > {
+  readonly '@id': string;
   readonly name: string;
   readonly outputs: readonly TOutput[];
-  readonly outputSchema: Record<TOutput, SchemaObjectType>;
+  readonly inputSchema: TInputSchema;
+  readonly outputSchema: TOutputSchemas;
   readonly timeout: Timeout;
   execute(batch: Batch<TState>, context: NodeContextType): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
@@ -116,11 +118,15 @@ interface NodeInterface<
 }
 ```
 
-The contract every application node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` or another declared error output.
+The contract every host-authored node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` or another declared error output. `'@id'` is the canonical node IRI used exclusively for registry lookup; `name` is the display label for observability.
 
-`outputSchema` is a mandatory per-output-port JSON Schema 2020-12 record describing the state delta each port guarantees. Every declared output port in `outputs` must have an entry. Schemas are partial over state — they validate the fields the node writes; do not set `additionalProperties: false`. `MonadicNode` provides a passthrough default (`{ type: 'object' }` per port); concrete nodes should override with real schemas.
+`inputSchema` is a JSON Schema 2020-12 declaration describing the state shape the node expects before execution — the permissive object schema means "no additional structural requirement."
 
-`timeout` is a per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
+`outputSchema` is a mandatory per-output-port JSON Schema 2020-12 record describing the state delta each port guarantees. Every declared output port in `outputs` must have an entry (enforced at `registerNode`). Schemas are partial over state — they validate the fields the node writes; do not set `additionalProperties: false`. `MonadicNode.outputSchema` is `abstract` — there is no passthrough default, so a concrete `MonadicNode` subclass that omits its return shapes does not compile. Use `MonadicNode.permissiveSchema(outputs)` only when every port genuinely accepts the generic object shape.
+
+`inputSchema`/`outputSchema` are not TypeScript-only: `DagGraphProjector.projectNodeSchemas` projects both into the DAG's topology graph as `dagonizer:inputPort`/`dagonizer:outputPort` triples, and reifies each route as an RDF 1.2 triple term carrying `dagonizer:producesSchema`/`dagonizer:requiresSchema` annotations. See [Reference: RDF 1.2](./rdf-12) for the triple shapes.
+
+`timeout` is a per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`) and is a required field — every node carries it. When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget, scoped to that node's `execute()` call only. On expiry the engine throws a `DAGError` (code `NODE_TIMEOUT`), fires `onError`, and marks the run failed. `MonadicNode` declares `readonly timeout: Timeout = Timeout.none()` as the default; a node that does not extend `MonadicNode` must declare `readonly timeout = Timeout.none();` explicitly.
 
 ### ExecuteOptionsType
 
@@ -183,7 +189,7 @@ interface SnapshottableInterface {
 }
 ```
 
-The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, SnapshottableInterface>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `StoreInterface extends SnapshottableInterface`. The `StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
+The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, SnapshottableInterface>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value contract. `StoreInterface extends SnapshottableInterface`. The `StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
 
 ### CheckpointStoreInterface
 
@@ -219,7 +225,7 @@ Produces a fixed-dimensionality vector for a text input. Plugins implement this 
 | Member | Description |
 |---|---|
 | `id` | Provider identifier (`'ollama'`, `'gemini-api'`, etc.) |
-| `displayName` | Human-readable label for logs and UI |
+| `displayName` | Display label for logs and UI |
 | `dimensions` | Output vector dimensionality. Applications verify match against pre-computed corpus embeddings |
 | `embed(text)` | Embed a single text, returning a `number[]` of length `dimensions`. Throws `LlmError` on failure |
 | `embedBatch(texts)` | Batch convenience. Default in `BaseEmbedder` calls `embed()` in series |
@@ -250,8 +256,8 @@ Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via 
 ### Store / StoreSnapshotType / StoreSnapshotEntryType
 
 The store contracts ship through `@studnicky/dagonizer/contracts` alongside the
-other adapter interfaces. Full documentation (concurrency contract,
-`BaseStore` authoring guide, `StoreErrorClassification` taxonomy) lives in
+other adapter interfaces. The concurrency contract,
+`BaseStore` authoring guide, and `StoreErrorClassification` taxonomy live in
 [Reference: Store](./store).
 
 ```ts twoslash
@@ -263,7 +269,7 @@ See [Shared state](../guide/shared-state) for the decision matrix and usage patt
 ### RemoteStore / RemoteStoreEndpointType / RemoteStoreLeaseType
 
 Extension of `Store` for network-backed or replicated store plugins. Implements
-the same `Store` surface plus `endpoint`, `acquireLease`, `releaseLease`, and
+the same `Store` contract plus `endpoint`, `acquireLease`, `releaseLease`, and
 `health` for distributed coordination.
 
 ```ts twoslash
@@ -276,18 +282,30 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 ### DagContainerInterface
 
 ```ts twoslash
-import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
+import type { DagTaskType } from '@studnicky/dagonizer/types';
+import type { Batch, NodeStateInterface } from '@studnicky/dagonizer';
+import type { RunResultType } from '@studnicky/dagonizer/container';
 import type { ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface DagContainerInterface {
-  runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(
+    task: DagTaskType,
+    batch: Batch<NodeStateInterface>,
+    options?: { readonly relay?: ObserverRelayInterface },
+  ): Promise<RunResultType[]>;
   destroy?(): Promise<void>;
 }
 ```
 
 Adapter contract for running an embedded DAG or DAG-body scatter in an isolate (worker thread, forked child, spawned process, Web Worker, or remote host). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must preserve the child DAG boundary: the task carries the selected DAG IRI, placement path, state snapshot, timeout, and execution context; the outcome returns terminal output, terminal state snapshot, collected errors, and intermediates. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`.
+`runDag` preserves the child DAG boundary and item order. `task` carries the
+selected DAG IRI, placement path, timeout, state-selection policy, and execution
+context; `batch` carries the live item states. One request and one response each
+own one combined graph transfer. The container restores that response transfer
+before returning one item-scoped outcome per input. `RunResultType` never carries
+`graphState`. Transport failures, host crashes, and serialization errors produce
+one result per item with an unrecoverable error.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
@@ -321,14 +339,13 @@ Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is f
 ### RegistryModuleInterface / RegistryBundleInterface
 
 ```ts twoslash
-import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
-import type { DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DispatcherBundleType, GraphDatasetInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface RegistryBundleInterface {
   readonly bundle:          DispatcherBundleType<NodeStateInterface>;
   readonly registryVersion: string;
-  readonly restoreState:    CheckpointRestoreAdapterInterface<NodeStateInterface>;
+  restoreState(dataset: GraphDatasetInterface, runIri: string): NodeStateInterface;
   destroy?():               Promise<void>;
 }
 
@@ -344,36 +361,35 @@ interface RegistryModuleInterface {
 ### DagOutcomeType
 
 ```ts twoslash
-import type { NodeErrorWireType, ExecutorIntermediateType, GraphStateTransferType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
+import type { NodeErrorWireType, ExecutorIntermediateType } from '@studnicky/dagonizer';
 // ---cut---
 interface DagOutcomeType {
   readonly terminalOutput: string;
   readonly errors:         readonly NodeErrorWireType[];
-  readonly graphState:  GraphStateTransferType;
+  readonly runIri?:         string;
   readonly intermediates:  readonly ExecutorIntermediateType[];
 }
 ```
 
-Result returned by `DagContainerInterface.runDag()` after a child DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `graphState` is the terminal child graph transfer restored through the shared graph-state port. `intermediates` are per-node results forwarded to the parent execution stream.
+Item outcome returned by `DagContainerInterface.runDag()` after the container
+restores the child state. The host emits `completed`, `failed`, or
+`awaiting-input`; custom implementations may use another routing token.
+`errors` and `intermediates` belong only to this item. `RunResultType` extends
+this shape with the required item `id`. The transport's batch-level
+`graphState` is deliberately absent.
 
-### DagTaskInterface
+The worker wire format is explicitly `application/n-quads`. A request or
+response carries one `GraphStateTransferType` envelope for the entire batch:
+`inline-nquads`, `graph-ref`, `shared-endpoint`, `inline-delta-nquads`, or
+`delta-ref`. Host/container format negotiation uses a non-empty,
+duplicate-free `graphStateTransferFormats` array; the canonical and default
+array is `['application/n-quads']`.
 
-```ts twoslash
-import type { NodeStateInterface, NodeContextType, ExecutionRequestType, Timeout } from '@studnicky/dagonizer';
-// ---cut---
-interface DagTaskInterface {
-  dagName:        string;
-  placementPath:  string[];
-  correlationId:  string;
-  timeout:        Timeout;
-  state:          NodeStateInterface;
-  context:        NodeContextType;
-  toRequest(): ExecutionRequestType;
-}
-```
+### DagTaskType
 
-Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`, typed at the `NodeStateInterface` contract because the engine is heterogeneous-state) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeout` is a `Timeout`; `Timeout.none()` means no per-task budget applies.
+`DagTaskType` is an entity-narrowing type, not a `contracts/`-tier adapter contract — it pairs with the `DagTask` value class in `@studnicky/dagonizer/container`. See [Reference: Container](./container#class-dagtask) for its full field table and the constructor contract.
+
+Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`, typed at the `NodeStateInterface` contract because the engine is heterogeneous-state) for the in-process path, plus `inputState` and `responseState` for the transient state carried across the container boundary. `correlationId` is a dispatcher-monotonic id (no randomness). `timeout` is a `Timeout`; `Timeout.none()` means no per-task budget applies.
 
 ### SystemInfoInterface
 
@@ -419,7 +435,7 @@ interface LlmClientInterface {
 }
 ```
 
-`LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `BaseAdapterOptionsType` also carries cross-cutting options every adapter accepts: `systemPrompt`, a default directive the base injects as the leading system message of any request that carries none (never overriding an explicit system turn), `timeoutMs` (default `60_000`), a per-request deadline, optional `circuitBreaker` / `tokenBucket` guards, and optional `timing` for substrate `adapter.chat.*` / `adapter.chatStream.*` events. An expired deadline surfaces as a `TIMEOUT` classification so a cascade falls through instead of hanging. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
+`LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `BaseAdapterOptionsType` also carries cross-cutting options every adapter accepts: `systemPrompt`, a default directive the base injects as the leading system message of any request that carries none (never overriding an explicit system turn), `timeoutMs` (default `60_000`), a per-request deadline, optional `circuitBreaker` / `tokenBucket` guards, and optional `timing` for substrate `adapter.chat.*` / `adapter.chatStream.*` events. An expired deadline is reported as a `TIMEOUT` classification so a cascade falls through instead of hanging. `LlmClientInterface` is the minimal chat contract pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
 
 `chat()` is the buffered call: it resolves once with the complete `ChatResponseType`. `chatStream(request, sink)` additionally pushes incremental `ChatStreamChunkType` (`{ delta }`) values to `sink` as the response is generated, while still resolving with the same fully-assembled `ChatResponseType` — the sink is a pure observation channel, not an alternate return path. `BaseAdapter`'s default `performChatStream` is buffered: it calls `chat()` internally and pushes exactly one chunk carrying the full response text, so every adapter satisfies the streaming contract even without a streaming backend. Anthropic, the Gemini API adapter, and the Ollama, Groq, Cerebras, Mistral, and OpenRouter adapters override `performChatStream` to push real per-token deltas parsed from a server-sent-events response body. `gemini-nano` streams via the in-browser `LanguageModel` session's `promptStreaming()` async iterable; `web-llm` streams via the `@mlc-ai/web-llm` engine's own stream. Tool-bearing requests (`request.tools.length > 0`) use the buffered default because partial tool-call JSON is unsafe to parse mid-stream. `chatStream` is single-attempt and bounded by the same abort+timeout deadline (`timeoutMs`). `sink.push()` delivery is best-effort: a rejecting sink never fails the call. See [Adapters](./adapters) for the full per-provider streaming reference and [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming) for a working `CallModelNode` + sink example.
 
@@ -434,7 +450,13 @@ interface NodeInvokerInterface {
 
 Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecutionType.invoker`; used exclusively by `custom` gather strategies to invoke the registered node IRI in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(nodeIri)`.
 
-## Details for Nerds
+## Operational Uses
+
+`@studnicky/dagonizer/contracts` is the public subpath for the interfaces hosts and plugin packages implement. It keeps extension seams stable without exposing dispatcher internals.
+
+Adapter contracts live at the root of `src/contracts/()` and ship through `@studnicky/dagonizer/contracts`. That directory is the authoritative definition; sibling modules should not re-export them.
+
+## Runtime Notes
 
 Contracts are intentionally narrow. A node contract does not know how the dispatcher stores registries. A store contract does not know how checkpoints serialize. A channel contract does not know which host receives the handoff. Each seam receives only the methods Dagonizer needs to call.
 
@@ -447,6 +469,7 @@ That keeps plugin packages portable: implement the contract, register or inject 
 - [Reference: Checkpoint](./checkpoint) - uses `CheckpointStore`
 - [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
 - [Reference: Adapters](./adapters) - LlmAdapterInterface implementations, buffered vs. streaming, cascades
+- [Reference: RDF 1.2](./rdf-12) - node contract projection into graph triples
 - [Cancellation](../guide/cancellation) - `ExecuteOptionsType.signal` behavior
 - [Dependency Injection](../guide/services) - pass contract implementations through constructors
 - [State Accessors](../guide/state-accessor) - `StateAccessorInterface`

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
@@ -28,7 +29,7 @@ void describe('graph-state performance smoke invariants', () => {
   });
 
   void it('keeps the browser-compatible N3 adapter free of Node-only imports', () => {
-    const source = readFileSync(new URL('../../../src/adapter/N3GraphDataset.ts', import.meta.url), 'utf8');
+    const source = readFileSync(resolve('src/adapter/N3GraphDataset.ts'), 'utf8');
     assert.doesNotMatch(source, /from ['"]node:/);
   });
 });

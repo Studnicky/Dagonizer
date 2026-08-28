@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import mermaid from 'mermaid';
+import UiCodeBlock from './ui/UiCodeBlock.vue';
+import UiCodeTabs from './ui/UiCodeTabs.vue';
+import PanelHeader from './ui/PanelHeader.vue';
 
 import type { DAGType } from '@studnicky/dagonizer';
 import type { MermaidRenderOptionsType } from '@studnicky/dagonizer/viz';
@@ -53,6 +56,10 @@ const mermaidSource = computed(() => MermaidRenderer.render(props.dag, {
   'orientation': props.orientation,
   'theme':       renderTheme.value,
 }));
+const sourceTabs = computed(() => [
+  { 'key': 'jsonld', 'label': 'JSON-LD', 'tone': 'accent' as const },
+  { 'key': 'mermaid', 'label': 'Mermaid source' },
+]);
 
 onMounted(() => {
   mermaid.initialize({
@@ -104,23 +111,52 @@ async function renderMermaid(): Promise<void> {
     </header>
 
     <div class="dag-json-mermaid__grid">
-      <figure class="dag-json-mermaid__panel">
-        <figcaption>DAG JSON-LD registered with the dispatcher</figcaption>
-        <pre><code>{{ jsonLd }}</code></pre>
-      </figure>
+      <UiCodeTabs
+        class="dag-json-mermaid__panel dag-json-mermaid__sources"
+        :tabs="sourceTabs"
+        default-key="jsonld"
+        aria-label="DAG sources"
+      >
+        <template #jsonld>
+          <UiCodeBlock
+            title="DAG JSON-LD"
+            meta="Dispatcher payload"
+            :code="jsonLd"
+            tone="source"
+          />
+        </template>
+        <template #mermaid>
+          <UiCodeBlock
+            title="Mermaid source"
+            meta="Generated renderer output"
+            :code="mermaidSource"
+            tone="source"
+          />
+        </template>
+      </UiCodeTabs>
 
       <figure class="dag-json-mermaid__panel dag-json-mermaid__diagram-panel">
-        <figcaption>Mermaid generated from the same DAG</figcaption>
+        <PanelHeader
+          class="dag-json-mermaid__panel-header"
+          title="Mermaid render"
+          meta="Generated from the same DAG"
+          variant="band"
+          accent="brand"
+        />
         <div
           ref="frameRef"
           class="mermaid dag-json-mermaid__diagram"
           v-html="mermaidSvg"
         />
-        <pre v-if="renderError !== null" class="dag-json-mermaid__error"><code>{{ renderError }}</code></pre>
-        <details class="dag-json-mermaid__source">
-          <summary>Mermaid source</summary>
-          <pre><code>{{ mermaidSource }}</code></pre>
-        </details>
+        <UiCodeBlock
+          v-if="renderError !== null"
+          class="dag-json-mermaid__error"
+          title="Render error"
+          meta="Mermaid rejected the generated source"
+          :code="renderError"
+          tone="error"
+        >
+        </UiCodeBlock>
       </figure>
     </div>
   </section>
@@ -176,32 +212,37 @@ async function renderMermaid(): Promise<void> {
   border-right: 0;
 }
 
-.dag-json-mermaid__panel figcaption {
-  padding: 0.55rem 0.75rem;
-  border-bottom: 1px solid var(--vp-c-divider);
-  color: var(--vp-c-text-2);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.dag-json-mermaid__panel pre {
-  max-height: 640px;
-  margin: 0;
-  padding: 0.9rem;
-  overflow: auto;
-  background: transparent;
-  font-size: 0.74rem;
-  line-height: 1.45;
-}
-
 .dag-json-mermaid__diagram-panel {
   display: flex;
   flex-direction: column;
 }
 
+.dag-json-mermaid__sources {
+  border-right: 1px solid var(--vp-c-divider);
+}
+
+.dag-json-mermaid__sources :deep(.ui-tabs),
+.dag-json-mermaid__sources :deep(.ui-code-block) {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.dag-json-mermaid__panel-header {
+  :deep(.dg-panel-header__title) {
+    font-family: var(--vp-font-family-display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  :deep(.dg-panel-header__meta) {
+    font-size: 0.7rem;
+  }
+}
+
 .dag-json-mermaid__diagram {
+  flex: 1 1 auto;
   min-height: 360px;
   padding: 1rem;
   overflow: auto;
@@ -223,21 +264,12 @@ async function renderMermaid(): Promise<void> {
   overflow: visible;
 }
 
-.dag-json-mermaid__source {
-  border-top: 1px solid var(--vp-c-divider);
-}
-
-.dag-json-mermaid__source summary {
-  cursor: pointer;
-  padding: 0.55rem 0.75rem;
-  color: var(--dagonizer-gold);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-}
-
 .dag-json-mermaid__error {
-  color: var(--vp-c-danger-1);
-  border-top: 1px solid var(--vp-c-danger-1);
+  margin: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
 }
 
 @media (max-width: 960px) {

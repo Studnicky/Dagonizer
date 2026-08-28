@@ -3,11 +3,10 @@
  * (data/geo-fixtures.json) once at module load and exposes a typed accessor
  * for the RecordedIpGeolocator. Keyed by IP address.
  *
- * GPS reverse-geocode is now offline (country-coder) — no fixture entries
+ * GPS reverse-geocode is offline (country-coder), so no fixture entries
  * are needed or stored for that modality.
  *
- * `_recorded: true` means the fixture was captured from a live recording pass;
- * `false` marks a synthesised-but-realistic placeholder pending a live re-record.
+ * `_recorded: true` means the fixture was captured from a live recording pass.
  *
  * Uses a static JSON import (ESM + Vite compatible; no createRequire/node:module).
  */
@@ -47,7 +46,7 @@ export class GeoFixtures {
     const raw = FIXTURES_TYPED.ipGeolocate[ipAddress];
     if (raw === undefined) return null;
     return {
-      'modality':    raw.modality === 'gps' || raw.modality === 'ip' ? raw.modality : 'ip',
+      'modality':    GeoFixtures.requireModality(raw.modality),
       'resolved':    raw.resolved,
       'country':     raw.country,
       'countryName': raw.countryName,
@@ -58,6 +57,11 @@ export class GeoFixtures {
       'lng':         raw.lng,
       'water':       raw.water,
     };
+  }
+
+  private static requireModality(value: string): GeoCandidate['modality'] {
+    if (value === 'gps' || value === 'ip' || value === 'address') return value;
+    throw new TypeError(`Invalid geo fixture modality: ${value}`);
   }
 }
 // #endregion geo-fixtures

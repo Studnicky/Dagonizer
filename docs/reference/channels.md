@@ -18,32 +18,26 @@ seeAlso:
 
 # Channels
 
-## What It Is
+## Handoff Surface
 
 Channels move `DAGHandoff` envelopes between DAG hosts. They are the boundary where one DAG finishes at a terminal whose display `name` is bound to a channel and another host receives enough information to continue work elsewhere.
 
-Use this page when implementing an in-memory handoff, queue-backed handoff, serverless handoff, or custom transport that publishes `DAGHandoff` payloads.
+Channel implementations are the transport adapters behind in-memory handoff, queue-backed handoff, serverless handoff, and any custom publisher that moves `DAGHandoff` payloads between hosts.
 
-## How It Works
+## Transport and Deployment References
 
-A dispatcher publishes to a channel when a non-embedded flow reaches a terminal whose `name` is bound in `DagonizerOptionsType.channels`. Channel binding uses that terminal label for host configuration; graph execution still follows placement IRIs. The payload includes the terminal name, DAG identity, placement path, state snapshot, and `registryVersion` for receiver-side validation.
-
-`InMemoryChannel` is the local default and testing implementation. Production channels implement the same contract over queues, event buses, HTTP, workers, or cloud orchestration services.
-
-## Diagrams, Examples, and Outputs
-
-Channels are runtime transports rather than graph placements. These pages show the same handoff contract in runnable code and deployment guidance:
+Channels are runtime transports rather than graph placements. These adjacent pages cover the same handoff contract in code and deployment guidance:
 
 - [Reference: Contracts](./contracts) - `HandoffChannelInterface`
 - [Reference: Container](./container) - pool-owning container base, `DagHost`
 - [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via an InMemoryChannel subclass
 - [Guide: Distribution and Cloud](../guide/distribution) - serverless handler pattern, Step Functions wiring, registryVersion handshake
 
-## What It Lets You Do
+## Publish Contract
 
-The channels reference lets applications implement or use handoff transports that move `DAGHandoff` envelopes between DAG hosts.
+A dispatcher publishes to a channel when a non-embedded flow reaches a terminal whose `name` is bound in `DagonizerOptionsType.channels`. Channel binding uses that terminal label for host configuration; graph execution still follows placement IRIs. The payload includes the terminal name, DAG identity, placement path, state snapshot, and `registryVersion` for receiver-side validation.
 
-Hand-off channel implementations. Ships through `@studnicky/dagonizer/channels`.
+`InMemoryChannel` is the local default and testing implementation. Production channels implement the same contract over queues, event buses, HTTP, workers, or cloud orchestration services.
 
 ## Code Samples
 
@@ -130,7 +124,7 @@ declare const downstreamDispatcher: Dagonizer<AppState>;
 class HandoffChannel extends InMemoryChannel {
   protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     const state = new AppState();
-    await state.restoreJsonLd(state.runIri, handoff.graphState);
+    await state.restoreTransientState(state.runIri, handoff.graphState);
     await downstreamDispatcher.execute('urn:noocodec:dag:continuation-dag', state);
   }
 }
@@ -179,7 +173,13 @@ class SqsChannel implements HandoffChannelInterface {
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+One host publishes a serialized handoff envelope and another host continues from the recorded DAG, state snapshot, and registry version.
+
+The built-in `InMemoryChannel` covers loopback and tests. Production transports implement the same `HandoffChannelInterface` over queues, event buses, HTTP, or cloud orchestration services.
+
+## Runtime Notes
 
 Channel payloads are serialized handoff envelopes. A receiving host still needs a registered DAG IRI and state restore path before it can continue execution.
 

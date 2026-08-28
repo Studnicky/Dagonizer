@@ -3,7 +3,7 @@
  * TopBar: owns the left zone of the VitePress navbar.
  *
  * Renders one continuous row: [sidebar toggle][icon][wordmark]. Mounted
- * via the `nav-bar-content-before` Layout slot in theme/index.ts. The
+ * via the `nav-bar-title-before` Layout slot in theme/index.ts. The
  * default `VPNavBarTitle` is hidden in base.css so this component is
  * the single authority on the left navbar zone; VitePress keeps
  * ownership of the right zone (search, nav links, theme switch).
@@ -104,6 +104,9 @@ onBeforeUnmount(() => {
   gap: 0.6rem;
   height: var(--vp-nav-height, 64px);
   padding-left: max(12px, env(safe-area-inset-left));
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
 }
 
 .dagonizer-topbar-toggle {
@@ -123,6 +126,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   min-height: 2.2rem;
   transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  flex-shrink: 0;
 }
 
 .dagonizer-topbar-toggle:hover {
@@ -156,6 +160,10 @@ onBeforeUnmount(() => {
   font-size: 1.05rem;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  flex: 0 1 auto;
 }
 
 .dagonizer-topbar-brand:hover { color: var(--dagonizer-gold, var(--vp-c-brand-1)); }
@@ -165,6 +173,12 @@ onBeforeUnmount(() => {
   height: 28px;
   display: block;
   filter: drop-shadow(0 0 6px rgba(34, 232, 255, 0.35));
+  flex-shrink: 0;
+}
+
+.brand-wordmark {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Backdrop scrim: covers the page when the drawer is open. Click
@@ -184,6 +198,14 @@ onBeforeUnmount(() => {
 :global(html:not(.dagonizer-sidebar-collapsed)) .dagonizer-topbar-backdrop {
   opacity: 1;
   pointer-events: auto;
+}
+
+@media (max-width: 1180px) {
+  .toggle-label { display: none; }
+}
+
+@media (max-width: 1060px) {
+  .brand-wordmark { display: none; }
 }
 
 @media (max-width: 480px) {

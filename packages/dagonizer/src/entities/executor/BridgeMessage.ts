@@ -8,9 +8,9 @@
  * The `execute` branch carries a dag-only request: no `variant` discriminant
  * on the request, no `nodeName`. A DagHost runs only whole DAGs.
  * The `result` branch carries a dag-only response using per-item `items`
- * (not a top-level `terminalOutput`). The inline shapes are structural copies
- * of the canonical ExecutionRequest / ExecutionResponse schemas to avoid
- * $ref resolution at compile time.
+ * (not a top-level `terminalOutput`). The inline shapes structurally reuse
+ * the canonical ExecutionRequest / ExecutionResponse schema members without
+ * embedding their root metadata or requiring $ref resolution.
  *
  * Parent → host: init, execute, abort, shutdown
  * Host → parent: ready, result, intermediate, instrumentation, error, log
@@ -20,98 +20,53 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
+import { GRAPH_STATE_TRANSFER_FORMATS } from '../../contracts/GraphStateTransferFormat.js';
 
-import type { ExecutionRequestType } from './ExecutionRequest.js';
-import type { ExecutionResponseType } from './ExecutionResponse.js';
-import { GraphStateTransferSchema } from './GraphStateTransferSchema.js';
+import { ExecutionRequestSchema, type ExecutionRequestType } from './ExecutionRequest.js';
+import { ExecutionResponseSchema, type ExecutionResponseType } from './ExecutionResponse.js';
 
 // ---------------------------------------------------------------------------
-// Inline shape copies
+// Inline structural shapes
 // ---------------------------------------------------------------------------
-
-const InlineNodeErrorShape = {
-  'type': 'object',
-  'required': NodeErrorSchema.required,
-  'properties': NodeErrorProperties,
-  'additionalProperties': false,
-} as const;
 
 /**
- * Inline copy of the dag-only ExecutionRequest shape.
- * See ExecutionRequest.ts for the canonical schema.
+ * Root-metadata-free dag-only ExecutionRequest shape.
  * No `variant` discriminant; no `nodeName`. DagHost runs only whole DAGs.
- * `items` carries one or more `{ id, graphState }` pairs for batch execution.
+ * `graphState` is the batch-level N-Quads transfer; `items`
+ * carries one `{ id, runIri }` entry per batch item.
  */
 const InlineExecutionRequestShape = {
-  'type': 'object',
-  'required': ['dagName', 'placementPath', 'items', 'timeoutMs', 'correlationId'],
-  'properties': {
-    'dagName':       { 'type': 'string', 'minLength': 1 },
-    'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-    'items': {
-      'type': 'array',
-      'minItems': 1,
-      'items': {
-        'type': 'object',
-        'required': ['id', 'graphState'],
-        'properties': {
-          'id':       { 'type': 'string', 'minLength': 1 },
-          'graphState': GraphStateTransferSchema,
-        },
-        'additionalProperties': false,
-      },
-    },
-    'timeoutMs':     { 'type': ['number', 'null'] },
-    'correlationId': { 'type': 'string', 'minLength': 1 },
-  },
-  'additionalProperties': false,
+  'type': ExecutionRequestSchema.type,
+  'required': ExecutionRequestSchema.required,
+  'properties': ExecutionRequestSchema.properties,
+  'additionalProperties': ExecutionRequestSchema.additionalProperties,
 } as const;
 
 /**
- * Inline copy of the dag-only ExecutionResponse shape.
- * See ExecutionResponse.ts for the canonical schema.
- * Per-item results live in `items[*].{ id, graphState, terminalOutcome }`.
- * The ExecutorIntermediate items shape (output, skipped, nodeName) is an
- * inline copy of ExecutorIntermediate.ts — intentionally duplicated to
- * avoid $ref resolution at compile time.
+ * Root-metadata-free dag-only ExecutionResponse shape.
+ * `graphState` is the batch-level N-Quads transfer; per-item
+ * results live in
+ * `items[*].{ id, runIri, terminalOutcome, errors, intermediates }`.
  */
 const InlineExecutionResponseShape = {
+  'type': ExecutionResponseSchema.type,
+  'required': ExecutionResponseSchema.required,
+  'properties': ExecutionResponseSchema.properties,
+  'additionalProperties': ExecutionResponseSchema.additionalProperties,
+} as const;
+
+const InstrumentationEventShape = {
   'type': 'object',
-  'required': ['correlationId', 'items', 'errors', 'intermediates'],
+  'required': ['correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
   'properties': {
-    'correlationId': { 'type': 'string', 'minLength': 1 },
-    'items': {
-      'type': 'array',
-      'minItems': 1,
-      'items': {
-        'type': 'object',
-        'required': ['id', 'graphState', 'terminalOutcome'],
-        'properties': {
-          'id':              { 'type': 'string', 'minLength': 1 },
-          'terminalOutcome': { 'type': 'string' },
-          'graphState':      GraphStateTransferSchema,
-        },
-        'additionalProperties': false,
-      },
-    },
-    'errors': {
-      'type': 'array',
-      'items': InlineNodeErrorShape,
-    },
-    'intermediates': {
-      'type': 'array',
-      'items': {
-        'type': 'object',
-        'required': ['output', 'skipped', 'nodeName'],
-        'properties': {
-          'output':   { 'type': ['string', 'null'] },
-          'skipped':  { 'type': 'boolean' },
-          'nodeName': { 'type': 'string' },
-        },
-        'additionalProperties': false,
-      },
-    },
+    'correlationId': { 'type': 'string' },
+    'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
+    'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
+    'dagName':       { 'type': 'string' },
+    'nodeName':      { 'type': 'string' },
+    'output':        { 'type': ['string', 'null'] },
+    'message':       { 'type': 'string' },
+    'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
   },
   'additionalProperties': false,
 } as const;
@@ -127,12 +82,31 @@ export const BridgeMessageSchema = {
     // ── parent → host ────────────────────────────────────────────────────────
     {
       'type': 'object',
-      'required': ['variant', 'registryModule', 'registryVersion', 'servicesConfig'],
+      'required': ['variant', 'registryModule', 'registryVersion', 'servicesConfig', 'graphStateTransferFormats'],
       'properties': {
         'variant':         { 'type': 'string', 'const': 'init' },
         'registryModule':  { 'type': 'string', 'minLength': 1 },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'servicesConfig':  { 'type': 'object' },
+        'graphStateTransferFormats': {
+          'type': 'array',
+          'minItems': 1,
+          'uniqueItems': true,
+          'items': {
+            'type': 'string',
+            'enum': GRAPH_STATE_TRANSFER_FORMATS,
+          },
+        },
+        // R2: opt-out for WorkerObserver's per-flush instrumentation-event
+        // dedup. Optional — the genuine boundary default (true) lives in
+        // WorkerObserver, not here. See WorkerObserver.ts.
+        'coalesceInstrumentation': { 'type': 'boolean' },
+        // Optional worker-side instrumentation path-depth cap. When set,
+        // WorkerObserver drops deeper events before they cross the boundary.
+        'instrumentationPlacementPathDepth': {
+          'type': 'integer',
+          'minimum': 0,
+        },
       },
       'additionalProperties': false,
     },
@@ -167,11 +141,20 @@ export const BridgeMessageSchema = {
     // ── host → parent ────────────────────────────────────────────────────────
     {
       'type': 'object',
-      'required': ['variant', 'registryVersion', 'capabilities'],
+      'required': ['variant', 'registryVersion', 'capabilities', 'graphStateTransferFormats'],
       'properties': {
         'variant':         { 'type': 'string', 'const': 'ready' },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'capabilities':    { 'type': 'array', 'items': { 'type': 'string' } },
+        'graphStateTransferFormats': {
+          'type': 'array',
+          'minItems': 1,
+          'uniqueItems': true,
+          'items': {
+            'type': 'string',
+            'enum': GRAPH_STATE_TRANSFER_FORMATS,
+          },
+        },
       },
       'additionalProperties': false,
     },
@@ -200,16 +183,22 @@ export const BridgeMessageSchema = {
       'type': 'object',
       'required': ['variant', 'correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
       'properties': {
-        'variant':       { 'type': 'string', 'const': 'instrumentation' },
+        'variant': { 'type': 'string', 'const': 'instrumentation' },
+        ...InstrumentationEventShape.properties,
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['variant', 'correlationId', 'items'],
+      'properties': {
+        'variant':       { 'type': 'string', 'const': 'instrumentationBatch' },
         'correlationId': { 'type': 'string' },
-        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
-        // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
-        'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
-        'dagName':       { 'type': 'string' },
-        'nodeName':      { 'type': 'string' },
-        'output':        { 'type': ['string', 'null'] },
-        'message':       { 'type': 'string' },
-        'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
+        'items': {
+          'type': 'array',
+          'minItems': 1,
+          'items': InstrumentationEventShape,
+        },
       },
       'additionalProperties': false,
     },

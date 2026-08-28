@@ -1,10 +1,12 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
@@ -12,6 +14,7 @@ import { DagReferenceResolver } from './DagReferenceResolver.js';
 import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
+import { TransientResultSelection } from './TransientResultSelection.js';
 
 /**
  * Dispatcher surface `EmbeddedDagExecutor` needs to execute an
@@ -23,8 +26,8 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  */
 export type EmbeddedDagExecutorSourceType = {
   readonly stateMapper: {
-    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
-    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, childScope: GraphScopeType, factory: ChildStateFactoryType): NodeStateInterface;
     mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
   };
   /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
@@ -92,6 +95,7 @@ export class EmbeddedDagExecutor {
   ): Promise<RunNodeResultType> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
+    const responseState = TransientResultSelection.embeddedResponseState(placement);
 
     const parentDag = this.#source.dags.get(parentDagName);
     const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
@@ -110,9 +114,14 @@ export class EmbeddedDagExecutor {
     // resolver returns a registered DAG IRI; invalid selections route to error
     // without touching the child state meaningfully.
     const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
+    const childScope: GraphScopeType = {
+      'runIri': `${state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+      'dagIri': dagIri ?? state.runIri,
+      'placementIri': placement['@id'],
+    };
     const cloneState = factory !== undefined
-      ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
-      : this.#source.stateMapper.cloneChild(state, inputMapping);
+      ? this.#source.stateMapper.spawnChild(state, inputMapping, childScope, factory)
+      : this.#source.stateMapper.cloneChild(state, inputMapping, childScope);
 
     if (dagIri === null) {
       return this.#withGatherRecord(placement, PlacementRouter.assemble(
@@ -133,6 +142,14 @@ export class EmbeddedDagExecutor {
       'selectedDagIri': dagIri,
     });
 
+    // Canonical inputState for the contained transport: the child DAG only
+    // needs the paths this placement's stateMapping.input actually seeded.
+    const inputState: TransientNodeStateSelectionType = {
+      'mode': 'selection',
+      'domainPaths': Object.keys(inputMapping),
+      'metadataKeys': [],
+    };
+
     // Run the sub-DAG body in-process or through a bound container. The
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
     // and the container error/snapshot collection all live in BodyExecutor.
@@ -141,6 +158,8 @@ export class EmbeddedDagExecutor {
       placement.name,
       cloneState,
       state,
+      inputState,
+      responseState,
       placement.container,
       signal,
       placementPath,

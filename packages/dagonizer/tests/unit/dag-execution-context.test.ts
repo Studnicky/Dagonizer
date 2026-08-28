@@ -147,9 +147,10 @@ void describe('DagExecutionContext correlation propagation', () => {
     const dispatcher = new Dagonizer<SeenState>();
 
     // Deliberately staggered: 'slow' awaits longer than 'fast', so if any
-    // ambient/swapped-pointer state leaked between runs, 'slow' would be the
-    // one to observe 'fast's id (the last-set "current" scope by the time
-    // 'slow' resumes) rather than its own.
+      // ambient/swapped-pointer state leaked between runs, 'slow' would be the
+      // one to observe 'fast's id (the last-set "current" scope by the time
+      // 'slow' resumes) rather than its own.
+    // Real timers are intentional: this probes concurrent platform-task interleaving between executions.
     const makeDelayedReader = (delayMs: number): (state: SeenState, context: NodeContextType) => Promise<string> =>
       async (state, context) => {
         await new Promise<void>((resolve) => { setTimeout(resolve, delayMs); });

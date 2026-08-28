@@ -1,10 +1,10 @@
 /**
  * dag-outcome.test.ts
  *
- * Pins the shape of DagOutcome.transportError(correlationId) and the
+ * Pins the shape of DagOutcome.transportError(id, correlationId) and the
  * TransportErrorCode.isInfrastructureFailure predicate.
  *
- * DagOutcome.transportError returns a DagOutcomeType that the scatter and
+ * DagOutcome.transportError returns a RunResultType that the scatter and
  * embedded-DAG execution branches use to distinguish an infrastructure failure
  * (retryable: leave the scatter item un-acked) from a legitimate body-error
  * outcome (the DAG ran and routed to its error output; ack it as completed).
@@ -29,7 +29,7 @@ import {
 describe('DagOutcome.transportError — default shape', () => {
   it('pins the full structural contract (excluding timestamp)', () => {
     const correlationId = 'corr-shape';
-    const outcome = DagOutcome.transportError(correlationId);
+    const outcome = DagOutcome.transportError('item-1', correlationId);
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
 
@@ -58,7 +58,7 @@ describe('DagOutcome.transportError — default shape', () => {
   });
 
   it('error.timestamp is a non-empty valid ISO 8601 date string', () => {
-    const outcome = DagOutcome.transportError('corr-123');
+    const outcome = DagOutcome.transportError('item-1', 'corr-123');
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.ok(typeof error.timestamp === 'string' && error.timestamp.length > 0,
@@ -74,7 +74,7 @@ describe('DagOutcome.transportError — default shape', () => {
 
 describe('DagOutcome.transportError — custom code override', () => {
   it('accepts DAG_CONTAINER_WORKER_DIED as the code', () => {
-    const outcome = DagOutcome.transportError('corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
+    const outcome = DagOutcome.transportError('item-1', 'corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(error.code, DAG_CONTAINER_WORKER_DIED);
@@ -82,7 +82,7 @@ describe('DagOutcome.transportError — custom code override', () => {
   });
 
   it('accepts a custom code and message', () => {
-    const outcome = DagOutcome.transportError('corr-x', { 'code': 'CUSTOM_CODE', 'message': 'custom message' });
+    const outcome = DagOutcome.transportError('item-1', 'corr-x', { 'code': 'CUSTOM_CODE', 'message': 'custom message' });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(error.code, 'CUSTOM_CODE');
@@ -115,7 +115,7 @@ describe('TransportErrorCode.isInfrastructureFailure', () => {
   });
 
   it('the default DagOutcome.transportError code is an infrastructure failure', () => {
-    const outcome = DagOutcome.transportError('corr-123');
+    const outcome = DagOutcome.transportError('item-1', 'corr-123');
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(
@@ -126,7 +126,7 @@ describe('TransportErrorCode.isInfrastructureFailure', () => {
   });
 
   it('DAG_CONTAINER_WORKER_DIED outcome code is an infrastructure failure', () => {
-    const outcome = DagOutcome.transportError('corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
+    const outcome = DagOutcome.transportError('item-1', 'corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(

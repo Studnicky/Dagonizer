@@ -311,10 +311,10 @@ void test('RdfProvObserver: resume observer does not re-persist pre-park reasoni
   assert.equal(afterParkCount, 2, 'pre-park run persists exactly its two reasoning steps');
 
   // ── HITL parks here; a checkpoint captures `state` (runId + reasoning
-  // survive the graph round-trip. On
-  // resume, `ArchivistSession.resumeRun` restores the SAME runId and builds
-  // a NEW `RdfProvObserver` instance seeded with the already-persisted
-  // reasoning so it never re-derives or re-writes the pre-park steps. ──────
+  // survive the graph round-trip. On resume, the browser runner restores the
+  // SAME runId and builds a NEW `RdfProvObserver` instance seeded with the
+  // already-persisted reasoning so it never re-derives or re-writes the
+  // pre-park steps. ──────────────────────────────────────────────────────
   const resumeObserver = new RdfProvObserver({
     store, runId, dispatcherAgentId: 'dispatcher', alreadyPersistedReasoning: state.reasoning,
   });

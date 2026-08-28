@@ -6,16 +6,20 @@ import { WorkSetCheckpoint } from '../checkpoint/WorkSetCheckpoint.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
+import type { FoldJournalStoreInterface } from '../contracts/FoldJournalStoreInterface.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { GraphDatasetInterface } from '../contracts/GraphDatasetInterface.js';
+import type { GraphScopeType } from '../contracts/GraphDatasetProviderInterface.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { WritePointType } from '../contracts/WritePoint.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { DagConfiguration } from '../entities/configuration/DagConfiguration.js';
 import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
@@ -27,7 +31,9 @@ import { NO_RETRY } from '../entities/dag/SingleNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
+import type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
+import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
@@ -37,6 +43,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { DagExecutionContext } from '../runtime/DagExecutionContext.js';
 import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
+import { Validator } from '../validation/Validator.js';
 
 import { DagReferenceResolver } from './DagReferenceResolver.js';
 import type { Gather, GatherRouteRecordType } from './Gather.js';
@@ -85,13 +92,26 @@ export interface NodeSchedulerSourceInterface {
   readonly accessor: StateAccessorInterface;
   /** Runtime topology graph sink for selected embedded-DAG bindings. */
   readonly executionTopologyStore: GraphDatasetInterface;
+  readonly foldJournalStores: Readonly<Record<string, FoldJournalStoreInterface>>;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
+  /** Resolved write points for a registered placement IRI. */
+  resolvedPlacementWritePoints(placementIri: string): ReadonlySet<WritePointType> | undefined;
+  /** Resolved policy for a registered placement IRI. */
+  resolvedPlacementConfiguration(placementIri: string): DagConfiguration.ResolvedType | undefined;
 
   /** Relay a flow-start event into the dispatcher's `onFlowStart` hook. */
   relayFlowStart(dagName: string, state: NodeStateInterface, signal: AbortSignal): void;
   /** Relay a flow-end event into the dispatcher's `onFlowEnd` hook. */
   relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal): void;
+  /** Project a placement-start batch into the host topology store. */
+  projectNodeStart(placementIri: string, batch: Batch<NodeStateInterface>): void;
+  /** Project a placement-completion batch into the host topology store. */
+  projectNodeEnd(placementIri: string, batch: Batch<NodeStateInterface>, output: string | null): void;
+  /** Project a placement-failure batch into the host topology store. */
+  projectNodeError(placementIri: string, batch: Batch<NodeStateInterface>): void;
+  /** Project completed item state into the configured post-completion stores. */
+  projectStateSnapshot(placementIri: string, batch: Batch<NodeStateInterface>): Promise<void>;
   /** Relay a node-start event into the dispatcher's `onNodeStart` hook. */
   relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal, placementIri?: string): void;
   /** Relay a node-end event into the dispatcher's `onNodeEnd` hook. */
@@ -173,6 +193,20 @@ export class NodeScheduler {
     batch: RunNodesBatchType = {},
   ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TReturn>, void> {
     const { inputBatch, terminalByItemId } = batch;
+    const terminalNameByItemId = new Map<string, string>();
+    const topLevelBatch = inputBatch ?? Batch.of<NodeStateInterface>(state);
+    const lifecycleStateByItemId = new Map<string, NodeStateInterface>();
+    for (const item of topLevelBatch) {
+      lifecycleStateByItemId.set(item.id, item.state);
+    }
+    if (inputBatch !== undefined) {
+      lifecycleStateByItemId.set(inputBatch.row(0).id, state);
+    }
+    // Each top-level input owns a lifecycle for the duration of this run.
+    const lifecycleItems: readonly NodeStateInterface[] = [...lifecycleStateByItemId.values()];
+    // Single-item runs return when parked. Multi-item runs retain parked items
+    // while continuing to schedule active siblings.
+    const isSingleItemRun = inputBatch === undefined || inputBatch.size <= 1;
     // Composed once, up front: every relay call in this method (including the
     // unknown-DAG/unknown-node error paths below, before `dag` even resolves)
     // fires with this same signal, so `DagExecutionContext.tryGet(signal, ...)`
@@ -192,7 +226,7 @@ export class NodeScheduler {
       const error = new DAGError(`Unknown DAG: ${dagName}`);
       this.#source.relayError('<unknown>', error, state, placementPath, signal);
       if (!runOptions.embedded) {
-        try { state.markFailed(error); } catch { /* state may already be terminal */ }
+        this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
       }
       const result: ExecutionResultType<TReturn> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state, 'terminalOutcome': null,
@@ -215,10 +249,12 @@ export class NodeScheduler {
       // or in the awaiting-input (parked) state for HITL flows. Reset to `pending`
       // so `markRunning()` can re-enter the running state.
       // Lifecycle is restored from the graph before a resumed run re-enters execution.
-      if (fromStage !== null && (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle))) {
-        state.resetLifecycle();
+      for (const item of lifecycleItems) {
+        if (fromStage !== null && (DAGLifecycleMachine.isTerminal(item.lifecycle) || DAGLifecycleMachine.isParked(item.lifecycle))) {
+          item.resetLifecycle();
+        }
+        item.markRunning();
       }
-      state.markRunning();
       this.#source.relayFlowStart(dagName, state, signal);
     }
 
@@ -238,12 +274,12 @@ export class NodeScheduler {
       for (const phase of prePhases) {
         this.#source.relayPhaseEnter(dagName, 'pre', phase.name, state, placementPath, signal);
         try {
-          await this.#executePhasePlacement(phase, state, dagName, signal, dagContext);
+          await this.#executePhasePlacement(phase, topLevelBatch, dagName, signal, dagContext);
           executedNodes.push(phase.name);
         } catch (err) {
           const error = err instanceof Error ? err : new DAGError(String(err), { 'code': 'EXECUTION_ERROR' });
           this.#source.relayError(phase.name, error, state, placementPath, signal);
-          try { state.markFailed(error); } catch { /* already terminal */ }
+          this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
           this.#source.relayPhaseExit(dagName, 'pre', phase.name, state, placementPath, signal);
           const result = this.#composeResult(null, executedNodes, skippedNodes, null, null, state);
           await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
@@ -299,27 +335,101 @@ export class NodeScheduler {
       // Resume: when fromStage is provided and this is a top-level run, check
       // for a persisted work-set blob. If present, rebuild `pending` from it so
       // every in-flight item's state is restored exactly. If absent, fall through
-      // to the size-1 seed below (the cursor model — byte-identical to before).
+      // to a size-1 seed at the requested cursor.
       if (fromStage !== null && !runOptions.embedded) {
+        const resetGatherTargets = new Set<string>();
+        const deriveContribution = (gatherKey: string, record: GatherRecordProgressType): (() => void) => {
+          const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
+          if (gatherTarget === undefined) {
+            throw new DAGError(`Fold journal contribution references unknown gather buffer '${gatherKey}'`, {
+              'code': 'VALIDATION_ERROR',
+              'context': { gatherKey },
+            });
+          }
+          if (record.contribution === undefined) {
+            this.#rejectGatherContribution(gatherTarget, record.contribution, 'contribution is required');
+          }
+          const appendOperations = this.#deriveGatherAppendOperations(gatherTarget, record.contribution);
+          return () => { this.#commitGatherAppendOperations(gatherTarget, state, appendOperations, resetGatherTargets); };
+        };
+
+        const foldJournalStores = new Set<FoldJournalStoreInterface>();
+        for (const placement of dag.nodes) {
+          const writePoints = this.#source.resolvedPlacementWritePoints(placement['@id']);
+          if (writePoints?.has('FoldDeltaJournal') !== true) continue;
+          const configuration = this.#source.resolvedPlacementConfiguration(placement['@id']);
+          const storeKey = configuration?.durability.foldJournalStoreKey;
+          if (storeKey !== null && storeKey !== undefined) {
+            const store = this.#source.foldJournalStores[storeKey];
+            if (store !== undefined) foldJournalStores.add(store);
+          }
+        }
+        if (foldJournalStores.size > 0) {
+          const entries: GatherProgressType['entries'] = {};
+          const seen = new Set<string>();
+          const latestProgress = new Map<string, FoldJournalStoreInterface.CommitType['progress']>();
+          const completedScatters = new Set<string>();
+          for (const foldJournalStore of foldJournalStores) {
+            for await (const yieldedCommit of foldJournalStore.read(state.runIri)) {
+              const commit = Validator.foldJournalCommit.validate(yieldedCommit);
+              if (completedScatters.has(commit.scatterIri)) continue;
+              for (const entry of commit.entries) {
+                const recordKey = JSON.stringify([entry.gatherKey, entry.record.source, entry.record.index]);
+                if (seen.has(recordKey)) continue;
+                seen.add(recordKey);
+                const records = entries[entry.gatherKey] ?? [];
+                records.push(entry.record);
+                entries[entry.gatherKey] = records;
+              }
+              if (commit.completed) {
+                latestProgress.delete(commit.scatterIri);
+                ScatterCheckpoint.clear(state, commit.scatterIri);
+                completedScatters.add(commit.scatterIri);
+              } else {
+                latestProgress.set(commit.scatterIri, commit.progress);
+              }
+            }
+          }
+          for (const [scatterIri, progress] of latestProgress) {
+            ScatterCheckpoint.writeBounded(
+              state,
+              scatterIri,
+              progress.inbox,
+              progress.watermark,
+              progress.aheadAcked,
+              progress.outcomeTally,
+            );
+          }
+          if (Object.keys(entries).length > 0) {
+            await gatherBuffers.restore({ entries }, state, { deriveContribution });
+          }
+        }
+
         const gatherBlob = GatherCheckpoint.read(state);
         if (gatherBlob !== undefined) {
-          await gatherBuffers.restore(gatherBlob, state);
+          await gatherBuffers.restore(gatherBlob, state, {
+            deriveContribution,
+          });
           GatherCheckpoint.clear(state);
         }
 
         const workSetBlob = WorkSetCheckpoint.read(state);
         if (workSetBlob !== undefined) {
               // Rebuild pending from the blob: for each placement, reconstruct each
-              // item's state from its graph document, then accumulate into the
+              // item's transient state snapshot, then accumulate into the
           // work set in declaration order.
           //
-              // `state.clone()` copies the current graph; graph restore replaces
-              // the clone's run graph with the item's graph document.
+              // `state.clone()` copies the current domain/control surface;
+              // transient restore rehydrates the clone without RDF projection.
           for (const entry of workSetBlob.entries) {
             const items: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const workItem of entry.items) {
-              const itemState = state.clone();
-              await itemState.restoreJsonLd(itemState.runIri, workItem.graphState);
+              const itemState = state.clone({
+                'runIri': `${state.runIri}/restore/${workItem.id}`,
+                dagIri,
+                'placementIri': entry.placement,
+              });
+              await itemState.restoreTransientState(itemState.runIri, workItem.graphState);
               entrypointSourceByState.set(itemState, workItem.source ?? this.#entrypointIri(dagIri, 'main'));
               entrypointRootByState.set(itemState, state);
               items.push({ 'id': workItem.id, 'state': itemState });
@@ -335,7 +445,7 @@ export class NodeScheduler {
           // the cursor. Byte-identical to the existing checkpoint test path.
           entrypointSourceByState.set(state, this.#entrypointIri(dagIri, 'main'));
           entrypointRootByState.set(state, state);
-          pending.add(cursor, Batch.of(state));
+          pending.add(cursor, topLevelBatch);
         }
       } else {
         // Fresh execute (fromStage === null) or embedded: seed with the
@@ -345,7 +455,7 @@ export class NodeScheduler {
           const seededGather = this.#seedOpenIntakeGather(
             dagIri,
             entrypointEntries,
-            Batch.of(state),
+            topLevelBatch,
             pending,
             gatherBuffers,
             entrypointSourceByState,
@@ -355,7 +465,7 @@ export class NodeScheduler {
             this.#seedEntrypointBatch(
               dagIri,
               entrypointEntries,
-              Batch.of(state),
+              topLevelBatch,
               pending,
               entrypointSourceByState,
               entrypointRootByState,
@@ -395,8 +505,7 @@ export class NodeScheduler {
 
       // Terminal accumulator: collects batches per terminal name so all items
       // reaching terminal nodes are processed before outcome is determined.
-      // For size-1 batches this is a map with exactly one entry of size 1,
-      // and the behaviour is byte-identical to the prior break-on-first path.
+      // A size-1 batch produces one accumulator entry containing one item.
       const terminalAccumulator = new Map<string, { 'outcome': 'completed' | 'failed'; 'batch': Batch<NodeStateInterface> }>();
 
       // Work-set scheduling loop.
@@ -415,7 +524,7 @@ export class NodeScheduler {
 
         // Abort check: fires before each placement.
         if (signal.aborted) {
-          const abortInfo = this.#handleAbort(state, signal);
+          const abortInfo = this.#handleAbort(lifecycleItems, signal);
           this.#source.relayError(currentPlacementIri, abortInfo.error, state, placementPath, signal);
           const interruptedAt: InterruptionInfoType = {
             'nodeName': currentPlacementIri,
@@ -430,8 +539,7 @@ export class NodeScheduler {
           // work set AND that item's state is reference-equal to the top-level
           // state. When this holds, the cursor model already captures everything
           // (cursor = placement name, state = top-level state) and no blob is
-          // needed — byte-identical to existing behaviour. When it does NOT hold
-          // (multi-item or a cloned item state), write the blob.
+          // needed. Multi-item work sets and cloned item states require a blob.
           if (!runOptions.embedded) {
             let totalItems = 0;
             let canonicalState: NodeStateInterface | undefined;
@@ -451,7 +559,7 @@ export class NodeScheduler {
                 const items: WorkSetProgressType['entries'][number]['items'] = [];
                 for (const item of batch) {
                   const source = entrypointSourceByState.get(item.state);
-                  const graphState = item.state.snapshotJsonLd(item.state.runIri);
+                  const graphState = item.state.snapshotTransientState();
                   items.push(source === undefined
                     ? { 'id': item.id, 'graphState': graphState }
                     : { 'id': item.id, source, 'graphState': graphState });
@@ -463,7 +571,14 @@ export class NodeScheduler {
             if (gatherBuffers.isEmpty()) {
               GatherCheckpoint.clear(state);
             } else {
-              GatherCheckpoint.write(state, gatherBuffers.toProgress((gatherKey) => this.#gatherTargetForBufferKey(gatherKey)?.gather));
+              GatherCheckpoint.write(state, gatherBuffers.toProgress(
+                (gatherKey) => this.#gatherTargetForBufferKey(gatherKey)?.gather,
+                (gatherKey, _gather, record) => {
+                  const gatherTarget = this.#gatherTargetForBufferKey(gatherKey);
+                  if (gatherTarget === undefined) return undefined;
+                  return this.#gatherContribution(gatherTarget, record);
+                },
+              ));
             }
           }
 
@@ -482,20 +597,21 @@ export class NodeScheduler {
           const error = new DAGError(`Unknown placement IRI: ${currentPlacementIri} in DAG ${dagName}`);
           this.#source.relayError(currentPlacementIri, error, state, placementPath, signal);
           if (!runOptions.embedded) {
-            try { state.markFailed(error); } catch { /* already terminal */ }
+            this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
           }
           const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
           await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
           return result;
         }
 
-        // Representative state: first item in the batch. For size-1 batches
-        // this is identical to the single cursor state — byte-identical to today.
+        // The first batch item supplies the representative telemetry state.
         const repState = batch.row(0).state;
 
+        this.#source.projectNodeStart(currentPlacementIri, batch);
         this.#source.relayNodeStart(node.name, repState, placementPath, signal, currentPlacementIri);
 
         if (Placement.isGather(node)) {
+          const completedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
           for (const item of batch) {
             const gatherKey = this.#gatherBufferKey(node, item.id);
             scheduledGatherKeys.delete(gatherKey);
@@ -513,6 +629,12 @@ export class NodeScheduler {
             }
             pending.add(nextStage, Batch.of(item.state, item.id));
             executedNodes.push(node.name);
+            const completed = completedByOutput.get(gatherRun.output);
+            if (completed !== undefined) {
+              completed.push({ 'id': item.id, 'state': item.state });
+            } else {
+              completedByOutput.set(gatherRun.output, [{ 'id': item.id, 'state': item.state }]);
+            }
             this.#source.relayNodeEnd(node.name, gatherRun.output, item.state, placementPath, signal, currentPlacementIri);
             yield {
               'output': gatherRun.output,
@@ -521,6 +643,10 @@ export class NodeScheduler {
               'state': item.state,
               'intermediateResults': [],
             };
+          }
+          for (const [output, items] of completedByOutput) {
+            this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+            await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
           }
           continue scheduleLoop;
         }
@@ -549,7 +675,20 @@ export class NodeScheduler {
               terminalByItemId.set(item.id, terminal.outcome);
             }
           }
+          for (const item of batch) {
+            terminalNameByItemId.set(item.id, terminal.name);
+            this.#settleTerminalLifecycle(
+              item.id,
+              item.state,
+              terminal.outcome,
+              runOptions.embedded,
+              terminalNameByItemId,
+              lifecycleStateByItemId,
+            );
+          }
           executedNodes.push(terminal.name);
+          this.#source.projectNodeEnd(currentPlacementIri, batch, terminal.outcome);
+          await this.#source.projectStateSnapshot(currentPlacementIri, batch);
           const terminalResult: NodeResultType<NodeStateInterface> = {
             'output': terminal.outcome,
             'skipped': false,
@@ -575,13 +714,26 @@ export class NodeScheduler {
         // early with a populated `parked` entity on the result.
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultType<NodeStateInterface>;
+          let projectedRouted: RoutedBatchType<string, NodeStateInterface> | null;
           try {
             const fired = await this.#fireSinglePlacement(node, batch, dagName, signal, dagContext);
+            const parkedBatch = fired.routed.get('parked');
 
             // Park detection: if any item in the routed map is on the 'parked'
             // output, treat the entire firing as a park. For size-1 batches
             // (the canonical case) this is a single item on a single port.
-            if (fired.routed.has('parked')) {
+            if (parkedBatch !== undefined) {
+              for (const parkedItem of parkedBatch) {
+                const rawKey = parkedItem.state.getMetadata('correlationKey');
+                const correlationKey = typeof rawKey === 'string' ? rawKey : currentPlacementIri;
+                const lifecycleState = lifecycleStateByItemId.get(parkedItem.id) ?? parkedItem.state;
+                if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(lifecycleState.lifecycle) && !DAGLifecycleMachine.isParked(lifecycleState.lifecycle)) {
+                  try { lifecycleState.park(correlationKey); } catch { /* lifecycle guard */ }
+                }
+              }
+            }
+
+            if (parkedBatch !== undefined && isSingleItemRun) {
               executedNodes.push(currentPlacementIri);
               // Read the correlationKey the node placed in state metadata.
               const rawKey = repState.getMetadata('correlationKey');
@@ -595,13 +747,32 @@ export class NodeScheduler {
                 'cursor': currentPlacementIri,
                 'dagName': dagName,
               };
+              this.#source.projectNodeEnd(currentPlacementIri, batch, 'parked');
+              await this.#source.projectStateSnapshot(currentPlacementIri, batch);
               this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath, signal, currentPlacementIri);
               const parkResult = this.#composeResult(currentPlacementIri, executedNodes, skippedNodes, null, null, state, parkedEntity);
               await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, signal, placementPath);
               return parkResult;
             }
 
-            const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
+            const routableWithoutParked = new Map<string, Batch<NodeStateInterface>>();
+            for (const [outputPort, subBatch] of fired.routed) {
+              if (outputPort === 'parked') {
+                continue;
+              }
+              routableWithoutParked.set(outputPort, subBatch);
+            }
+            const validated = this.#validateOutputContract(fired.dagNode, routableWithoutParked);
+            if (parkedBatch === undefined) {
+              projectedRouted = validated;
+            } else {
+              const effectiveRouted = new Map<string, Batch<NodeStateInterface>>();
+              for (const [outputPort, subBatch] of validated) {
+                effectiveRouted.set(outputPort, subBatch);
+              }
+              effectiveRouted.set('parked', parkedBatch);
+              projectedRouted = effectiveRouted;
+            }
             nodeResult = this.#routeToPending(
               node,
               fired.dagNode,
@@ -614,13 +785,20 @@ export class NodeScheduler {
               entrypointSourcesByPlacement,
               scheduledGatherKeys,
             );
+            if (parkedBatch !== undefined && projectedRouted !== null) {
+              nodeResult = {
+                ...nodeResult,
+                'output': projectedRouted.size === 1 ? (projectedRouted.keys().next().value ?? null) : null,
+              };
+            }
           } catch (caughtError) {
             const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.projectNodeError(currentPlacementIri, batch);
             this.#source.relayError(currentPlacementIri, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
               if (!runOptions.embedded) {
-                const abortInfo = this.#handleAbort(state, signal);
+                const abortInfo = this.#handleAbort(lifecycleItems, signal);
                 interruptedAt = { 'nodeName': currentPlacementIri, 'reason': abortInfo.reason };
               } else {
                 const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
@@ -629,10 +807,10 @@ export class NodeScheduler {
             } else if (error instanceof DAGError && error.code === 'NODE_TIMEOUT') {
               interruptedAt = { 'nodeName': currentPlacementIri, 'reason': 'timeout' };
               if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-                try { state.markFailed(error); } catch { /* already terminal */ }
+                this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
               }
             } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-              try { state.markFailed(error); } catch { /* already terminal */ }
+              this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
             }
             const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
             await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
@@ -640,6 +818,10 @@ export class NodeScheduler {
           }
 
           executedNodes.push(nodeResult.nodeName);
+          for (const [outputPort, subBatch] of projectedRouted?.entries() ?? []) {
+            this.#source.projectNodeEnd(currentPlacementIri, subBatch, outputPort);
+            await this.#source.projectStateSnapshot(currentPlacementIri, subBatch);
+          }
           this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath, signal, currentPlacementIri);
           yield nodeResult;
           continue scheduleLoop;
@@ -705,9 +887,15 @@ export class NodeScheduler {
             }
 
             const childFactory = this.#source.stateFactories.get(childDagIri);
+            const childScope: GraphScopeType = {
+              'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+              'dagIri': childDagIri,
+              'placementIri': node['@id'],
+              'workItemIri': item.id,
+            };
             const childClone: NodeStateInterface = childFactory !== undefined
-              ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childFactory)
-              : this.#source.stateMapper.cloneChild(item.state, inputMapping);
+              ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childScope, childFactory)
+              : this.#source.stateMapper.cloneChild(item.state, inputMapping, childScope);
             const entries = partitionByDag.get(childDagIri);
             const partitionEntry = {
               'parentItem': item,
@@ -748,7 +936,12 @@ export class NodeScheduler {
 
             // Run each selected child DAG once for its partition. This preserves
             // batch efficiency without collapsing heterogeneous dynamic choices.
-            const childRepState = partition[0]?.parentItem.state.clone() ?? repState.clone();
+            const childRepSourceState = partition[0]?.parentItem.state ?? repState;
+            const childRepState = childRepSourceState.clone({
+              'runIri': `${childRepSourceState.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+              'dagIri': childDagIri,
+              'placementIri': ownerPlacementIri,
+            });
             const childOptions: ExecuteOptionsType = { 'signal': signal };
             const iter = this.run(childDagIri, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
 
@@ -844,6 +1037,21 @@ export class NodeScheduler {
             yield intermediate;
           }
 
+          const projectedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
+          for (const item of parentItems) {
+            const output = routeOutputByItemId.get(item.id);
+            if (output === undefined) continue;
+            const projected = projectedByOutput.get(output);
+            if (projected !== undefined) {
+              projected.push(item);
+            } else {
+              projectedByOutput.set(output, [item]);
+            }
+          }
+          for (const [output, items] of projectedByOutput) {
+            this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+            await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
+          }
           executedNodes.push(node.name);
           this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
@@ -860,9 +1068,7 @@ export class NodeScheduler {
         // existing per-item composite logic (executeDAGNode) for each item in
         // the batch, then partitioning the items across output ports by the
         // route each one selected (RFC 0003 §6 — single-item = internal
-        // iteration; the sub-walk / scatter machinery is reused unchanged). For
-        // a size-1 batch this is byte-identical to the prior single dispatch:
-        // one item, one executeDAGNode call, one route.
+        // iteration; the sub-walk / scatter machinery processes each item once).
         const composite: Array<{
           readonly itemId: string;
           readonly state: NodeStateInterface;
@@ -896,11 +1102,12 @@ export class NodeScheduler {
             // classification + lifecycle handling as the single-item path; the
             // representative state for telemetry is the batch's first item.
             const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.projectNodeError(currentPlacementIri, batch);
             this.#source.relayError(currentPlacementIri, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
               if (!runOptions.embedded) {
-                const abortInfo = this.#handleAbort(state, signal);
+                const abortInfo = this.#handleAbort(lifecycleItems, signal);
                 interruptedAt = { 'nodeName': currentPlacementIri, 'reason': abortInfo.reason };
               } else {
                 const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
@@ -909,10 +1116,10 @@ export class NodeScheduler {
             } else if (error instanceof DAGError && error.code === 'NODE_TIMEOUT') {
               interruptedAt = { 'nodeName': currentPlacementIri, 'reason': 'timeout' };
               if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-                try { state.markFailed(error); } catch { /* already terminal */ }
+                this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
               }
             } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-              try { state.markFailed(error); } catch { /* already terminal */ }
+              this.#failActiveLifecycleItems(error, runOptions.embedded, inputBatch !== undefined, state, lifecycleItems);
             }
             const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
             await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
@@ -937,11 +1144,9 @@ export class NodeScheduler {
           }
         }
 
-        // Observability: one onNodeEnd + one yielded result per firing. For a
-        // size-1 batch this is the single item's result, byte-identical to the
-        // prior single dispatch. For a multi-item batch the representative
-        // output is the one distinct output port when every item agrees, else
-        // null (the items split across ports).
+        // Observability emits one onNodeEnd event and one result per firing.
+        // Multi-item output is the common port when every item agrees, or null
+        // when items split across ports.
         const soleResult = composite.length === 1 ? composite[0]?.result : undefined;
         if (soleResult !== undefined) {
           if (soleResult.skipped) {
@@ -949,6 +1154,8 @@ export class NodeScheduler {
           } else {
             executedNodes.push(soleResult.nodeName);
           }
+          this.#source.projectNodeEnd(currentPlacementIri, batch, soleResult.output);
+          await this.#source.projectStateSnapshot(currentPlacementIri, batch);
           this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath, signal, currentPlacementIri);
           yield {
             'output': soleResult.output,
@@ -962,6 +1169,27 @@ export class NodeScheduler {
           let repOutput: string | null = composite[0]?.result.output ?? null;
           for (const entry of composite) {
             if (entry.result.output !== repOutput) { repOutput = null; break; }
+          }
+          const projectedByOutput = new Map<string, Array<{ id: string; state: NodeStateInterface }>>();
+          for (const entry of composite) {
+            const output = entry.result.output;
+            if (output === null) continue;
+            const projected = projectedByOutput.get(output);
+            const item = { 'id': entry.itemId, 'state': entry.state };
+            if (projected !== undefined) {
+              projected.push(item);
+            } else {
+              projectedByOutput.set(output, [item]);
+            }
+          }
+          if (projectedByOutput.size === 0) {
+            this.#source.projectNodeEnd(currentPlacementIri, batch, null);
+            await this.#source.projectStateSnapshot(currentPlacementIri, batch);
+          } else {
+            for (const [output, items] of projectedByOutput) {
+              this.#source.projectNodeEnd(currentPlacementIri, Batch.from(items), output);
+              await this.#source.projectStateSnapshot(currentPlacementIri, Batch.from(items));
+            }
           }
           this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal, currentPlacementIri);
           yield {
@@ -994,6 +1222,9 @@ export class NodeScheduler {
                 }
                 pending.add(nextStage, Batch.of(entry.state, entry.itemId));
                 executedNodes.push(gatherTarget.name);
+                this.#source.projectNodeStart(gatherTarget['@id'], Batch.of(entry.state, entry.itemId));
+                this.#source.projectNodeEnd(gatherTarget['@id'], Batch.of(entry.state, entry.itemId), gatherRun.output);
+                await this.#source.projectStateSnapshot(gatherTarget['@id'], Batch.of(entry.state, entry.itemId));
                 this.#source.relayNodeEnd(gatherTarget.name, gatherRun.output, entry.state, placementPath, signal);
                 yield {
                   'output': gatherRun.output,
@@ -1030,35 +1261,39 @@ export class NodeScheduler {
         }
       }
 
-      // Resolve terminalOutcome and terminalNodeName from the accumulator after
-      // the work-set loop drains. For size-1 batches with a single terminal this
-      // is identical to the prior break-on-first behaviour. For multi-item batches
-      // with multiple terminals: any 'failed' terminal makes the overall outcome
-      // 'failed'; terminalNodeName is set only when all items converged on a single
-      // terminal (otherwise left null for the lifecycle code below to handle).
+      // Resolve terminalOutcome and terminalNodeName after the work set drains.
+      // Any failed terminal makes a settled batch fail. terminalNodeName is set
+      // only when every item converges on one terminal.
       if (terminalAccumulator.size > 0) {
+        // A single top-level item settles after all internal fan-out drains.
+        // Multi-item convergence requires every top-level lifecycle to settle.
+        const allLifecycleItemsTerminal = isSingleItemRun
+          || lifecycleItems.every((item) => DAGLifecycleMachine.isTerminal(item.lifecycle));
         const allSameTerminal = terminalAccumulator.size === 1;
         let overallFailed = false;
         for (const [tName, { outcome }] of terminalAccumulator) {
           if (outcome === 'failed') overallFailed = true;
           terminalNodeName = tName;
         }
-        terminalOutcome = overallFailed ? 'failed' : 'completed';
-        if (!allSameTerminal) {
-          // Multiple terminal nodes reached — no single representative terminal.
+        terminalOutcome = allLifecycleItemsTerminal
+          ? (overallFailed ? 'failed' : 'completed')
+          : null;
+        if (!allSameTerminal || !allLifecycleItemsTerminal) {
+          // Multiple terminal nodes reached, or at least one top-level item is
+          // still parked — there is no single representative terminal.
           terminalNodeName = null;
         }
       }
     }
 
     if (!runOptions.embedded) {
-      if (terminalOutcome === 'failed') {
+      if (inputBatch === undefined && terminalOutcome === 'failed') {
         try {
           state.markFailed(new DAGError(`Flow terminated at '${executedNodes[executedNodes.length - 1] ?? '<unknown>'}' with outcome=failed`));
-        } catch { /* state may already be terminal */ }
-      } else {
+        } catch { /* lifecycle guard */ }
+      } else if (inputBatch === undefined) {
         // terminalOutcome === 'completed'; flows always end at a TerminalNode.
-        try { state.markCompleted(); } catch { /* state may already be terminal */ }
+        try { state.markCompleted(); } catch { /* lifecycle guard */ }
       }
       // Clear any stale work-set blob so a completed run carries no lingering
       // progress metadata. This is a no-op for size-1 runs (no blob was written)
@@ -1130,7 +1365,7 @@ export class NodeScheduler {
     for (const phase of postPhases) {
       this.#source.relayPhaseEnter(dagName, 'post', phase.name, state, placementPath, signal);
       try {
-        await this.#executePhasePlacement(phase, state, dagName, Signal.never(), postDagContext);
+        await this.#executePhasePlacement(phase, Batch.of<NodeStateInterface>(state), dagName, Signal.never(), postDagContext);
         result.executedNodes.push(phase.name);
       } catch (err) {
         const error = err instanceof Error ? err : new DAGError(String(err), { 'code': 'EXECUTION_ERROR' });
@@ -1149,13 +1384,11 @@ export class NodeScheduler {
     }
     this.#source.relayFlowEnd(dagName, state, result, signal);
 
-    // Hand-off channel publish: only for non-embedded top-level runs that
-    // completed at a bound terminal. The in-process (no-channels) path is
-    // byte-identical: when channels is empty this block is skipped entirely.
+    // Publish handoffs for top-level runs that complete at a bound terminal.
     if (terminalNodeName !== null) {
       const channel = this.#source.channels[terminalNodeName];
       if (channel !== undefined) {
-        const graphState = await state.snapshotJsonLd(state.runIri);
+        const graphState = state.snapshotTransientState();
         const handoff: DAGHandoffType = {
           'dagName': dagName,
           'terminalName': terminalNodeName,
@@ -1184,16 +1417,15 @@ export class NodeScheduler {
   }
 
   /**
-   * Execute a single PhaseNode placement. Looks up the registered node by
-   * `phase.node`, builds a node context, and invokes `node.execute(state, ctx)`
-   * through `withNodeTimeout` so per-node timeouts apply uniformly. Errors
-   * collected by the node are forwarded to `state` via `state.collectError`.
-   * Throws when the registered node is not found or when the node throws /
-   * times out.
+   * Execute one PhaseNode placement over the supplied batch. Looks up the
+   * registered node by `phase.node`, builds a node context, and invokes
+   * `node.execute(batch, ctx)` through `withNodeTimeout` so per-node timeouts
+   * apply uniformly. The phase contract is size-preserving and single-routed:
+   * exactly one output port containing exactly the input batch, in order.
    */
   async #executePhasePlacement(
     phase: PhaseNodeType,
-    state: NodeStateInterface,
+    phaseBatch: Batch<NodeStateInterface>,
     dagName: string,
     signal: AbortSignal,
     dagContext: Record<string, unknown>,
@@ -1207,43 +1439,39 @@ export class NodeScheduler {
     }
     await this.#source.withNodeTimeout(node, signal, (nodeSignal) => {
       const context = this.#source.nodeContext(dagName, phase.name, nodeSignal);
-      return this.#runNodeOnState(node, state, context);
+      return this.#runNodeOnBatch(node, phaseBatch, context);
     });
   }
 
-  /**
-   * Invokes a node on a single state as a size-1 batch.
-   *
-   * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
-   * asserts the size-1 invariant (exactly one route with exactly one item), and
-   * returns the single output port key.
-   *
-   * The node owns error-forwarding during `execute`. Since `Batch.of` wraps
-   * the same state reference, mutations are visible after this call.
-   *
-   * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
-   * one route with exactly one item (invariant violation for size-1 dispatch).
-   */
-  async #runNodeOnState(
+  async #runNodeOnBatch(
     node: NodeInterface<NodeStateInterface, string>,
-    state: NodeStateInterface,
+    batch: Batch<NodeStateInterface>,
     context: NodeContextType,
   ): Promise<string> {
-    const batch = Batch.of(state);
     const routed = await node.execute(batch, context);
     if (routed.size !== 1) {
       throw new DAGError(
-        `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
+        `Node '${node.name}' returned ${routed.size} routes for a size-${batch.size} phase batch (expected exactly 1).`,
       );
     }
     const entry = routed.entries().next().value;
     if (entry === undefined) {
-      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-1 batch.`);
+      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-${batch.size} phase batch.`);
     }
     const [output, resultBatch] = entry;
-    if (resultBatch.size !== 1) {
+    if (resultBatch.size !== batch.size) {
       throw new DAGError(
-        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
+        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-${batch.size} phase batch (expected exactly ${batch.size}).`,
+      );
+    }
+    const expectedIds = batch.ids();
+    const actualIds = resultBatch.ids();
+    if (
+      expectedIds.length !== actualIds.length
+      || expectedIds.some((id, index) => actualIds[index] !== id)
+    ) {
+      throw new DAGError(
+        `Node '${node.name}' route '${output}' reordered or replaced items in a phase batch.`,
       );
     }
     return output;
@@ -1397,7 +1625,11 @@ export class NodeScheduler {
 
     for (const item of seedBatch) {
       for (const [source] of entrypoints) {
-        const entryState = source === 'main' ? item.state : item.state.clone();
+        const entryState = source === 'main' ? item.state : item.state.clone({
+          'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          dagIri,
+          'placementIri': this.#entrypointIri(dagIri, source),
+        });
         entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
         entrypointRootByState.set(entryState, item.state);
         const gatherKey = this.#gatherBufferKey(gatherTarget, item.id);
@@ -1431,7 +1663,11 @@ export class NodeScheduler {
   ): void {
     for (const item of seedBatch) {
       for (const [source, placementIri] of entrypoints) {
-        const entryState = source === 'main' ? item.state : item.state.clone();
+        const entryState = source === 'main' ? item.state : item.state.clone({
+          'runIri': `${item.state.runIri}/clone/${globalThis.crypto.randomUUID()}`,
+          dagIri,
+          'placementIri': this.#entrypointIri(dagIri, source),
+        });
         entrypointSourceByState.set(entryState, this.#entrypointIri(dagIri, source));
         entrypointRootByState.set(entryState, item.state);
         pending.add(placementIri, Batch.of(entryState, item.id));
@@ -1476,6 +1712,207 @@ export class NodeScheduler {
     return undefined;
   }
 
+  #gatherContribution(gatherTarget: GatherNodeType, record: GatherRecordType): unknown | undefined {
+    const config = gatherTarget.gather;
+    const accessor = this.#source.accessor;
+
+    if (config.strategy === 'append') {
+      return {
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.item,
+      };
+    }
+
+    if (config.strategy === 'collect') {
+      return {
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.output,
+      };
+    }
+
+    if (config.strategy === 'map') {
+      const values: Record<string, unknown> = {};
+      for (const [clonePath, parentPath] of Object.entries(config.mapping ?? {})) {
+        values[parentPath] = accessor.get(record.cloneState, clonePath);
+      }
+      return { values };
+    }
+
+    if (config.strategy === 'partition') {
+      return {
+        'target': (config.partitions ?? {})[record.output] ?? null,
+        'value': config.field !== undefined
+          ? accessor.get(record.cloneState, config.field)
+          : record.item,
+      };
+    }
+
+    return undefined;
+  }
+
+  #gatherJournalRecord(gatherTarget: GatherNodeType, record: GatherRecordType) {
+    if (record.index === null) {
+      throw new DAGError(
+        `Gather '${gatherTarget.name}' received a fold contribution without a scatter index`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+    const contribution = this.#gatherContribution(gatherTarget, record);
+    if (contribution === undefined) {
+      throw new DAGError(
+        `Gather '${gatherTarget.name}' does not provide a replayable fold contribution`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+    return {
+      'source': record.source,
+      'index': record.index,
+      ...(record.item === undefined ? {} : { 'item': record.item }),
+      'output': record.output,
+      'terminalOutcome': record.terminalOutcome,
+      ...(record.result === undefined ? {} : { 'result': record.result }),
+      contribution,
+    };
+  }
+
+  #projectStreamedGatherRecords(
+    target: GatherNodeType,
+    source: string,
+    records: readonly GatherRecordType[],
+  ): GatherRecordType[] {
+    return records.map((record) => ({
+      ...record,
+      source,
+      'result': this.#projectGatherResult(target, source, record.cloneState),
+    }));
+  }
+
+  #shouldJournalFoldDeltas(placementIri: string): boolean {
+    const resolved = this.#source.resolvedPlacementWritePoints(placementIri);
+    return resolved?.has('FoldDeltaJournal') === true && resolved.has('WatermarkCommit');
+  }
+
+  #deriveGatherAppendOperations(
+    gatherTarget: GatherNodeType,
+    contribution: unknown,
+  ): { readonly target: string; readonly value: unknown }[] {
+    const config = gatherTarget.gather;
+    const appendOperations: { readonly target: string; readonly value: unknown }[] = [];
+
+    if (config.strategy === 'append' || config.strategy === 'collect') {
+      if (
+        config.target === undefined
+        || !JsonObject.is(contribution)
+        || Object.keys(contribution).length !== 1
+        || !Object.hasOwn(contribution, 'value')
+      ) {
+        this.#rejectGatherContribution(gatherTarget, contribution, 'expected exactly { value } and a registered target');
+      }
+      appendOperations.push({ 'target': config.target, 'value': contribution['value'] });
+    } else if (config.strategy === 'map') {
+      if (
+        config.mapping === undefined
+        || !JsonObject.is(contribution)
+        || Object.keys(contribution).length !== 1
+        || !JsonObject.is(contribution['values'])
+      ) {
+        this.#rejectGatherContribution(gatherTarget, contribution, 'expected exactly { values } for the registered mapping');
+      }
+      const expectedTargets = new Set(Object.values(config.mapping));
+      const contributionTargets = Object.keys(contribution['values']);
+      if (
+        contributionTargets.length !== expectedTargets.size
+        || contributionTargets.some((target) => !expectedTargets.has(target))
+      ) {
+        this.#rejectGatherContribution(gatherTarget, contribution, 'map values must exactly match registered mapping targets');
+      }
+      for (const target of expectedTargets) {
+        appendOperations.push({ target, 'value': contribution['values'][target] });
+      }
+    } else if (config.strategy === 'partition') {
+      if (
+        config.partitions === undefined
+        || !JsonObject.is(contribution)
+        || Object.keys(contribution).length !== 2
+        || !Object.hasOwn(contribution, 'target')
+        || !Object.hasOwn(contribution, 'value')
+      ) {
+        this.#rejectGatherContribution(gatherTarget, contribution, 'expected exactly { target, value } for registered partitions');
+      }
+      const target = contribution['target'];
+      const registeredTargets = Object.values(config.partitions);
+      if (target !== null && (typeof target !== 'string' || !registeredTargets.includes(target))) {
+        this.#rejectGatherContribution(gatherTarget, contribution, 'partition target must be null or a registered partition target');
+      }
+      if (typeof target === 'string') {
+        appendOperations.push({ target, 'value': contribution['value'] });
+      }
+    } else {
+      this.#rejectGatherContribution(gatherTarget, contribution, 'registered strategy is not replayable from fold contributions');
+    }
+
+    return appendOperations;
+  }
+
+  #commitGatherAppendOperations(
+    gatherTarget: GatherNodeType,
+    state: NodeStateInterface,
+    appendOperations: readonly { readonly target: string; readonly value: unknown }[],
+    resetGatherTargets: Set<string>,
+  ): void {
+    const accessor = this.#source.accessor;
+    if (!resetGatherTargets.has(gatherTarget['@id'])) {
+      this.#resetGatherAccumulator(gatherTarget, state);
+      resetGatherTargets.add(gatherTarget['@id']);
+    }
+    for (const operation of appendOperations) {
+      accessor.append(state, operation.target, operation.value);
+    }
+  }
+
+  #rejectGatherContribution(
+    gatherTarget: GatherNodeType,
+    contribution: unknown,
+    reason: string,
+  ): never {
+    throw new DAGError(
+      `Fold journal contribution for GatherNode '${gatherTarget.name}' does not match registered '${gatherTarget.gather.strategy}' strategy: ${reason}`,
+      {
+        'code': 'VALIDATION_ERROR',
+        'context': {
+          'gatherIri': gatherTarget['@id'],
+          'strategy': gatherTarget.gather.strategy,
+          contribution,
+        },
+      },
+    );
+  }
+
+  #resetGatherAccumulator(gatherTarget: GatherNodeType, state: NodeStateInterface): void {
+    const config = gatherTarget.gather;
+    const accessor = this.#source.accessor;
+
+    if (config.strategy === 'append' || config.strategy === 'collect') {
+      if (config.target !== undefined) accessor.set(state, config.target, []);
+      return;
+    }
+
+    if (config.strategy === 'map') {
+      for (const parentPath of Object.values(config.mapping ?? {})) {
+        accessor.set(state, parentPath, []);
+      }
+      return;
+    }
+
+    if (config.strategy === 'partition') {
+      for (const parentPath of Object.values(config.partitions ?? {})) {
+        accessor.set(state, parentPath, []);
+      }
+    }
+  }
+
   #gatherBufferKey(gatherTarget: GatherNodeType, scope: string): string {
     return `${gatherTarget['@id']}/execution/${encodeURIComponent(scope)}`;
   }
@@ -1509,28 +1946,44 @@ export class NodeScheduler {
     const routeRecords: GatherRouteRecordType[] = [];
     const retainedRecords: GatherRecordType[] = [];
     const retainRecord = this.#gather.retainsRecordsForFinalize(target);
+    const journalFoldDeltas = !retainRecord && this.#shouldJournalFoldDeltas(scatter['@id']);
 
-    const storedProgress = ScatterCheckpoint.read(parentState, scatter['@id']);
-    const initialized = storedProgress?.mode === 'bounded'
-      ? storedProgress.watermark + storedProgress.aheadAcked.length > 0
-      : (storedProgress?.ackedResults.length ?? 0) > 0;
+    const writePoints = this.#source.resolvedPlacementWritePoints(scatter['@id']);
+    const storedProgress = !retainRecord && writePoints?.has('WatermarkCommit') === true
+      ? ScatterCheckpoint.read(parentState, scatter['@id'])
+      : undefined;
+    const initialized = storedProgress !== undefined &&
+      storedProgress.watermark + storedProgress.aheadAcked.length > 0;
 
     let binding: StreamedGatherBindingType;
-    const sink: GatherRecordSinkType = async (record) => {
-      const projected: GatherRecordType = {
-        ...record,
-        source,
-        'result': this.#projectGatherResult(target, source, record.cloneState),
-      };
-      if (!binding.initialized) {
-        this.#gather.initialGather(target, gatherState);
-        binding.initialized = true;
-      }
-      await this.#gather.reduceGather(target, [projected], gatherState);
-      routeRecords.push(projected);
-      if (retainRecord) {
-        retainedRecords.push(projected);
-      }
+    const sink: GatherRecordSinkType = {
+      'journalsFoldDeltas': journalFoldDeltas,
+      'retainsRecordsForFinalize': retainRecord,
+      'prepare': async (records) => {
+        if (!journalFoldDeltas) return [];
+        return this.#projectStreamedGatherRecords(target, source, records)
+          .map((record) => ({
+            'gatherKey': key,
+            'record': this.#gatherJournalRecord(target, record),
+          }));
+      },
+      'commit': async (records) => {
+        const projectedRecords = this.#projectStreamedGatherRecords(target, source, records);
+        if (projectedRecords.length === 0) return;
+        if (!binding.initialized) {
+          this.#gather.initialGather(target, gatherState);
+          binding.initialized = true;
+        }
+        await this.#gather.reduceGather(target, projectedRecords, gatherState);
+        for (const record of projectedRecords) {
+          routeRecords.push({
+            'source': record.source,
+            'output': record.output,
+            'terminalOutcome': record.terminalOutcome,
+          });
+        }
+        if (retainRecord) retainedRecords.push(...projectedRecords);
+      },
     };
 
     binding = {
@@ -1644,23 +2097,86 @@ export class NodeScheduler {
     });
   }
 
+  #failActiveLifecycleItems(
+    error: Error,
+    embedded: boolean,
+    batchRun: boolean,
+    state: NodeStateInterface,
+    lifecycleItems: readonly NodeStateInterface[],
+  ): void {
+    if (embedded) {
+      return;
+    }
+    if (!batchRun) {
+      if (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle)) {
+        return;
+      }
+      try { state.markFailed(error); } catch { /* lifecycle guard */ }
+      return;
+    }
+    for (const item of lifecycleItems) {
+      if (item.lifecycle.variant === 'pending') {
+        try { item.markRunning(); } catch { /* lifecycle guard */ }
+      }
+      if (DAGLifecycleMachine.isTerminal(item.lifecycle) || DAGLifecycleMachine.isParked(item.lifecycle)) {
+        continue;
+      }
+      try { item.markFailed(error); } catch { /* lifecycle guard */ }
+    }
+  }
+
+  #settleTerminalLifecycle(
+    itemId: string,
+    itemState: NodeStateInterface,
+    outcome: 'completed' | 'failed',
+    embedded: boolean,
+    terminalNameByItemId: ReadonlyMap<string, string>,
+    lifecycleStateByItemId: ReadonlyMap<string, NodeStateInterface>,
+  ): void {
+    if (embedded) {
+      return;
+    }
+    const lifecycleState = lifecycleStateByItemId.get(itemId) ?? itemState;
+    if (DAGLifecycleMachine.isTerminal(lifecycleState.lifecycle) || DAGLifecycleMachine.isParked(lifecycleState.lifecycle)) {
+      return;
+    }
+    if (outcome === 'completed') {
+      try { lifecycleState.markCompleted(); } catch { /* lifecycle guard */ }
+      return;
+    }
+    const terminalName = terminalNameByItemId.get(itemId) ?? '<unknown>';
+    try {
+      lifecycleState.markFailed(new DAGError(`Flow terminated at '${terminalName}' with outcome=failed`));
+    } catch { /* lifecycle guard */ }
+  }
+
   /**
    * Inspect a triggered abort and mark the lifecycle terminal accordingly.
    * Returns the error to surface on the dispatcher boundary and the
    * `InterruptionInfo.reason` discriminant ('abort' vs 'timeout') so the caller
    * can populate `ExecutionResultType.interruptedAt`.
    */
-  #handleAbort(state: NodeStateInterface, signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
+  #handleAbort(states: readonly NodeStateInterface[], signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
     const reason = signal.reason;
     const isTimeout = reason instanceof Error && reason.name === 'TimeoutError';
     if (isTimeout) {
-      try { state.markTimedOut(); } catch { /* lifecycle already terminal */ }
+      for (const state of states) {
+        if (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle)) {
+          continue;
+        }
+        try { state.markTimedOut(); } catch { /* lifecycle guard */ }
+      }
       return { 'error': reason, 'reason': 'timeout' };
     }
     const message = reason instanceof Error
       ? reason.message
       : (typeof reason === 'string' ? reason : 'aborted');
-    try { state.markCancelled(message); } catch { /* lifecycle already terminal */ }
+    for (const state of states) {
+      if (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle)) {
+        continue;
+      }
+      try { state.markCancelled(message); } catch { /* lifecycle guard */ }
+    }
     return {
       'error':  reason instanceof Error ? reason : new DAGError(message, { 'code': 'EXECUTION_ERROR' }),
       'reason': 'abort',

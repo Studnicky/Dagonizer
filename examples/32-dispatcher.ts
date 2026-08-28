@@ -43,10 +43,14 @@ import { AiComposeNode }           from './the-dispatcher/nodes/AiComposeNode.js
 import { ClassifyMessageNode }     from './the-dispatcher/nodes/ClassifyMessageNode.js';
 import { DeclineNode }             from './the-dispatcher/nodes/DeclineNode.js';
 import { ParkForOperatorNode }     from './the-dispatcher/nodes/ParkForOperatorNode.js';
+import { ProvisionEmbedderNode }   from './the-dispatcher/nodes/ProvisionEmbedderNode.js';
 import { SendResponseNode }        from './the-dispatcher/nodes/SendResponseNode.js';
 import { SetupNode }               from './the-dispatcher/nodes/SetupNode.js';
 import { DispatcherLlmClient }     from './the-dispatcher/providers/DispatcherLlmClient.js';
-import type { DispatcherServices } from './the-dispatcher/services.js';
+import type {
+  DispatcherIntentInterface,
+  DispatcherServices,
+} from './the-dispatcher/services.js';
 import { UserLanguage }            from './the-dispatcher/language/UserLanguage.js';
 
 // ---------------------------------------------------------------------------
@@ -91,10 +95,17 @@ process.stdout.write(`\nLLM backend: ${adapter.id} (${adapter.displayName})\n`);
 
 // ---------------------------------------------------------------------------
 // Services: wire the LLM adapter into the Dispatcher service bag. This CLI demo
-// runs without an on-device embedder, so `intent` is null — ClassifyMessageNode
-// classifies via the LLM. The browser runner provisions an embedder and passes
-// a DispatcherIntentClassifier here instead.
+// runs in explicit LLM classification mode, so the provision phase never loads
+// the intent provider.
 // ---------------------------------------------------------------------------
+
+class LlmOnlyIntentProvider {
+  readonly displayName = null;
+
+  async load(): Promise<DispatcherIntentInterface> {
+    throw new Error('intent provider is unavailable in LLM-only mode');
+  }
+}
 
 // Detect the operator's language (process.env.LANG in this CLI context) so
 // composed replies come back in that language rather than always English.
@@ -103,7 +114,7 @@ process.stdout.write(`language: ${dispatcherLanguage} (${UserLanguage.displayNam
 
 const services: DispatcherServices = {
   'llm':    new DispatcherLlmClient(adapter, { 'language': dispatcherLanguage }),
-  'intent': null,
+  'intent': new LlmOnlyIntentProvider(),
 };
 
 // ---------------------------------------------------------------------------
@@ -112,6 +123,7 @@ const services: DispatcherServices = {
 
 const dispatcher = new Dagonizer<DispatcherState>();
 const setup           = new SetupNode();
+const provisionEmbedder = new ProvisionEmbedderNode(services);
 const classifyMessage = new ClassifyMessageNode(services);
 const aiCompose       = new AiComposeNode(services);
 const parkForOperator = new ParkForOperatorNode();
@@ -119,7 +131,7 @@ const sendResponse    = new SendResponseNode();
 const decline         = new DeclineNode();
 
 dispatcher.registerBundle({
-  'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
+  'nodes': [setup, provisionEmbedder, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
   'dags':  [supportDispatcherDAG],
 });
 
@@ -132,6 +144,7 @@ process.stdout.write('--- Scenario 1: Routine query (AI handles) ---\n');
 
 const routineState = new DispatcherState();
 routineState.message = 'What are your store hours?';
+routineState.classificationMode = 'llm';
 routineState.language = dispatcherLanguage;
 
 const routineResult = await dispatcher.execute('urn:noocodec:dag:support-dispatcher', routineState);
@@ -151,6 +164,7 @@ process.stdout.write('\n--- Scenario 2: Escalation → park → operator reply �
 
 const escalatedState = new DispatcherState();
 escalatedState.message = 'I need a refund for my last order';
+escalatedState.classificationMode = 'llm';
 escalatedState.language = dispatcherLanguage;
 
 // Step 2a: Initial execute — should park (escalation triggered)
@@ -208,6 +222,7 @@ process.stdout.write('\n--- Scenario 3: Trolley switch (humanMode = true) ---\n'
 // Even a benign "store hours" query must go to operator when switch is active.
 const trolleyState = new DispatcherState();
 trolleyState.message = 'What are your store hours?';
+trolleyState.classificationMode = 'llm';
 trolleyState.humanMode = true;
 trolleyState.language = dispatcherLanguage;
 

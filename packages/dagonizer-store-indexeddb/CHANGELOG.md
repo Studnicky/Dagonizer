@@ -4,6 +4,10 @@
 
 ### Patch Changes
 
+- Provides the IndexedDB RDF 1.2 graph provider with durable reopen,
+  write-behind append-delta journaling, compaction, and opt-in durable child
+  graphs.
+
 - Updated dependencies [63a6261]
   - @studnicky/dagonizer@2.0.0
 

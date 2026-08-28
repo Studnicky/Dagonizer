@@ -16,60 +16,61 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { cartographerWorkersDAG, eventPipelineTypedDAG } from '../../examples/the-cartographer/dag.ts';
+import { cartographerWorkersDAG } from '../../examples/the-cartographer/dag.ts';
+import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/StreamEventDAG.ts';
 </script>
 
 # Example 04C: Container-Bound Scatter
 
-## What It Is
+## Container Role Surface
 
-Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each canonical event pipeline clone can run behind the `cpu` container role.
+Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each source-payload event pipeline clone can run behind the `cpu` container role.
 
-That role is late-bound. In the browser demo it maps to a `WebWorkerContainer`; in CLI worker mode it maps to a `WorkerThreadContainer`.
+That role is late-bound. In the Cartographer runtime it maps to a `WebWorkerContainer`; in CLI worker mode it maps to a `WorkerThreadContainer`.
 
-## How It Works
+## Worker-backed Scatter Flow
+
+### DAG registration and diagram
+
+[The Cartographer](./the-cartographer) is the concrete container-bound scatter example. Its `process-stream` scatter declares `container: 'cpu'`, and the runtime binds that role to a real `WebWorkerContainer`.
+
+<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
+
+<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Cartographer stream event JSON-LD DAG beside Mermaid generated from it." />
+
+A `ScatterNode` placement that declares `container: "cpu"` runs each clone's sub-DAG in the bound backend. In the Cartographer runtime, the backend is a `WebWorkerContainer` pool; in CLI worker mode it is a `WorkerThreadContainer` pool. The DAG document stays the same.
+
+The parent DAG and the body DAG above are the same registered documents the Cartographer runtime executes.
+
+### Run
+
+```bash
+pnpm run site:dev
+```
+
+Visit [The Cartographer](./the-cartographer), click **Run**, and watch the DAG pane expand `process-stream` into the `stream-event` body.
+
+## Role Binding Model
 
 The JSON-LD placement declares `container: 'cpu'`. At runtime, the dispatcher looks up the `cpu` backend in its `containers` option. If the role is bound, each scatter clone's body DAG runs through that backend. First-class gather and outcome reduction are identical in both modes.
 
 This makes the container role an assembly concern, not a business-logic concern. The scatter body DAG, gather placement, strategy key, and routes stay in the canonical DAG; hosts decide where the work runs.
 
-## Diagrams, Examples, and Outputs
-
-### DAG registration and diagram
-
-[The Cartographer](./the-cartographer) is the runnable container-bound scatter example. Its `process-stream` scatter declares `container: 'cpu'`, and the browser runner binds that role to a real `WebWorkerContainer`.
-
-<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
-
-<DagJsonMermaid :dag="eventPipelineTypedDAG" title="event-pipeline-typed worker body DAG" aria-label="Cartographer typed event pipeline JSON-LD DAG beside Mermaid generated from it." />
-
-A `ScatterNode` placement that declares `container: "cpu"` runs each clone's sub-DAG in the bound backend. In the browser demo, the backend is a `WebWorkerContainer` pool; in CLI worker mode it is a `WorkerThreadContainer` pool. The DAG document stays the same.
-
-The parent DAG and the body DAG above are exactly what the Cartographer page renders and executes.
-
-### Run
-
-```bash
-npm run docs:dev
-```
-
-Open [The Cartographer](./the-cartographer), click **Run**, and watch the DAG pane expand `process-stream` into the `event-pipeline-typed` body.
-
-## What It Lets You Do
-
-Container-bound scatter lets applications move scatter clone execution out of the main process without changing the DAG topology. Use it when each item can run independently and the host should isolate CPU-heavy, memory-heavy, or deployment-specific work behind a named container role.
-
-For a host application, this is the difference between "rewrite the workflow for workers" and "bind the same workflow to a worker-capable host." The JSON-LD still documents the flow; the container binding documents the runtime envelope.
-
 ## Code Samples
 
-The parent DAG declares the container role; the browser runner binds it. Those two files are the whole seam.
+The parent DAG declares the container role; the Cartographer runtime binds it. Those two files are the whole seam.
 
 <<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
 
-<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+<<< @/../examples/the-cartographer/app/CartographerRunner.vue#cartographer-browser-containers
 
-## Details for Nerds
+## Operational Uses
+
+Container-bound scatter lets hosts move scatter clone execution out of the main process without changing the DAG topology. Each item still runs independently, and the host isolates CPU-heavy, memory-heavy, or deployment-specific work behind a named container role.
+
+For a host, this is the difference between "rewrite the workflow for workers" and "bind the same workflow to a worker-capable host." The JSON-LD still documents the flow; the container binding documents the runtime envelope.
+
+## Runtime Notes
 
 - **`container` key on a scatter placement.** Adding `container: "cpu"` to a `ScatterNode` with a dag body tells the dispatcher to run each clone's sub-DAG in the backend bound to `"cpu"`.
 - **No node-body containers.** A scatter whose body is a single node (no `dag` key) cannot be contained — validation rejects `container` on a node-body scatter.

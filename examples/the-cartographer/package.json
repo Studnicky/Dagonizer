@@ -6,6 +6,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5175 --strictPort",
+    "browser:telemetry": "node ./scripts/cartographer-browser-telemetry.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test 'tests/**/*.test.ts'"
   },
@@ -16,14 +20,18 @@
     "@studnicky/clock": "^5.0.0",
     "@studnicky/concurrency": "^5.0.0",
     "@studnicky/dagonizer": "workspace:^",
+    "@studnicky/dagonizer-executor-web": "workspace:^",
     "@studnicky/geo-resolver": "^0.1.0",
     "@studnicky/signal": "^5.0.0",
     "@studnicky/types": "^5.0.0",
     "countries-and-timezones": "^3.9.0",
     "tz-lookup": "^6.1.25",
+    "vue": "^3.5.39",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "json-schema-to-ts": "^3.1.1"
+    "@vitejs/plugin-vue": "^5.2.4",
+    "json-schema-to-ts": "^3.1.1",
+    "vite": "^8.1.3"
   }
 }

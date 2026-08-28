@@ -12,7 +12,7 @@
  *   order-enrichment DAG + nodes (enrichPricing, enrichShipping, enrichEta)
  *   gdpr-compliance DAG + nodes (consentGate, classifyPii, redactPii)
  *   5 per-type pipeline DAGs + their nodes
- *   event-pipeline-typed DAG + routeEventType
+ *   stream-event DAG + routeEventType
  *   insights-summary DAG + summarizeInsights
  *
  * Services: workers construct CartographerServices locally via GeoResolvers.
@@ -61,7 +61,7 @@ const registry: RegistryModuleInterface = {
         'dags':  [...geoBundle.dags,  ...cartographerWorkerRuntimeBundle.dags],
       },
       'registryVersion': '1.0.0',
-      'restoreState': { restore: () => new CartographerState() },
+      'restoreState': (dataset, runIri) => new CartographerState(dataset, runIri),
     };
   },
 };

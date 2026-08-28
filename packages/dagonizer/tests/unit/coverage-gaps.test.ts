@@ -4,8 +4,8 @@
  * Six new coverage tests for paths hardened in the W4/W5 cycle but not yet
  * exercised by the existing suite:
  *
- *   TST-16: graph JSON-LD state restoration.
- *   TST-17: DAGHandoffType graphState (by-reference) publishing path.
+ *   TST-16: transient state restoration.
+ *   TST-17: DAGHandoffType transient graphState publishing path.
  *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
  *   TST-20: Signal.compose with a pre-aborted signal.
@@ -18,8 +18,7 @@ import { describe, it } from 'node:test';
 import { Signal } from '@studnicky/signal';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { RunResultType } from '../../src/container/DagOutcome.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
@@ -34,16 +33,17 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
+import type { DagTaskType } from '../../src/types/DagTask.js';
 import { Validator } from '../../src/validation/Validator.js';
-import { emptyGraphStateTransfer, graphStateDocument } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
 
-// ── TST-16: graph JSON-LD state restoration ──────────────────────────────────
+// ── TST-16: transient state restoration ─────────────────────────────────────
 
 class TypedState extends NodeStateBase {
   count: number = 0;
@@ -52,23 +52,23 @@ class TypedState extends NodeStateBase {
 
 }
 
-void describe('TST-16: graph JSON-LD state restoration', () => {
+void describe('TST-16: transient state restoration', () => {
   void it('round-trips graph-owned domain fields', async () => {
     const state = new TypedState();
     state.count = 7;
     state.label = 'seven';
-    const snap = graphStateDocument(state);
+    const snap = state.snapshotTransientState();
     const restored = new TypedState();
-    await restored.restoreJsonLd(state.runIri, snap);
+    await restored.restoreTransientState(state.runIri, snap);
     assert.equal(restored.count, 7);
     assert.equal(restored.label, 'seven');
   });
 });
 
-// ── TST-17: DAGHandoffType graphState publishing path ───────────────────────
+// ── TST-17: DAGHandoffType transient graphState publishing path ─────────────
 
-void describe('TST-17: DAGHandoffType graphState publishing path', () => {
-  void it('a channel that rewrites to by-ref envelope produces a valid DAGHandoffType', async () => {
+void describe('TST-17: DAGHandoffType transient graphState publishing path', () => {
+  void it('publishes a valid transient-state DAGHandoffType envelope', async () => {
     const receivedEnvelopes: DAGHandoffType[] = [];
 
     class ByRefChannel {
@@ -114,8 +114,8 @@ void describe('TST-17: DAGHandoffType graphState publishing path', () => {
     const envelope = receivedEnvelopes[0];
     assert.ok(envelope !== undefined);
 
-    assert.ok('@context' in envelope.graphState);
-    assert.ok('@graph' in envelope.graphState);
+    assert.ok('domain' in envelope.graphState);
+    assert.ok('graphDomain' in envelope.graphState);
     assert.ok(Validator.dagHandoff.is(envelope),
       `handoff must satisfy DAGHandoffType schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
   });
@@ -145,7 +145,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
           'body': { 'node': 'urn:noocodec:node:noop-bundle' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:warn-test', 'end'),
             'partial': placementIri('urn:noocodec:dag:warn-test', 'end'),
@@ -167,8 +167,8 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // Bind one role so the dispatcher is in container-dispatch mode; the DAG
     // below declares a DIFFERENT, unbound role, which is the misalignment.
     const fakeContainer: DagContainerInterface = {
-      async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-        return { 'terminalOutput': 'success', 'errors': [], 'graphState': emptyGraphStateTransfer(), 'intermediates': [] };
+      async runDag(_task: DagTaskType, _batch: Batch<NodeStateInterface>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<RunResultType[]> {
+        return [];
       },
     };
     const dispatcher = new Dagonizer<NodeStateBase>({
@@ -214,7 +214,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
           'body': { 'dag': 'urn:noocodec:dag:inner-worker' },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'container': 'unbound-worker-role',
           'outputs': {
             'all-success': placementIri('urn:noocodec:dag:unbound-role-test', 'end'),
@@ -250,7 +250,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badRaw = {
       'dagName': 'type-mismatch-test',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:type-mismatch', 'graphIri': 'urn:dagonizer:run:type-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:type-mismatch', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {
@@ -283,7 +283,7 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     const badVersion = {
       'dagName': 'version-mismatch-test',
       'cursor': 'next-node',
-      'graph': { 'runIri': 'urn:dagonizer:run:version-mismatch', 'graphIri': 'urn:dagonizer:run:version-mismatch#state', 'nquads': '', 'hash': 'empty', 'jsonLd': graphStateDocument(new NodeStateBase()) },
+      'state': { 'runIri': 'urn:dagonizer:run:version-mismatch', 'transient': new NodeStateBase().snapshotTransientState() },
       'executedNodes': [],
       'skippedNodes': [],
       'stores': {
@@ -441,7 +441,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
           'body': { 'dag': bodyDagIri },
           'source': 'items',
           'itemKey': 'item',
-          'execution': { 'mode': 'item', 'concurrency': 1 },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 1 } } },
           'outputs': {
             'all-success': placementIri(parentDagIri, 'end'),
             'partial': placementIri(parentDagIri, 'end'),
@@ -482,9 +482,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     const progress: StoredScatterProgressType = Validator.storedScatterProgress.validate(rawProgress);
     assert.ok(progress[fanIri] !== undefined, `progress must have an entry for placement "${fanIri}"`);
     const entry = Validator.scatterProgress.validate(progress[fanIri]);
-    const ackedCount = entry.mode === 'bounded'
-      ? entry.watermark + entry.aheadAcked.length
-      : entry.ackedResults.length;
+    const ackedCount = entry.watermark + entry.aheadAcked.length;
     assert.ok(
       ackedCount < state.items.length,
       `fewer than ${state.items.length} items must be acked after mid-scatter abort; ` +

@@ -18,34 +18,26 @@ seeAlso:
 
 # Checkpoint
 
-## What It Is
+## Checkpoint Surface
 
-The checkpoint surface captures enough information to resume an interrupted DAG run: state, cursor position, lifecycle payload, and optional named store snapshots.
+The checkpoint package captures enough information to resume an interrupted DAG run: state, cursor position, lifecycle payload, and optional named store snapshots.
 
-Use this page when a run must survive process exit, browser refresh, worker replacement, human-in-the-loop parking, or any other interruption that should resume deterministically.
+Checkpoint is the deterministic resume boundary for interruptions such as process exit, browser refresh, worker replacement, or human-in-the-loop parking.
 
-## How It Works
+## Resume and Snapshot References
 
-`Checkpoint.capture()` builds the record from an execution result and optional named stores. `Checkpoint.load()` parses a persisted record. `Checkpoint.recall()` reads from a checkpoint store. `restoreState()` and `restoreStores()` apply the payload back to runtime objects before `Dagonizer.resume()`.
-
-The checkpoint does not contain node implementations or dispatcher registries. The host must register the DAG and node IRIs before resuming.
-
-## Diagrams, Examples, and Outputs
-
-Checkpoint behavior is easiest to understand through resume examples and store snapshots:
+Checkpoint behavior is clearest when read alongside resume flows and store snapshots:
 
 - [Reference: Contracts](./contracts) - `CheckpointStore`, `Snapshottable`, `StoreSnapshotType`, `StoreSnapshotEntryType`
 - [Reference: Entities](./entities) - `CheckpointData`
 - [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
 - [Reference: Validation](./validation) - `Validator.checkpoint`
 
-## What It Lets You Do
+## Capture and Restore Contract
 
-The checkpoint reference lets applications capture, serialize, persist, recall, and restore interrupted DAG executions.
+`Checkpoint.capture()` builds the record from an execution result and optional named stores. `Checkpoint.load()` parses a persisted record. `Checkpoint.recall()` reads from a checkpoint store. `restoreState()` and `restoreStores()` apply the payload back to runtime objects before `Dagonizer.resume()`.
 
-`@studnicky/dagonizer/checkpoint`
-
-The checkpoint module persists and restores in-flight DAG executions. `Checkpoint.capture()` is the canonical way to build a checkpoint; `Checkpoint.load()` parses a persisted record back into a `Checkpoint` instance. Both work whether or not the run uses named stores.
+The checkpoint does not contain node implementations or dispatcher registries. The host must register the DAG and node IRIs before resuming.
 
 ## Code Samples
 
@@ -265,7 +257,7 @@ declare const adapter: CheckpointRestoreAdapterInterface<{ value: number }>;
 const _result: { value: number } = adapter.restore();
 ```
 
-Contract for constructing a graph-backed state instance before `Checkpoint.restoreState()` restores its JSON-LD graph. Wrap a factory with `CheckpointRestoreAdapter.wrap(() => new MyState())`. Ships from `@studnicky/dagonizer/checkpoint`.
+Contract for constructing a state instance before `Checkpoint.restoreState()` restores its plain transient snapshot. Wrap a factory with `CheckpointRestoreAdapter.wrap(() => new MyState())`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 
@@ -330,7 +322,7 @@ import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 declare const data: CheckpointDataType;
 const _dagIri: string = data.dagName;
 const _placementIri: string | null = data.cursor;
-const _graph = data.graph;
+const _state = data.state;
 const _executedNodes: string[] = data.executedNodes;
 const _skippedNodes: string[] = data.skippedNodes;
 const _stores: CheckpointDataType['stores'] = data.stores;
@@ -357,7 +349,7 @@ console.log(CheckpointDataSchema.$id);
 
 ### Class: `MemoryCheckpointStore`
 
-In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the instance. Useful for tests, examples, and ephemeral demo flows. Not for production: the map vanishes when the process exits.
+In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the instance. Useful for tests, examples, and short-lived local runs. Not for production: the map vanishes when the process exits.
 
 ```ts twoslash
 import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
@@ -378,7 +370,15 @@ import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 ---
 
-## Details for Nerds
+## Operational Uses
+
+Checkpoint records freeze the resume state of one run: DAG IRI, cursor, lifecycle payload, state snapshot, and optional named store snapshots. Hosts can persist that record anywhere and later reconstruct state before `resume()`.
+
+The checkpoint never replaces dispatcher registration. It only carries resumable data; the host still has to provide the registered DAG and implementations on the resume side.
+
+`@studnicky/dagonizer/checkpoint` owns the persist-and-restore lifecycle for in-flight DAG executions. `Checkpoint.capture()` builds the record; `Checkpoint.load()` parses it back into a `Checkpoint` instance. Both work whether or not the run uses named stores.
+
+## Runtime Notes
 
 A checkpoint is only useful with the registered DAG and node IRIs, plus any plugin DAG IRIs, state factories, and stores needed by the saved cursor.
 

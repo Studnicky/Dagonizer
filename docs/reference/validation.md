@@ -12,32 +12,24 @@ seeAlso:
 
 # Validation
 
-## What It Is
+## Validation Surface
 
-The validation surface exposes the Ajv-backed validators Dagonizer uses for DAG documents, checkpoint payloads, and entity shapes.
+This reference covers the Ajv-backed validators Dagonizer uses for DAG documents, checkpoint payloads, and entity shapes.
 
-Use this page when loading external JSON, accepting plugin DAG documents, validating generated DAGs, checking checkpoint payloads, or building tooling that should fail with the same schema errors as the dispatcher.
+These validators are the structural gate at every JSON ingest boundary: loading DAG documents, accepting plugin DAGs, validating generated topology, checking checkpoint payloads, and building tooling that should fail with the same schema errors as the dispatcher.
 
-## How It Works
+## Schema and Error References
+
+Validation is not a graph renderer, but it protects every graph before execution. These references cover the related schemas and error shapes:
+
+- [Reference: Entities](./entities) - every schema available through `Validator`
+- [Reference: Errors](./errors) - `ValidationError`
+
+## Ingest Boundary Model
 
 Structural validation happens at ingest boundaries: `DAGDocument.load(json)`, checkpoint loading, and explicit `Validator.*` calls. Semantic validation happens later when a dispatcher registers a DAG against its node and DAG registries.
 
-That split matters: schema validation proves the document shape is legal; registration proves registry bindings exist and placement-IRI routes are coherent.
-
-## Diagrams, Examples, and Outputs
-
-Validation is not a graph renderer, but it protects every graph before execution. These pages show the related schemas and error shapes:
-
-- [Reference: Entities](./entities) - every schema `Validator` exposes
-- [Reference: Errors](./errors) - `ValidationError`
-
-## What It Lets You Do
-
-The validation reference lets applications run the same schema validators the dispatcher uses before registering DAGs or accepting external JSON.
-
-`@studnicky/dagonizer/validation`
-
-The validation module provides the Ajv instance and the unified entity validator used internally by the dispatcher.
+That split matters: schema validation confirms the document shape is legal; registration confirms registry bindings exist and placement-IRI routes are coherent.
 
 ## Code Samples
 
@@ -150,7 +142,7 @@ Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `Enti
 | `Validator.validationResult` | `ValidationResult` | `ValidationResultSchema` |
 | `Validator.dagErrorJson` | `DAGErrorJSON` | `DAGErrorJSONSchema` |
 
-Every entry exposes the same `EntityValidatorInterface<T>` surface: `is(value)`, `validate(value)`, `errors(value)`.
+Every entry exposes the same `EntityValidatorInterface<T>` contract: `is(value)`, `validate(value)`, `errors(value)`.
 
 ---
 
@@ -167,7 +159,13 @@ import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 declare const _v: EntityValidatorInterface<unknown>;
 ```
 
-## Details for Nerds
+## Operational Uses
+
+The validation module exposes the same schema checks the dispatcher already relies on internally. Callers can reject malformed DAGs, checkpoint payloads, and wire-shape entities before registration or execution begins.
+
+Schema validation stays separate from registry validation: `Validator.*` confirms document shape, then dispatcher registration confirms referenced nodes, DAGs, containers, and channels exist.
+
+## Runtime Notes
 
 `validate(value)` returns the typed value or throws `ValidationError`. `is(value)` is a predicate for control flow. `errors(value)` gives formatted messages without throwing.
 

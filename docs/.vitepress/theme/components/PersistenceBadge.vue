@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import Badge from './ui/Badge.vue';
+import UiMetaText from './ui/UiMetaText.vue';
+import { boolBadgeTone } from './ui/theme';
 /**
  * PersistenceBadge: status chip for the RDF memory store persistence mode.
  *
@@ -21,37 +24,30 @@ const emit = defineEmits<{
 <template>
   <button
     type="button"
-    :class="['persistence-badge', props.isPersisted ? 'is-persisted' : 'is-transient']"
+    class="persistence-badge"
     :title="props.isPersisted ? 'Click to switch to in-memory (drops localStorage dump)' : 'Click to enable localStorage persistence'"
     @click="emit('toggle')"
   >
-    <span class="badge-count">{{ props.tripleCount }}</span>
-    <span class="badge-sep">triples</span>
-    <span class="badge-mode">{{ props.isPersisted ? 'persisted' : 'in-memory' }}</span>
+    <Badge :tone="boolBadgeTone(props.isPersisted, 'info', 'neutral')" size="md" interactive>
+      <UiMetaText class="badge-count" tone="default">{{ props.tripleCount }}</UiMetaText>
+      <span class="badge-sep">triples</span>
+      <span class="badge-mode">{{ props.isPersisted ? 'persisted' : 'in-memory' }}</span>
+    </Badge>
   </button>
 </template>
 
 <style scoped>
 .persistence-badge {
   display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.18rem 0.55rem;
-  border-radius: 20px;
-  border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg-elv);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  transition: border-color 0.14s ease, background 0.14s ease;
   white-space: nowrap;
 }
 
-.persistence-badge:hover { border-color: var(--dagonizer-brand); }
-
 .badge-count {
   font-weight: 700;
-  color: var(--vp-c-text-1);
 }
 
 .badge-sep {
@@ -59,11 +55,6 @@ const emit = defineEmits<{
 }
 
 .badge-mode {
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
   font-size: 0.62rem;
 }
-
-.is-persisted .badge-mode { color: var(--dagonizer-brand2); }
-.is-transient .badge-mode { color: var(--vp-c-text-3); }
 </style>

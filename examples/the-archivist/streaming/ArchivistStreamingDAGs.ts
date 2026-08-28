@@ -67,7 +67,7 @@ export const fanInCandidatesDag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
-      'execution': { 'mode': 'item', 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
         'partial': 'urn:noocodec:dag:archivist-streaming:fan-in-candidates/node/collect-candidates',
@@ -111,7 +111,7 @@ export const streamProducerCandidatesDag: DAGType = {
       'body':        { 'node': 'urn:noocodec:node:collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
-      'execution': { 'mode': 'item', 'concurrency': 2 },
+      'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 2 } } },
       'outputs': {
         'all-success': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',
         'partial': 'urn:noocodec:dag:archivist-streaming:stream-producer-candidates/node/collect-candidates',

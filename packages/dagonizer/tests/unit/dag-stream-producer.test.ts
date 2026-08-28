@@ -123,6 +123,34 @@ class MultiSelectProducer extends DagStreamProducer<string> {
   }
 }
 
+/** Producer whose execution stream yields once and then throws a sentinel error. */
+class ThrowingProducer extends DagStreamProducer<string> {
+  readonly #error: Error;
+
+  constructor(error: Error) {
+    super();
+    this.#error = error;
+  }
+
+  protected async *executions(): AsyncGenerator<NodeResultType<NodeStateInterface>> {
+    yield NodeResultFixture.of('before-error', 'ok', false);
+    throw this.#error;
+  }
+
+  protected select(stage: NodeResultType<NodeStateInterface>): Iterable<string> {
+    return [stage.nodeName];
+  }
+}
+
+/** Advances the event loop one turn without introducing wall-clock timing. */
+class TaskQueue {
+  private constructor() {}
+
+  static next(): Promise<void> {
+    return new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // (a) Basic bridge
 // ---------------------------------------------------------------------------
@@ -211,7 +239,50 @@ void describe('DagStreamProducer: back-pressure with bounded channel', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (c) Composition via StreamChannel.fanIn
+// (c) Failure and abort propagation
+// ---------------------------------------------------------------------------
+
+void describe('DagStreamProducer: failure and abort propagation', () => {
+
+  void it('propagates an executions() error through the driven stream', async () => {
+    const sentinel = new Error('inner execution failed');
+    const channel = StreamChannel.driven(new ThrowingProducer(sentinel));
+    const iterator = channel[Symbol.asyncIterator]();
+
+    const first = await iterator.next();
+    assert.deepEqual(first, { 'value': 'before-error', 'done': false });
+
+    await assert.rejects(
+      () => iterator.next(),
+      (error: unknown) => error === sentinel,
+      'the inner execution error must fail the outer stream unchanged',
+    );
+  });
+
+  void it('rejects produce() when the outer scatter aborts while sink.push is back-pressured', async () => {
+    const controller = new AbortController();
+    const producer = new FixtureProducer([
+      NodeResultFixture.of('buffered', 'ok', false),
+      NodeResultFixture.of('blocked', 'ok', false),
+    ]);
+    const channel = new StreamChannel<string>({ 'capacity': 1, 'signal': controller.signal });
+    const producing = producer.produce(channel);
+
+    await TaskQueue.next();
+    const abortError = new Error('outer scatter aborted');
+    controller.abort(abortError);
+
+    await assert.rejects(
+      () => producing,
+      (error: unknown) => error === abortError,
+      'abort must reject the blocked sink push and unwind the producer',
+    );
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// (d) Composition via StreamChannel.fanIn
 // ---------------------------------------------------------------------------
 
 void describe('DagStreamProducer: composition with fanIn', () => {

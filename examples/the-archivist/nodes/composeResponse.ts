@@ -32,7 +32,7 @@ import { Batch, MonadicNode, NodeOutput, ReasoningStep, RoutedBatch } from '@stu
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import { Signal } from '@studnicky/signal';
 
-import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
+import type { ArchivistIntent, ArchivistState, ConversationTurn } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -134,7 +134,7 @@ export class DraftShape {
  * but real catalog records exist — ensures the visitor always sees real book
  * titles rather than a silent bad or hallucinated draft.
  */
-class ShortlistDigest {
+export class ShortlistDigest {
   private static readonly MAX_TITLES = 3;
 
   /**
@@ -161,6 +161,39 @@ class ShortlistDigest {
         : '';
     const lead = shortlist.length === 1 ? 'I found one match' : 'I found some matches';
     return `${lead}: ${list}${extra}. Ask me about any of these and I can tell you more.`;
+  }
+
+  /**
+   * Returns a grounded single-book detail sentence from `candidate`'s
+   * catalog metadata: title, author, publication year, and summary when
+   * present. Used as the deterministic fallback for the `book-detail`
+   * intent when the compose/validate retry loop is exhausted, so a
+   * resolved follow-up ("tell me about the invisible man") never
+   * degrades into a match-list summary.
+   */
+  static detail(candidate: CandidateType): string {
+    const { title, authors } = candidate.book.identity;
+    const year = candidate.book.publication.firstPublishYear;
+    const summary = candidate.book.publication.summary;
+    const firstAuthor = authors[0];
+    const authorPart = firstAuthor !== undefined && firstAuthor.length > 0 ? ` by ${firstAuthor}` : '';
+    const yearPart = year !== null ? ` (${String(year)})` : '';
+    const summaryPart = summary !== null && summary.length > 0 ? ` ${summary}` : '';
+    return `"${title}"${authorPart}${yearPart}.${summaryPart}`;
+  }
+
+  /**
+   * Deterministic exhausted-retry fallback for `ValidateResponseNode`.
+   * `book-detail` resolves to exactly one prior candidate, so it gets the
+   * single-book `detail` sentence instead of the multi-match `summarize`
+   * list; every other intent keeps the match-list summary.
+   */
+  static fallbackFor(intent: ArchivistIntent, shortlist: readonly CandidateType[]): string {
+    const [only] = shortlist;
+    if (intent === 'book-detail' && shortlist.length === 1 && only !== undefined) {
+      return ShortlistDigest.detail(only);
+    }
+    return ShortlistDigest.summarize(shortlist);
   }
 }
 
@@ -226,6 +259,10 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
         'lookup-author':     (q, sl, p, rs, cv, sig, rh) => llm.composeAuthor(q, sl, p, rs, cv, sig, rh),
         'find-reviews':      (q, sl, p, rs, cv, sig, rh) => llm.composeReviews(q, sl, p, rs, cv, sig, rh),
         'describe-book':     (q, sl, p, rs, cv, sig, rh) => llm.describeBook(q, sl, p, rs, cv, sig, rh),
+        // book-detail resolves to exactly one prior candidate upstream
+        // (resolveBookDetail); reuse the same grounded single-book prompt
+        // as describe-book rather than the multi-candidate compose default.
+        'book-detail':       (q, sl, p, rs, cv, sig, rh) => llm.describeBook(q, sl, p, rs, cv, sig, rh),
         'recommend-similar': (q, sl, p, rs, cv, sig, rh) => llm.composeSimilar(q, sl, p, rs, cv, sig, rh),
       };
       const composeFn: ComposeMethod = composeDispatch[state.intent] ??
@@ -440,7 +477,7 @@ export class ValidateResponseNode extends MonadicNode<
           // Budget exhausted: replace a bad draft with a deterministic summary
           // when the shortlist has real records, so the visitor always sees titles.
           if (state.shortlist.length > 0) {
-            state.draft = ShortlistDigest.summarize(state.shortlist);
+            state.draft = ShortlistDigest.fallbackFor(state.intent, state.shortlist);
           }
           const result = NodeOutput.create('exhausted');
           for (const error of result.errors) state.collectError(error);
@@ -465,7 +502,7 @@ export class ValidateResponseNode extends MonadicNode<
         // Budget exhausted: replace a bad draft with a deterministic summary
         // when the shortlist has real records, so the visitor always sees titles.
         if (state.shortlist.length > 0) {
-          state.draft = ShortlistDigest.summarize(state.shortlist);
+          state.draft = ShortlistDigest.fallbackFor(state.intent, state.shortlist);
         }
         const result = NodeOutput.create('exhausted');
         for (const error of result.errors) state.collectError(error);

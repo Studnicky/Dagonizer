@@ -18,9 +18,6 @@
  *     │            Each per-type DAG converges on done/rejected.
  *     └─invalid──► rejected
  *
- * streamEventBundle is the fragment dag.ts imports to register both nodes and the
- * DAG with the dispatcher (the bundle registrar is idempotent for same-instance
- * re-registration, so routeEventType being listed in both bundles is safe).
  */
 
 import type { CartographerState } from '../CartographerState.ts';
@@ -28,11 +25,15 @@ import { decodePayload } from '../nodes/decodePayload.ts';
 import { routeEventType } from '../nodes/routeEventType.ts';
 import { CARTOGRAPHER_IRIS } from '../cartographerIds.ts';
 
-import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 // #region stream-event-dag
 const STREAM_EVENT_DAG_IRI = CARTOGRAPHER_IRIS.dag.streamEvent;
+const STREAM_EVENT_OUTPUTS = {
+  'enriched': 'enriched',
+  'capturedErrors': 'capturedErrors',
+} as const;
 
 export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0')
 
@@ -59,18 +60,7 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
     'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
     'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'legKm':            'legKm',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
+    'outputs': STREAM_EVENT_OUTPUTS,
   })
 
   // 3b. pipeline-sensor-reading: geo + cold-chain + leg measurement.
@@ -78,19 +68,7 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
     'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
     'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'coldChainBreach':  'coldChainBreach',
-      'legKm':            'legKm',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
+    'outputs': STREAM_EVENT_OUTPUTS,
   })
 
   // 3c. pipeline-customs-event: geo + customs-dwell + leg measurement.
@@ -98,19 +76,7 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
     'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
     'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
-    'outputs': {
-      'canonicalVariant':  'canonicalVariant',
-      'raw':               'raw',
-      'normalized':        'normalized',
-      'currentEvent':      'currentEvent',
-      'geoContext':        'geoContext',
-      'resolvedGeo':       'resolvedGeo',
-      'customsDwellHours': 'customsDwellHours',
-      'legKm':             'legKm',
-      'routing':           'routing',
-      'enriched':          'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
+    'outputs': STREAM_EVENT_OUTPUTS,
   })
 
   // 3d. pipeline-facility-scan: geo + facility canonicalization + order enrichment
@@ -119,22 +85,7 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
     'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
     'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
-    'outputs': {
-      'canonicalVariant':  'canonicalVariant',
-      'raw':               'raw',
-      'normalized':        'normalized',
-      'currentEvent':      'currentEvent',
-      'geoContext':        'geoContext',
-      'resolvedGeo':       'resolvedGeo',
-      'pricedOrder':       'pricedOrder',
-      'shippingQuote':     'shippingQuote',
-      'deliveryEstimate':  'deliveryEstimate',
-      'legKm':             'legKm',
-      'gdprResult':        'gdprResult',
-      'routing':           'routing',
-      'enriched':          'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
+    'outputs': STREAM_EVENT_OUTPUTS,
   })
 
   // 3e. pipeline-delivery-confirmation: geo + recipient canonicalization +
@@ -143,19 +94,7 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
     'success': CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),
     'error':   CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'rejected'),
   }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'legKm':            'legKm',
-      'gdprResult':       'gdprResult',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
+    'outputs': STREAM_EVENT_OUTPUTS,
   })
 
   .terminal(CARTOGRAPHER_IRIS.placementIri(STREAM_EVENT_DAG_IRI, 'done'),     { outcome: 'completed' })
@@ -163,13 +102,4 @@ export const streamEventDAG: DAGType = new DAGBuilder(STREAM_EVENT_DAG_IRI, '1.0
 
   .build();
 
-/**
- * Bundle fragment for dag.ts. Registers decode-payload, route-event-type-variant,
- * and the stream-event DAG with the dispatcher. routeEventType re-registration is
- * a no-op (same instance; the bundle registrar is idempotent).
- */
-export const streamEventBundle: DispatcherBundleType<CartographerState> = {
-  'nodes': [decodePayload, routeEventType],
-  'dags':  [streamEventDAG],
-};
 // #endregion stream-event-dag

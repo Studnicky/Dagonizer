@@ -1,0 +1,76 @@
+/**
+ * Shared modal/fullscreen shell chrome for visualization surfaces.
+ *
+ * Parameterization:
+ *   --dagonizer-modal-backdrop
+ *   --dagonizer-modal-blur
+ *   --dagonizer-modal-surface
+ *   --dagonizer-modal-border
+ *   --dagonizer-modal-radius
+ *   --dagonizer-modal-shadow
+ *   --dagonizer-modal-hint-surface
+ *   --dagonizer-modal-hint-border
+ *   --dagonizer-modal-hint-text
+ */
+
+.dagonizer-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background: var(--dagonizer-modal-backdrop, rgba(0, 0, 0, 0.78));
+  backdrop-filter: blur(var(--dagonizer-modal-blur, 6px));
+  animation: dagonizer-modal-in 0.18s ease-out;
+}
+
+.dagonizer-modal-stage {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.dagonizer-modal-stage:active {
+  cursor: grabbing;
+}
+
+.dagonizer-modal-hint {
+  flex: 0 0 auto;
+  padding: 0.45rem 1rem;
+  background: var(--dagonizer-modal-hint-surface, rgba(2, 3, 6, 0.65));
+  border-top: 1px solid var(--dagonizer-modal-hint-border, var(--vp-c-divider, #2e3748));
+  font-family: var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.68rem;
+  color: var(--dagonizer-modal-hint-text, var(--vp-c-text-3, #7a8290));
+  text-align: center;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.dagonizer-modal-card {
+  position: fixed;
+  inset: 2rem;
+  z-index: 9999;
+  border-radius: var(--dagonizer-modal-radius, 8px);
+  border: 1px solid var(--dagonizer-modal-border, var(--dagonizer-brand, #22e8ff));
+  box-shadow: var(--dagonizer-modal-shadow, 0 10px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--dagonizer-brand, #22e8ff));
+  background: var(--dagonizer-modal-surface, var(--vp-c-bg-elv, #0e1525));
+  animation: dagonizer-modal-in 0.18s ease-out;
+}
+
+.dagonizer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: var(--dagonizer-modal-backdrop, rgba(0, 0, 0, 0.72));
+  backdrop-filter: blur(var(--dagonizer-modal-blur, 6px));
+}
+
+@keyframes dagonizer-modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

@@ -341,7 +341,7 @@ describe('ResolveAddressNode — address kind', () => {
 describe('ResolveCoordsNode — coords kind', () => {
   it('resolves valid coordinates to source:"coords" with the descriptor weight', async () => {
     const state = new CartographerState();
-    // London: GeohashTzMap should resolve this well
+    // London exercises the canonical coordinate resolver.
     const descriptor = GeoSignalDescriptorBuilder.from({
       'kind': 'coords', 'weight': 1.0, 'lat': 51.5074, 'lng': -0.1278,
     });

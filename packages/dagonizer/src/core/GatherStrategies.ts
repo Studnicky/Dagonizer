@@ -39,6 +39,7 @@ import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { TransientNodeStateSelectionType } from '../entities/executor/TransientNodeState.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -71,10 +72,10 @@ export abstract class GatherStrategy {
 
   /**
    * When true, `finalize` consumes the full per-clone record set; the engine
-   * retains every acked record across resume (retained checkpoint). When false
-   * (default), `finalize`'s result is fully in state during `reduce`, so the
-   * engine keeps only bounded bookkeeping (watermark + ahead-acked + tally)
-   * and the checkpoint is O(1) with respect to item count.
+   * retains every record for the current bounded execution. Such a gather does
+   * not persist scatter progress and replays its complete input after resume.
+   * When false (default), `finalize`'s result is fully represented in state by
+   * `reduce`, so the engine persists bounded watermark bookkeeping.
    */
   readonly retainsRecordsForFinalize: boolean = false;
 
@@ -111,14 +112,19 @@ export abstract class GatherStrategy {
   ): Promise<void> { /* no-op */ }
 
   /**
-   * Narrow an accessor read (typed `unknown`) to a list for append-style
-   * reducers. Returns the value when it is an array, otherwise an empty list —
-   * cast-free; the `readonly unknown[]` annotation keeps `Array.isArray`'s
-   * `any[]` from leaking.
+   * Declare the terminal clone-state surface this strategy reads during
+   * contained scatter replay. `mode: 'full'` means the strategy requires the
+   * whole clone state; `mode: 'selection'` lists the exact clone domain paths
+   * and metadata keys it consumes.
+   *
+   * The default is `mode: 'full'` — the conservative, correctness-preserving
+   * choice for a strategy that has not declared a narrower surface. Every
+   * built-in strategy below overrides this with its exact selection; a custom
+   * strategy that reads only specific fields should override it too, since a
+   * narrower selection shrinks the worker wire payload.
    */
-  protected static asList(value: unknown): readonly unknown[] {
-    const list: readonly unknown[] = Array.isArray(value) ? value : [];
-    return list;
+  transientResultSelection(_config: GatherConfigType): TransientNodeStateSelectionType {
+    return { 'mode': 'full', 'domainPaths': [], 'metadataKeys': [] };
   }
 }
 
@@ -136,11 +142,17 @@ class MapGatherStrategy extends GatherStrategy {
     for (const item of batch) {
       const record = item.state;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
-        const value = accessor.get(record.cloneState, clonePath);
-        const existing = GatherStrategy.asList(accessor.get(state, parentPath));
-        accessor.set(state, parentPath, [...existing, value]);
+        accessor.append(state, parentPath, accessor.get(record.cloneState, clonePath));
       }
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': Object.keys(config.mapping ?? {}),
+      'metadataKeys': [],
+    };
   }
 }
 
@@ -159,12 +171,18 @@ class AppendGatherStrategy extends GatherStrategy {
     }
     for (const item of batch) {
       const record = item.state;
-      const value = config.field !== undefined
+      accessor.append(state, config.target, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
-        : record.item;
-      const existing = GatherStrategy.asList(accessor.get(state, config.target));
-      accessor.set(state, config.target, [...existing, value]);
+        : record.item);
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
   }
 }
 
@@ -183,12 +201,18 @@ class PartitionGatherStrategy extends GatherStrategy {
       const record = item.state;
       const targetPath = partitions[record.output];
       if (targetPath === undefined) continue;
-      const value = config.field !== undefined
+      accessor.append(state, targetPath, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
-        : record.item;
-      const existing = GatherStrategy.asList(accessor.get(state, targetPath));
-      accessor.set(state, targetPath, [...existing, value]);
+        : record.item);
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
   }
 }
 
@@ -196,8 +220,7 @@ class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
   readonly '@id' = 'urn:noocodec:node:custom';
 
-  // Custom finalize reads the full per-clone record set, so the engine must
-  // retain every acked record across resume (retained checkpoint).
+  // Custom finalize reads the full per-clone record set for this execution.
   override readonly retainsRecordsForFinalize = true;
 
   // Custom strategy accumulates nothing per-clone — all work is in finalize.
@@ -224,6 +247,10 @@ class CustomGatherStrategy extends GatherStrategy {
     );
     await execution.invoker.invokeNode(config.customNode);
   }
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'selection', 'domainPaths': [], 'metadataKeys': [] };
+  }
 }
 
 /**
@@ -240,6 +267,10 @@ class DiscardGatherStrategy extends GatherStrategy {
 
   reduce(): void {
     // Intentional no-op: discard strategy folds nothing.
+  }
+
+  override transientResultSelection(): TransientNodeStateSelectionType {
+    return { 'mode': 'selection', 'domainPaths': [], 'metadataKeys': [] };
   }
 }
 
@@ -270,12 +301,18 @@ class CollectGatherStrategy extends GatherStrategy {
     if (config.target === undefined) return;
     for (const item of batch) {
       const record = item.state;
-      const value = config.field !== undefined
+      accessor.append(state, config.target, config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
-        : record.output;
-      const existing = GatherStrategy.asList(accessor.get(state, config.target));
-      accessor.set(state, config.target, [...existing, value]);
+        : record.output);
     }
+  }
+
+  override transientResultSelection(config: GatherConfigType): TransientNodeStateSelectionType {
+    return {
+      'mode': 'selection',
+      'domainPaths': config.field === undefined ? [] : [config.field],
+      'metadataKeys': [],
+    };
   }
 }
 

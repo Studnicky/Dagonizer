@@ -74,7 +74,8 @@ export const directives = {
   "intentEnumeration": [
     '  lookup-author      : the visitor named an author and wants their body of work',
     '  find-reviews       : the visitor wants opinions, reviews, or what readers think',
-    '  describe-book      : the visitor named a specific existing title by name and wants a description of that exact book',
+    '  describe-book      : the visitor named a specific existing title by name and wants a description of that exact book, and that book has NOT been discussed yet in this conversation',
+    '  book-detail        : the visitor asks to know more about, elaborate on, or "tell me about" a book ALREADY mentioned, shown, or recommended earlier in this conversation or recent context (a follow-up on a book you already surfaced, not a brand-new title)',
     '  recommend-similar  : the visitor wants something like a previous read',
     '  recall-memories    : the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
     '  search             : the visitor named a topic / title / ISBN (no clear sub-case)',
@@ -87,7 +88,9 @@ export const directives = {
     '  "do you have anything exploring the ethics of AI, maybe with a sci-fi bent?" → search',
     '  "what should I read after Project Hail Mary?" → recommend-similar',
     '  "recommend something similar to Dune" → recommend-similar',
-    '  "tell me about The Sun Also Rises" → describe-book',
+    '  "tell me about The Sun Also Rises" (no prior mention of that title) → describe-book',
+    '  Recent context: "The visitor previously asked about The Invisible Man and the classifier returned intent \'search\'." / Visitor question: "Tell me about the invisible man" → book-detail',
+    '  Archivist: "I found The Invisible Man by H.G. Wells." / Visitor: "tell me more about that one" → book-detail',
     '  "what did Murakami write?" → lookup-author',
     '  "anything good in cosy fantasy?" → recommend',
     '  "tell me a good story" → recommend',
@@ -100,7 +103,7 @@ export const directives = {
     '  "what is the weather like?" → off-topic',
     '  "try again" / "another one" / "different" / "no" → REUSE THE PRIOR INTENT from recent context if any, otherwise default to `search`',
   ].join('\n'),
-  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent; never classify them as off-topic. If the visitor explicitly asks for tools, web search, lookups, or external sources, classify as `search`, NEVER `off-topic`. Off-topic is ONLY for queries clearly unrelated to books or reading (weather, sports scores, jokes, recipes, news). Anything book-adjacent, tool-related, or meta about the assistant is on-topic.',
+  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent; never classify them as off-topic. When the visitor asks to know more about, elaborate on, or "tell me about" a book, check the recent context and conversation above FIRST: if that book (or a close match) was already mentioned, shown, or recommended earlier, classify as `book-detail`, NOT `search` and NOT `describe-book`; only use `describe-book` when the named title has no prior mention. If the visitor explicitly asks for tools, web search, lookups, or external sources, classify as `search`, NEVER `off-topic`. Off-topic is ONLY for queries clearly unrelated to books or reading (weather, sports scores, jokes, recipes, news). Anything book-adjacent, tool-related, or meta about the assistant is on-topic.',
   "intentResponseFormat": 'Respond with the single token only.',
 
   // ── Term extraction ──────────────────────────────────────────────────

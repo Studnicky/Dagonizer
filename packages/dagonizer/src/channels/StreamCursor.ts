@@ -17,20 +17,6 @@ import { ScatterCheckpoint } from '../checkpoint/ScatterCheckpoint.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 // ---------------------------------------------------------------------------
-// Options
-// ---------------------------------------------------------------------------
-
-/** Options controlling which gather accumulator family `resumeAfter` reads. */
-export type StreamCursorOptionsType = {
-  'compactable': boolean;
-};
-
-/** Module-level defaults. `compactable: true` selects bounded gather. */
-const STREAM_CURSOR_DEFAULTS: StreamCursorOptionsType = {
-  'compactable': true,
-};
-
-// ---------------------------------------------------------------------------
 // StreamCursor
 // ---------------------------------------------------------------------------
 
@@ -42,17 +28,13 @@ export class StreamCursor {
    * pulled (`nextIndex`). 0 on a fresh run (no checkpoint). A producer resumes
    * by skipping its first `resumeAfter` emissions; buffered-but-unpulled items
    * are re-emitted (the cursor is the scatter's PULL count, not the producer's
-   * push count, so nothing buffered-and-lost-on-crash is skipped). `compactable`
-   * selects the gather accumulator family — true for bounded (default), false
-   * for a retained gather.
+   * push count, so nothing buffered-and-lost-on-crash is skipped).
    */
   static resumeAfter(
     state: NodeStateInterface,
     scatterName: string,
-    options?: Partial<StreamCursorOptionsType>,
   ): number {
-    const { compactable } = { ...STREAM_CURSOR_DEFAULTS, ...options };
     const stored = ScatterCheckpoint.read(state, scatterName);
-    return ScatterCheckpoint.restoreRunState(stored, compactable).nextIndex;
+    return ScatterCheckpoint.restoreRunState(stored).nextIndex;
   }
 }

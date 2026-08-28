@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -41,14 +42,14 @@ class WalkState extends NodeStateBase {
   value: number;
   log: string[];
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.value = 0;
     this.log = [];
   }
 
-  override clone(): this {
-    const copy = super.clone();
+  override clone(childScope: GraphScopeType): this {
+    const copy = super.clone(childScope);
     // NodeStateBase.clone() copies _metadata; we additionally copy domain fields.
     copy.value = this.value;
     copy.log = [...this.log];
@@ -74,6 +75,8 @@ class WalkState extends NodeStateBase {
 //   collect: accumulates all items into a module-level array, routes 'done'
 // ---------------------------------------------------------------------------
 
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri': 'test-dag', 'placementIri': 'test-placement' };
+
 const FAN_N = 4;
 const FAN_PROC_COLLECT_DAG = 'urn:noocodec:dag:fan-proc-collect';
 const SIZE1_CKPT_DAG = 'urn:noocodec:dag:size1-ckpt';
@@ -95,7 +98,7 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
     const src = batch.row(0).state;
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
     for (let i = 0; i < this.n; i++) {
-      const clone = src.clone();
+      const clone = src.clone(TEST_CHILD_SCOPE);
       clone.value = i;
       clone.log.push(`fan:${i}`);
       items.push({ 'id': String(i), 'state': clone });
@@ -365,6 +368,19 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const itemsValue = entryValue['items'];
       assert.ok(Array.isArray(itemsValue), 'blob entry must have an items array');
       assert.equal(itemsValue.length, FAN_N, `blob entry must have ${FAN_N} items`);
+      const firstItem = itemsValue[0];
+      assert.ok(
+        firstItem !== null && typeof firstItem === 'object' && !Array.isArray(firstItem),
+        'first work-set item must be an object',
+      );
+      assert.ok(
+        'graphState' in firstItem && firstItem['graphState'] !== null && typeof firstItem['graphState'] === 'object' && !Array.isArray(firstItem['graphState']),
+        'first work-set item must carry a transient graphState object',
+      );
+      const graphState = firstItem['graphState'] as Record<string, unknown>;
+      assert.ok(!('@context' in graphState), 'work-set graphState must not be JSON-LD');
+      assert.ok('domain' in graphState, 'work-set graphState must carry transient domain fields');
+      assert.ok('metadata' in graphState, 'work-set graphState must carry transient metadata');
     },
   );
 
@@ -404,8 +420,8 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       class CountState extends NodeStateBase {
         count = 0;
 
-        override clone(): this {
-          const copy = super.clone();
+        override clone(childScope: GraphScopeType): this {
+          const copy = super.clone(childScope);
           copy.count = this.count;
           return copy;
         }

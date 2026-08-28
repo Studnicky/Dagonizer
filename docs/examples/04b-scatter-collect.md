@@ -16,28 +16,22 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+import { BookSearchScatterDAG } from '../exampleDags.ts';
 </script>
 
 # Example 04B: Scatter Collect
 
-## What It Is
+## Scatter-to-Gather Contract
 
 Scatter Collect is the "every clone brings something back" half of scatter. The Archivist sends tool worksets into a scatter branch, each clone produces candidate books, and a gather placement folds those candidates into parent state for ranking.
 
-This page narrows in on the gather contract. The scatter can finish clones in any order, but `book-search-gather` is the graph-visible barrier that decides how clone outputs become parent `state.candidates`.
+The focus here is the gather contract. The scatter can finish clones in any order, but `book-search-gather` is the graph-visible barrier that decides how clone outputs become parent `state.candidates`.
 
-## How It Works
-
-The scatter source creates one clone per workset. Each clone runs the body DAG selected by `item.dagIri`, writes its output into clone state, and returns a declared outcome. The `tool-candidate-merge` gather strategy reads those clone outputs through the accessor and folds candidate arrays into the parent before `rank-candidates` runs.
-
-That ordering matters in real applications. A result from a slow provider should not jump ahead of a faster provider just because the network happened to answer later; selection logic should compare data, not race conditions.
-
-## Diagrams, Examples, and Outputs
+## Registered Flow
 
 ### DAG registration and diagram
 
-The in-browser owner is [The Archivist](./the-archivist): its `book-search-scatter` sub-DAG scatters tool worksets, routes clone outcomes into `book-search-gather`, and then ranks the collected candidates. This is the live Archivist graph, not a separate miniature.
+The canonical runtime example is [The Archivist](./the-archivist): its `book-search-scatter` sub-DAG scatters tool worksets, routes clone outcomes into `book-search-gather`, and then ranks the collected candidates. This graph is the same registered search branch the Archivist executes.
 
 <DagJsonMermaid :dag="BookSearchScatterDAG" title="book-search-scatter" aria-label="Archivist book-search-scatter JSON-LD DAG beside Mermaid generated from it." />
 
@@ -51,19 +45,25 @@ The generate-and-select pattern is common in LLM pipelines: scatter over a set o
 npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-## What It Lets You Do
+## Gather Semantics
 
-Scatter collect lets applications run many clones concurrently and then continue with a deterministic parent-state collection. Use it for generate-and-select flows: ask several providers, tools, prompts, or strategies for candidates, then rank or merge the gathered outputs once all relevant clones finish.
+The scatter source creates one clone per workset. Each clone runs the body DAG selected by `item.dagIri`, writes its output into clone state, and returns a declared outcome. The `tool-candidate-merge` gather strategy reads those clone outputs through the accessor and folds candidate arrays into the parent before `rank-candidates` runs.
 
-The application-facing value is simple: the parent DAG still looks linear after the scatter. Ranking, merging, auditing, or response composition can treat gathered candidates as ordinary state while Dagonizer handles clone lifecycle and ordering.
+That ordering matters in real systems. A result from a slow provider should not jump ahead of a faster provider just because the network happened to answer later; selection logic should compare data, not race conditions.
 
 ## Code Samples
 
-The same `BookSearchScatterDAG` drives the Archivist demo and the Mermaid diagram above. Read the scatter placement and `book-search-gather` declaration together; the JSON-LD is the contract the runtime enforces.
+The same `BookSearchScatterDAG` drives the Archivist workflow and the Mermaid diagram above. Read the scatter placement and `book-search-gather` declaration together; the JSON-LD is the contract the runtime enforces.
 
 <<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 
-## Details for Nerds
+## Usage
+
+Scatter collect lets hosts run many clones concurrently and then continue with a deterministic parent-state collection. It fits generate-and-select flows: ask several providers, tools, prompts, or strategies for candidates, then rank or merge the gathered outputs once all relevant clones finish.
+
+The host-level value is simple: the parent DAG still looks linear after the scatter. Ranking, merging, auditing, or response composition can treat gathered candidates as ordinary state while Dagonizer handles clone lifecycle and ordering.
+
+## Runtime Notes
 
 - **`tool-candidate-merge` gather strategy.** The first-class `book-search-gather` placement reads each clone's tool output and writes the merged candidates back to the parent clone's `candidates` collection.
 - **Scatter body DAG.** The `body` uses a dynamic `DagReference`, so each workset chooses a registered tool DAG at runtime from an explicit candidate set.

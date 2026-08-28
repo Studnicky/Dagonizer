@@ -2,7 +2,6 @@
  * Unit tests for Wave 2 source-model geo-resolution sprout.
  *
  * Covers:
- *   - CoordTimezone (tz-lookup + country-coder integration)
  *   - CountryLocale (JSON map lookup)
  *   - GeoSignalBuilder.from (classify decision from state)
  *   - GeoResolutionBuilder.from (partial → full with defaults)
@@ -12,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import { CoordTimezoneResolver, CountryLocale } from '@studnicky/geo-resolver';
+import { CountryLocale } from '@studnicky/geo-resolver';
 import { Continents } from '../../services.ts';
 import { GeoSignalBuilder } from '../../entities/GeoSignal.ts';
 import { GeoResolutionBuilder, DEFAULT_GEO_RESOLUTION } from '../../entities/GeoResolution.ts';
@@ -22,36 +21,6 @@ import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
 import type { AddressGeocoder } from '../../contracts/AddressGeocoder.ts';
 import type { GeoLookupOutcomeType } from '../../errors/GeoLookupOutcome.ts';
-
-// ---------------------------------------------------------------------------
-// CoordTimezone
-// ---------------------------------------------------------------------------
-
-describe('CoordTimezone', () => {
-  it('NYC (40.7128, -74.006) → America/New_York, US', () => {
-    const result = CoordTimezoneResolver.resolve(40.7128, -74.006);
-    assert.equal(result.timezone, 'America/New_York');
-    assert.equal(result.country, 'US');
-  });
-
-  it('London (51.5074, -0.1278) → Europe/London, GB', () => {
-    const result = CoordTimezoneResolver.resolve(51.5074, -0.1278);
-    assert.equal(result.timezone, 'Europe/London');
-    assert.equal(result.country, 'GB');
-  });
-
-  it('Tokyo (35.68, 139.69) → Asia/Tokyo, JP', () => {
-    const result = CoordTimezoneResolver.resolve(35.68, 139.69);
-    assert.equal(result.timezone, 'Asia/Tokyo');
-    assert.equal(result.country, 'JP');
-  });
-
-  it('invalid coords (NaN, NaN) → empty strings, no throw', () => {
-    const result = CoordTimezoneResolver.resolve(NaN, NaN);
-    assert.equal(typeof result.timezone, 'string');
-    assert.equal(typeof result.country, 'string');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // CountryLocale

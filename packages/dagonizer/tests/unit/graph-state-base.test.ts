@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { N3GraphDataset } from '../../src/adapter/N3GraphDataset.js';
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
+import { GraphStateJsonLdCodec } from '../../src/graph/GraphStateJsonLdCodec.js';
 import { GraphStateQueryService } from '../../src/graph/GraphStateQueryService.js';
 import { GraphStateTerms } from '../../src/graph/GraphStateTerms.js';
 import { InMemoryGraphDataset } from '../../src/graph/InMemoryGraphDataset.js';
+import { N3GraphDatasetProvider } from '../../src/graph/N3GraphDatasetProvider.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'urn:dagonizer:run:test/clone', 'dagIri': 'urn:dagonizer:dag:test', 'placementIri': 'urn:dagonizer:dag:test/node/clone' };
 
 class GraphState extends NodeStateBase {
   value = 0;
@@ -34,11 +39,60 @@ class DefinedGraphState extends NodeStateBase {
   }
 }
 
+class MapFieldGraphState extends NodeStateBase {
+  progress = new Map<string, { 'watermark': number; 'active': boolean }>();
+
+  protected override graphStateFields() {
+    return [{
+      'key': 'progress',
+      'predicate': 'urn:state:progress',
+      'kind': 'map' as const,
+      'cardinality': 'one' as const,
+      'read': 'direct' as const,
+      'write': 'replace' as const,
+    }];
+  }
+}
+
+class DottedMapState extends NodeStateBase {
+  parent = {
+    'nested': new Map<string, { 'value': number }>(),
+  };
+
+  protected override graphStateFields() {
+    return [{
+      'key': 'parent.nested',
+      'predicate': 'urn:state:parent-nested',
+      'kind': 'map' as const,
+      'cardinality': 'one' as const,
+      'read': 'direct' as const,
+      'write': 'replace' as const,
+    }];
+  }
+}
+
+async function projectGraph(state: NodeStateBase): Promise<void> {
+  for await (const _quad of state.snapshotGraph(state.runIri)) {
+    void _quad;
+  }
+}
+
+async function snapshotDocument(state: NodeStateBase) {
+  const quads = [];
+  for await (const quad of state.snapshotGraph(state.runIri)) quads.push(quad);
+  return GraphStateJsonLdCodec.encode(quads);
+}
+
+async function restoreDocument(state: NodeStateBase, runIri: string, document: ReturnType<typeof GraphStateJsonLdCodec.encode>): Promise<void> {
+  const quads = GraphStateJsonLdCodec.rebase(GraphStateJsonLdCodec.decode(document), runIri);
+  await state.restoreGraph(runIri, GraphStateJsonLdCodec.asyncQuads(quads));
+}
+
 void describe('NodeStateBase graph persistence', () => {
   void it('projects schema-defined fields as direct typed graph facts', async () => {
     const dataset = new InMemoryGraphDataset();
     const state = new DefinedGraphState(dataset, 'urn:dagonizer:run:defined');
-    await state.snapshotJsonLd();
+    await projectGraph(state);
     const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri));
     const run = DagGraphTerms.namedNode(state.runIri);
     const progress = [...dataset.match({ 'subject': run, 'predicate': DagGraphTerms.namedNode('urn:state:progress'), graph })][0]?.object;
@@ -50,6 +104,30 @@ void describe('NodeStateBase graph persistence', () => {
       assert.equal(new GraphStateQueryService(dataset, state.runIri).bindingsFor('urn:state:watermark').length, 1);
     }
     assert.equal(dataset.count({ 'subject': run, 'predicate': DagGraphTerms.namedNode(GraphStateTerms.stateFieldIri('domain.progress')), graph }), 0);
+  });
+
+  void it('restores map-typed schema fields as Map values on runtime', async () => {
+    const source = new MapFieldGraphState();
+    source.progress.set('batch-1', { 'watermark': 2, 'active': true });
+    const document = await snapshotDocument(source);
+
+    const target = new MapFieldGraphState();
+    await restoreDocument(target, source.runIri, document);
+
+    assert.ok(target.progress instanceof Map);
+    assert.deepEqual(target.progress.get('batch-1'), { 'watermark': 2, 'active': true });
+  });
+
+  void it('restores dotted map-typed schema fields as nested Map values on runtime', async () => {
+    const source = new DottedMapState();
+    source.parent.nested.set('nested-key', { 'value': 7 });
+
+    const document = await snapshotDocument(source);
+    const target = new DottedMapState();
+    await restoreDocument(target, source.runIri, document);
+
+    assert.ok(target.parent.nested instanceof Map);
+    assert.deepEqual(target.parent.nested.get('nested-key'), { 'value': 7 });
   });
 
   void it('stores node communication facts through the shared RDF dataset', async () => {
@@ -67,7 +145,7 @@ void describe('NodeStateBase graph persistence', () => {
     assert.equal(state.getMetadata('prompt'), 'hello');
     assert.equal(state.retriesFor('step'), 1);
     assert.equal(state.warnings.length, 1);
-    const document = await state.snapshotJsonLd();
+    const document = await snapshotDocument(state);
     assert.equal(document['@graph'].length > 0, true);
 
     const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri));
@@ -83,24 +161,25 @@ void describe('NodeStateBase graph persistence', () => {
     state.markRunning();
     state.setMetadata('answer', 7);
     state.value = 9;
-    const clone = state.clone();
+    const clone = state.clone(TEST_CHILD_SCOPE);
 
     assert.equal(clone.lifecycle.variant, 'pending');
     assert.equal(clone.getMetadata('answer'), 7);
     assert.equal(clone.value, 0);
-    await clone.restoreJsonLd(state.runIri, await state.snapshotJsonLd());
+    await clone.restoreTransientState(state.runIri, state.snapshotTransientState());
     assert.equal(clone.value, 9);
 
     const restored = new GraphState();
-    await restored.restoreJsonLd(state.runIri, await state.snapshotJsonLd());
+    await restored.restoreTransientState(state.runIri, state.snapshotTransientState());
     assert.equal(restored.getMetadata('answer'), 7);
     assert.equal(restored.value, 9);
     assert.equal(restored.lifecycle.variant, 'running');
   });
 
-  void it('delegates clone dataset isolation to the injected graph adapter', () => {
+  void it('delegates clone dataset isolation to the injected graph provider', () => {
     const state = new GraphState(new N3GraphDataset());
-    const clone = state.clone();
+    state.bindGraphDatasetProvider(new N3GraphDatasetProvider());
+    const clone = state.clone(TEST_CHILD_SCOPE);
 
     assert.ok(clone.graphDataset instanceof N3GraphDataset);
     assert.notEqual(clone.graphDataset, state.graphDataset);
@@ -128,7 +207,7 @@ void describe('NodeStateBase graph persistence', () => {
     const state = new GraphState();
     state.value = 7;
     state.setMetadata('progress', { 'watermark': 2, 'active': true });
-    await state.snapshotJsonLd();
+    await projectGraph(state);
 
     const graph = DagGraphTerms.namedNode(GraphStateTerms.runGraphIri(state.runIri));
     assert.deepEqual(state.getMetadata('progress'), { 'watermark': 2, 'active': true });
@@ -165,9 +244,9 @@ void describe('NodeStateBase graph persistence', () => {
   void it('emits and consumes the same named graph through the JSON-LD node boundary', async () => {
     const source = new NodeStateBase(new InMemoryGraphDataset(), 'urn:dagonizer:run:jsonld');
     source.setMetadata('answer', 42);
-    const document = await source.snapshotJsonLd(source.runIri);
+    const document = await snapshotDocument(source);
     const restored = new NodeStateBase(new InMemoryGraphDataset(), source.runIri);
-    await restored.restoreJsonLd(source.runIri, document);
+    await restoreDocument(restored, source.runIri, document);
 
     const sourceQuads = [];
     const restoredQuads = [];

@@ -8,17 +8,27 @@ seeAlso:
   - text: 'Reference: Store'
     link: './store'
     description: 'RDF-capable store and snapshot boundaries'
+  - text: 'Reference: Contracts'
+    link: './contracts'
+    description: 'NodeInterface.inputSchema/outputSchema — the TypeScript side of the node contract'
 ---
 
 # RDF 1.2
 
-## What It Is
+## Triple-term Surface
 
 RDF 1.2 adds triple terms, reifying triples, triple annotations, directional language strings, and version announcements to the RDF model and concrete syntaxes. For Dagonizer, the relevant feature is the ability to describe a DAG edge, placement, provenance claim, or composition relation as a first-class statement without expanding to RDF 1.1 statement reification quads.
 
 The repo semantic stack uses `n3@2.1.1`. The package parses, stores, and serializes RDF 1.2 triple terms at runtime. The published `@types/n3@1.26.1` declarations do not expose every RDF 1.2 shape directly, so typed code should model triple terms through RDF/JS interfaces from `@rdfjs/types` when a probe needs quad-as-term safety.
 
-## Standards Status
+## Probe and Encoding References
+
+RDF 1.2 support shows up in codecs, stores, and probes rather than in a topology diagram. These probes exercise the runtime boundaries that matter:
+
+- `examples/the-archivist/tests/unit/rdf12-triple-term-probe.test.ts` - constructs and matches RDF 1.2 triple terms and reifying triples against the local `n3@2.1.1` store
+- `examples/the-archivist/tests/unit/rdf12-jsonld-basic-probe.test.ts` - round-trips RDF 1.2 Basic Encoding through `Rdf12JsonLdCodec.parse(...)` / `serialize(...)`
+
+## Basic Encoding Model
 
 RDF 1.2 Concepts is a W3C Candidate Recommendation Snapshot. It defines a triple term as an RDF triple used as an RDF term inside another triple, and defines `rdf:reifies` as the predicate that connects a reifier to a triple term.
 
@@ -26,23 +36,55 @@ RDF 1.2 Turtle is a W3C Working Draft. It defines the `<<( ... )>>` triple-term 
 
 JSON-LD 1.1 is the deployed Recommendation. JSON-LD 1.2 support is still future standards work, so Dagonizer carries RDF 1.2 triple terms through JSON-LD 1.1 using the Basic Encoding described by the W3C RDF 1.2 Interoperability draft. This encoding uses ordinary triples and the RDF 1.2 vocabulary; it does not require a JSON-LD extension syntax.
 
-## Local Stack Findings
+## Code Samples
 
 `n3@2.1.1` constructs RDF 1.2 triple terms with `DataFactory.quad(...)` and serializes reifying triples as `<<(...)>>`. The store can match an `rdf:reifies` object whose term type is `Quad`.
 
-`Parser` also accepts RDF 1.2 `VERSION "1.2"`, explicit triple-term syntax, and Turtle annotation syntax at runtime. The installed `@types/n3` parser generic cannot represent that safely because its `BaseQuad` constraint is tied to N3 class declarations that do not expose RDF/JS triple terms as parser output.
-
-The N3 focused probe lives at `examples/the-archivist/tests/unit/rdf12-triple-term-probe.test.ts`. It avoids casts and suppression comments by assigning `N3.DataFactory` to the RDF/JS `DataFactory` interface, constructing a reifying triple through RDF/JS `Quad` and `Quad_Object`, and using `Store.readQuads(...)` instead of `Store.getQuads(...)` so the returned quads keep RDF/JS types.
+`Parser` also accepts RDF 1.2 `VERSION "1.2"`, explicit triple-term syntax, and Turtle annotation syntax at runtime. The installed `@types/n3` parser generic cannot represent that safely because its `BaseQuad` constraint is tied to N3 class declarations that do not expose RDF/JS triple terms as parser output. The `rdf12-triple-term-probe.test.ts` probe avoids casts and suppression comments by assigning `N3.DataFactory` to the RDF/JS `DataFactory` interface, constructing a reifying triple through RDF/JS `Quad` and `Quad_Object`, and using `Store.readQuads(...)` instead of `Store.getQuads(...)` so the returned quads keep RDF/JS types.
 
 `jsonld@9` processes the JSON-LD 1.1 document containing Basic Encoding triples. `Rdf12JsonLdCodec` decodes the four Basic Encoding statements into an RDF/JS quad-as-term object and encodes RDF/JS triple terms back into those ordinary statements.
 
-`GraphStateJsonLdCodec` uses the same Basic Encoding node shape synchronously for the context-bound Node.js graph-state IR. Context prefixes are expanded and compacted through `ContextResolver`, including the RDF 1.2 terms `rdf:TripleTerm`, `rdf:ttSubject`, `rdf:ttPredicate`, and `rdf:ttObject`.
-
-The JSON-LD Basic Encoding probe lives at `examples/the-archivist/tests/unit/rdf12-jsonld-basic-probe.test.ts`. The framework-owned `Rdf12JsonLdCodec` exposes `parse(...)` and `serialize(...)` for RDF/JS quads.
+`GraphStateJsonLdCodec` uses the same Basic Encoding node shape synchronously for the context-bound Node.js graph-state IR. Context prefixes are expanded and compacted through `ContextResolver`, including the RDF 1.2 terms `rdf:TripleTerm`, `rdf:ttSubject`, `rdf:ttPredicate`, and `rdf:ttObject`. The `rdf12-jsonld-basic-probe.test.ts` probe exercises `Rdf12JsonLdCodec.parse(...)` and `serialize(...)` for RDF/JS quads.
 
 `@rdfjs/types` is present through the installed `@types/n3` dependency tree. If RDF 1.2 triple terms move from probe code into exported package APIs, the owning package should declare `@rdfjs/types` directly before exposing those types.
 
-## Architecture Recommendation
+## Node Contract Projection
+
+`DagGraphProjector.projectNodeSchemas` projects every node's `inputSchema`/`outputSchema` contract (see [Reference: Contracts](./contracts)) into the DAG's topology graph as triples under the `dagonizer:` namespace (`DagGraphTerms.DAGONIZER` = `https://noocodec.dev/ontology/dagonizer/`). This is the RDF-level home of the TypeScript-level contract — the same topology graph `DagGraphProjector.project` builds for placements, routes, and entrypoints.
+
+### Ports and schemas
+
+For a placement at IRI `<placement>`, `projectNodeContract` asserts one input port and one output port per declared output:
+
+- `<placement> dagonizer:inputPort <placement>/input`
+- `<placement>/input dagonizer:schema <schemaIri>`
+- `<placement> dagonizer:outputPort <placement>/output/<label>` (repeated per output)
+- `<placement>/output/<label> dagonizer:label "<label>"`
+- `<placement>/output/<label> dagonizer:schema <schemaIri>`
+
+`<schemaIri>` is `SchemaRegistry.register(schema)` → `SchemaIdentity.for(schema)`: the schema's own `$id` when it has one, else `urn:dagonizer:schema:structural:<hash>`, where `<hash>` is `StableSchemaHash.of(schema)` — a structural hash of the JSON Schema body. Two schemas with identical shape but no `$id` collapse onto the same schema node. Every schema node also carries:
+
+- `<schemaIri> rdf:type dagonizer:Schema`
+- `<schemaIri> dagonizer:contractHash "<hash>"`
+
+### Route compatibility as an annotated triple term
+
+`projectRouteSchemaAnnotations` is the concrete, load-bearing use of the triple-term mechanism described above. For each route in a placement's `outputs`, the route statement itself — `<< <source> dagonizer:route <target> >>` — is built with `DagGraphTerms.tripleTerm(...)` and used directly as the *subject* of two further assertions:
+
+- `<< <source> dagonizer:route <target> >> dagonizer:producesSchema <sourceOutputSchemaIri>`
+- `<< <source> dagonizer:route <target> >> dagonizer:requiresSchema <targetInputSchemaIri>`
+
+This attaches schema-compatibility metadata to the edge statement itself rather than to either endpoint — the same "statement-level metadata without expanding to RDF 1.1 reification quads" pattern the rest of this page describes in the abstract, applied here to route compatibility specifically. `DagGraphQueries.routeSchemaIris(store, source, target)` rebuilds the same triple-term subject to read `produced`/`required` back out; `placementInputSchemaIri`/`placementOutputSchemaIri` read a placement's port schema IRIs the same way.
+
+## Operational Uses
+
+RDF 1.2 triple annotations handle DAG edges, placements, and provenance
+claims that need statement-level metadata such as confidence, provenance,
+timestamp, or policy decision without expanding to RDF 1.1 reification quads.
+Plain RDF 1.1 triples remain sufficient for facts that need no metadata of
+their own; RDF 1.2 reifiers are for the subset of statements that do.
+
+## Runtime Notes
 
 Use RDF 1.2 triple annotations for statement-level metadata: edge confidence, route provenance, mapping source, policy decision, composition rationale, and execution observation. Keep named graphs as the main boundary for snapshots, runs, sources, and sub-DAG documents.
 
@@ -53,11 +95,17 @@ Model DAG composition in two layers:
 
 Use RDF 1.2 Basic Encoding through `Rdf12JsonLdCodec.parse(...)` and `serialize(...)` at JSON-LD boundaries. `GraphStateJsonLdCodec` is the synchronous, context-bound Node.js projection and uses the identical Basic Encoding vocabulary. Use RDF 1.2 reifier nodes with `rdf:reifies` for statement metadata. A reifier describes a triple term; it does not assert the described base triple, so authoring that relationship requires an explicit asserted quad alongside the reifier.
 
-JSON-LD is the context-bound intermediate representation between Node.js values and RDF graphs. Graph-backed node state, checkpoint graphs, and graph transfer envelopes expose the same JSON-LD document to Node.js code; `ContextResolver` expands and compacts terms against the document context so application code does not maintain parallel IRI rules. The application projects those documents into RDF datasets, and the same RDF 1.2 substrate carries topology, schemas, node contracts, execution, state, checkpoints, provenance, and memory. N-Quads remains the default dataset transfer and persistence serialization because it streams named graphs and triple terms; the JSON-LD document is the Node.js boundary IR, not a replacement for the graph serialization.
+JSON-LD is the context-bound intermediate representation between Node.js values and RDF graphs. Graph-backed node state, checkpoint graphs, and graph transfer envelopes expose the same JSON-LD document to Node.js code; `ContextResolver` expands and compacts terms against the document context so host code does not maintain parallel IRI rules. The host projects those documents into RDF datasets, and the same RDF 1.2 substrate carries topology, schemas, node contracts, execution, state, checkpoints, provenance, and memory. N-Quads remains the default dataset transfer and persistence serialization because it streams named graphs and triple terms; the JSON-LD document is the Node.js boundary IR, not a replacement for the graph serialization.
 
 Semantic graph writes are additive assertions. An exact quad is set-idempotent, but a new relationship, annotation, execution event, or provenance assertion receives its own stable identity and is not an upsert of an earlier relationship. Run and checkpoint graphs therefore close through lifecycle facts, summaries, and explicit retention operations. Terminalization records `dagonizer:closed` and `dagonizer:closedAt`; compaction writes a queryable summary graph before pruning transient run detail. Durable memory graphs remain protected by retention policy and are never pruned as a side effect of run compaction. Transfer cleanup is explicit: incomplete snapshot references are discarded, while live checkpoint and external graph references block pruning.
 
-## Sources
+## Related Concepts
+
+- [Reference: Visualization](./viz) - JSON-LD renderer and graph export
+- [Reference: Store](./store) - RDF-capable store and snapshot boundaries
+- [Reference: Contracts](./contracts) - `NodeInterface.inputSchema`/`outputSchema` — the TypeScript side of the node contract
+
+### External standards
 
 - W3C RDF 1.2 Concepts and Abstract Data Model: https://www.w3.org/TR/rdf12-concepts/
 - W3C RDF 1.2 Interoperability and Basic Encoding: https://www.w3.org/TR/2025/DNOTE-rdf12-interop-20251216/

@@ -460,6 +460,26 @@ void describe('Dagonizer.registerBundle', () => {
     assert.equal(dispatcher.getDAG(testDagIri('dangling')), undefined);
   });
 
+  void it('rejects invalid DAG configuration before bundle mutation', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const node = TestNode.make('urn:noocodec:node:invalid-bundle', ['done'], () => 'done');
+    const dag = TestRegistryDag.terminalOnly('invalid-bundle');
+    dag.configuration = {
+      'execution': { 'batching': { 'throttle': { 'concurrencyLimit': 0 } } },
+    };
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [node], 'dags': [dag] }),
+      { 'message': /^Invalid DAG/u },
+    );
+
+    assert.equal(dispatcher.getNode(node['@id']), undefined);
+    assert.equal(dispatcher.getDAG(dag['@id']), undefined);
+    assert.equal(dispatcher.getDagConfiguration(dag['@id']), undefined);
+    assert.deepEqual(dispatcher.listNodes(), []);
+    assert.deepEqual(dispatcher.listDAGs(), []);
+  });
+
   void it('resolves DAG references to nodes defined in the same bundle (nodes register first)', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = TestNode.make('urn:noocodec:node:a', ['done'], () => 'done');

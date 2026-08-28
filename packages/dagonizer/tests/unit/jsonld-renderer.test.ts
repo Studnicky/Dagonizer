@@ -143,7 +143,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.deepEqual(root?.['dag:entrypoints'], { 'main': placementIri('urn:noocodex:dag:mini', 'greet') });
   });
 
-  void it('renders ScatterNode (body.node) with source, itemKey, and execution', () => {
+  void it('renders ScatterNode (body.node) with source, itemKey, and configuration', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scrape',
@@ -158,7 +158,7 @@ void describe('JsonLdRenderer.render', () => {
         'body':        { 'node': 'urn:noocodec:node:worker' },
         'source':      'items',
         'itemKey':     'item',
-        'execution': { 'mode': 'item', 'concurrency': 3 },
+        'configuration': { 'execution': { 'batching': { 'mode': 'item', 'concurrency': 3 } } },
         'outputs': {
           'all-success': placementIri('urn:noocodex:dag:scrape', 'end'),
           'partial': placementIri('urn:noocodex:dag:scrape', 'end'),
@@ -175,7 +175,9 @@ void describe('JsonLdRenderer.render', () => {
     // body serializes as { dag:node: 'urn:noocodec:node:worker' } for a node-body scatter
     assert.deepEqual(fan?.['dag:body'], { 'dag:node': 'urn:noocodec:node:worker' });
     assert.equal(fan?.['dag:itemKey'], 'item');
-    assert.deepEqual(fan?.['dag:execution'], { 'mode': 'item', 'concurrency': 3 });
+    assert.deepEqual(fan?.['dag:configuration'], {
+      'execution': { 'batching': { 'mode': 'item', 'concurrency': 3 } },
+    });
     assert.equal('dag:gather' in fan, false);
     assert.equal(fan?.['dag:source'], 'items');
   });

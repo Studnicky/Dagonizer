@@ -28,6 +28,7 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
   'lookup-author',
   'find-reviews',
   'describe-book',
+  'book-detail',
   'recommend-similar',
   'recall-memories',
   'off-topic',

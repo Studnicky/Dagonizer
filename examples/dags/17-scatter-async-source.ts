@@ -120,7 +120,7 @@ export const dag: DAGType = {
       "body":      { "node": 'urn:noocodec:node:consume' },
       "source":    'stream',            // async-iterable field; engine normalises it
       "itemKey":   'stream-item',       // metadata key each pulled item is bound to
-      "execution": { "mode": "item", "concurrency": 2 },                 // max 2 items in-flight simultaneously
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } },   // max 2 items in-flight simultaneously
       "outputs": {
         'all-success': 'urn:noocodec:dag:async-source/node/collect-results',
         "partial": 'urn:noocodec:dag:async-source/node/collect-results',

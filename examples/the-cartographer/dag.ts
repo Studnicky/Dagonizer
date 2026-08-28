@@ -6,8 +6,8 @@
  *    {position-ping|facility-scan|sensor-reading|customs-event|
  *     delivery-confirmation} entrypoints
  *      → per-producer dag-feed-* embedded DAGs
- *      → gather('intake-gather', strategy: canonical-feed)
- *      → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' })
+ *      → gather('intake-gather', strategy: source-intake)
+ *      → scatter('process-stream', 'source-payload', { dag: 'stream-event' })
  *      → gather('fold-insights', strategy: insights-fold)
  *      → summarize → done
  *
@@ -19,15 +19,18 @@
  *    as clones complete.
  *
  * 2. producer feed DAGs (one per source):
- *    feed-* → unpack-normalize (ingest-source) → collect-normalized
- *      → merge-events → done
+ *    feed-* opens that producer's lazy payload stream onto state.sourceFeed
+ *      → done. The intake-gather's source-intake strategy merges each
+ *      clone's stream into the top-level state['source-payload'] collection;
+ *      no per-producer unpack/normalize/merge chain runs inside the feed DAG.
  *
- * 3. event-pipeline-typed (the shared post-feed enrichment body):
- *    route-event-type-variant → {position-ping|sensor-reading|customs-event|
- *      facility-scan|delivery-confirmation}
+ * 3. stream-event (the process-stream scatter body):
+ *    decode-payload → route-event-type-variant → {position-ping|
+ *      sensor-reading|customs-event|facility-scan|delivery-confirmation}
  *    Each branch is a per-type embedded DAG that starts with parse-variant,
  *    embeds geo-pipeline, runs type-specific enrichment, and converges on
- *    aggregate-event → done.
+ *    aggregate-event → done. stream-event accepts the canonical SourcePayload
+ *    intake contract and is what cartographerDAG's process-stream scatter targets.
  */
 
 // #region cartographer-dag-imports
@@ -63,29 +66,48 @@ import { pipelineCustomsEventDAG }        from './embedded-dags/PipelineCustomsE
 import { pipelineFacilityScanDAG }        from './embedded-dags/PipelineFacilityScanDAG.ts';
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
 import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
-import { producerFeedBundle } from './embedded-dags/ProducerFeedDAG.ts';
+import { streamProducerFeedBundle } from './embedded-dags/ProducerFeedDAG.ts';
 
 import type { CartographerState } from './CartographerState.ts';
+import { CartographerBrowserRuntime } from './CartographerBrowserRuntime.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 import './core/SourceIntakeGather.ts';
 import './core/InsightsFoldGather.ts';
-import './core/CanonicalFeedGather.ts';
 // #endregion cartographer-dag-imports
 
 const CARTOGRAPHER_DAG_IRI = CARTOGRAPHER_IRIS.dag.cartographer;
 const CARTOGRAPHER_RESUME_DAG_IRI = CARTOGRAPHER_IRIS.dag.cartographerResume;
 const INSIGHTS_SUMMARY_DAG_IRI = CARTOGRAPHER_IRIS.dag.insightsSummary;
-const EVENT_PIPELINE_TYPED_DAG_IRI = CARTOGRAPHER_IRIS.dag.eventPipelineTyped;
+const CARTOGRAPHER_DAG_WRITE_POINTS = ['NodeEdges', 'WatermarkCommit'] as const;
+const CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS = [] as const;
+/**
+ * Write points for cartographerResumeDAG's process-stream scatter. Unlike the
+ * main DAG's hot-path scatter (CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS = []),
+ * this DAG exists specifically to prove durable resume, so its scatter needs
+ * WatermarkCommit for a non-zero StreamCursor.resumeAfter(...) on abort.
+ *
+ * No FoldDeltaJournal: the framework only derives a generic per-item fold
+ * contribution for the four built-in gather strategies (map/append/partition/
+ * collect) — see WritePointPolicy and NodeScheduler#gatherContribution.
+ * `insights-fold` is a custom GatherStrategy (InsightsFoldGather), so a
+ * journaled entry would carry neither a derivable contribution nor a result
+ * (its reduce() reads record.cloneState directly, not record.result), and
+ * fails GatherRecordProgress schema validation. Acked items' contributions
+ * already survive via the live state.insights accumulator carried across
+ * abort/resume in the restored transient snapshot — see resumeState.restoreTransientState
+ * below — so exactly-once still holds without journal replay for this fold.
+ */
+const CARTOGRAPHER_RESUME_SCATTER_WRITE_POINTS = ['WatermarkCommit'] as const;
 
-function appendProducerFeedEntrypoints(builder: DAGBuilder, dagIri: string): DAGBuilder {
+function appendProducerStreamFeedEntrypoints(builder: DAGBuilder, dagIri: string): DAGBuilder {
   const intakeGatherIri = CARTOGRAPHER_IRIS.placementIri(dagIri, 'intake-gather');
   for (const eventType of CARTOGRAPHER_IRIS.intakeEventTypes) {
     builder.embed<CartographerState, CartographerState>(
       CARTOGRAPHER_IRIS.feedPlacementIri(dagIri, eventType),
-      CARTOGRAPHER_IRIS.feedDagIri(eventType),
+      CARTOGRAPHER_IRIS.streamFeedDagIri(eventType),
       {
         'success': intakeGatherIri,
         'error':   intakeGatherIri,
@@ -95,11 +117,18 @@ function appendProducerFeedEntrypoints(builder: DAGBuilder, dagIri: string): DAG
   return builder;
 }
 
-function appendCanonicalFeedGather(builder: DAGBuilder, dagIri: string, emptyTarget: string): DAGBuilder {
+function appendSourceIntakeGather(builder: DAGBuilder, dagIri: string, emptyTarget: string): DAGBuilder {
+  const sourceBindings = Object.fromEntries(
+    CARTOGRAPHER_IRIS.intakeEventTypes.map((eventType) => [
+      CARTOGRAPHER_IRIS.feedPlacementIri(dagIri, eventType),
+      { 'resultField': 'sourceFeed' },
+    ]),
+  ) as Record<string, { readonly resultField: 'sourceFeed' }>;
+
   return builder.gather(
     CARTOGRAPHER_IRIS.placementIri(dagIri, 'intake-gather'),
-    CARTOGRAPHER_IRIS.feedSources(dagIri),
-    { 'strategy': 'canonical-feed' },
+    sourceBindings,
+    { 'strategy': 'source-intake' },
     {
       'success': CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
       'error':   CARTOGRAPHER_IRIS.placementIri(dagIri, 'process-stream'),
@@ -114,30 +143,33 @@ function appendCanonicalFeedGather(builder: DAGBuilder, dagIri: string, emptyTar
 /**
  * cartographerDAG: source-specific producer feed DAGs into one open gather.
  *
- * Five entrypoints target five producer feed DAG placements. Each feed DAG opens
- * one producer's source stream, scatters payloads through ingest-source for
- * unpack/normalize/validate, merges the producer's canonical events, and returns
- * them to the top-level canonical-feed gather. The processing scatter reads the
- * gathered canonicalEvents collection at concurrency 16, runs the shared typed
- * event pipeline, and folds completed clone state through insights-fold.
+ * Five entrypoints target five producer stream-feed DAG placements. Each feed
+ * DAG opens one producer's source stream, scatters payloads through
+ * ingest-source for unpack/normalize/validate, and returns source payload
+ * batches to the top-level source-intake gather. The processing scatter reads
+ * gathered source-payload batches at concurrency 16, runs the shared
+ * source-payload event pipeline, and folds completed clone state through
+ * insights-fold.
  *
  * Topology:
  *   5 data-type entrypoints → 5 dag-feed-* embedded DAGs
- *     → gather('intake-gather', canonical-feed)
- *     → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' }, concurrency: 16)
+ *     → gather('intake-gather', source-intake)
+ *     → scatter('process-stream', 'source-payload', { dag: 'stream-event' }, concurrency: 16)
  *     → gather('fold-insights', strategy: insights-fold)
  *     → summarize → done
  */
-export const cartographerDAG: DAGType = appendCanonicalFeedGather(
-  appendProducerFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0'), CARTOGRAPHER_DAG_IRI),
+export const cartographerDAG: DAGType = appendSourceIntakeGather(
+  appendProducerStreamFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0', {
+    'configuration': { 'durability': { 'writePoints': [...CARTOGRAPHER_DAG_WRITE_POINTS] } },
+  }), CARTOGRAPHER_DAG_IRI),
   CARTOGRAPHER_DAG_IRI,
   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'done'),
 )
 
   .scatter(
     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'process-stream'),
-    'canonicalEvents',
-    { 'dag': EVENT_PIPELINE_TYPED_DAG_IRI },
+    'source-payload',
+    { 'dag': CARTOGRAPHER_IRIS.dag.streamEvent },
     {
       'all-success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
       'partial':     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
@@ -145,8 +177,11 @@ export const cartographerDAG: DAGType = appendCanonicalFeedGather(
       'empty':       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize'),
     },
     {
-      'itemKey':     'canonical-event',
-      'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': 1000 } },
+      'itemKey':     'source-payload',
+      'configuration': {
+        'execution': { 'batching': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': 1000 } } },
+        'durability': { 'writePoints': [...CARTOGRAPHER_STREAM_SCATTER_WRITE_POINTS] },
+      },
     },
   )
   .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'), {
@@ -178,27 +213,29 @@ export const cartographerDAG: DAGType = appendCanonicalFeedGather(
  * cartographerResumeDAG: streaming-resume variant of cartographerDAG.
  *
  * Same feed topology as cartographerDAG but WITHOUT reservoir on process-stream.
- * Per-item dispatch lets the run-level abort signal fire between canonical
- * event pulls, giving a non-zero StreamCursor.resumeAfter(state,
+ * Per-item dispatch lets the run-level abort signal fire between source-payload
+ * pulls, giving a non-zero StreamCursor.resumeAfter(state,
  * 'process-stream') value on abort. Used by CartographerResumableScenario only.
  *
  * Topology (same as cartographerDAG):
  *   5 data-type entrypoints → 5 dag-feed-* embedded DAGs
- *     → gather('intake-gather', canonical-feed)
- *     → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' }, concurrency: 16)
+ *     → gather('intake-gather', source-intake)
+ *     → scatter('process-stream', 'source-payload', { dag: 'stream-event' }, concurrency: 16)
  *     → gather('fold-insights', strategy: insights-fold)
  *     → summarize → done
  */
-export const cartographerResumeDAG: DAGType = appendCanonicalFeedGather(
-  appendProducerFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_RESUME_DAG_IRI, '1.0'), CARTOGRAPHER_RESUME_DAG_IRI),
+export const cartographerResumeDAG: DAGType = appendSourceIntakeGather(
+  appendProducerStreamFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_RESUME_DAG_IRI, '1.0', {
+    'configuration': { 'durability': { 'writePoints': [...CARTOGRAPHER_DAG_WRITE_POINTS] } },
+  }), CARTOGRAPHER_RESUME_DAG_IRI),
   CARTOGRAPHER_RESUME_DAG_IRI,
   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'done'),
 )
 
   .scatter(
     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'process-stream'),
-    'canonicalEvents',
-    { 'dag': EVENT_PIPELINE_TYPED_DAG_IRI },
+    'source-payload',
+    { 'dag': CARTOGRAPHER_IRIS.dag.streamEvent },
     {
       'all-success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'fold-insights'),
       'partial':     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'fold-insights'),
@@ -206,8 +243,11 @@ export const cartographerResumeDAG: DAGType = appendCanonicalFeedGather(
       'empty':       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'summarize'),
     },
     {
-      'itemKey':     'canonical-event',
-      'execution': { 'mode': 'item', 'concurrency': 16 },
+      'itemKey':     'source-payload',
+      'configuration': {
+        'execution': { 'batching': { 'mode': 'item', 'concurrency': 16 } },
+        'durability': { 'writePoints': [...CARTOGRAPHER_RESUME_SCATTER_WRITE_POINTS] },
+      },
     },
   )
   .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_RESUME_DAG_IRI, 'fold-insights'), {
@@ -249,154 +289,6 @@ export const insightsSummaryDAG: DAGType = new DAGBuilder(INSIGHTS_SUMMARY_DAG_I
   .build();
 // #endregion insights-summary-dag
 
-// ── DAG 2: event-pipeline-typed (the LIVE scatter body, typed per-event-type paths) ──
-
-// #region event-pipeline-typed-dag
-/**
- * event-pipeline-typed: the live enrichment scatter body for process-events.
- *
- * Reads the scattered CanonicalEventVariant from metadata key 'canonical-event'
- * and routes it to one of five per-type embedded DAGs via route-event-type-variant.
- * Each per-type DAG starts with parse-variant (which also reads from metadata),
- * embeds geo-pipeline for geo resolution, runs type-specific enrichment nodes,
- * and converges on aggregate-event → done.
- *
- *   route-event-type-variant
- *     ├─position-ping──────────► pipeline-position-ping (embedded)
- *     ├─sensor-reading─────────► pipeline-sensor-reading (embedded)
- *     ├─customs-event──────────► pipeline-customs-event (embedded)
- *     ├─facility-scan──────────► pipeline-facility-scan (embedded)
- *     └─delivery-confirmation──► pipeline-delivery-confirmation (embedded)
- *   Each per-type DAG:
- *     parse-variant → geo-pipeline → canonicalize-core → [type-specific] → aggregate-event → done
- *
- * Metadata propagation: the scatter sets 'canonical-event' on each clone's
- * metadata. NodeStateBase.clone() copies _metadata, so metadata propagates
- * to embedded child clones. Both route-event-type-variant and parse-variant
- * read 'canonical-event' from metadata.
- */
-export const eventPipelineTypedDAG: DAGType = new DAGBuilder(EVENT_PIPELINE_TYPED_DAG_IRI, '1.0')
-
-  // 1. route-event-type-variant: read eventType from 'canonical-event' metadata
-  //    and dispatch to the corresponding per-type sub-DAG.
-  .node(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'route-event-type-variant'), routeEventType, {
-    'position-ping':         CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-position-ping'),
-    'sensor-reading':        CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-sensor-reading'),
-    'customs-event':         CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-customs-event'),
-    'facility-scan':         CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-facility-scan'),
-    'delivery-confirmation': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-delivery-confirmation'),
-  })
-
-  // 2a. pipeline-position-ping: geo + leg measurement.
-  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-position-ping'), CARTOGRAPHER_IRIS.dag.pipelinePositionPing, {
-    'success': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),
-    'error':   CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'),
-  }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'legKm':            'legKm',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
-  })
-
-  // 2b. pipeline-sensor-reading: geo + cold-chain + leg measurement.
-  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-sensor-reading'), CARTOGRAPHER_IRIS.dag.pipelineSensorReading, {
-    'success': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),
-    'error':   CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'),
-  }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'coldChainBreach':  'coldChainBreach',
-      'legKm':            'legKm',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
-  })
-
-  // 2c. pipeline-customs-event: geo + customs-dwell + leg measurement.
-  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-customs-event'), CARTOGRAPHER_IRIS.dag.pipelineCustomsEvent, {
-    'success': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),
-    'error':   CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'),
-  }, {
-    'outputs': {
-      'canonicalVariant':  'canonicalVariant',
-      'raw':               'raw',
-      'normalized':        'normalized',
-      'currentEvent':      'currentEvent',
-      'geoContext':        'geoContext',
-      'resolvedGeo':       'resolvedGeo',
-      'customsDwellHours': 'customsDwellHours',
-      'legKm':             'legKm',
-      'routing':           'routing',
-      'enriched':          'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
-  })
-
-  // 2d. pipeline-facility-scan: geo + facility canonicalization + order enrichment
-  //     + GDPR-gated redaction.
-  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-facility-scan'), CARTOGRAPHER_IRIS.dag.pipelineFacilityScan, {
-    'success': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),
-    'error':   CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'),
-  }, {
-    'outputs': {
-      'canonicalVariant':  'canonicalVariant',
-      'raw':               'raw',
-      'normalized':        'normalized',
-      'currentEvent':      'currentEvent',
-      'geoContext':        'geoContext',
-      'resolvedGeo':       'resolvedGeo',
-      'pricedOrder':       'pricedOrder',
-      'shippingQuote':     'shippingQuote',
-      'deliveryEstimate':  'deliveryEstimate',
-      'legKm':             'legKm',
-      'gdprResult':        'gdprResult',
-      'routing':           'routing',
-      'enriched':          'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
-  })
-
-  // 2e. pipeline-delivery-confirmation: geo + recipient canonicalization +
-  //     delivery confirmation + GDPR-gated redaction.
-  .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'pipeline-delivery-confirmation'), CARTOGRAPHER_IRIS.dag.pipelineDeliveryConfirmation, {
-    'success': CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),
-    'error':   CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'),
-  }, {
-    'outputs': {
-      'canonicalVariant': 'canonicalVariant',
-      'raw':              'raw',
-      'normalized':       'normalized',
-      'currentEvent':     'currentEvent',
-      'geoContext':       'geoContext',
-      'resolvedGeo':      'resolvedGeo',
-      'legKm':            'legKm',
-      'gdprResult':       'gdprResult',
-      'routing':          'routing',
-      'enriched':         'enriched',
-      'capturedErrors':   'capturedErrors',
-    },
-  })
-
-  .terminal(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'done'),     { outcome: 'completed' })
-  .terminal(CARTOGRAPHER_IRIS.placementIri(EVENT_PIPELINE_TYPED_DAG_IRI, 'rejected'), { outcome: 'failed' })
-
-  .build();
-// #endregion event-pipeline-typed-dag
-
 // ── DAG 1c: cartographer-workers (container variant) ─────────────────────────
 
 // #region cartographer-workers-dag
@@ -418,8 +310,8 @@ export const DEFAULT_RESERVOIR_CAPACITY = 1000;
  *     batch size rather than relying on the compile-time default.
  *
  *   5 data-type entrypoints → 5 dag-feed-* embedded DAGs
- *     → gather('intake-gather', canonical-feed)
- *     → scatter('process-stream', 'canonicalEvents', { dag: 'event-pipeline-typed' },
+ *     → gather('intake-gather', source-intake)
+ *     → scatter('process-stream', 'source-payload', { dag: 'stream-event' },
  *               concurrency: 16, container: 'cpu', reservoir: { capacity })
  *     → gather('fold-insights', strategy: insights-fold)
  *     → embed('summarize-insights', 'insights-summary', container: 'io')
@@ -433,50 +325,22 @@ export class CartographerWorkersDag {
    * CLI, smoke tests, and dag-validate consumers use cartographerWorkersDAG
    * (the pre-built constant); the browser demo calls this with a UI-controlled value.
    */
-  static build(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAGType {
-    return appendCanonicalFeedGather(
-      appendProducerFeedEntrypoints(new DAGBuilder(CARTOGRAPHER_DAG_IRI, '1.0'), CARTOGRAPHER_DAG_IRI),
-      CARTOGRAPHER_DAG_IRI,
-      CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'),
-    )
-
-      .scatter(
-        CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'process-stream'),
-        'canonicalEvents',
-        { 'dag': EVENT_PIPELINE_TYPED_DAG_IRI },
-        {
-          'all-success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
-          'partial':     CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
-          'all-error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'),
-          'empty':       CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
+  static build(
+    capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+  ): DAGType {
+    return CartographerBrowserRuntime.build({
+      'execution': {
+        'batching': {
+          'mode': 'reservoir',
+          'concurrency': 16,
+          'reservoir': {
+            'keyField': 'eventType',
+            capacity,
+            'idleMs': null,
+          },
         },
-        {
-          'itemKey':     'canonical-event',
-          'container':   'cpu',
-          'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
-        },
-      )
-      .gather(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'fold-insights'), {
-        [CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'process-stream')]: {},
-      }, { 'strategy': 'insights-fold' }, {
-        'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
-        'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
-        'empty':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'),
-      })
-
-      .embed<CartographerState, CartographerState>(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'summarize-insights'), INSIGHTS_SUMMARY_DAG_IRI, {
-        'success': CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'done'),
-        'error':   CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'),
-      }, {
-        'container': 'io',
-      })
-
-      .terminal(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'done'), { outcome: 'completed' })
-      .terminal(CARTOGRAPHER_IRIS.placementIri(CARTOGRAPHER_DAG_IRI, 'failed'), { outcome: 'failed' })
-
-      .entrypoints(CARTOGRAPHER_IRIS.feedEntrypoints(CARTOGRAPHER_DAG_IRI))
-
-      .build();
+      },
+    });
   }
 
   /**
@@ -493,11 +357,11 @@ export class CartographerWorkersDag {
   ): DispatcherBundleType<CartographerState> {
     return {
       'nodes': [
-        ...producerFeedBundle.nodes,
+        ...streamProducerFeedBundle.nodes,
         ...cartographerWorkerRuntimeBundle.nodes,
       ],
       'dags': [
-        ...producerFeedBundle.dags,
+        ...streamProducerFeedBundle.dags,
         ...cartographerWorkerRuntimeBundle.dags,
         CartographerWorkersDag.build(capacity),
       ],
@@ -517,20 +381,13 @@ export const cartographerWorkersDAG: DAGType = CartographerWorkersDag.build();
 
 // #region dispatcher-bundle
 /**
- * eventPipelineBundle: complete bundle for the shared typed event enrichment
- * body. It is self-contained: a worker registry that registers it can run both
- * the current event-pipeline-typed body and the source-payload stream-event
- * compatibility body.
+ * eventPipelineBundle: complete bundle for SourcePayload event enrichment.
+ * A worker registry that combines it with the service-injected geo resolver
+ * bundle can run the stream-event body.
  *
  * Registration order: leaf DAGs before DAGs that embed them.
  *   geo-source-resolve → geo-pipeline → order-enrichment → gdpr-compliance
- *   → 5 pipeline-* DAGs → event-pipeline-typed → stream-event
- *
- * registerBundle is idempotent for same-instance nodes and DAGs (throws only
- * when a different instance with the same name is registered). Nodes shared
- * across per-type bundles (e.g. parseVariant, enrichLeg, aggregateEvent) appear
- * in multiple bundle.nodes arrays; since they are the same singleton instances,
- * repeated registration is a no-op.
+ *   → 5 pipeline-* DAGs → stream-event
  */
 export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
@@ -549,7 +406,7 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
     confirmDelivery,
     // cold-chain (sensor lane) + customs-dwell (customs lane)
     coldChainCheck, customsDwell,
-    // typed enrichment router and source-payload compatibility decoder
+    // typed enrichment router and source-payload decoder
     decodePayload, routeEventType,
   ],
   'dags': [
@@ -564,15 +421,14 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
     pipelineCustomsEventDAG,
     pipelineFacilityScanDAG,
     pipelineDeliveryConfirmationDAG,
-    // Typed scatter body first, then the source-payload compatibility body.
-    eventPipelineTypedDAG,
+    // Canonical SourcePayload body.
     streamEventDAG,
   ],
 };
 
 /**
  * cartographerWorkerRuntimeBundle: worker-side DAGs and nodes needed by every
- * Cartographer container role. The `cpu` role runs event-pipeline-typed bodies;
+ * Cartographer container role. The `cpu` role runs stream-event bodies;
  * the `io` role runs insights-summary. Both roles use the same registry module
  * so plugin-style embedded DAGs and container dispatch stay one interface.
  */
@@ -593,24 +449,21 @@ export const cartographerWorkerRuntimeBundle: DispatcherBundleType<CartographerS
  * Registration order for the streaming topology:
  *   leaf DAGs (geo-resolve, geo-pipeline, order-enrichment, gdpr-compliance)
  *   → 5 per-type pipeline DAGs
- *   → event-pipeline-typed (embeds the 5 pipeline DAGs)
- *   → stream-event compatibility body
+ *   → stream-event SourcePayload body
  *   → 5 producer feed DAGs
- *   → cartographerDAG (embeds the producer feed DAGs and event-pipeline-typed)
+ *   → cartographerDAG (embeds the producer feed DAGs and stream-event)
  *
- * routeEventType is shared by the typed and source-payload bodies. The bundle
- * registrar is idempotent for same-instance re-registration.
+ * routeEventType dispatches decoded SourcePayload events to the per-type DAGs.
  */
 export const cartographerBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
-    ...producerFeedBundle.nodes,
+    ...streamProducerFeedBundle.nodes,
     ...eventPipelineBundle.nodes,
     summarizeInsights,
   ],
   'dags': [
-    ...producerFeedBundle.dags,
-    // eventPipelineBundle registers event-pipeline-typed and the compatibility body;
-    // cartographerDAG embeds event-pipeline-typed after the producer feeds.
+    ...streamProducerFeedBundle.dags,
+    // eventPipelineBundle registers the SourcePayload body after the producer feeds.
     ...eventPipelineBundle.dags,
     cartographerDAG,
   ],
@@ -633,7 +486,7 @@ export const cartographerWorkersBundle: DispatcherBundleType<CartographerState> 
 export const cartographerResumeBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [...cartographerBundle.nodes],
   'dags': [
-    ...producerFeedBundle.dags,
+    ...streamProducerFeedBundle.dags,
     ...eventPipelineBundle.dags,
     cartographerResumeDAG,
   ],

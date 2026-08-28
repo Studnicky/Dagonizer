@@ -24,10 +24,12 @@
 
 import {
   DagContainerBase,
+  DEFAULT_GRAPH_STATE_TRANSFER_FORMATS,
 } from '@studnicky/dagonizer/container';
 import type {
   DagContainerOptionsType,
 } from '@studnicky/dagonizer/container';
+import type { GraphStateTransferFormatType } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
@@ -53,6 +55,9 @@ export type NodeContainerBaseOptionsType = {
   readonly servicesConfig?: JsonObjectType;
   readonly poolSize?: number;
   readonly entryUrl?: URL;
+  readonly graphStateTransferFormats?: readonly GraphStateTransferFormatType[];
+  readonly coalesceInstrumentation?: boolean;
+  readonly instrumentationPlacementPathDepth?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -104,9 +109,13 @@ export abstract class NodeContainerBase<TWorker>
       ...RecommendedWorkerCountConfigDefault,
       'maximumWorkers': MAXIMUM_WORKERS,
     });
+    const graphStateTransferFormats = options.graphStateTransferFormats ?? DEFAULT_GRAPH_STATE_TRANSFER_FORMATS;
     return {
       ...DagContainerBase.defaultOptions,
       'poolSize': options.poolSize ?? defaultPoolSize,
+      'graphStateTransferFormats': graphStateTransferFormats,
+      ...(options.coalesceInstrumentation === undefined ? {} : { 'coalesceInstrumentation': options.coalesceInstrumentation }),
+      ...(options.instrumentationPlacementPathDepth === undefined ? {} : { 'instrumentationPlacementPathDepth': options.instrumentationPlacementPathDepth }),
       'init': {
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,

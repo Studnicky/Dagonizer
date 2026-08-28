@@ -1,0 +1,8 @@
+---
+import RunnableExamplePage from '@/components/marketing/RunnableExamplePage.astro';
+import { runnableExamplePageFor } from '@/lib/runnableExamplePages';
+
+const page = runnableExamplePageFor('dispatcher');
+---
+
+<RunnableExamplePage {...page} />

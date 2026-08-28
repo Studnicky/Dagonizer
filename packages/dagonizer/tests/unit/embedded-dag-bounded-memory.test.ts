@@ -224,7 +224,7 @@ class TestEmbedDag {
           'body':        { 'dag': EMB_SCATTER_BODY_DAG },
           'source':      'items',
           'itemKey':     'item',
-          'execution': { 'mode': 'item', concurrency },
+          'configuration': { 'execution': { 'batching': { 'mode': 'item', concurrency } } },
           'outputs': {
             'all-success': PlacementFixture.iri(name, 'join'),
             'partial': PlacementFixture.iri(name, 'join'),

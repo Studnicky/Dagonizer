@@ -120,7 +120,7 @@ export const dag: DAGType = {
       "body":         { "dag": 'urn:noocodec:dag:square-item' },   // scatter body: run this sub-DAG per item
       "source":       'tasks',                     // state field holding the source array
       "itemKey":      'task',                      // metadata key each item is written under
-      "execution": { "mode": "item", "concurrency": 2 },                           // run up to 2 items concurrently
+      "configuration": { "execution": { "batching": { "mode": "item", "concurrency": 2 } } }, // run up to 2 items concurrently
       "container": 'cpu',                       // route each item through the worker container
       "outputs": {
         'all-success': 'urn:noocodec:dag:square-all/node/collect-results',

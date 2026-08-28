@@ -19,6 +19,7 @@ export type { HandoffChannelInterface } from './HandoffChannelInterface.js';
 // Checkpoint / restore adapters.
 export type { CheckpointRestoreAdapterInterface } from './CheckpointRestoreAdapterInterface.js';
 export type { CheckpointStoreInterface } from './CheckpointStoreInterface.js';
+export type { FoldJournalStoreInterface } from './FoldJournalStoreInterface.js';
 
 // Channels.
 export type { MessageChannelInterface } from './MessageChannelInterface.js';
@@ -34,7 +35,6 @@ export type { RegistryModuleInterface } from './RegistryModuleInterface.js';
 export type { SystemInfoInterface } from './SystemInfoInterface.js';
 export type { DagContainerInterface } from './DagContainerInterface.js';
 export type { DagOutcomeType } from './DagOutcomeType.js';
-export type { DagTaskInterface } from './DagTaskInterface.js';
 export type { DispatcherBundleType } from './DispatcherBundle.js';
 export type { EmbedderInterface } from './EmbedderInterface.js';
 
@@ -75,6 +75,7 @@ export type { StateAccessorInterface } from './StateAccessorInterface.js';
 // Triple store: minimal RDF quad-store contract for graph-tier patterns.
 export type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from './TripleStoreInterface.js';
 export type { GraphDatasetInterface } from './GraphDatasetInterface.js';
+export type { GraphDeltaRecordType, GraphJournalStoreInterface } from './GraphJournalStore.js';
 export type { GraphDatasetProviderInterface, GraphScopeType } from './GraphDatasetProviderInterface.js';
 export type { GraphStateFieldDefinitionType, GraphStateNestedFieldDefinitionType } from './GraphStateFieldDefinition.js';
 export type { GraphRetentionPolicyType } from './GraphRetentionPolicy.js';
@@ -84,6 +85,9 @@ export type { GraphStateSnapshotInterface } from './GraphStateSnapshotInterface.
 export type { GraphStateJsonLdDocumentType, GraphStateJsonLdGraphType, GraphStateJsonLdNodeType, GraphStateJsonLdValueType } from './GraphStateJsonLd.js';
 export type { GraphStateLifecycleInterface } from './GraphStateLifecycleInterface.js';
 export type { GraphStateTransferType } from './GraphStateTransfer.js';
+export { GRAPH_STATE_TRANSFER_FORMATS, DEFAULT_GRAPH_STATE_TRANSFER_FORMATS, type GraphStateTransferFormatType } from './GraphStateTransferFormat.js';
+export { DEFAULT_WRITE_POINTS, WRITE_POINTS, WritePointsSchema } from './WritePoint.js';
+export type { WritePointType } from './WritePoint.js';
 export type { GraphStateTransferIdentityType, GraphStateTransferMetadataType } from './GraphStateTransferMetadata.js';
 export type { GraphStateSnapshotReferenceType } from './GraphStateSnapshotReference.js';
 export type { GraphStateTransferLeaseType } from './GraphStateTransferLease.js';

@@ -1,0 +1,31 @@
+---
+import { getEntry } from 'astro:content';
+import DocPageShell from '@/components/marketing/DocPageShell.astro';
+import { SiteDocs } from '@/lib/docs';
+import { SiteLinks } from '@/lib/links';
+import { DocPageRenderer } from '@/lib/render-doc-page';
+
+const doc = await getEntry('docs', 'getting-started');
+if (doc === undefined) {
+  throw new Error('Missing documentation entry: getting-started');
+}
+
+const pageTitle = doc.data.title ?? DocPageRenderer.leadingTitle(doc.body) ?? 'Getting Started';
+const rendered = await DocPageRenderer.render(doc.body, { title: pageTitle, slug: doc.id });
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site(SiteLinks.route(doc.id)), label: pageTitle }
+];
+---
+
+<DocPageShell
+  title={pageTitle}
+  description={doc.data.description ?? ''}
+  headings={rendered.headings}
+  sections={[]}
+  sourceLabel="getting-started.md"
+  sourceHref={SiteDocs.edit(doc.id)}
+  crumbs={crumbs}
+>
+  <Fragment set:html={rendered.html} />
+</DocPageShell>

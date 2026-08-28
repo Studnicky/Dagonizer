@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { GraphScopeType } from '../../src/contracts/GraphDatasetProviderInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { ProgressKeys } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
-import { graphStateDocument } from '../_support/GraphStateSupport.js';
+import { stateSnapshot } from '../_support/GraphStateSupport.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const placementIri = TestDag.placementIri;
+const TEST_CHILD_SCOPE: GraphScopeType = { 'runIri': 'test-run/child', 'dagIri': 'test-dag', 'placementIri': 'test-placement' };
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -20,8 +23,8 @@ const placementIri = TestDag.placementIri;
 class DomainState extends NodeStateBase {
   domainValue: number;
 
-  constructor() {
-    super();
+  constructor(...args: ConstructorParameters<typeof NodeStateBase>) {
+    super(...args);
     this.domainValue = 0;
   }
 
@@ -35,6 +38,11 @@ const metadataAccessor: StateAccessorInterface = {
   },
   set(state: NodeStateBase, key: string, value: unknown): void {
     state.setMetadata(key, value);
+  },
+  append(state: NodeStateBase, key: string, value: unknown): void {
+    const current = state.getMetadata(key);
+    const list = Array.isArray(current) ? [...current, value] : [value];
+    state.setMetadata(key, list);
   },
 };
 
@@ -87,6 +95,48 @@ void describe('DottedPathAccessor', () => {
   });
 });
 
+// ── DottedPathAccessor.append: O(1) in-place array growth ────────────────────
+
+void describe('DottedPathAccessor.append', () => {
+  void it('creates the array when the path is empty', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = {};
+    accessor.append(target, 'items', 1);
+    assert.deepEqual(target['items'], [1]);
+  });
+
+  void it('pushes onto the existing array in place (same reference)', () => {
+    const accessor = new DottedPathAccessor();
+    const array: number[] = [1];
+    const target: Record<string, unknown> = { 'items': array };
+    accessor.append(target, 'items', 2);
+    accessor.append(target, 'items', 3);
+    assert.deepEqual(target['items'], [1, 2, 3]);
+    assert.equal(target['items'], array, 'appends grow the same array, not a fresh copy');
+  });
+
+  void it('starts a fresh array when the current value is not an array', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = { 'items': 'scalar' };
+    accessor.append(target, 'items', 1);
+    assert.deepEqual(target['items'], [1]);
+  });
+
+  void it('auto-vivifies intermediate objects on a nested append', () => {
+    const accessor = new DottedPathAccessor();
+    const target: Record<string, unknown> = {};
+    accessor.append(target, 'a.b.items', 'x');
+    assert.deepEqual(target, { 'a': { 'b': { 'items': ['x'] } } });
+  });
+
+  void it('refuses to append through __proto__ (no prototype pollution)', () => {
+    const accessor = new DottedPathAccessor();
+    accessor.append({}, '__proto__.polluted', 'yes');
+    accessor.append({}, 'a.__proto__.polluted', 'yes');
+    assert.equal(Reflect.get(Object.prototype, 'polluted'), undefined);
+  });
+});
+
 // ── Dagonizer custom StateAccessorInterface injection ─────────────────────────────────
 
 void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
@@ -99,6 +149,9 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
       },
       set(state: object, path: string, value: unknown): void {
         new DottedPathAccessor().set(state, path, value);
+      },
+      append(state: object, path: string, value: unknown): void {
+        new DottedPathAccessor().append(state, path, value);
       },
     };
 
@@ -157,7 +210,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     const state = new DomainState();
     state.domainValue = 42;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
 
     assert.ok(
       cloned instanceof DomainState,
@@ -165,19 +218,19 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     );
   });
 
-  void it('domain field round-trips through graph JSON-LD', async () => {
+  void it('domain field round-trips through transient state snapshot', async () => {
     const state = new DomainState();
     state.domainValue = 99;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
     // Domain field starts at default (0) in the fresh clone — it hasn't been
     // populated yet. Restoring the original graph populates the field.
     assert.strictEqual(cloned.domainValue, 0, 'fresh clone should have default domainValue');
 
-    const snap = graphStateDocument(state);
-    await cloned.restoreJsonLd(state.runIri, snap);
+    const snap = stateSnapshot(state);
+    await cloned.restoreTransientState(state.runIri, snap);
 
-    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive graph restore');
+    assert.strictEqual(cloned.domainValue, 99, 'domainValue must survive transient restore');
   });
 
   void it('metadata is preserved; lifecycle and errors reset on clone', () => {
@@ -185,7 +238,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     state.setMetadata('key', 'value');
     state.domainValue = 7;
 
-    const cloned = state.clone();
+    const cloned = state.clone(TEST_CHILD_SCOPE);
 
     // Metadata crosses the clone boundary.
     assert.strictEqual(cloned.getMetadata('key'), 'value', 'metadata must be preserved in clone');
@@ -197,13 +250,28 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     assert.strictEqual(cloned.errors.length, 0, 'errors must be empty in clone');
   });
 
+  void it('preserves user metadata without copying engine progress into a child', () => {
+    const state = new DomainState();
+    state.setMetadata('key', 'value');
+    state.setMetadata(ProgressKeys.SCATTER, { 'inbox': Array.from({ 'length': 100 }, (_, index) => index) });
+    state.setMetadata(ProgressKeys.WORK_SET, { 'items': [1, 2, 3] });
+    state.setMetadata(ProgressKeys.GATHER, { 'entries': { 'gather': [] } });
+
+    const cloned = state.clone(TEST_CHILD_SCOPE);
+
+    assert.equal(cloned.getMetadata('key'), 'value');
+    assert.equal(cloned.getMetadata(ProgressKeys.SCATTER), undefined);
+    assert.equal(cloned.getMetadata(ProgressKeys.WORK_SET), undefined);
+    assert.equal(cloned.getMetadata(ProgressKeys.GATHER), undefined);
+  });
+
   void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {
     const mapper = new StateMapper(metadataAccessor);
     const parent = new DomainState();
     parent.domainValue = 55;
     parent.setMetadata('item', 3);
 
-    const child = mapper.cloneChild(parent, { 'item': 'item' });
+    const child = mapper.cloneChild(parent, { 'item': 'item' }, TEST_CHILD_SCOPE);
 
     assert.ok(
       child instanceof DomainState,

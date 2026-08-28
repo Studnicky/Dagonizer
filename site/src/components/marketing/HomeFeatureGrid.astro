@@ -1,0 +1,44 @@
+---
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+
+const features = [
+  {
+    badge: 'λ',
+    title: 'Typed workflow routing',
+    body: 'Define branches, terminals, and downstream transitions explicitly so graph behavior stays readable before and during execution.'
+  },
+  {
+    badge: '↻',
+    title: 'Durable resume',
+    body: 'Capture execution state, persist it, and continue the same workflow from the recorded cursor when work needs to pause or recover.'
+  },
+  {
+    badge: '⬡',
+    title: 'First-class graph control',
+    body: 'Scatter, gather, embedded workflows, and streaming inputs stay part of the graph model instead of being buried in incidental orchestration code.'
+  }
+];
+---
+
+<section id="features" class="space-y-6">
+  <UiSectionIntro
+    eyebrow="Core runtime capabilities"
+    title="Work from one runtime model instead of stitching orchestration together case by case"
+    description="Dagonizer keeps routing, resume, scatter, gather, and visualization attached to the same DAG contract so teams can follow execution policy directly in the workflow artifact."
+  />
+
+  <div class="hex-honeycomb py-4">
+    {features.map((feature) => (
+      <div
+        class="hex-cell flex items-center justify-center bg-cyan-400/8 text-2xl"
+        style="aspect-ratio: var(--dagonizer-hex-ratio);"
+        aria-hidden="true"
+      >
+        {feature.badge}
+      </div>
+    ))}
+  </div>
+
+  <UiMarketingCardGrid items={features} />
+</section>

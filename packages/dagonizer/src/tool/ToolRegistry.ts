@@ -142,9 +142,9 @@ export class ToolRegistry {
    * `DispatcherBundleType`. Pass to `dispatcher.registerBundle(registry.bundle())`
    * to wire the full tool surface into the dispatcher in one call.
    *
-   * Each `urn:noocodec:tool:<name>` DAG registers an isolation factory `() => new
-   * ToolInvocationState()`, so a tool runs on its OWN fresh state — args are
-   * seeded into the embed's `input`, the result read from `output`, and the
+   * Each `urn:noocodec:tool:<name>` DAG registers an isolation factory
+   * `(_parent, _childScope) => new ToolInvocationState()`, so a tool runs on its
+   * OWN fresh state — args are seeded into the embed's `input`, the result read from `output`, and the
    * parent's state is never mutated by the tool. A tool is a pure function.
    */
   bundle(): DispatcherBundleType<ToolInvocationState> {
@@ -157,7 +157,7 @@ export class ToolRegistry {
       // Validators compiled once at `register()` time are passed through here; no recompilation.
       nodes.push(new ToolInvokeNode(entry['nodeIri'], entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator'], { 'execution': entry['execution'] }));
       dags.push(entry['dag']);
-      stateFactories[entry['dagIri']] = () => new ToolInvocationState();
+      stateFactories[entry['dagIri']] = (_parent, _childScope) => new ToolInvocationState();
     }
 
     return { 'nodes': nodes, 'dags': dags, 'stateFactories': stateFactories };

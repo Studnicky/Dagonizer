@@ -1,0 +1,80 @@
+---
+import DocsArticleShell from '@/components/marketing/DocsArticleShell.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiMarketingCardGrid from '@/components/islands/UiMarketingCardGrid.vue';
+import UiSectionIntro from '@/components/islands/UiSectionIntro.vue';
+import { SiteLinks } from '@/lib/links';
+
+return Astro.redirect(SiteLinks.site(SiteLinks.route('guide')), 301);
+
+const crumbs = [
+  { href: SiteLinks.site('/docs'), label: 'Docs' },
+  { href: SiteLinks.site('/docs/guide'), label: 'Guide' }
+] as const;
+
+const guideTracks = [
+  {
+    eyebrow: 'Authoring',
+    title: 'Graph definition and builder patterns',
+    body: 'Move from hand-authored JSON-LD through the builder, schema constraints, and node composition while keeping placements, routes, and terminals in one graph document.',
+    href: SiteLinks.site('/docs/guide/builder')
+  },
+  {
+    eyebrow: 'Execution',
+    title: 'Runtime behavior, retries, checkpoints, and HITL',
+    body: 'Understand how runs progress, pause, resume, retry, checkpoint, and expose human-in-the-loop control points.',
+    href: SiteLinks.site('/docs/guide/checkpoint')
+  },
+  {
+    eyebrow: 'Visualization',
+    title: 'Render and inspect DAGs in the browser',
+    body: 'See how Cytoscape, Mermaid, and JSON-LD outputs are produced and what consumers can customize around them.',
+    href: SiteLinks.site('/docs/guide/visualization')
+  }
+] as const;
+
+const guideLinks = [
+  { href: SiteLinks.site('/docs/getting-started'), label: 'Getting started' },
+  { href: SiteLinks.site('/docs/guide/builder'), label: 'Builder guide' },
+  { href: SiteLinks.site('/docs/guide/schema'), label: 'Schema guide' },
+  { href: SiteLinks.site('/docs/guide/checkpoint'), label: 'Checkpoint guide' },
+  { href: SiteLinks.site('/docs/guide/retry'), label: 'Retry guide' },
+  { href: SiteLinks.site('/docs/guide/visualization'), label: 'Visualization guide' }
+] as const;
+---
+
+<DocsArticleShell title="Guide" description="Implementation guidance for graph authoring, execution semantics, runtime state, checkpoints, retries, visualization, and deployment.">
+  <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+    <article class="space-y-8">
+      <UiPageHeader
+        title="Guide"
+        description="Use the guide section for workflow authoring, execution behavior, checkpoint recovery, visualization, and deployment seams."
+        crumbs={crumbs}
+      />
+
+      <section class="space-y-5">
+        <UiSectionIntro
+          eyebrow="Guide tracks"
+          title="Guidance organized around the runtime lifecycle"
+          description="Start with authoring for graph definition, execution for runtime behavior and recovery, and visualization for Mermaid, Cytoscape, or JSON-LD output."
+        />
+        <UiMarketingCardGrid client:visible items={guideTracks} linkCards />
+      </section>
+    </article>
+
+    <aside class="space-y-5">
+      <UiAsideCard title="Key guide pages">
+        <UiLinkList links={guideLinks} />
+      </UiAsideCard>
+
+      <UiAsideCard title="Next">
+        <div class="space-y-3 text-sm leading-6 text-slate-300">
+          <p>Examples show the same runtime contracts inside complete agent, support, and data workflows.</p>
+          <p>Reference covers the exported runtime classes, contracts, entities, and types.</p>
+        </div>
+      </UiAsideCard>
+    </aside>
+  </div>
+</DocsArticleShell>

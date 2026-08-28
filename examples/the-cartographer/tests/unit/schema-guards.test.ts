@@ -1,16 +1,56 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CartographerState } from '../../CartographerState.ts';
 import { GeoSignalDescriptorBuilder, GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts';
 import { SourcePayloadGuard } from '../../entities/SourcePayload.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
-import { EnrichedShipmentGuard } from '../../entities/EnrichedShipment.ts';
+import { Continent } from '../../entities/Continent.ts';
+import { EnrichedShipmentGuard, EnrichedShipmentSchema } from '../../entities/EnrichedShipment.ts';
+import type { EnrichedShipment } from '../../entities/EnrichedShipment.ts';
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
 describe('schema-backed entity guards', () => {
+  it('Continent exposes the exact readonly domain and rejects invalid values', () => {
+    assert.deepEqual(Continent.values, [
+      'Africa',
+      'Antarctica',
+      'Asia',
+      'Europe',
+      'North America',
+      'Oceania',
+      'South America',
+      'Unmapped',
+      'International Waters / Maritime',
+    ]);
+    assert.equal(Object.isFrozen(Continent.values), true);
+    assert.equal(Continent.is('North America'), true);
+    assert.equal(Continent.is('Americas'), false);
+    assert.equal(Continent.require('Oceania'), 'Oceania');
+    assert.throws(() => Continent.require('Americas'), TypeError);
+  });
+
+  it('EnrichedShipmentSchema sources its continent enum from the canonical domain', () => {
+    const inferenceIsNarrow: string extends EnrichedShipment['continent']
+      ? false
+      : EnrichedShipment['continent'] extends typeof Continent.values[number]
+        ? true
+        : false = true;
+
+    assert.equal(EnrichedShipmentSchema.properties.continent.enum, Continent.values);
+    assert.equal(inferenceIsNarrow, true);
+  });
+
+  it('CartographerState rejects an invalid continent during transient restoration', () => {
+    assert.throws(
+      () => CartographerState.enrichedFromJson({ 'continent': 'Americas' }),
+      TypeError,
+    );
+  });
+
   it('SourcePayloadGuard accepts schema-valid source payloads', () => {
     assert.equal(SourcePayloadGuard.is({
-      'sourceId':    'fixtures',
+      'sourceId':    'position-ping-json-none-0',
       'format':      'json',
       'compression': 'none',
       'mappingKey':  'default',
@@ -21,13 +61,24 @@ describe('schema-backed entity guards', () => {
 
   it('SourcePayloadGuard rejects extra properties through the compiled schema', () => {
     assert.equal(SourcePayloadGuard.is({
-      'sourceId':    'fixtures',
+      'sourceId':    'position-ping-json-none-0',
       'format':      'json',
       'compression': 'none',
       'mappingKey':  'default',
       'eventType':   'position-ping',
       'payload':     '[]',
       'extra':       true,
+    }), false);
+  });
+
+  it('SourcePayloadGuard rejects source IDs outside the producer grammar', () => {
+    assert.equal(SourcePayloadGuard.is({
+      'sourceId':    'fixtures',
+      'format':      'json',
+      'compression': 'none',
+      'mappingKey':  'default',
+      'eventType':   'position-ping',
+      'payload':     '[]',
     }), false);
   });
 
@@ -64,7 +115,7 @@ describe('schema-backed entity guards', () => {
     } as unknown), false);
   });
 
-  it('EnrichedShipmentGuard accepts a complete schema-valid enriched shipment', () => {
+  it('EnrichedShipmentGuard accepts exactly the nine canonical continent keys', () => {
     const richShipment = {
       'shipmentId':       'SHP-001',
       'scanSeq':          1,
@@ -118,7 +169,21 @@ describe('schema-backed entity guards', () => {
         'customsDwellRun':     false,
       },
     };
-    assert.equal(EnrichedShipmentGuard.is(richShipment), true);
+    for (const continent of [
+      'Africa',
+      'Antarctica',
+      'Asia',
+      'Europe',
+      'North America',
+      'Oceania',
+      'South America',
+      'Unmapped',
+      'International Waters / Maritime',
+    ]) {
+      assert.equal(EnrichedShipmentGuard.is({ ...richShipment, continent }), true, continent);
+    }
+    assert.equal(EnrichedShipmentGuard.is({ ...richShipment, 'continent': 'Americas' }), false);
+    assert.equal(EnrichedShipmentGuard.is({ ...richShipment, 'continent': 'Other' }), false);
   });
 
   it('EnrichedShipmentGuard rejects unknown top-level properties', () => {

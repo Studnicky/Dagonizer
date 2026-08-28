@@ -2,21 +2,20 @@
  * WorkerObserver: Dagonizer subclass used inside DagHost to relay hook events
  * back to the parent dispatcher as `instrumentation` BridgeMessages.
  *
- * One instance is constructed per-execute with the correlationId and basePath
- * from the ExecutionRequest. Override of every protected hook forwards the
+ * One instance is constructed per request with an immutable correlationId and
+ * basePath. Override of every protected hook forwards the
  * event over the channel; the parent's ChannelDispatch routes the message to
  * the ObserverRelayInterface bound to the parent Dagonizer's hooks.
  *
  * flowStart / flowEnd are intentionally not forwarded — the parent dispatcher
- * owns flow-level hooks. The per-execute construction pattern is correct: a
- * single WorkerObserver per host lifetime would require mutable correlationId
- * (unsafe for concurrent executions).
+ * owns flow-level hooks.
  *
  * V8 shape stability: all properties initialised in constructor in declaration order.
  */
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import { Dagonizer } from '../Dagonizer.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /** Shape of the co-located `WorkerObserver.#emit()` option defaults. */
@@ -36,6 +35,36 @@ const EMIT_DEFAULTS: EmitDefaultsType = {
   'output': null,
   'message': '',
 };
+type InstrumentationEvent = Omit<Extract<BridgeMessageType, { variant: 'instrumentation' }>, 'variant'>;
+
+type WorkerObserverRequestType = {
+  readonly correlationId: string;
+  readonly basePath: readonly string[];
+};
+
+/** Trailing config object for `WorkerObserver`'s constructor. */
+type WorkerObserverOptionsType = {
+  /**
+   * Dedup identical instrumentation events within one flush window before
+   * sending. Default `true`. Inner scatter-clone nodes report a STATIC
+   * placementPath (no per-clone index — see BodyExecutor.ts and
+   * ScatterDispatch.ts), so thousands of clones passing through the same
+   * static node in one microtask window produce identical events that carry
+   * no distinguishing information for a state-based observer. Set `false`
+   * to receive every raw event.
+   */
+  coalesceInstrumentation?: boolean;
+  /**
+   * Optional cap on the composed placement-path depth emitted over the worker
+   * boundary. Events deeper than this are dropped at the source.
+   */
+  instrumentationPlacementPathDepth?: number;
+};
+
+/** Module-level default for `WorkerObserverOptionsType`. */
+const WORKER_OBSERVER_DEFAULTS: Required<Pick<WorkerObserverOptionsType, 'coalesceInstrumentation'>> = {
+  'coalesceInstrumentation': true,
+};
 
 export class WorkerObserver<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -44,21 +73,34 @@ export class WorkerObserver<
   readonly #channel: MessageChannelInterface;
   readonly #correlationId: string;
   readonly #basePath: readonly string[];
+  readonly #instrumentationQueue: Array<InstrumentationEvent>;
+  #instrumentationFlushScheduled: boolean;
+  readonly #coalesceInstrumentation: boolean;
+  readonly #instrumentationPlacementPathDepth: number | undefined;
 
   constructor(
     channel: MessageChannelInterface,
-    correlationId: string,
-    basePath: readonly string[],
+    request: WorkerObserverRequestType,
     dagonizerOptions: ConstructorParameters<typeof Dagonizer>[0],
+    options: WorkerObserverOptionsType = {},
   ) {
     super(dagonizerOptions);
     this.#channel = channel;
-    this.#correlationId = correlationId;
-    this.#basePath = basePath;
+    this.#correlationId = request.correlationId;
+    this.#basePath = request.basePath;
+    this.#instrumentationQueue = [];
+    this.#instrumentationFlushScheduled = false;
+    this.#coalesceInstrumentation = { ...WORKER_OBSERVER_DEFAULTS, ...options }.coalesceInstrumentation;
+    this.#instrumentationPlacementPathDepth = options.instrumentationPlacementPathDepth;
   }
 
   #composePath(innerPath: readonly string[]): string[] {
     return [...this.#basePath, ...innerPath];
+  }
+
+  #shouldEmitPath(composedPath: readonly string[]): boolean {
+    return this.#instrumentationPlacementPathDepth === undefined
+      || composedPath.length <= this.#instrumentationPlacementPathDepth;
   }
 
   /**
@@ -79,8 +121,7 @@ export class WorkerObserver<
   ): void {
     const { phase, dagName, nodeName, output, message } = { ...EMIT_DEFAULTS, ...options };
     try {
-      this.#channel.send({
-        'variant': 'instrumentation',
+      this.#instrumentationQueue.push({
         'correlationId': this.#correlationId,
         'hook': hook,
         'phase': phase,
@@ -90,19 +131,32 @@ export class WorkerObserver<
         'message': message,
         'placementPath': composedPath,
       });
+      if (!this.#instrumentationFlushScheduled) {
+        this.#instrumentationFlushScheduled = true;
+        queueMicrotask((): void => {
+          this.#instrumentationFlushScheduled = false;
+          this.#flushInstrumentationBatch();
+        });
+      }
     } catch { /* channel closed — suppress */ }
   }
 
   protected override onNodeStart(nodeName: string, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeStart', this.#composePath(placementPath), { 'nodeName': nodeName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('nodeStart', composedPath, { 'nodeName': nodeName });
   }
 
   protected override onNodeEnd(nodeName: string, output: string | null, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeEnd', this.#composePath(placementPath), { 'nodeName': nodeName, 'output': output });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('nodeEnd', composedPath, { 'nodeName': nodeName, 'output': output });
   }
 
   protected override onError(nodeName: string, error: Error, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('error', this.#composePath(placementPath), { 'nodeName': nodeName, 'message': error.message });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('error', composedPath, { 'nodeName': nodeName, 'message': error.message });
   }
 
   protected override onPhaseEnter(
@@ -112,7 +166,9 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseEnter', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('phaseEnter', composedPath, { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
   protected override onPhaseExit(
@@ -122,6 +178,50 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+    const composedPath = this.#composePath(placementPath);
+    if (!this.#shouldEmitPath(composedPath)) return;
+    this.#emit('phaseExit', composedPath, { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
+  }
+
+  /**
+   * Identity key for lossless dedup: two events with the same key differ in
+   * nothing a state-based observer can distinguish. Composed of every
+   * distinguishing field — `output` included, so a clone that routes
+   * nodeEnd→success and a clone that routes nodeEnd→error produce distinct
+   * keys and both survive.
+   */
+  static #instrumentationKeyOf(event: InstrumentationEvent): string {
+    return `${event.hook}|${event.phase}|${event.dagName}|${event.nodeName}|${event.output ?? ''}|${event.placementPath.join(' ')}`;
+  }
+
+  /**
+   * Collapse events sharing an identity key to a single first-occurrence
+   * item, preserving order. Lossless: within one flush window, dropped
+   * duplicates are indistinguishable from the item that represents them.
+   */
+  static #coalesce(events: readonly InstrumentationEvent[]): InstrumentationEvent[] {
+    const seen = new Set<string>();
+    const deduped: InstrumentationEvent[] = [];
+    for (const event of events) {
+      const key = WorkerObserver.#instrumentationKeyOf(event);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(event);
+    }
+    return deduped;
+  }
+
+  #flushInstrumentationBatch(): void {
+    if (this.#instrumentationQueue.length === 0) return;
+    const queued = [...this.#instrumentationQueue];
+    this.#instrumentationQueue.length = 0;
+    const items = this.#coalesceInstrumentation ? WorkerObserver.#coalesce(queued) : queued;
+    try {
+      this.#channel.send({
+        'variant': 'instrumentationBatch',
+        'correlationId': this.#correlationId,
+        'items': items,
+      });
+    } catch { /* channel closed — suppress */ }
   }
 }

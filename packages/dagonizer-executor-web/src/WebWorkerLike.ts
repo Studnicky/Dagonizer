@@ -3,9 +3,9 @@
  *
  * No DOM lib. All browser shapes are structural (duck-typed) interfaces
  * defined here so the package compiles and tests in Node.js without
- * any browser globals. Consumers cast real Worker / self references
- * at THEIR boundary via `as WebWorkerLikeInterface` — this package
- * never touches window, self, or DOM types.
+ * any browser globals. Real Worker and worker-scope references satisfy these
+ * contracts structurally; this package never touches window, self, or DOM
+ * types.
  *
  * Two concepts:
  *   WebWorkerLikeInterface  — the outside-worker (main-thread) view: a

@@ -51,8 +51,6 @@ import { DAGIdentity } from '../entities/dag/DAG.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import { DAGError } from '../errors/DAGError.js';
 import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
-import { GraphStateTerms } from '../graph/GraphStateTerms.js';
-import { GraphStateTransferCodec } from '../graph/GraphStateTransferCodec.js';
 import { NodeStateBase, type NodeStateInterface } from '../NodeStateBase.js';
 import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 import { Validator } from '../validation/Validator.js';
@@ -174,27 +172,15 @@ export class Checkpoint {
     }
 
     const dagIri = DAGIdentity.id(dagName);
-    const graphJsonLd = await result.state.snapshotJsonLd(result.state.runIri);
-    const graphTransfer = await GraphStateTransferCodec.inlineStream(
-      result.state.runIri,
-      [GraphStateTerms.runGraphIri(result.state.runIri)],
-      result.state.snapshotGraph(),
-      { 'dagIri': dagIri, 'placementPath': [result.cursor], 'placementIri': result.cursor, "jsonLd": graphJsonLd },
-    );
-    const graphNquads = graphTransfer.nquads;
-    const graphHash = graphTransfer.mode === 'inline-nquads' ? graphTransfer.hash : '';
     const base: CheckpointDataType = {
       'dagName': dagIri,
       'cursor': result.cursor,
       'executedNodes': [...result.executedNodes],
       'skippedNodes': [...result.skippedNodes],
       'stores': {},
-      'graph': {
+      'state': {
         'runIri': result.state.runIri,
-        'graphIri': GraphStateTerms.runGraphIri(result.state.runIri),
-        'nquads': graphNquads,
-        'hash': graphHash,
-        'jsonLd': graphJsonLd,
+        'transient': result.state.snapshotTransientState(),
       },
     };
 
@@ -288,7 +274,7 @@ export class Checkpoint {
     if (!(state instanceof NodeStateBase)) {
       throw new DAGError('Checkpoint restore adapters must construct a NodeStateBase instance', { 'code': 'VALIDATION_ERROR' });
     }
-    await state.restoreJsonLd(this.data.graph.runIri, this.data.graph.jsonLd);
+    await state.restoreTransientState(this.data.state.runIri, this.data.state.transient);
     return {
       'state': state,
       'dagName': this.data.dagName,

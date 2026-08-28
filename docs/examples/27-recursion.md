@@ -16,24 +16,18 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+import { BookSearchScatterDAG } from '../exampleDags.ts';
 </script>
 
 # Example 27: Runtime DAG Dispatch
 
-## What It Is
+## Placement Surface
 
 Runtime DAG Dispatch lets one placement choose a registered child DAG from state or item data at execution time. The Archivist uses a dynamic `DagReference` inside its book-search scatter so each workset can run the tool DAG referenced by that item.
 
 This is the embedding interface for heterogeneous work. The parent graph stays stable, while data selects whether a clone runs Open Library search, Google Books search, Wikipedia enrichment, or another registered tool flow.
 
-## How It Works
-
-A dynamic `DagReference` names a source (`state` or `item`), a dotted path, and the finite candidate DAG set. For each clone, the dispatcher reads that path, expands the value through the DAG registry, validates that it is one of the declared candidates, and executes it as the clone body. Parent topology stays stable while item data selects the concrete child flow.
-
-Because lookup goes through the registry, runtime dispatch still has a closed world: only registered DAGs can execute. That keeps plugin-provided flows and local flows on the same assembly surface.
-
-## Diagrams, Examples, and Outputs
+## Registered Flow
 
 ### DAG registration and diagram
 
@@ -52,16 +46,16 @@ This is the production shape behind recursive or heterogeneous embedded calls:
 ### Run
 
 ```bash
-npm run docs:dev
+pnpm run site:dev
 ```
 
-Open [The Archivist](./the-archivist) and ask a book question that needs external search or tool-backed lookup.
+Visit [The Archivist](./the-archivist) and ask a book question that needs external search or tool-backed lookup.
 
-## What It Lets You Do
+## Tool DAG Dispatch Model
 
-Runtime DAG dispatch lets applications select an embedded child DAG from state at execution time. Use it when one placement fans out heterogeneous work items, plugin-provided DAGs, or tool-specific flows that share the same parent scatter and gather contract.
+A dynamic `DagReference` names a source (`state` or `item`), a dotted path, and the finite candidate DAG set. For each clone, the dispatcher reads that path, expands the value through the DAG registry, validates that it is one of the declared candidates, and executes it as the clone body. Parent topology stays stable while item data selects the concrete child flow.
 
-This is also the bridge between plugins and embedding: if a plugin registers a DAG IRI/reference, a host DAG can place it statically with a literal `dag` or select it dynamically with a `DagReference`.
+Because lookup goes through the registry, runtime dispatch still has a closed world: only registered DAGs can execute. That keeps plugin-provided flows and local flows on the same assembly path.
 
 ## Code Samples
 
@@ -69,11 +63,17 @@ The embedded DAG owns runtime DAG-reference resolution:
 
 <<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 
-The browser demo registers the same tool DAGs before registering the parent Archivist DAG:
+The Archivist runner registers the same tool DAGs before registering the parent Archivist DAG:
 
-<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-tool-registry
+<<< @/../examples/the-archivist/app/ArchivistRunner.vue#archivist-browser-tool-registry
 
-## Details for Nerds
+## Operational Uses
+
+Runtime DAG dispatch lets hosts select an embedded child DAG from state at execution time. It fits placements that fan out heterogeneous work items, plugin-provided DAGs, or tool-specific flows sharing the same parent scatter and gather contract.
+
+The same assembly seam also covers plugins: if a plugin registers a DAG IRI or reference, a host DAG can place it statically with a literal `dag` or select it dynamically with a `DagReference`.
+
+## Runtime Notes
 
 - **Runtime child selection.** `DagReference` reads the child DAG reference from state or item data instead of baking one literal `dag` string into the placement.
 - **One placement, many bodies.** The graph has one scatter placement even though different items can execute different registered DAGs.

@@ -1,0 +1,58 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import TopNav from '@/components/marketing/TopNav.astro';
+import MarketingFooter from '@/components/marketing/MarketingFooter.astro';
+import UiAsideCard from '@/components/marketing/UiAsideCard.astro';
+import UiLinkList from '@/components/marketing/UiLinkList.astro';
+import UiPageHeader from '@/components/marketing/UiPageHeader.astro';
+
+interface Crumb {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface LinkItem {
+  readonly href: string;
+  readonly label: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  pageDescription: string;
+  crumbs: readonly Crumb[];
+  runtimeSurfaces: readonly string[];
+  relatedLinks: readonly LinkItem[];
+}
+
+const { title, description, pageDescription, crumbs, runtimeSurfaces, relatedLinks } = Astro.props;
+---
+
+<BaseLayout title={title} description={description}>
+  <main class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-4 md:px-6 md:py-6">
+    <TopNav />
+
+    <section class="hex-shell bg-slate-950/72 px-8 py-10 shadow-[0_30px_120px_-48px_rgba(15,23,42,1)] backdrop-blur md:px-10 md:py-12">
+      <UiPageHeader title={title} description={pageDescription} crumbs={crumbs} />
+
+      <div class="mt-10 flex flex-col gap-10">
+        <div class="space-y-8">
+          <slot />
+        </div>
+
+        <aside class="grid gap-6 md:grid-cols-2">
+          <UiAsideCard title="Runtime behavior">
+            <div class="space-y-3 text-sm leading-6 text-slate-300">
+              {runtimeSurfaces.map((point) => <p>{point}</p>)}
+            </div>
+          </UiAsideCard>
+
+          <UiAsideCard title="Related">
+            <UiLinkList links={relatedLinks} />
+          </UiAsideCard>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <MarketingFooter />
+</BaseLayout>

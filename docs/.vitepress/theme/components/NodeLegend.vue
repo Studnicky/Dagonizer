@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Badge from './ui/Badge.vue';
+import UiLegendTitle from './ui/UiLegendTitle.vue';
 /**
  * NodeLegend: chip row labelling the two node variant values.
  *
@@ -21,13 +23,12 @@ const chips: readonly LegendChip[] = [
 
 <template>
   <aside class="node-legend" aria-label="Node variant legend">
-    <span class="node-legend-title">variants</span>
+    <UiLegendTitle align="center">variants</UiLegendTitle>
     <span
       v-for="chip in chips"
       :key="chip.variant"
-      :class="['chip', `chip-${chip.variant}`]"
       :title="chip.hint"
-    >{{ chip.label }}</span>
+    ><Badge :tone="chip.variant === 'deterministic' ? 'accent' : 'info'" :dashed="chip.variant === 'non-deterministic'">{{ chip.label }}</Badge></span>
   </aside>
 </template>
 
@@ -39,39 +40,4 @@ const chips: readonly LegendChip[] = [
   gap: 0.3rem;
 }
 
-.node-legend-title {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
-  text-align: center;
-  margin-bottom: 0.1rem;
-}
-
-.chip {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.2rem 0.55rem;
-  border-radius: 3px;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  cursor: help;
-  min-width: 90px;
-  text-align: center;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.chip-deterministic {
-  color: var(--dagonizer-brand);
-  border-color: var(--dagonizer-brand);
-}
-
-.chip-non-deterministic {
-  color: var(--dagonizer-brand2);
-  border: 1px dashed var(--dagonizer-brand2);
-}
 </style>
